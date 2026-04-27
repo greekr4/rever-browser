@@ -1,51 +1,19 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { ChatPanel } from '@/components/chat/ChatPanel'
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
-
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
-  );
+    <div style={{ display: 'flex', height: '100vh', color: '#e8e8e8', background: '#0e0e0e' }}>
+      <section style={{ flex: 1, padding: 16, display: 'flex', flexDirection: 'column' }}>
+        <h1 style={{ fontSize: 18, margin: 0 }}>rever-browser</h1>
+        <p style={{ opacity: 0.6, fontSize: 13 }}>
+          M0.2: ACP 채팅만 검증. 좌측 패널(브라우저/트래픽)은 M0.3+ 에서 추가.
+        </p>
+      </section>
+      <aside style={{ width: 480 }}>
+        <ChatPanel />
+      </aside>
+    </div>
+  )
 }
 
-export default App;
+export default App
