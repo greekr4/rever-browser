@@ -6,7 +6,6 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "shell:default",
     {
       "identifier": "shell:allow-spawn",
       "allow": [
@@ -14,6 +13,8 @@
         { "name": "codex-acp", "cmd": "codex-acp", "args": true },
         { "name": "gemini", "cmd": "gemini", "args": true }
       ]
-    }
+    },
+    "shell:allow-stdin-write",
+    "shell:allow-kill"
   ]
 }
