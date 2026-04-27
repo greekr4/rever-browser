@@ -86,24 +86,24 @@ rever-browser/
 ├── PLAN.md                       # this
 ├── README.md
 ├── package.json
-├── src/                          # Vue 3 frontend
-│   ├── App.vue                   # 2분할 레이아웃 셸
-│   ├── main.ts
+├── src/                          # React 19 + Vite frontend
+│   ├── App.tsx                   # 2분할 레이아웃 셸
+│   ├── main.tsx
 │   ├── components/
 │   │   ├── chat/
-│   │   │   ├── ChatPanel.vue     # career-pencil ChatPanel 패턴
-│   │   │   ├── ChatInput.vue
-│   │   │   ├── ProviderSelect.vue
-│   │   │   └── ACPPermissionDialog.vue
+│   │   │   ├── ChatPanel.tsx     # career-pencil ChatPanel 패턴 포팅
+│   │   │   ├── ChatInput.tsx
+│   │   │   ├── ProviderSelect.tsx
+│   │   │   └── ACPPermissionDialog.tsx
 │   │   ├── browser/
-│   │   │   ├── BrowserStatusBar.vue   # 연결/URL 표시
-│   │   │   └── BrowserControls.vue    # 시작/정지/주소 입력
+│   │   │   ├── BrowserStatusBar.tsx   # 연결/URL 표시
+│   │   │   └── BrowserControls.tsx    # 시작/정지/주소 입력
 │   │   └── network/
-│   │       ├── TrafficList.vue        # 캡처된 요청 목록
-│   │       ├── TrafficDetail.vue      # 헤더/바디/응답
-│   │       └── TrafficSearch.vue
-│   ├── composables/
-│   │   ├── use-chat.ts                # career-pencil 패턴
+│   │       ├── TrafficList.tsx        # 캡처된 요청 목록
+│   │       ├── TrafficDetail.tsx      # 헤더/바디/응답
+│   │       └── TrafficSearch.tsx
+│   ├── hooks/
+│   │   ├── use-chat.ts                # @ai-sdk/react useChat 래퍼
 │   │   ├── use-cdp-events.ts          # Tauri event 구독
 │   │   └── use-traffic-store.ts
 │   ├── ai/
@@ -144,7 +144,7 @@ rever-browser/
 | ID | 결정 | 사유 | 대안 |
 |----|------|------|------|
 | D1 | 외부 Chrome + CDP | 풀 CDP, career-pencil의 figma debug 패턴 동일, MVP 빠르게 검증 | Tauri WebView (CDP 미지원), CEF (빌드 복잡) |
-| D2 | Vue 3 + Bun + Tauri 2 | career-pencil 컴포넌트/composables 직접 이식 가능 | React/Tauri+Rust UI |
+| D2 | React 19 + Vite + Bun + Tauri 2 | 본인 React/Next.js 친숙도 + 생태계(@ai-sdk/react, shadcn/ui). Tauri 데스크톱은 SSR 불필요 → Next.js 대신 Vite | Vue 3 (career-pencil 코드 재사용 이점은 ACP TS 로직 한정으로 약함) |
 | D3 | ACP 에이전트 stdio spawn | career-pencil의 검증된 패턴 그대로 | HTTP-only LLM API (멀티 에이전트 어려움) |
 | D4 | 앱 내장 HTTP MCP 서버 | 에이전트가 우리 도구를 호출하는 표준 채널 | 에이전트에 직접 도구 주입 (비표준) |
 | D5 | M0은 Claude Code만 | 검증 폭 축소, 작동 후 확장 | 셋 다 동시 (테스트 비용 ↑) |
