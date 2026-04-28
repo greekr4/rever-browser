@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# MCP / agent tool runtime data
+.openchrome/
+.playwright-mcp/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
