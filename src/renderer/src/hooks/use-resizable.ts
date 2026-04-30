@@ -4,13 +4,15 @@ interface Options {
   initial: number
   min: number
   max: number
-  /** localStorage key to persist width */
+  /** localStorage key to persist size */
   storageKey?: string
   /** drag direction relative to handle (default 'left' = handle on left edge, dragging left increases width) */
-  side?: 'left' | 'right'
+  side?: 'left' | 'right' | 'top' | 'bottom'
+  /** axis of resize (default 'x') */
+  axis?: 'x' | 'y'
 }
 
-export function useResizable({ initial, min, max, storageKey, side = 'left' }: Options) {
+export function useResizable({ initial, min, max, storageKey, side = 'left', axis = 'x' }: Options) {
   const [width, setWidth] = useState<number>(() => {
     if (storageKey) {
       const saved = localStorage.getItem(storageKey)
@@ -28,10 +30,12 @@ export function useResizable({ initial, min, max, storageKey, side = 'left' }: O
 
   const startDrag = (e: React.MouseEvent) => {
     e.preventDefault()
-    const startX = e.clientX
+    const startPos = axis === 'x' ? e.clientX : e.clientY
     const startW = width
+    const cursor = axis === 'x' ? 'col-resize' : 'ns-resize'
     const onMove = (ev: MouseEvent) => {
-      const delta = side === 'left' ? startX - ev.clientX : ev.clientX - startX
+      const pos = axis === 'x' ? ev.clientX : ev.clientY
+      const delta = (side === 'left' || side === 'top') ? startPos - pos : pos - startPos
       const next = Math.max(min, Math.min(max, startW + delta))
       setWidth(next)
     }
@@ -44,7 +48,7 @@ export function useResizable({ initial, min, max, storageKey, side = 'left' }: O
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
-    document.body.style.cursor = 'col-resize'
+    document.body.style.cursor = cursor
     document.body.style.userSelect = 'none'
     document.body.classList.add('resizing')
   }

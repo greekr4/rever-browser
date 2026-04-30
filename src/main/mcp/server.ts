@@ -8,12 +8,30 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { registerBrowserTools } from './tools/browser'
 import { registerScriptTools } from './tools/scripts'
 import { registerTrafficTools } from './tools/traffic'
+import { registerAuthTools } from './tools/auth'
+import { registerDecodeTools } from './tools/decode'
+import { registerDiffTools } from './tools/diff'
+import { registerSourceMapTools } from './tools/sourcemap'
+import { registerConsoleTools } from './tools/console'
+import { registerInjectTools } from './tools/inject'
+import { registerWebSocketTools } from './tools/websocket'
+import { registerInterceptTools } from './tools/intercept'
+import { registerDebuggerTools } from './tools/debugger'
 
 function buildMcpServer(): McpServer {
   const mcp = new McpServer({ name: 'rever-traffic', version: '0.1.0' })
   registerTrafficTools(mcp)
   registerBrowserTools(mcp)
   registerScriptTools(mcp)
+  registerAuthTools(mcp)
+  registerDecodeTools(mcp)
+  registerDiffTools(mcp)
+  registerSourceMapTools(mcp)
+  registerConsoleTools(mcp)
+  registerInjectTools(mcp)
+  registerWebSocketTools(mcp)
+  registerInterceptTools(mcp)
+  registerDebuggerTools(mcp)
   return mcp
 }
 

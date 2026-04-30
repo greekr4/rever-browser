@@ -142,6 +142,14 @@ export const VISUALIZER_INIT_SCRIPT = `
     if (pressed) c.classList.add('press'); else c.classList.remove('press')
   }
 
-  window.__reverAi = { flashRect, flashElement, pulseAt, showCursorAt, setCursorPress }
+  // Define as non-enumerable so it doesn't appear in for…in / Object.keys.
+  // chrome-cdp.ts STEALTH_INIT_SCRIPT additionally filters this key from
+  // Object.getOwnPropertyNames / Reflect.ownKeys to hide it from WASM scanners.
+  Object.defineProperty(window, '__reverAi', {
+    value: { flashRect, flashElement, pulseAt, showCursorAt, setCursorPress },
+    enumerable: false,
+    configurable: true,
+    writable: false
+  })
 })();
 `

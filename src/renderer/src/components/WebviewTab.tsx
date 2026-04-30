@@ -30,7 +30,30 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     ref,
     () => ({
       loadURL: (url) => {
-        wvRef.current?.loadURL(url)
+        const wv = wvRef.current
+        if (!wv) {
+          console.warn('[webview] loadURL skipped: ref is null', url)
+          return
+        }
+        // isLoading() throws or returns undefined before dom-ready/attach.
+        // In that case defer until dom-ready fires.
+        let ready = false
+        try {
+          ready = wv.isLoading?.() !== undefined
+        } catch {
+          ready = false
+        }
+        if (!ready) {
+          console.log('[webview] deferring loadURL until dom-ready', url)
+          const onReady = () => {
+            wv.removeEventListener('dom-ready', onReady)
+            console.log('[webview] dom-ready, loading deferred URL', url)
+            wv.loadURL(url).catch((e) => console.error('[webview] loadURL failed', e))
+          }
+          wv.addEventListener('dom-ready', onReady)
+          return
+        }
+        wv.loadURL(url).catch((e) => console.error('[webview] loadURL failed', e))
       },
       goBack: () => wvRef.current?.goBack(),
       goForward: () => wvRef.current?.goForward(),

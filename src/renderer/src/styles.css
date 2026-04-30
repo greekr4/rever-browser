@@ -5,6 +5,17 @@ html, body, #root {
   color: #e6e6e6;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* Stable scrollbar gutter for any scrolling pane — prevents the
+   "scrollbar appears/disappears" layout shift across the app. */
+.chat-panel-scroll,
+[data-stable-scroll],
+.chip-panel-content,
+.detail-drawer {
+  scrollbar-gutter: stable;
 }
 
 button, input, select {
@@ -145,3 +156,229 @@ button:disabled { opacity: 0.5; cursor: default; }
 /* While dragging a splitter, prevent the <webview> from capturing
    pointer events (it would otherwise swallow the mousemove). */
 body.resizing webview { pointer-events: none; }
+
+/* ── Floating chip stack ─────────────────────────────────────── */
+.chip-stack {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  z-index: 100;
+  padding: 6px;
+  background: rgba(20, 20, 22, 0.65);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  /* y is animated via framer-motion to stay in sync with the panel */
+  will-change: transform;
+}
+
+.chip {
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.chip:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.chip.active {
+  background: rgba(80, 140, 255, 0.22);
+  border-color: rgba(120, 170, 255, 0.4);
+}
+
+.chip-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+/* ── Bottom slide panel ──────────────────────────────────────── */
+.chip-panel-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(20, 20, 22, 0.85);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 90;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chip-panel-splitter {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 10;
+}
+
+.chip-panel-splitter:hover {
+  background: rgba(74, 143, 255, 0.4);
+}
+
+.chip-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+
+.chip-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.chip-panel-close {
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.chip-panel-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ccc;
+}
+
+.chip-panel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Bot check (bottom-left floating) ────────────────────────── */
+.botcheck {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.botcheck-trigger {
+  background: rgba(20, 20, 22, 0.65);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 8px 14px;
+  font-size: 11px;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+
+.botcheck-trigger:hover { background: rgba(40, 40, 42, 0.8); }
+
+.botcheck-menu {
+  background: rgba(20, 20, 22, 0.85);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  padding: 8px;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transform-origin: 16px calc(100% + 8px);
+}
+
+.botcheck-menu-title {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #888;
+  padding: 6px 10px 4px;
+}
+
+.botcheck-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #ddd;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.botcheck-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.botcheck-item-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #eee;
+}
+
+.botcheck-item-desc {
+  font-size: 11px;
+  color: #888;
+}
+
+/* ── Detail drawer (right side, absolute over webview) ──────── */
+.detail-drawer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(20, 20, 22, 0.85);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 95;
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.detail-drawer-splitter {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.detail-drawer-splitter:hover {
+  background: rgba(74, 143, 255, 0.4);
+}

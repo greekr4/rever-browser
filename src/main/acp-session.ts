@@ -20,6 +20,12 @@ export interface AgentDef {
   args: string[]
 }
 
+interface ModelInfo {
+  modelId: string
+  name: string
+  description?: string | null
+}
+
 interface SessionEntry {
   agentDef: AgentDef
   child: ChildProcessByStdio<Writable, Readable, Readable>
@@ -27,6 +33,8 @@ interface SessionEntry {
   sessionId: string
   onUpdate: ((n: SessionNotification) => void) | null
   dead: boolean
+  availableModels: ModelInfo[]
+  currentModelId: string | null
 }
 
 const sessions = new Map<string, SessionEntry>()
@@ -91,13 +99,17 @@ export async function spawnAcpSession(
     ]
   })
 
+  console.log('[acp:newSession] result keys:', Object.keys(result), 'models:', JSON.stringify((result as { models?: unknown }).models))
+  const modelState = (result as { models?: { availableModels?: ModelInfo[]; currentModelId?: string } | null }).models
   const entry: SessionEntry = {
     agentDef,
     child,
     connection,
     sessionId: result.sessionId,
     onUpdate: null,
-    dead: false
+    dead: false,
+    availableModels: modelState?.availableModels ?? [],
+    currentModelId: modelState?.currentModelId ?? null
   }
   entryRef = entry
   sessions.set(result.sessionId, entry)
@@ -143,4 +155,29 @@ export async function killAcpSession(sessionId: string): Promise<void> {
   entry.dead = true
   sessions.delete(sessionId)
   entry.child.kill()
+}
+
+export function getSessionModelState(
+  sessionId: string
+): { availableModels: ModelInfo[]; currentModelId: string | null } | null {
+  const entry = sessions.get(sessionId)
+  if (!entry) return null
+  return {
+    availableModels: entry.availableModels,
+    currentModelId: entry.currentModelId
+  }
+}
+
+export async function setSessionModel(sessionId: string, modelId: string): Promise<void> {
+  const entry = sessions.get(sessionId)
+  if (!entry) throw new Error(`unknown ACP session: ${sessionId}`)
+  if (entry.dead) throw new Error(`ACP session is dead: ${sessionId}`)
+  const conn = entry.connection as unknown as {
+    unstable_setSessionModel?: (params: { sessionId: string; modelId: string }) => Promise<unknown>
+  }
+  if (!conn.unstable_setSessionModel) {
+    throw new Error('ACP SDK does not expose unstable_setSessionModel on this connection')
+  }
+  await conn.unstable_setSessionModel({ sessionId: entry.sessionId, modelId })
+  entry.currentModelId = modelId
 }

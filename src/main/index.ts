@@ -1,23 +1,34 @@
-import { app, BrowserWindow, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, session, shell, type MenuItemConstructorOptions } from 'electron'
+import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { attachCdpCapture, detachCdpCapture, setActiveTarget } from './chrome-cdp'
 import {
   cancelAcpSession,
+  getSessionModelState,
   killAcpSession,
   promptAcpSession,
+  setSessionModel,
   spawnAcpSession,
   type AgentDef
 } from './acp-session'
-import { getRequest } from './traffic-store'
+import {
+  getRequest,
+  getConsoleSince,
+  getExceptions,
+  clearConsole,
+  listRequests,
+  getWsFrames
+} from './traffic-store'
 import { getViewport, setViewport, type ViewportMode } from './viewport'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// Strip both "Electron/..." and the app-name token (e.g. "rever-browser/0.1.0") from
-// the default UA so sites with bot/WAF rules (yes24 Code 12, etc.) don't reject us.
-// Result is a clean Chrome UA matching the embedded Chromium version.
+// Strip "Electron/..." and the app-name token from the default UA so sites
+// with bot/WAF rules don't reject us. The embedded Chrome version is left
+// untouched — Electron 41 ships Chromium 146, which matches the engine's
+// internal behaviour and survives Pixelscan's "legitimate" check.
 app.userAgentFallback = app.userAgentFallback
   .replace(/\s*Electron\/\S+/, '')
   .replace(new RegExp(`\\s*${app.getName()}\\/\\S+`, 'i'), '')
@@ -114,6 +125,16 @@ function installMenu() {
 
 app.whenReady().then(() => {
   installMenu()
+
+  // Real Chrome shows a prompt for accelerometer/camera/clipboard/geolocation/
+  // microphone/midi/notifications/etc. — Electron's default is to grant most
+  // of them silently, which amiunique flagged at 0.07% similarity. Deny by
+  // default so the Permissions API reports 'prompt' / 'denied' like a
+  // freshly-installed Chrome with no granted sites.
+  const revSession = session.fromPartition('persist:rever')
+  revSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
+  revSession.setPermissionCheckHandler(() => false)
+
   createWindow()
 
   ipcMain.handle('cdp:attach', async (_event, webContentsId: number) => {
@@ -129,8 +150,17 @@ app.whenReady().then(() => {
     return setActiveTarget(webContentsId)
   })
 
-  ipcMain.handle('acp:spawn', async (_event, agentDef: AgentDef, cwd: string) => {
-    return spawnAcpSession(agentDef, cwd)
+  ipcMain.handle('acp:spawn', async (_event, agentDef: AgentDef, _cwd: string) => {
+    // Always sandbox the agent in a scratch directory under userData so
+    // Edit/Write/Bash tools cannot accidentally mutate the rever-browser
+    // source tree. The renderer's cwd hint is intentionally ignored.
+    const scratch = path.join(app.getPath('userData'), 'agent-scratch')
+    try {
+      mkdirSync(scratch, { recursive: true })
+    } catch (e) {
+      console.warn('[acp:spawn] failed to ensure scratch dir', e)
+    }
+    return spawnAcpSession(agentDef, scratch)
   })
 
   ipcMain.handle(
@@ -152,6 +182,14 @@ app.whenReady().then(() => {
     return killAcpSession(sessionId)
   })
 
+  ipcMain.handle('acp:model-state', (_event, sessionId: string) => {
+    return getSessionModelState(sessionId)
+  })
+
+  ipcMain.handle('acp:set-model', async (_event, sessionId: string, modelId: string) => {
+    return setSessionModel(sessionId, modelId)
+  })
+
   ipcMain.handle('viewport:get', () => getViewport())
   ipcMain.handle('viewport:set', async (_event, mode: ViewportMode) => {
     const next = await setViewport(mode)
@@ -164,6 +202,20 @@ app.whenReady().then(() => {
   ipcMain.handle('traffic:get', (_event, requestId: string) => {
     return getRequest(requestId) ?? null
   })
+
+  ipcMain.handle('console:list', (_event, since?: number, limit?: number) =>
+    getConsoleSince(since ?? 0).slice(-(limit ?? 200))
+  )
+  ipcMain.handle('console:exceptions', (_event, limit?: number) =>
+    getExceptions().slice(-(limit ?? 100))
+  )
+  ipcMain.handle('console:clear', () => clearConsole())
+  ipcMain.handle('ws:list', () =>
+    listRequests({ limit: 200 }).filter((r) => r.resourceType === 'WebSocket')
+  )
+  ipcMain.handle('ws:frames', (_event, requestId: string, since?: number, limit?: number) =>
+    getWsFrames(requestId, since).slice(-(limit ?? 100))
+  )
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

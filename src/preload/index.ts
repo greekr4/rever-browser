@@ -29,6 +29,29 @@ export interface AiAction {
   ts: number
 }
 
+export interface ConsoleEntry {
+  ts: number
+  type: string
+  text: string
+  args?: unknown[]
+  stackTrace?: unknown
+}
+
+export interface RuntimeException {
+  ts: number
+  text: string
+  exception?: unknown
+  stackTrace?: unknown
+}
+
+export interface WSFrame {
+  direction: 'sent' | 'received'
+  opcode: number
+  payloadData: string
+  timestamp: number
+  mask?: boolean
+}
+
 export interface StoredRequestSummary {
   requestId: string
   url: string
@@ -87,7 +110,15 @@ const api = {
     },
 
     cancel: (sessionId: string): Promise<void> => ipcRenderer.invoke('acp:cancel', sessionId),
-    kill: (sessionId: string): Promise<void> => ipcRenderer.invoke('acp:kill', sessionId)
+    kill: (sessionId: string): Promise<void> => ipcRenderer.invoke('acp:kill', sessionId),
+    modelState: (
+      sessionId: string
+    ): Promise<{
+      availableModels: Array<{ modelId: string; name: string; description?: string | null }>
+      currentModelId: string | null
+    } | null> => ipcRenderer.invoke('acp:model-state', sessionId),
+    setModel: (sessionId: string, modelId: string): Promise<void> =>
+      ipcRenderer.invoke('acp:set-model', sessionId, modelId)
   },
   viewport: {
     get: (): Promise<ViewportMode> => ipcRenderer.invoke('viewport:get'),
@@ -110,6 +141,18 @@ const api = {
       ipcRenderer.on('ai:action', listener)
       return () => ipcRenderer.removeListener('ai:action', listener)
     }
+  },
+  console: {
+    list: (since?: number, limit?: number): Promise<ConsoleEntry[]> =>
+      ipcRenderer.invoke('console:list', since, limit),
+    exceptions: (limit?: number): Promise<RuntimeException[]> =>
+      ipcRenderer.invoke('console:exceptions', limit),
+    clear: (): Promise<void> => ipcRenderer.invoke('console:clear')
+  },
+  ws: {
+    list: (): Promise<StoredRequestSummary[]> => ipcRenderer.invoke('ws:list'),
+    frames: (requestId: string, since?: number, limit?: number): Promise<WSFrame[]> =>
+      ipcRenderer.invoke('ws:frames', requestId, since, limit)
   },
   onReloadRequest: (handler: (opts: { ignoreCache: boolean }) => void): (() => void) => {
     const listener = (_e: unknown, opts: { ignoreCache: boolean }) => handler(opts)

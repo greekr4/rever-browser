@@ -22,7 +22,7 @@ const KIND_TAG: Record<AiAction['kind'], string> = {
   evaluate: 'EVAL'
 }
 
-const MAX_LOG = 8
+const MAX_LOG = 5
 const TOAST_TTL = 1800
 
 interface ToastedAction extends AiAction {
@@ -112,8 +112,8 @@ export function AiActionOverlay() {
         <div
           style={{
             position: 'absolute',
-            bottom: 12,
-            right: 12,
+            top: 12,
+            left: 12,
             zIndex: 999,
             display: 'flex',
             flexDirection: 'column',
