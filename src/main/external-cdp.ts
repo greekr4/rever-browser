@@ -133,12 +133,23 @@ export async function attachExternalCdp(port: number, sink: WebContents): Promis
     externalClient = null
   }
 
-  // Find the first page target (not the browser-level target)
-  const targets = await CDP.List({ port })
-  const pageTarget = targets.find((t) => t.type === 'page') ?? targets[0]
-  if (!pageTarget) throw new Error('No CDP target found in external Chrome')
+  // Poll until a page-type target is available (Chrome may take a moment after spawn)
+  const deadline = Date.now() + 8000
+  let pageTarget: CDP.Target | undefined
+  while (Date.now() < deadline) {
+    const targets = await CDP.List({ port })
+    pageTarget = targets.find((t) => t.type === 'page')
+    if (pageTarget) break
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  if (!pageTarget) {
+    const targets = await CDP.List({ port })
+    throw new Error(
+      `No CDP page target in external Chrome after 8s. Targets: ${targets.map((t) => `${t.type}:${t.url ?? ''}`).join(', ')}`
+    )
+  }
 
-  const client = await CDP({ port, target: pageTarget })
+  const client = (await CDP({ port, target: pageTarget })) as CDP.Client
   externalClient = client
 
   const { Network, Page, Runtime, Debugger } = client as unknown as {

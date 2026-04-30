@@ -150,16 +150,40 @@ export function ScreencastView() {
   }
 
   return (
-    <canvas
-      ref={canvasRef}
-      tabIndex={0}
-      style={{ width: '100%', height: '100%', display: 'block', cursor: 'default', outline: 'none' }}
-      onMouseMove={onMouseEvent('mouseMoved')}
-      onMouseDown={onMouseEvent('mousePressed')}
-      onMouseUp={onMouseEvent('mouseReleased')}
-      onKeyDown={onKeyDown}
-      onKeyUp={onKeyUp}
-      onWheel={onWheel}
-    />
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#000',
+        overflow: 'hidden'
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        tabIndex={0}
+        style={{
+          // Letterbox: keep aspect ratio of the JPEG frames (set in onload).
+          // The img.naturalWidth/Height drives the canvas internal size, and
+          // here we fit it to the parent while preserving aspect.
+          maxWidth: '100%',
+          maxHeight: '100%',
+          width: 'auto',
+          height: 'auto',
+          objectFit: 'contain',
+          display: 'block',
+          cursor: 'default',
+          outline: 'none'
+        }}
+        onMouseMove={onMouseEvent('mouseMoved')}
+        onMouseDown={onMouseEvent('mousePressed')}
+        onMouseUp={onMouseEvent('mouseReleased')}
+        onKeyDown={onKeyDown}
+        onKeyUp={onKeyUp}
+        onWheel={onWheel}
+      />
+    </div>
   )
 }
