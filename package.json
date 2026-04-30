@@ -1,0 +1,37 @@
+{
+  "name": "rever-browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI agent browser for web API reverse engineering",
+  "main": "./out/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.20.0",
+    "@ai-sdk/react": "^3.0.170",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ai": "^6",
+    "chrome-remote-interface": "^0.33.3",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@types/chrome-remote-interface": "^0.33.0",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "electron": "^33.3.1",
+    "electron-vite": "^2.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "typescript": "~5.8.3",
+    "vite": "^5.4.11"
+  }
+}

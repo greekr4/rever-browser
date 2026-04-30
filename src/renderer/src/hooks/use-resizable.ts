@@ -1,0 +1,53 @@
+import { useEffect, useState } from 'react'
+
+interface Options {
+  initial: number
+  min: number
+  max: number
+  /** localStorage key to persist width */
+  storageKey?: string
+  /** drag direction relative to handle (default 'left' = handle on left edge, dragging left increases width) */
+  side?: 'left' | 'right'
+}
+
+export function useResizable({ initial, min, max, storageKey, side = 'left' }: Options) {
+  const [width, setWidth] = useState<number>(() => {
+    if (storageKey) {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) {
+        const n = parseInt(saved, 10)
+        if (Number.isFinite(n)) return Math.max(min, Math.min(max, n))
+      }
+    }
+    return initial
+  })
+
+  useEffect(() => {
+    if (storageKey) localStorage.setItem(storageKey, String(width))
+  }, [storageKey, width])
+
+  const startDrag = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = width
+    const onMove = (ev: MouseEvent) => {
+      const delta = side === 'left' ? startX - ev.clientX : ev.clientX - startX
+      const next = Math.max(min, Math.min(max, startW + delta))
+      setWidth(next)
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      document.body.classList.remove('resizing')
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.body.classList.add('resizing')
+  }
+
+  return { width, startDrag, setWidth }
+}

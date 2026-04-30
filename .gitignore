@@ -1,0 +1,22 @@
+node_modules/
+out/
+dist/
+release/
+*.log
+.DS_Store
+.openchrome/
+.playwright-mcp/
+.superset/
+.vscode/
+
+# Local env
+.env
+.env.local
+*.local
+
+# Private docs — kept in a separate private repo, symlinked back to root.
+# See .private-docs/ for the actual files.
+.private-docs/
+/CLAUDE.md
+/PLAN.md
+/HANDOFF.md
