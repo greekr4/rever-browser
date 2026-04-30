@@ -90,7 +90,10 @@ export async function launchExternalChrome(): Promise<{ port: number; pid: numbe
     '--no-default-browser-check',
     '--window-position=10000,10000',
     '--window-size=1280,800',
-    '--disable-features=Translate'
+    '--disable-features=Translate',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-background-timer-throttling',
+    'about:blank'
   ]
 
   chromeProcess = spawn(chromePath, args, {

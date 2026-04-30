@@ -223,9 +223,17 @@ app.whenReady().then(() => {
 
   ipcMain.handle('external:start', async () => {
     if (!mainWindow) throw new Error('main window not ready')
-    const { port, pid } = await launchExternalChrome()
-    await attachExternalCdp(port, mainWindow.webContents)
-    return { port, pid }
+    console.log('[external] start: launching Chrome…')
+    try {
+      const { port, pid } = await launchExternalChrome()
+      console.log('[external] Chrome launched on port', port, 'pid', pid)
+      await attachExternalCdp(port, mainWindow.webContents)
+      console.log('[external] CDP attached')
+      return { port, pid }
+    } catch (e) {
+      console.error('[external] start failed:', e)
+      throw e
+    }
   })
 
   ipcMain.handle('external:stop', async () => {
@@ -245,8 +253,15 @@ app.whenReady().then(() => {
     maxWidth?: number
     maxHeight?: number
   }) => {
-    const target = getExternalTarget()
-    if (!target) throw new Error('External Chrome not connected')
+    // Wait up to 10s for external Chrome to be ready (handles race where
+    // ScreencastView mounts before external:start completes).
+    const deadline = Date.now() + 10_000
+    let target = getExternalTarget()
+    while (!target && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 200))
+      target = getExternalTarget()
+    }
+    if (!target) throw new Error('External Chrome not connected (timed out after 10s)')
     await target.startScreencast(opts)
   })
 
