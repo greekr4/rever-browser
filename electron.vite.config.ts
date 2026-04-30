@@ -5,7 +5,10 @@ import path from 'node:path'
 export default defineConfig({
   main: {
     build: {
-      outDir: 'out/main'
+      outDir: 'out/main',
+      rollupOptions: {
+        external: ['bufferutil', 'utf-8-validate']
+      }
     },
     resolve: {
       alias: {
