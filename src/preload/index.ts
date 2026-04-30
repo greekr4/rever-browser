@@ -160,6 +160,39 @@ const api = {
     return () => {
       ipcRenderer.removeListener('reload-webview', listener)
     }
+  },
+  external: {
+    start: (): Promise<{ port: number; pid: number }> =>
+      ipcRenderer.invoke('external:start'),
+    stop: (): Promise<void> =>
+      ipcRenderer.invoke('external:stop'),
+    navigate: (url: string): Promise<void> =>
+      ipcRenderer.invoke('external:navigate', url),
+    startScreencast: (opts: {
+      quality?: number
+      everyNthFrame?: number
+      maxWidth?: number
+      maxHeight?: number
+    }): Promise<void> =>
+      ipcRenderer.invoke('external:start-screencast', opts),
+    stopScreencast: (): Promise<void> =>
+      ipcRenderer.invoke('external:stop-screencast'),
+    onScreencastFrame: (
+      handler: (frame: { data: string; metadata: unknown; sessionId: number }) => void
+    ): (() => void) => {
+      const listener = (
+        _e: unknown,
+        frame: { data: string; metadata: unknown; sessionId: number }
+      ) => handler(frame)
+      ipcRenderer.on('external:screencast-frame', listener)
+      return () => ipcRenderer.removeListener('external:screencast-frame', listener)
+    },
+    ackFrame: (sessionId: number): Promise<void> =>
+      ipcRenderer.invoke('external:ack-frame', sessionId),
+    dispatchMouseEvent: (params: unknown): Promise<void> =>
+      ipcRenderer.invoke('external:input-mouse', params),
+    dispatchKeyEvent: (params: unknown): Promise<void> =>
+      ipcRenderer.invoke('external:input-key', params)
   }
 }
 

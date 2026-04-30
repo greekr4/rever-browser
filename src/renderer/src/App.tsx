@@ -4,11 +4,13 @@ import { AiActionOverlay } from '@/components/AiActionOverlay'
 import { BotCheckButton } from '@/components/BotCheckButton'
 import { DetailDrawer } from '@/components/DetailDrawer'
 import { FloatingChips } from '@/components/FloatingChips'
+import { ScreencastView } from '@/components/ScreencastView'
 import { TabBar } from '@/components/TabBar'
 import { WebviewTab, type WebviewTabHandle } from '@/components/WebviewTab'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { useCdpEvents } from '@/hooks/use-cdp-events'
 import { useResizable } from '@/hooks/use-resizable'
+import { useBrowserModeStore } from '@/stores/browser-mode'
 import { useTabsStore } from '@/stores/tabs'
 import { useViewportStore } from '@/stores/viewport'
 
@@ -20,6 +22,9 @@ function App() {
   const activeId = useTabsStore((s) => s.activeId)
   const addTab = useTabsStore((s) => s.addTab)
   const activeTab = tabs.find((t) => t.id === activeId)
+
+  const browserMode = useBrowserModeStore((s) => s.mode)
+  const setBrowserMode = useBrowserModeStore((s) => s.setMode)
 
   // window.open / target=_blank from any webview → new tab inside the app.
   useEffect(() => {
@@ -81,6 +86,17 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Launch / teardown external Chrome when mode switches
+  useEffect(() => {
+    if (browserMode === 'external') {
+      void window.rev.external.start().catch((e) => {
+        console.error('[external] start failed:', e)
+      })
+    } else {
+      void window.rev.external.stop().catch(() => {})
+    }
+  }, [browserMode])
+
   const onToggleViewport = async () => {
     const next = viewportMode === 'desktop' ? 'mobile' : 'desktop'
     try {
@@ -95,6 +111,14 @@ function App() {
     let target = urlDraft.trim()
     if (!target) return
     if (!/^https?:\/\//i.test(target)) target = 'https://' + target
+
+    if (browserMode === 'external') {
+      void window.rev.external.navigate(target).catch((err) => {
+        console.error('[address-bar] external navigate failed:', err)
+      })
+      return
+    }
+
     const handle = activeRef()
     if (!handle) {
       console.warn('[address-bar] no active webview ref', { activeId, mapKeys: [...tabRefs.current.keys()] })
@@ -136,7 +160,7 @@ function App() {
             position: 'relative'
           }}
         >
-          <TabBar />
+          {browserMode === 'embedded' && <TabBar />}
           <form
             onSubmit={onSubmit}
             style={{
@@ -147,15 +171,19 @@ function App() {
               alignItems: 'center'
             }}
           >
-            <button type="button" onClick={() => activeRef()?.goBack()} title="Back">
-              ←
-            </button>
-            <button type="button" onClick={() => activeRef()?.goForward()} title="Forward">
-              →
-            </button>
-            <button type="button" onClick={() => activeRef()?.reload()} title="Reload">
-              ↻
-            </button>
+            {browserMode === 'embedded' && (
+              <>
+                <button type="button" onClick={() => activeRef()?.goBack()} title="Back">
+                  ←
+                </button>
+                <button type="button" onClick={() => activeRef()?.goForward()} title="Forward">
+                  →
+                </button>
+                <button type="button" onClick={() => activeRef()?.reload()} title="Reload">
+                  ↻
+                </button>
+              </>
+            )}
             <input
               value={urlDraft}
               onChange={(e) => setUrlDraft(e.target.value)}
@@ -175,18 +203,42 @@ function App() {
             >
               {viewportMode === 'mobile' ? 'Mobile' : 'Desktop'}
             </button>
+            <button
+              type="button"
+              onClick={() => setBrowserMode(browserMode === 'embedded' ? 'external' : 'embedded')}
+              title="Toggle embedded/external Chrome"
+              style={{
+                fontSize: 11,
+                background: browserMode === 'external' ? '#242' : undefined,
+                borderColor: browserMode === 'external' ? '#373' : undefined
+              }}
+            >
+              {browserMode === 'embedded' ? 'Embedded' : 'External (real Chrome)'}
+            </button>
           </form>
           <div style={{ flex: 1, position: 'relative', display: 'flex', minHeight: 0 }}>
-            {tabs.map((t) => (
-              <WebviewTab
-                key={t.id}
-                ref={setTabRef(t.id)}
-                tab={t}
-                active={t.id === activeId}
-              />
-            ))}
+            {browserMode === 'embedded' ? (
+              <>
+                {tabs.map((t) => (
+                  <WebviewTab
+                    key={t.id}
+                    ref={setTabRef(t.id)}
+                    tab={t}
+                    active={t.id === activeId}
+                  />
+                ))}
+              </>
+            ) : (
+              <ScreencastView />
+            )}
             <AiActionOverlay />
-            <BotCheckButton onNavigate={(url) => activeRef()?.loadURL(url)} />
+            <BotCheckButton onNavigate={(url) => {
+              if (browserMode === 'external') {
+                void window.rev.external.navigate(url).catch(() => {})
+              } else {
+                activeRef()?.loadURL(url)
+              }
+            }} />
             <FloatingChips openPanel={openPanel} setOpenPanel={setOpenPanel} />
             <DetailDrawer />
           </div>
