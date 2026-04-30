@@ -46,6 +46,10 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     }
   }
 
+  getSessionId(): string | null {
+    return this.sessionId
+  }
+
   async sendMessages({
     messages,
     abortSignal
@@ -80,7 +84,26 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         const textId = `text-${Date.now()}`
         let textStarted = false
         let closed = false
+        let anyContent = false
         const seenToolCallIds = new Set<string>()
+
+        // Watchdog: if 60s pass with NO notification at all, surface as error
+        // so the chat status doesn't get stuck on "streaming" forever.
+        let watchdog: ReturnType<typeof setTimeout> | null = null
+        const armWatchdog = () => {
+          if (watchdog) clearTimeout(watchdog)
+          watchdog = setTimeout(() => {
+            if (closed) return
+            void window.rev.acp.cancel(sessionId).catch(() => null)
+            finish('error', 'Agent went silent for 60s — cancelled. Try /reset if it persists.')
+          }, 60_000)
+        }
+        const clearWatchdog = () => {
+          if (watchdog) {
+            clearTimeout(watchdog)
+            watchdog = null
+          }
+        }
 
         const finish = (
           reason: 'stop' | 'other' | 'error',
@@ -88,8 +111,20 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         ) => {
           if (closed) return
           closed = true
+          clearWatchdog()
           if (errorText) controller.enqueue({ type: 'error', errorText })
           if (textStarted) controller.enqueue({ type: 'text-end', id: textId })
+          // Surface empty-turn case so users don't think the agent ignored them.
+          if (!errorText && !anyContent) {
+            const note = `text-${Date.now()}-empty`
+            controller.enqueue({ type: 'text-start', id: note })
+            controller.enqueue({
+              type: 'text-delta',
+              id: note,
+              delta: '_(agent returned no response — check stderr or try /reset)_'
+            })
+            controller.enqueue({ type: 'text-end', id: note })
+          }
           controller.enqueue({ type: 'finish-step' })
           controller.enqueue({ type: 'finish', finishReason: reason })
           controller.close()
@@ -102,12 +137,15 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
         controller.enqueue({ type: 'start' })
         controller.enqueue({ type: 'start-step' })
+        armWatchdog()
 
         window.rev.acp
           .prompt(sessionId, promptText, (notification) => {
             if (closed) return
+            armWatchdog()
             const update = (notification as unknown as { update: Parameters<typeof mapUpdate>[0] }).update
             const result = mapUpdate(update, textId, textStarted, { seenToolCallIds })
+            if (result.chunks.length > 0) anyContent = true
             for (const chunk of result.chunks) controller.enqueue(chunk)
             textStarted = result.textStarted
           })

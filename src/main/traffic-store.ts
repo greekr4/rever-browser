@@ -15,6 +15,90 @@ export interface StoredRequest {
   responseBody?: string
   responseBodyBase64?: boolean
   responseBodyError?: string
+  // initiator info
+  initiatorType?: string
+  initiatorStack?: Array<{
+    functionName: string
+    url: string
+    lineNumber: number
+    columnNumber: number
+  }>
+  initiatorUrl?: string
+}
+
+// ── WebSocket frames ────────────────────────────────────────────────────────
+
+export interface WSFrame {
+  direction: 'sent' | 'received'
+  opcode: number
+  payloadData: string
+  timestamp: number
+  mask?: boolean
+}
+
+const wsFrames = new Map<string, WSFrame[]>()
+
+export function appendWsFrame(requestId: string, frame: WSFrame): void {
+  let frames = wsFrames.get(requestId)
+  if (!frames) {
+    frames = []
+    wsFrames.set(requestId, frames)
+  }
+  frames.push(frame)
+}
+
+export function getWsFrames(requestId: string, since?: number): WSFrame[] {
+  const frames = wsFrames.get(requestId) ?? []
+  if (since == null) return frames
+  return frames.filter((f) => f.timestamp >= since)
+}
+
+// ── Console logs ────────────────────────────────────────────────────────────
+
+export interface ConsoleEntry {
+  ts: number
+  type: string
+  text: string
+  args?: unknown[]
+  stackTrace?: unknown
+}
+
+const MAX_CONSOLE = 1000
+const consoleLogs: ConsoleEntry[] = []
+
+export function appendConsole(entry: ConsoleEntry): void {
+  consoleLogs.push(entry)
+  if (consoleLogs.length > MAX_CONSOLE) consoleLogs.shift()
+}
+
+export function getConsoleSince(since?: number): ConsoleEntry[] {
+  if (since == null) return [...consoleLogs]
+  return consoleLogs.filter((e) => e.ts >= since)
+}
+
+export function clearConsole(): void {
+  consoleLogs.length = 0
+}
+
+// ── Runtime exceptions ───────────────────────────────────────────────────────
+
+export interface RuntimeException {
+  ts: number
+  text: string
+  exception?: unknown
+  stackTrace?: unknown
+}
+
+const MAX_EXCEPTIONS = 200
+const runtimeExceptions: RuntimeException[] = []
+
+export function appendException(entry: RuntimeException): void {
+  runtimeExceptions.push(entry)
+  if (runtimeExceptions.length > MAX_EXCEPTIONS) runtimeExceptions.shift()
+}
+
+export function getExceptions(): RuntimeException[] {
+  return [...runtimeExceptions]
 }
 
 const MAX_ENTRIES = 500

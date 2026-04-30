@@ -96,14 +96,38 @@ export async function thinkingPause(): Promise<void> {
   await sleep(rand(380, 950))
 }
 
+// Map a single character to CDP Input.dispatchKeyEvent params. For ordinary
+// printable chars this is enough; non-Latin (Korean, etc.) gets dispatched as
+// a 'char' event with `text` set, which is how the IME path finally surfaces
+// keys to the page.
+function keyParamsFor(ch: string): {
+  key: string
+  code?: string
+  keyCode?: number
+  text: string
+} {
+  if (ch === ' ') return { key: ' ', code: 'Space', keyCode: 32, text: ' ' }
+  if (ch === '\n') return { key: 'Enter', code: 'Enter', keyCode: 13, text: '\r' }
+  const isAsciiLetter = /^[a-zA-Z]$/.test(ch)
+  const isAsciiDigit = /^[0-9]$/.test(ch)
+  if (isAsciiLetter) {
+    const upper = ch.toUpperCase()
+    return { key: ch, code: `Key${upper}`, keyCode: upper.charCodeAt(0), text: ch }
+  }
+  if (isAsciiDigit) {
+    return { key: ch, code: `Digit${ch}`, keyCode: ch.charCodeAt(0), text: ch }
+  }
+  return { key: ch, text: ch }
+}
+
 /**
- * Type the text into the currently-focused element progressively, char by
- * char, with realistic per-keystroke timing and the occasional thinking
- * pause. Uses Runtime.callFunctionOn so the same JS runs against the focused
- * element regardless of which page/frame it lives in.
+ * Type the text into the focused element via real CDP keyboard events. Each
+ * char produces keyDown + keyUp dispatches with isTrusted=true, so behaviour-
+ * based bot detectors (Naver Koop / Ncaptcha, Cloudflare Turnstile) see
+ * authentic keystroke timing instead of a JS-dispatched event burst.
  *
- * Sets value via the prototype setter (React-friendly) and dispatches input
- * events on every char, so search-as-you-type / autocomplete behave naturally.
+ * The element is focused via Runtime.callFunctionOn first; per-char timing
+ * uses the same jitter profile as humanMouseMove.
  */
 export async function humanType(
   objectId: string,
@@ -113,39 +137,48 @@ export async function humanType(
   const target = getActiveTarget()
   if (!target) throw new Error('no active browser target')
 
+  // Focus the target element. Required so the keyDown events land in it.
   await target.dbg.sendCommand('Runtime.callFunctionOn', {
     objectId,
-    functionDeclaration: `async function(text, submit) {
-      this.focus()
-      const proto = this.tagName === 'TEXTAREA'
-        ? window.HTMLTextAreaElement.prototype
-        : window.HTMLInputElement.prototype
-      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set
-      const setVal = (v) => { setter ? setter.call(this, v) : (this.value = v) }
-      const sleep = (ms) => new Promise(r => setTimeout(r, ms))
-      const rand = (a, b) => a + Math.random() * (b - a)
-
-      let cur = this.value || ''
-      for (const ch of Array.from(text)) {
-        cur += ch
-        setVal(cur)
-        this.dispatchEvent(new Event('input', { bubbles: true }))
-        // ~5–7 chars/sec normal, jitter wide
-        await sleep(rand(55, 165))
-        // 8% chance of a longer "thinking" pause mid-typing
-        if (Math.random() < 0.08) await sleep(rand(220, 480))
-      }
-      this.dispatchEvent(new Event('change', { bubbles: true }))
-      if (submit) {
-        await sleep(rand(220, 480))
-        this.dispatchEvent(new KeyboardEvent('keydown', {
-          key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
-        }))
-      }
-    }`,
-    arguments: [{ value: text }, { value: submit }],
-    awaitPromise: true
+    functionDeclaration: 'function(){ this.focus() }'
   })
+
+  for (const ch of Array.from(text)) {
+    const k = keyParamsFor(ch)
+    await target.dbg.sendCommand('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: k.key,
+      code: k.code,
+      windowsVirtualKeyCode: k.keyCode,
+      text: k.text,
+      unmodifiedText: k.text
+    })
+    await target.dbg.sendCommand('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: k.key,
+      code: k.code,
+      windowsVirtualKeyCode: k.keyCode
+    })
+    await sleep(rand(55, 165))
+    if (Math.random() < 0.08) await sleep(rand(220, 480))
+  }
+
+  if (submit) {
+    await sleep(rand(220, 480))
+    await target.dbg.sendCommand('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+      text: '\r'
+    })
+    await target.dbg.sendCommand('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13
+    })
+  }
 }
 
 /**

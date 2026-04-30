@@ -1,0 +1,204 @@
+import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+
+import { TrafficList } from '@/components/network/TrafficList'
+import { ConsolePanel } from '@/components/panels/ConsolePanel'
+import { ExceptionsPanel } from '@/components/panels/ExceptionsPanel'
+import { WebSocketPanel } from '@/components/panels/WebSocketPanel'
+import { useResizable } from '@/hooks/use-resizable'
+import { useTrafficStore } from '@/stores/traffic'
+
+type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket'
+
+interface FloatingChipsProps {
+  openPanel: PanelId | null
+  setOpenPanel: (p: PanelId | null) => void
+}
+
+const BOTTOM_PANEL_CONFIG = {
+  initial: 320,
+  min: 180,
+  max: 600,
+  storageKey: 'rev:bottom-h',
+  axis: 'y' as const,
+  side: 'top' as const
+}
+
+export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
+  const trafficCount = useTrafficStore((s) => s.order.length)
+
+  const [consoleCount, setConsoleCount] = useState(0)
+  const [exceptionCount, setExceptionCount] = useState(0)
+  const [wsCount, setWsCount] = useState(0)
+
+  const bottomPanel = useResizable(BOTTOM_PANEL_CONFIG)
+
+  const panelRef = useRef<HTMLDivElement>(null)
+  const chipStackRef = useRef<HTMLDivElement>(null)
+
+  // Poll counts for badges
+  useEffect(() => {
+    const poll = async () => {
+      const [logs, exceptions, wsList] = await Promise.all([
+        window.rev.console.list(0),
+        window.rev.console.exceptions(),
+        window.rev.ws.list()
+      ])
+      setConsoleCount(logs.length)
+      setExceptionCount(exceptions.length)
+      setWsCount(wsList.length)
+    }
+    void poll()
+    const id = setInterval(() => void poll(), 2000)
+    return () => clearInterval(id)
+  }, [])
+
+  // ESC to close
+  useEffect(() => {
+    if (!openPanel) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenPanel(null)
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [openPanel, setOpenPanel])
+
+  // Outside click to close — but ignore clicks inside the detail drawer
+  // and the agent panel (so users can interact with detail/agent without
+  // collapsing the bottom panel).
+  useEffect(() => {
+    if (!openPanel) return
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Element | null
+      if (!target) return
+      if (panelRef.current?.contains(target)) return
+      if (chipStackRef.current?.contains(target)) return
+      if (target.closest?.('.detail-drawer')) return
+      if (target.closest?.('.agent-panel')) return
+      setOpenPanel(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [openPanel, setOpenPanel])
+
+  const toggle = (id: PanelId) => {
+    setOpenPanel(openPanel === id ? null : id)
+  }
+
+  const panelTitle: Record<PanelId, string> = {
+    traffic: 'Traffic',
+    console: 'Console',
+    exceptions: 'Exceptions',
+    websocket: 'WebSocket'
+  }
+
+  // Chips ride above the bottom panel using the SAME spring as the panel,
+  // so the two animate in lockstep (no judder).
+  const chipsY = openPanel ? -bottomPanel.width : 0
+  const SPRING = { type: 'spring' as const, stiffness: 320, damping: 32 }
+
+  return (
+    <>
+      {/* Chip stack — horizontal, bottom-right of webview container */}
+      <motion.div
+        className="chip-stack"
+        ref={chipStackRef}
+        animate={{ y: chipsY }}
+        transition={SPRING}
+      >
+        <ChipButton
+          label="Traffic"
+          active={openPanel === 'traffic'}
+          badge={trafficCount > 0 ? String(trafficCount) : undefined}
+          onClick={() => toggle('traffic')}
+        />
+        <ChipButton
+          label="Console"
+          active={openPanel === 'console'}
+          badge={consoleCount > 0 ? String(consoleCount) : undefined}
+          onClick={() => toggle('console')}
+        />
+        <ChipButton
+          label="Exceptions"
+          active={openPanel === 'exceptions'}
+          badge={exceptionCount > 0 ? String(exceptionCount) : undefined}
+          onClick={() => toggle('exceptions')}
+        />
+        <ChipButton
+          label="WebSocket"
+          active={openPanel === 'websocket'}
+          badge={wsCount > 0 ? String(wsCount) : undefined}
+          onClick={() => toggle('websocket')}
+        />
+      </motion.div>
+
+      {/* Bottom slide panel */}
+      <AnimatePresence>
+        {openPanel && (
+          <motion.div
+            key={openPanel}
+            className="chip-panel-bottom"
+            ref={panelRef}
+            style={{ height: bottomPanel.width }}
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={SPRING}
+          >
+            {/* Top-edge resize splitter */}
+            <div
+              className="chip-panel-splitter"
+              onMouseDown={bottomPanel.startDrag}
+              title="Resize"
+            />
+
+            {/* Panel header */}
+            <div className="chip-panel-header">
+              <span className="chip-panel-title">{panelTitle[openPanel]}</span>
+              <button
+                className="chip-panel-close"
+                onClick={() => {
+                  setOpenPanel(null)
+                }}
+                title="Close (Esc)"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Panel content */}
+            <div className="chip-panel-content">
+              {openPanel === 'traffic' && <TrafficList />}
+              {openPanel === 'console' && <ConsolePanel />}
+              {openPanel === 'exceptions' && <ExceptionsPanel />}
+              {openPanel === 'websocket' && <WebSocketPanel />}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
+
+interface ChipButtonProps {
+  label: string
+  active: boolean
+  badge?: string
+  onClick: () => void
+}
+
+function ChipButton({ label, active, badge, onClick }: ChipButtonProps) {
+  return (
+    <button
+      className={`chip${active ? ' active' : ''}`}
+      onClick={onClick}
+    >
+      <span>{label}</span>
+      {badge && (
+        <span className="chip-count" style={{ marginLeft: 4 }}>
+          {badge}
+        </span>
+      )}
+    </button>
+  )
+}

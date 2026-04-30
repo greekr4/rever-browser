@@ -247,10 +247,17 @@ const preStyle: React.CSSProperties = {
   wordBreak: 'break-word'
 }
 
+interface ModelEntry {
+  modelId: string
+  name: string
+}
+
 export function ChatPanel() {
   const [agentId, setAgentId] = useState<ACPAgentID>('claude-code')
   const [input, setInput] = useState('')
   const [autoScroll, setAutoScroll] = useState(true)
+  const [models, setModels] = useState<ModelEntry[]>([])
+  const [currentModel, setCurrentModel] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const transport = useMemo(() => {
@@ -260,6 +267,44 @@ export function ChatPanel() {
 
   const { messages, sendMessage, status, stop, setMessages } = useChat({ transport })
   const busy = status === 'streaming' || status === 'submitted'
+
+  // Fetch model list whenever the session reaches a quiet state (= just spawned
+  // or just finished a turn). The agent only exposes models AFTER newSession.
+  useEffect(() => {
+    if (status !== 'ready') return
+    const sid = transport.getSessionId()
+    if (!sid) {
+      setModels([])
+      setCurrentModel(null)
+      return
+    }
+    let cancelled = false
+    void window.rev.acp.modelState(sid).then((state) => {
+      if (cancelled) return
+      console.log('[chat] modelState ←', state)
+      if (!state) {
+        setModels([])
+        setCurrentModel(null)
+        return
+      }
+      setModels(state.availableModels.map((m) => ({ modelId: m.modelId, name: m.name })))
+      setCurrentModel(state.currentModelId)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [status, transport])
+
+  const onChangeModel = async (modelId: string) => {
+    const sid = transport.getSessionId()
+    if (!sid) return
+    setCurrentModel(modelId)
+    try {
+      await window.rev.acp.setModel(sid, modelId)
+    } catch (e) {
+      console.error('[acp] setModel failed', e)
+    }
+  }
   const waiting = status === 'submitted'
   const draftPending = useChatDraft((s) => s.pending)
   const consumeDraft = useChatDraft((s) => s.consume)
@@ -315,7 +360,7 @@ export function ChatPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid #333' }}>
-      <header style={{ padding: '8px 12px', borderBottom: '1px solid #333', display: 'flex', gap: 8, alignItems: 'center' }}>
+      <header style={{ padding: '8px 12px', borderBottom: '1px solid #333', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <strong>Agent</strong>
         <select
           value={agentId}
@@ -327,6 +372,23 @@ export function ChatPanel() {
               {a.name}
             </option>
           ))}
+        </select>
+        <select
+          value={currentModel ?? ''}
+          onChange={(e) => void onChangeModel(e.target.value)}
+          disabled={busy || models.length === 0}
+          title={models.length === 0 ? 'Send a message to load models' : 'Switch model for this session'}
+          style={{ maxWidth: 160 }}
+        >
+          {models.length === 0 ? (
+            <option value="">no models yet</option>
+          ) : (
+            models.map((m) => (
+              <option key={m.modelId} value={m.modelId}>
+                {m.name}
+              </option>
+            ))
+          )}
         </select>
         <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: 12 }}>{status}</span>
         <button
@@ -352,7 +414,7 @@ export function ChatPanel() {
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          style={{ position: 'absolute', inset: 0, overflowY: 'auto', padding: 12 }}
+          style={{ position: 'absolute', inset: 0, overflowY: 'auto', padding: 12, scrollbarGutter: 'stable' }}
         >
           {messages.length === 0 && (
             <p style={{ opacity: 0.5 }}>
