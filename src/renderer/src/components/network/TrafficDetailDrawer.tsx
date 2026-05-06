@@ -113,9 +113,20 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
+function parseQueryParams(url: string): [string, string][] | null {
+  try {
+    const u = new URL(url)
+    const entries = Array.from(u.searchParams.entries())
+    return entries.length > 0 ? entries : null
+  } catch {
+    return null
+  }
+}
+
 function Overview({ data }: { data: StoredRequestSummary }) {
   const elapsed =
     data.completedAt && data.startedAt ? `${data.completedAt - data.startedAt}ms` : '—'
+  const queryParams = parseQueryParams(data.url)
   return (
     <div>
       <Field label="Method" value={data.method} />
@@ -130,6 +141,38 @@ function Overview({ data }: { data: StoredRequestSummary }) {
       />
       <Field label="Elapsed" value={elapsed} />
       <Field label="requestId" value={<code>{data.requestId}</code>} />
+      {queryParams && (
+        <div style={{ marginTop: 14 }}>
+          <h4 style={{ margin: '0 0 6px', fontSize: 12 }}>Query params</h4>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <tbody>
+              {queryParams.map(([k, v], i) => (
+                <tr key={`${k}-${i}`} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                  <td
+                    style={{
+                      padding: '3px 6px',
+                      opacity: 0.7,
+                      verticalAlign: 'top',
+                      width: 130
+                    }}
+                  >
+                    {k}
+                  </td>
+                  <td
+                    style={{
+                      padding: '3px 6px',
+                      wordBreak: 'break-all',
+                      fontFamily: 'ui-monospace, monospace'
+                    }}
+                  >
+                    {v}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

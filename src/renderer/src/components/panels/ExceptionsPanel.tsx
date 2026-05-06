@@ -36,7 +36,8 @@ export function ExceptionsPanel() {
     setItems((prev) => prev.map((item, idx) => idx === i ? { ...item, expanded: !item.expanded } : item))
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', fontFamily: 'ui-monospace, monospace', fontSize: 11, scrollbarGutter: 'stable' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ flex: 1, overflowY: 'auto', fontFamily: 'ui-monospace, monospace', fontSize: 11, scrollbarGutter: 'stable' }}>
       {items.map((e, i) => (
         <div
           key={i}
@@ -81,6 +82,7 @@ export function ExceptionsPanel() {
       {items.length === 0 && (
         <div style={{ padding: '12px 10px', opacity: 0.4, textAlign: 'center' }}>No exceptions</div>
       )}
+      </div>
     </div>
   )
 }

@@ -18,7 +18,7 @@ const TYPE_COLOR: Record<string, string> = {
 export function ConsolePanel() {
   const [entries, setEntries] = useState<ConsoleEntry[]>([])
   const lastTsRef = useRef<number>(0)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const poll = async () => {
@@ -27,7 +27,8 @@ export function ConsolePanel() {
         lastTsRef.current = next[next.length - 1].ts + 1
         setEntries((prev) => [...prev, ...next])
         requestAnimationFrame(() => {
-          bottomRef.current?.scrollIntoView({ block: 'end' })
+          const el = scrollRef.current
+          if (el) el.scrollTop = el.scrollHeight
         })
       }
     }
@@ -61,7 +62,7 @@ export function ConsolePanel() {
           Clear
         </button>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', fontFamily: 'ui-monospace, monospace', fontSize: 11, scrollbarGutter: 'stable' }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', fontFamily: 'ui-monospace, monospace', fontSize: 11, scrollbarGutter: 'stable' }}>
         {entries.map((e, i) => (
           <div
             key={i}
@@ -86,7 +87,6 @@ export function ConsolePanel() {
         {entries.length === 0 && (
           <div style={{ padding: '12px 10px', opacity: 0.4, textAlign: 'center' }}>No console output</div>
         )}
-        <div ref={bottomRef} />
       </div>
     </div>
   )
