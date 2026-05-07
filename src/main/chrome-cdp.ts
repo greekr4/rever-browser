@@ -965,6 +965,18 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
     return { action: 'deny' }
   })
 
+  // Cmd/Ctrl+R inside the focused webview never bubbles to the host window's
+  // before-input-event, so the menu accelerator doesn't fire either. Intercept
+  // here and forward to the renderer to reload the webview.
+  target.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    if (input.alt) return
+    if (!(input.meta || input.control)) return
+    if (input.key.toLowerCase() !== 'r') return
+    event.preventDefault()
+    sink.send('reload-webview', { ignoreCache: input.shift })
+  })
+
   void dbg.sendCommand('Network.enable').catch((e) => console.error('[cdp] Network.enable:', e))
   // Accept-Language is set via Network.setUserAgentOverride.acceptLanguage below.
   // Setting it here AND there caused Chromium to emit `en-US,en;q=0.9;q=0.9`
