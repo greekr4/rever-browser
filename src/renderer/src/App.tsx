@@ -182,6 +182,13 @@ function App() {
                 <button type="button" onClick={() => activeRef()?.reload()} title="Reload">
                   ↻
                 </button>
+                <button
+                  type="button"
+                  onClick={() => activeRef()?.reload(true)}
+                  title="Hard Reload (clear cache)"
+                >
+                  ⟳
+                </button>
               </>
             )}
             <input
