@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { useChatDraft } from '@/stores/chat-draft'
+import { useRepeaterStore } from '@/stores/repeater'
 import { useTrafficStore } from '@/stores/traffic'
 import type { TrafficEntry } from '@/types/traffic'
 
@@ -42,6 +43,7 @@ export function TrafficList() {
     }))
   )
   const pushDraft = useChatDraft((s) => s.push)
+  const sendToRepeater = useRepeaterStore((s) => s.loadFromTraffic)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set())
   const [hideStatic, setHideStatic] = useState(true)
@@ -172,6 +174,7 @@ export function TrafficList() {
               <th style={th}>Type</th>
               <th style={{ ...th, width: '100%' }}>URL</th>
               <th style={th}>Size</th>
+              <th style={{ ...th, width: 28 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -216,6 +219,15 @@ export function TrafficList() {
                   </td>
                   <td style={{ ...td, textAlign: 'right' }}>
                     {e.encodedDataLength !== undefined ? formatBytes(e.encodedDataLength) : '·'}
+                  </td>
+                  <td style={{ ...td, padding: '2px 4px' }} onClick={(ev) => ev.stopPropagation()}>
+                    <button
+                      onClick={() => void sendToRepeater(e.requestId)}
+                      title="Send to Repeater"
+                      style={{ fontSize: 10, padding: '1px 6px', lineHeight: 1.2 }}
+                    >
+                      ↻R
+                    </button>
                   </td>
                 </tr>
               )

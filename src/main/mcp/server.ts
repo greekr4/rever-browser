@@ -17,6 +17,7 @@ import { registerInjectTools } from './tools/inject'
 import { registerWebSocketTools } from './tools/websocket'
 import { registerInterceptTools } from './tools/intercept'
 import { registerDebuggerTools } from './tools/debugger'
+import { registerRepeaterTools } from './tools/repeater'
 
 function buildMcpServer(): McpServer {
   const mcp = new McpServer({ name: 'rever-traffic', version: '0.1.0' })
@@ -32,6 +33,7 @@ function buildMcpServer(): McpServer {
   registerWebSocketTools(mcp)
   registerInterceptTools(mcp)
   registerDebuggerTools(mcp)
+  registerRepeaterTools(mcp)
   return mcp
 }
 
