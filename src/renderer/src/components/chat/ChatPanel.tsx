@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 
 import { ACPChatTransport } from '@/ai/acp-transport'
 import { ACP_AGENTS, type ACPAgentID } from '@/constants'
+import { AgentPicker } from './AgentPicker'
 import { formatOutput } from '@/lib/format-json'
 import { useChatDraft } from '@/stores/chat-draft'
 
@@ -254,6 +255,10 @@ interface ModelEntry {
 
 export function ChatPanel() {
   const [agentId, setAgentId] = useState<ACPAgentID>('claude-code')
+  // Absolute path returned by detectAgents(). When set, we pass it to the
+  // transport instead of the bare bin name so spawn doesn't depend on the
+  // Electron child process's PATH (notably broken on Windows for .cmd shims).
+  const [agentBinPath, setAgentBinPath] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [autoScroll, setAutoScroll] = useState(true)
   const [models, setModels] = useState<ModelEntry[]>([])
@@ -261,9 +266,10 @@ export function ChatPanel() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const transport = useMemo(() => {
-    const agentDef = ACP_AGENTS.find((a) => a.id === agentId)!
+    const base = ACP_AGENTS.find((a) => a.id === agentId)!
+    const agentDef = agentBinPath ? { ...base, command: agentBinPath } : base
     return new ACPChatTransport({ agentDef })
-  }, [agentId])
+  }, [agentId, agentBinPath])
 
   const { messages, sendMessage, status, stop, setMessages } = useChat({ transport })
   const busy = status === 'streaming' || status === 'submitted'
@@ -361,18 +367,14 @@ export function ChatPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid #333' }}>
       <header style={{ padding: '8px 12px', borderBottom: '1px solid #333', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <strong>Agent</strong>
-        <select
-          value={agentId}
-          onChange={(e) => setAgentId(e.target.value as ACPAgentID)}
+        <AgentPicker
+          agentId={agentId}
           disabled={busy}
-        >
-          {ACP_AGENTS.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+          onChange={(id, resolvedPath) => {
+            setAgentId(id)
+            setAgentBinPath(resolvedPath)
+          }}
+        />
         <select
           value={currentModel ?? ''}
           onChange={(e) => void onChangeModel(e.target.value)}

@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { attachCdpCapture, detachCdpCapture, setActiveTarget } from './chrome-cdp'
+import { detectAgents, type AgentProbe } from './acp-detect'
 import { launchExternalChrome, killExternalChrome } from './external-chrome'
 import { attachExternalCdp, detachExternalCdp, getExternalTarget } from './external-cdp'
 import {
@@ -150,6 +151,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('cdp:set-active', async (_event, webContentsId: number) => {
     return setActiveTarget(webContentsId)
+  })
+
+  ipcMain.handle('acp:list-available', async (_event, probes: AgentProbe[]) => {
+    return detectAgents(probes)
   })
 
   ipcMain.handle('acp:spawn', async (_event, agentDef: AgentDef, _cwd: string) => {
