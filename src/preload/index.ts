@@ -6,6 +6,17 @@ export interface AcpAgentDef {
   args: string[]
 }
 
+export interface AcpAgentProbe {
+  command: string
+  fallbackBins?: string[]
+}
+
+export interface AcpAgentProbeResult {
+  command: string
+  resolvedPath: string | null
+  matchedBin: string | null
+}
+
 export interface AcpSessionUpdate {
   sessionId: string
   update: Record<string, unknown>
@@ -93,6 +104,9 @@ const api = {
     return () => ipcRenderer.removeListener('network-event', listener)
   },
   acp: {
+    listAvailable: (probes: AcpAgentProbe[]): Promise<AcpAgentProbeResult[]> =>
+      ipcRenderer.invoke('acp:list-available', probes),
+
     spawn: (agentDef: AcpAgentDef, cwd: string): Promise<{ sessionId: string }> =>
       ipcRenderer.invoke('acp:spawn', agentDef, cwd),
 
