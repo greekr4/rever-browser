@@ -25,6 +25,12 @@ import {
   getWsFrames
 } from './traffic-store'
 import { getViewport, setViewport, type ViewportMode } from './viewport'
+import {
+  repeaterSend,
+  repeaterSendRaw,
+  type RepeaterModifications,
+  type RepeaterRequestSpec
+} from './repeater'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -208,6 +214,16 @@ app.whenReady().then(() => {
 
   ipcMain.handle('traffic:get', (_event, requestId: string) => {
     return getRequest(requestId) ?? null
+  })
+
+  ipcMain.handle(
+    'repeater:send',
+    async (_event, requestId: string, modifications?: RepeaterModifications) => {
+      return repeaterSend(requestId, modifications)
+    }
+  )
+  ipcMain.handle('repeater:send-raw', async (_event, spec: RepeaterRequestSpec) => {
+    return repeaterSendRaw(spec)
   })
 
   ipcMain.handle('console:list', (_event, since?: number, limit?: number) =>

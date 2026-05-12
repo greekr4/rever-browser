@@ -5,10 +5,12 @@ import { TrafficList } from '@/components/network/TrafficList'
 import { ConsolePanel } from '@/components/panels/ConsolePanel'
 import { ExceptionsPanel } from '@/components/panels/ExceptionsPanel'
 import { WebSocketPanel } from '@/components/panels/WebSocketPanel'
+import { RepeaterPanel } from '@/components/repeater/RepeaterPanel'
 import { useResizable } from '@/hooks/use-resizable'
+import { useRepeaterStore } from '@/stores/repeater'
 import { useTrafficStore } from '@/stores/traffic'
 
-type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket'
+type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater'
 
 interface FloatingChipsProps {
   openPanel: PanelId | null
@@ -26,6 +28,14 @@ const BOTTOM_PANEL_CONFIG = {
 
 export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
   const trafficCount = useTrafficStore((s) => s.order.length)
+  const repeaterSourceId = useRepeaterStore((s) => s.sourceRequestId)
+  const repeaterHistoryLen = useRepeaterStore((s) => s.history.length)
+
+  // Auto-open the Repeater panel whenever a request gets sent into it from
+  // somewhere else in the app (TrafficList "Send to Repeater" button).
+  useEffect(() => {
+    if (repeaterSourceId) setOpenPanel('repeater')
+  }, [repeaterSourceId, setOpenPanel])
 
   const [consoleCount, setConsoleCount] = useState(0)
   const [exceptionCount, setExceptionCount] = useState(0)
@@ -89,7 +99,8 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
     traffic: 'Traffic',
     console: 'Console',
     exceptions: 'Exceptions',
-    websocket: 'WebSocket'
+    websocket: 'WebSocket',
+    repeater: 'Repeater'
   }
 
   // Chips ride above the bottom panel using the SAME spring as the panel,
@@ -129,6 +140,18 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
           active={openPanel === 'websocket'}
           badge={wsCount > 0 ? String(wsCount) : undefined}
           onClick={() => toggle('websocket')}
+        />
+        <ChipButton
+          label="Repeater"
+          active={openPanel === 'repeater'}
+          badge={
+            repeaterSourceId
+              ? repeaterHistoryLen > 0
+                ? String(repeaterHistoryLen)
+                : '•'
+              : undefined
+          }
+          onClick={() => toggle('repeater')}
         />
       </motion.div>
 
@@ -172,6 +195,7 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
               {openPanel === 'console' && <ConsolePanel />}
               {openPanel === 'exceptions' && <ExceptionsPanel />}
               {openPanel === 'websocket' && <WebSocketPanel />}
+              {openPanel === 'repeater' && <RepeaterPanel />}
             </div>
           </motion.div>
         )}

@@ -63,6 +63,32 @@ export interface WSFrame {
   mask?: boolean
 }
 
+export interface RepeaterRequestSpec {
+  url: string
+  method: string
+  headers: Record<string, string>
+  body?: string
+}
+
+export interface RepeaterModifications {
+  url?: string
+  method?: string
+  setHeaders?: Record<string, string>
+  removeHeaders?: string[]
+  body?: string | null
+}
+
+export interface RepeaterResponse {
+  status: number
+  statusText: string
+  headers: Record<string, string>
+  body: string
+  bodyTruncated: boolean
+  bodyByteLength: number
+  timeMs: number
+  error?: string
+}
+
 export interface StoredRequestSummary {
   requestId: string
   url: string
@@ -148,6 +174,15 @@ const api = {
   traffic: {
     get: (requestId: string): Promise<StoredRequestSummary | null> =>
       ipcRenderer.invoke('traffic:get', requestId)
+  },
+  repeater: {
+    send: (
+      requestId: string,
+      modifications?: RepeaterModifications
+    ): Promise<RepeaterResponse> =>
+      ipcRenderer.invoke('repeater:send', requestId, modifications),
+    sendRaw: (spec: RepeaterRequestSpec): Promise<RepeaterResponse> =>
+      ipcRenderer.invoke('repeater:send-raw', spec)
   },
   aiAction: {
     subscribe: (handler: (action: AiAction) => void): (() => void) => {
