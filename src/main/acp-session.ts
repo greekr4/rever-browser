@@ -50,9 +50,15 @@ export async function spawnAcpSession(
   agentDef: AgentDef,
   cwd: string
 ): Promise<{ sessionId: string }> {
+  // On Windows, npm installs the agent CLI as a `.cmd` shim. Node 22's
+  // CVE-2024-27980 patch refuses to spawn `.cmd`/`.bat` without `shell: true`
+  // (throws EINVAL). Setting shell on Windows lets the resolved absolute
+  // path execute cleanly. On POSIX the binary is a real executable / JS
+  // shebang, so we leave shell off to avoid quoting surprises.
   const child = spawn(agentDef.command, agentDef.args, {
     cwd,
-    stdio: ['pipe', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
   }) as ChildProcessByStdio<Writable, Readable, Readable>
 
   child.stderr.on('data', (buf: Buffer) => {

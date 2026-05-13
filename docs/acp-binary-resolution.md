@@ -19,6 +19,8 @@
 
 ## 수정 내용 (Windows 검증 완료)
 
+### 1) 카탈로그 fallback 추가
+
 `src/renderer/src/constants.ts` — `claude-code` 엔트리:
 
 ```ts
@@ -35,6 +37,46 @@
 ```
 
 탐색 로직 (`acp-detect.ts`)은 `command` → `fallbackBins` 순으로 PATH/PATHEXT를 훑으므로, 사용자가 두 패키지 중 어느 쪽을 설치했든 detection이 성공한다.
+
+### 2) 초기 마운트에서 resolvedPath seed
+
+`src/renderer/src/components/chat/AgentPicker.tsx` 의 자동 보정 effect를 확장.
+
+**기존 버그**: detection이 성공했더라도 사용자가 picker 타일을 직접 클릭하기 전까지는 `onChange`가 호출되지 않아 `agentBinPath` 가 `null` 인 상태로 transport가 만들어졌다. → `spawn('claude-agent-acp', ...)` 가 bare 이름으로 호출되어 ENOENT 발생 (특히 Windows `.cmd` shim은 PATH 검색이 Electron 환경에서 불안정).
+
+**수정**: detection 완료 후 현재 선택된 에이전트가 selectable + resolvedPath 보유 → 그 경로를 즉시 부모로 push. unselectable인 경우만 firstReady로 폴백 (기존 동작 유지).
+
+```ts
+useEffect(() => {
+  if (loading) return
+  if (selected.selectable && selected.resolvedPath) {
+    onChange(selected.def.id, selected.resolvedPath)
+    return
+  }
+  const firstReady = tiles.find((t) => t.selectable)
+  if (firstReady && firstReady.resolvedPath) {
+    onChange(firstReady.def.id, firstReady.resolvedPath)
+  }
+}, [loading, selected, tiles, onChange])
+```
+
+idempotent (React가 동일값 setState 무시) → 무한루프 없음.
+
+### 3) Windows에서 `.cmd` spawn 허용 (Node 22 CVE 대응)
+
+`src/main/acp-session.ts` — `spawn(...)` 옵션에 `shell: process.platform === 'win32'` 추가.
+
+**배경**: Node 22의 CVE-2024-27980 패치로 Windows에서 `.cmd` / `.bat` 파일을 `shell: true` 없이 spawn하면 `EINVAL` 을 던진다. npm 글로벌 설치는 Windows에서 `claude-code-acp.cmd` 같은 shim을 만들기 때문에, 절대경로를 넘기더라도 spawn이 거부됨.
+
+```ts
+const child = spawn(agentDef.command, agentDef.args, {
+  cwd,
+  stdio: ['pipe', 'pipe', 'pipe'],
+  shell: process.platform === 'win32'
+})
+```
+
+POSIX에서는 실제 실행파일 또는 shebang JS가 PATH에 들어가므로 `shell` 없이 그대로 spawn 가능 → quoting 부작용 회피.
 
 ## macOS / Linux에서 동작 안 할 가능성
 
