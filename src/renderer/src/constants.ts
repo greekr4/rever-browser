@@ -42,9 +42,10 @@ export const ACP_AGENTS: ACPAgentDef[] = [
     id: 'claude-code',
     name: 'Claude Code',
     command: 'claude-agent-acp',
+    fallbackBins: ['claude-code-acp'],
     args: [],
     acpSupported: true,
-    installHint: 'npm i -g @zed-industries/claude-code-acp',
+    installHint: 'npm i -g @agentclientprotocol/claude-agent-acp',
     icon: 'C'
   },
   {
