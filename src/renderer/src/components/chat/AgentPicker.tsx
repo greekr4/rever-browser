@@ -80,12 +80,18 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
   const tiles = useMemo(() => buildTiles(detection), [detection])
   const selected = tiles.find((t) => t.def.id === agentId) ?? tiles[0]
 
-  // Auto-correct selection if the current agent is unselectable once
-  // detection completes (e.g. user previously chose claude-code but it
-  // isn't installed — switch to the first ready agent).
+  // Push the resolved absolute path to the parent once detection finishes.
+  // Two cases:
+  //   1. Currently selected agent is ready → seed agentBinPath so the spawn
+  //      call doesn't fall back to the bare command name (ENOENT on Windows
+  //      .cmd shims, fragile on macOS shells that don't propagate PATH).
+  //   2. Currently selected agent is unselectable → switch to first ready.
   useEffect(() => {
     if (loading) return
-    if (selected.selectable) return
+    if (selected.selectable && selected.resolvedPath) {
+      onChange(selected.def.id, selected.resolvedPath)
+      return
+    }
     const firstReady = tiles.find((t) => t.selectable)
     if (firstReady && firstReady.resolvedPath) {
       onChange(firstReady.def.id, firstReady.resolvedPath)
