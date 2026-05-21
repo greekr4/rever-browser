@@ -11,10 +11,11 @@ import { ChatPanel } from '@/components/chat/ChatPanel'
 import { useCdpEvents } from '@/hooks/use-cdp-events'
 import { useResizable } from '@/hooks/use-resizable'
 import { useBrowserModeStore } from '@/stores/browser-mode'
+import { useNavigationRequestStore } from '@/stores/navigation-request'
 import { useTabsStore } from '@/stores/tabs'
 import { useViewportStore } from '@/stores/viewport'
 
-type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage'
+type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history'
 
 function App() {
   useCdpEvents()
@@ -96,6 +97,22 @@ function App() {
       void window.rev.external.stop().catch(() => {})
     }
   }, [browserMode])
+
+  // Handle navigation requests from other components (e.g. HistoryPanel).
+  const pendingNav = useNavigationRequestStore((s) => s.pending)
+  const clearPendingNav = useNavigationRequestStore((s) => s.clear)
+  useEffect(() => {
+    if (!pendingNav) return
+    const { url } = pendingNav
+    setUrlDraft(url)
+    if (browserMode === 'external') {
+      void window.rev.external.navigate(url).catch(() => {})
+    } else {
+      activeRef()?.loadURL(url)
+    }
+    clearPendingNav()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNav, browserMode])
 
   const onToggleViewport = async () => {
     const next = viewportMode === 'desktop' ? 'mobile' : 'desktop'

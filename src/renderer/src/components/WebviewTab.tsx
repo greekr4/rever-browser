@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 
+import { useHistoryStore } from '@/stores/history'
 import type { Tab } from '@/stores/tabs'
 import { useTabsStore } from '@/stores/tabs'
 
@@ -87,15 +88,23 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
       }
     }
 
+    const pushHistory = useHistoryStore.getState().push
+    const updateHistoryTitle = useHistoryStore.getState().updateTitle
     const onNavigate = (e: Electron.DidNavigateEvent) => {
       updateTab(tab.id, { url: e.url })
+      pushHistory({ tabId: tab.id, url: e.url, title: '' })
     }
     const onNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
       updateTab(tab.id, { url: e.url })
+      pushHistory({ tabId: tab.id, url: e.url, title: '' })
     }
     const onTitle = (e: Event) => {
       const ev = e as PageTitleEvent
-      if (ev.title) updateTab(tab.id, { title: ev.title })
+      if (ev.title) {
+        updateTab(tab.id, { title: ev.title })
+        const currentUrl = useTabsStore.getState().tabs.find((t) => t.id === tab.id)?.url
+        if (currentUrl) updateHistoryTitle(tab.id, currentUrl, ev.title)
+      }
     }
 
     wv.addEventListener('dom-ready', tryAttach)
