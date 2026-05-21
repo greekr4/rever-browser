@@ -3,7 +3,23 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { attachCdpCapture, detachCdpCapture, setActiveTarget } from './chrome-cdp'
+import {
+  attachCdpCapture,
+  clearDialogHistory,
+  detachCdpCapture,
+  getActiveTarget,
+  getDialogAutoDismiss,
+  getDialogHistory,
+  setActiveTarget,
+  setDialogAutoDismiss
+} from './chrome-cdp'
+import {
+  getSnapshotCount,
+  getStickyEnabled,
+  initCookiePersistence,
+  manualSnapshot,
+  setStickyEnabled
+} from './cookie-persistence'
 import { detectAgents, type AgentProbe } from './acp-detect'
 import { launchExternalChrome, killExternalChrome } from './external-chrome'
 import { attachExternalCdp, detachExternalCdp, getExternalTarget } from './external-cdp'
@@ -144,6 +160,9 @@ app.whenReady().then(() => {
   revSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
   revSession.setPermissionCheckHandler(() => false)
 
+  // Initialize sticky-session-cookie persistence (no-op if user has it disabled).
+  initCookiePersistence()
+
   createWindow()
 
   ipcMain.handle('cdp:attach', async (_event, webContentsId: number) => {
@@ -239,6 +258,117 @@ app.whenReady().then(() => {
   ipcMain.handle('ws:frames', (_event, requestId: string, since?: number, limit?: number) =>
     getWsFrames(requestId, since).slice(-(limit ?? 100))
   )
+
+  // ── Storage / Cookie editor IPC ───────────────────────────────────────────
+  ipcMain.handle('storage:cookies', async (_event, urls?: string[]) => {
+    const target = getActiveTarget()
+    if (!target) return { cookies: [], origin: null }
+    const origin = urls?.[0] ?? await (async () => {
+      const r = (await target.dbg.sendCommand('Runtime.evaluate', {
+        expression: 'location.origin',
+        returnByValue: true
+      })) as { result: { value?: string } }
+      return r.result.value ?? ''
+    })()
+    const res = (await target.dbg.sendCommand('Network.getCookies', {
+      urls: urls?.length ? urls : [origin]
+    })) as { cookies: unknown[] }
+    return { cookies: res.cookies, origin }
+  })
+
+  ipcMain.handle('storage:cookie-set', async (_event, params: {
+    name: string
+    value: string
+    url?: string
+    domain?: string
+    path?: string
+    secure?: boolean
+    httpOnly?: boolean
+    sameSite?: 'Strict' | 'Lax' | 'None'
+    expires?: number
+  }) => {
+    const target = getActiveTarget()
+    if (!target) throw new Error('no active browser target')
+    return target.dbg.sendCommand('Network.setCookie', params)
+  })
+
+  ipcMain.handle('storage:cookie-delete', async (_event, params: {
+    name: string
+    url?: string
+    domain?: string
+    path?: string
+  }) => {
+    const target = getActiveTarget()
+    if (!target) throw new Error('no active browser target')
+    await target.dbg.sendCommand('Network.deleteCookies', params)
+    return true
+  })
+
+  for (const kind of ['local', 'session'] as const) {
+    const storage = `${kind}Storage`
+    ipcMain.handle(`storage:${kind}-get`, async () => {
+      const target = getActiveTarget()
+      if (!target) return {}
+      const r = (await target.dbg.sendCommand('Runtime.evaluate', {
+        expression: `JSON.stringify(Object.fromEntries(Object.entries(${storage})))`,
+        returnByValue: true
+      })) as { result: { value?: string } }
+      return JSON.parse(r.result.value ?? '{}')
+    })
+    ipcMain.handle(`storage:${kind}-set`, async (_event, key: string, value: string) => {
+      const target = getActiveTarget()
+      if (!target) throw new Error('no active browser target')
+      await target.dbg.sendCommand('Runtime.evaluate', {
+        expression: `${storage}.setItem(${JSON.stringify(key)}, ${JSON.stringify(value)})`
+      })
+      return true
+    })
+    ipcMain.handle(`storage:${kind}-delete`, async (_event, key: string) => {
+      const target = getActiveTarget()
+      if (!target) throw new Error('no active browser target')
+      await target.dbg.sendCommand('Runtime.evaluate', {
+        expression: `${storage}.removeItem(${JSON.stringify(key)})`
+      })
+      return true
+    })
+    ipcMain.handle(`storage:${kind}-clear`, async () => {
+      const target = getActiveTarget()
+      if (!target) throw new Error('no active browser target')
+      await target.dbg.sendCommand('Runtime.evaluate', {
+        expression: `${storage}.clear()`
+      })
+      return true
+    })
+  }
+
+  // ── Sticky session-cookie IPC ─────────────────────────────────────────────
+  ipcMain.handle('cookie-persistence:get', () => ({
+    enabled: getStickyEnabled(),
+    snapshotCount: getSnapshotCount()
+  }))
+  ipcMain.handle('cookie-persistence:set', (_event, enabled: boolean) => {
+    setStickyEnabled(enabled)
+    return { enabled }
+  })
+  ipcMain.handle('cookie-persistence:snapshot', async () => {
+    const n = await manualSnapshot()
+    return { snapshotCount: n }
+  })
+
+  // ── JS dialog auto-dismiss IPC ────────────────────────────────────────────
+  ipcMain.handle('dialog:get-settings', () => ({
+    autoDismiss: getDialogAutoDismiss(),
+    history: getDialogHistory(50)
+  }))
+  ipcMain.handle('dialog:set-auto-dismiss', (_event, enabled: boolean) => {
+    setDialogAutoDismiss(enabled)
+    return { autoDismiss: enabled }
+  })
+  ipcMain.handle('dialog:history', (_event, limit?: number) => getDialogHistory(limit ?? 50))
+  ipcMain.handle('dialog:clear-history', () => {
+    clearDialogHistory()
+    return true
+  })
 
   // ── External Chrome (Version B) IPC ────────────────────────────────────────
 
