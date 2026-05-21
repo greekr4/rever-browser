@@ -5,13 +5,15 @@ import { TrafficList } from '@/components/network/TrafficList'
 import { ConsolePanel } from '@/components/panels/ConsolePanel'
 import { CookiesPanel } from '@/components/panels/CookiesPanel'
 import { ExceptionsPanel } from '@/components/panels/ExceptionsPanel'
+import { HistoryPanel } from '@/components/panels/HistoryPanel'
 import { WebSocketPanel } from '@/components/panels/WebSocketPanel'
 import { RepeaterPanel } from '@/components/repeater/RepeaterPanel'
 import { useResizable } from '@/hooks/use-resizable'
+import { useHistoryStore } from '@/stores/history'
 import { useRepeaterStore } from '@/stores/repeater'
 import { useTrafficStore } from '@/stores/traffic'
 
-type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage'
+type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history'
 
 interface FloatingChipsProps {
   openPanel: PanelId | null
@@ -31,6 +33,7 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
   const trafficCount = useTrafficStore((s) => s.order.length)
   const repeaterSourceId = useRepeaterStore((s) => s.sourceRequestId)
   const repeaterHistoryLen = useRepeaterStore((s) => s.history.length)
+  const historyCount = useHistoryStore((s) => s.entries.length)
 
   // Auto-open the Repeater panel whenever a request gets sent into it from
   // somewhere else in the app (TrafficList "Send to Repeater" button).
@@ -102,7 +105,8 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
     exceptions: 'Exceptions',
     websocket: 'WebSocket',
     repeater: 'Repeater',
-    storage: 'Storage'
+    storage: 'Storage',
+    history: 'History'
   }
 
   // Chips ride above the bottom panel using the SAME spring as the panel,
@@ -160,6 +164,12 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
           active={openPanel === 'storage'}
           onClick={() => toggle('storage')}
         />
+        <ChipButton
+          label="History"
+          active={openPanel === 'history'}
+          badge={historyCount > 0 ? String(historyCount) : undefined}
+          onClick={() => toggle('history')}
+        />
       </motion.div>
 
       {/* Bottom slide panel */}
@@ -204,6 +214,7 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
               {openPanel === 'websocket' && <WebSocketPanel />}
               {openPanel === 'repeater' && <RepeaterPanel />}
               {openPanel === 'storage' && <CookiesPanel />}
+              {openPanel === 'history' && <HistoryPanel />}
             </div>
           </motion.div>
         )}
