@@ -18,6 +18,22 @@ import { registerWebSocketTools } from './tools/websocket'
 import { registerInterceptTools } from './tools/intercept'
 import { registerDebuggerTools } from './tools/debugger'
 import { registerRepeaterTools } from './tools/repeater'
+import { registerStorageTools } from './tools/storage'
+import { registerHeaderTools } from './tools/headers'
+import { registerHarTools } from './tools/har'
+import { registerIntruderTools } from './tools/intruder'
+import { registerOverrideTools } from './tools/override'
+import { registerBurstTools } from './tools/burst'
+import { registerCryptoTools } from './tools/crypto'
+import { registerDeobTools } from './tools/deob'
+import { registerPayloadProbeTools } from './tools/payload_probe'
+import { registerCrlfTools } from './tools/crlf'
+import { registerPathProbeTools } from './tools/path_probe'
+import { registerFindingTools } from './tools/findings'
+import { registerSecurityInspectTools } from './tools/security_inspect'
+import { registerDomEditTools } from './tools/dom_edit'
+import { registerServiceWorkerTools } from './tools/sw_inspect'
+import { registerDialogTools } from './tools/dialog'
 
 function buildMcpServer(): McpServer {
   const mcp = new McpServer({ name: 'rever-traffic', version: '0.1.0' })
@@ -34,6 +50,23 @@ function buildMcpServer(): McpServer {
   registerInterceptTools(mcp)
   registerDebuggerTools(mcp)
   registerRepeaterTools(mcp)
+  // New tools — webhacking.kr-driven feature set
+  registerStorageTools(mcp)
+  registerHeaderTools(mcp)
+  registerHarTools(mcp)
+  registerIntruderTools(mcp)
+  registerOverrideTools(mcp)
+  registerBurstTools(mcp)
+  registerCryptoTools(mcp)
+  registerDeobTools(mcp)
+  registerPayloadProbeTools(mcp)
+  registerCrlfTools(mcp)
+  registerPathProbeTools(mcp)
+  registerFindingTools(mcp)
+  registerSecurityInspectTools(mcp)
+  registerDomEditTools(mcp)
+  registerServiceWorkerTools(mcp)
+  registerDialogTools(mcp)
   return mcp
 }
 
