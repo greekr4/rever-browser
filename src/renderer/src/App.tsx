@@ -14,6 +14,7 @@ import { useBrowserModeStore } from '@/stores/browser-mode'
 import { useNavigationRequestStore } from '@/stores/navigation-request'
 import { useTabsStore } from '@/stores/tabs'
 import { useViewportStore } from '@/stores/viewport'
+import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 
 type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history'
 
@@ -26,6 +27,13 @@ function App() {
 
   const browserMode = useBrowserModeStore((s) => s.mode)
   const setBrowserMode = useBrowserModeStore((s) => s.setMode)
+
+  const themeByOrigin = useWebviewThemeStore((s) => s.byOrigin)
+  const cycleTheme = useWebviewThemeStore((s) => s.cycle)
+  const activeOrigin = activeTab ? originFromUrl(activeTab.url) : null
+  const activeTheme: WebviewTheme = activeOrigin
+    ? themeByOrigin[activeOrigin] ?? 'auto'
+    : 'auto'
 
   // window.open / target=_blank from any webview → new tab inside the app.
   useEffect(() => {
@@ -123,11 +131,17 @@ function App() {
     }
   }
 
+  const openViewSource = () => {
+    if (!activeTab) return
+    if (!/^https?:\/\//i.test(activeTab.url)) return
+    addTab(`view-source:${activeTab.url}`)
+  }
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     let target = urlDraft.trim()
     if (!target) return
-    if (!/^https?:\/\//i.test(target)) target = 'https://' + target
+    if (!/^(https?|view-source):/i.test(target)) target = 'https://' + target
 
     if (browserMode === 'external') {
       void window.rev.external.navigate(target).catch((err) => {
@@ -206,6 +220,21 @@ function App() {
                 >
                   ⟳
                 </button>
+                <button
+                  type="button"
+                  onClick={openViewSource}
+                  disabled={!activeTab || !/^https?:\/\//i.test(activeTab.url)}
+                  title="View page source in a new tab (view-source:)"
+                  style={{
+                    fontFamily: 'ui-monospace, monospace',
+                    fontSize: 10,
+                    padding: '2px 5px',
+                    letterSpacing: -0.5,
+                    opacity: 0.85
+                  }}
+                >
+                  &lt;/&gt;
+                </button>
               </>
             )}
             <input
@@ -215,6 +244,35 @@ function App() {
               style={{ flex: 1, padding: '4px 10px', fontFamily: 'ui-monospace, monospace' }}
             />
             <button type="submit">Go</button>
+            <button
+              type="button"
+              onClick={() => {
+                if (activeOrigin) cycleTheme(activeOrigin)
+              }}
+              disabled={!activeOrigin}
+              title={
+                activeOrigin
+                  ? `Page theme for ${activeOrigin} — click to cycle Auto → Light → Dark`
+                  : 'No site loaded'
+              }
+              style={{
+                fontSize: 11,
+                background: activeTheme === 'light'
+                  ? '#eee'
+                  : activeTheme === 'dark'
+                    ? '#222'
+                    : undefined,
+                color: activeTheme === 'light' ? '#111' : undefined,
+                borderColor:
+                  activeTheme === 'light'
+                    ? '#aaa'
+                    : activeTheme === 'dark'
+                      ? '#555'
+                      : undefined
+              }}
+            >
+              {activeTheme === 'auto' ? 'Auto' : activeTheme === 'light' ? 'Light' : 'Dark'}
+            </button>
             <button
               type="button"
               onClick={onToggleViewport}
