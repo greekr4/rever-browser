@@ -14,7 +14,7 @@ import { useBrowserModeStore } from '@/stores/browser-mode'
 import { useTabsStore } from '@/stores/tabs'
 import { useViewportStore } from '@/stores/viewport'
 
-type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater'
+type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage'
 
 function App() {
   useCdpEvents()

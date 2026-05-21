@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 
 import { TrafficList } from '@/components/network/TrafficList'
 import { ConsolePanel } from '@/components/panels/ConsolePanel'
+import { CookiesPanel } from '@/components/panels/CookiesPanel'
 import { ExceptionsPanel } from '@/components/panels/ExceptionsPanel'
 import { WebSocketPanel } from '@/components/panels/WebSocketPanel'
 import { RepeaterPanel } from '@/components/repeater/RepeaterPanel'
@@ -10,7 +11,7 @@ import { useResizable } from '@/hooks/use-resizable'
 import { useRepeaterStore } from '@/stores/repeater'
 import { useTrafficStore } from '@/stores/traffic'
 
-type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater'
+type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage'
 
 interface FloatingChipsProps {
   openPanel: PanelId | null
@@ -100,7 +101,8 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
     console: 'Console',
     exceptions: 'Exceptions',
     websocket: 'WebSocket',
-    repeater: 'Repeater'
+    repeater: 'Repeater',
+    storage: 'Storage'
   }
 
   // Chips ride above the bottom panel using the SAME spring as the panel,
@@ -153,6 +155,11 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
           }
           onClick={() => toggle('repeater')}
         />
+        <ChipButton
+          label="Storage"
+          active={openPanel === 'storage'}
+          onClick={() => toggle('storage')}
+        />
       </motion.div>
 
       {/* Bottom slide panel */}
@@ -196,6 +203,7 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
               {openPanel === 'exceptions' && <ExceptionsPanel />}
               {openPanel === 'websocket' && <WebSocketPanel />}
               {openPanel === 'repeater' && <RepeaterPanel />}
+              {openPanel === 'storage' && <CookiesPanel />}
             </div>
           </motion.div>
         )}
