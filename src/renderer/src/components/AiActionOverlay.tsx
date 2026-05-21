@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { AiAction } from '../../../preload'
 
@@ -24,6 +24,9 @@ const KIND_TAG: Record<AiAction['kind'], string> = {
 
 const MAX_LOG = 5
 const TOAST_TTL = 1800
+const POS_KEY = 'rev:ai-overlay-pos'
+const HIDDEN_KEY = 'rev:ai-overlay-hidden'
+const DEFAULT_POS = { x: 12, y: 12 }
 
 interface ToastedAction extends AiAction {
   id: number
@@ -31,10 +34,34 @@ interface ToastedAction extends AiAction {
 
 let nextId = 1
 
+function loadPos(): { x: number; y: number } {
+  try {
+    const raw = localStorage.getItem(POS_KEY)
+    if (!raw) return DEFAULT_POS
+    const p = JSON.parse(raw)
+    if (typeof p?.x !== 'number' || typeof p?.y !== 'number') return DEFAULT_POS
+    return { x: Math.max(0, p.x), y: Math.max(0, p.y) }
+  } catch {
+    return DEFAULT_POS
+  }
+}
+
+function loadHidden(): boolean {
+  try {
+    return localStorage.getItem(HIDDEN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export function AiActionOverlay() {
   const [recent, setRecent] = useState<ToastedAction[]>([])
   const [active, setActive] = useState<ToastedAction | null>(null)
+  const [pos, setPos] = useState<{ x: number; y: number }>(loadPos)
+  const [hidden, setHidden] = useState<boolean>(loadHidden)
+  const [dragging, setDragging] = useState(false)
   const activeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dragOffset = useRef<{ dx: number; dy: number } | null>(null)
 
   useEffect(() => {
     const off = window.rev.aiAction.subscribe((action) => {
@@ -50,32 +77,54 @@ export function AiActionOverlay() {
     }
   }, [])
 
+  // Persist position whenever it changes (debounced via rAF on drag end).
+  useEffect(() => {
+    try {
+      localStorage.setItem(POS_KEY, JSON.stringify(pos))
+    } catch {}
+  }, [pos])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HIDDEN_KEY, hidden ? '1' : '0')
+    } catch {}
+  }, [hidden])
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragOffset.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y }
+    setDragging(true)
+  }, [pos.x, pos.y])
+
+  useEffect(() => {
+    if (!dragging) return
+    const onMove = (e: MouseEvent) => {
+      if (!dragOffset.current) return
+      const nx = Math.max(0, e.clientX - dragOffset.current.dx)
+      const ny = Math.max(0, e.clientY - dragOffset.current.dy)
+      // Clamp to viewport so it can't be lost off-screen.
+      const maxX = window.innerWidth - 60
+      const maxY = window.innerHeight - 30
+      setPos({ x: Math.min(nx, maxX), y: Math.min(ny, maxY) })
+    }
+    const onUp = () => {
+      setDragging(false)
+      dragOffset.current = null
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [dragging])
+
   return (
     <>
-      {active && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 8,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '6px 12px',
-            borderRadius: 999,
-            background: 'rgba(20, 20, 22, 0.92)',
-            color: '#fff',
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: 0.2,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
-            backdropFilter: 'blur(8px)',
-            pointerEvents: 'none',
-            animation: 'rev-ai-pop 180ms ease-out'
-          }}
-        >
+      {/* Centered active-action toast — separate from the log panel,
+          stays ephemeral and non-interactive. */}
+      {active && !hidden && (
+        <div style={toastStyle}>
           <span
             style={{
               width: 8,
@@ -108,20 +157,95 @@ export function AiActionOverlay() {
         </div>
       )}
 
-      {recent.length > 0 && (
+      {/* Hidden state — minimal "show me" chip pinned to last known position. */}
+      {hidden && (
+        <button
+          onClick={() => setHidden(false)}
+          style={{
+            position: 'absolute',
+            left: pos.x,
+            top: pos.y,
+            zIndex: 999,
+            background: 'rgba(20,20,22,0.78)',
+            color: '#aaa',
+            border: '1px solid #333',
+            padding: '3px 9px',
+            borderRadius: 999,
+            fontSize: 10,
+            fontFamily: 'ui-monospace,Menlo,monospace',
+            cursor: 'pointer',
+            backdropFilter: 'blur(8px)'
+          }}
+          title="Show AI activity"
+        >
+          ◷ AI {recent.length > 0 ? recent.length : ''}
+        </button>
+      )}
+
+      {/* Recent log — floating panel, draggable, hideable. */}
+      {!hidden && recent.length > 0 && (
         <div
           style={{
             position: 'absolute',
-            top: 12,
-            left: 12,
+            left: pos.x,
+            top: pos.y,
             zIndex: 999,
             display: 'flex',
             flexDirection: 'column',
-            gap: 4,
-            maxWidth: 320,
-            pointerEvents: 'none'
+            maxWidth: 360,
+            background: 'rgba(18,18,20,0.82)',
+            border: '1px solid #2a2a2a',
+            borderRadius: 6,
+            backdropFilter: 'blur(8px)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+            userSelect: dragging ? 'none' : 'auto',
+            // Allow clicks on this floating panel so the X / drag handle work.
+            // (Previous version had pointerEvents: 'none' for the whole stack.)
+            pointerEvents: 'auto'
           }}
         >
+          {/* Drag handle / header */}
+          <div
+            onMouseDown={onDragStart}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '3px 6px 3px 8px',
+              borderBottom: '1px solid #1f1f1f',
+              cursor: dragging ? 'grabbing' : 'grab',
+              fontSize: 10,
+              color: '#888',
+              fontFamily: 'ui-monospace,Menlo,monospace',
+              letterSpacing: 0.4
+            }}
+          >
+            <span style={{ flex: 1, textTransform: 'uppercase' }}>
+              AI activity · {recent.length}
+            </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setRecent([])
+              }}
+              title="Clear"
+              style={hdrBtn}
+            >
+              ⌫
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setHidden(true)
+              }}
+              title="Hide"
+              style={hdrBtn}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Rows — no more colored left border. The KIND tag still carries the color. */}
           {recent.map((a) => (
             <div
               key={a.id}
@@ -130,13 +254,11 @@ export function AiActionOverlay() {
                 alignItems: 'center',
                 gap: 6,
                 padding: '4px 8px',
-                borderRadius: 4,
-                background: 'rgba(20,20,22,0.78)',
                 color: '#ddd',
                 fontSize: 11,
                 fontFamily: 'ui-monospace,Menlo,monospace',
-                borderLeft: `2px solid ${KIND_COLOR[a.kind]}`,
-                opacity: a.id === active?.id ? 1 : 0.65
+                opacity: a.id === active?.id ? 1 : 0.65,
+                borderBottom: '1px solid rgba(255,255,255,0.03)'
               }}
             >
               <span
@@ -165,6 +287,38 @@ export function AiActionOverlay() {
       `}</style>
     </>
   )
+}
+
+const toastStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 8,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  zIndex: 1000,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '6px 12px',
+  borderRadius: 999,
+  background: 'rgba(20, 20, 22, 0.92)',
+  color: '#fff',
+  fontSize: 12,
+  fontWeight: 600,
+  letterSpacing: 0.2,
+  boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+  backdropFilter: 'blur(8px)',
+  pointerEvents: 'none',
+  animation: 'rev-ai-pop 180ms ease-out'
+}
+
+const hdrBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  color: '#888',
+  cursor: 'pointer',
+  fontSize: 11,
+  padding: '0 4px',
+  lineHeight: 1
 }
 
 function truncate(s: string, n: number): string {
