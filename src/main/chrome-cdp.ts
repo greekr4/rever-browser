@@ -306,6 +306,64 @@ const WEBGL_IDENTITY = pickWebGLIdentity()
 // flags because internal behaviour stops matching the claimed version.
 const SPOOFED_CHROME_VERSION = '146.0.7680.188'
 const SPOOFED_CHROME_MAJOR = '146'
+
+// ── JS dialog override ──────────────────────────────────────────────────────
+// `alert()` / `confirm()` / `prompt()` block the renderer's main thread,
+// which freezes every subsequent CDP command (including AI tool calls).
+// Override them with non-blocking versions that record into a global
+// history array — the page never sees a real modal and execution continues.
+//
+// This complements the Page.javaScriptDialogOpening handler below; the
+// override script runs first (so the dialog never opens), and the CDP
+// handler is the safety net for anything that slips through.
+const DIALOG_OVERRIDE_SCRIPT = `
+(() => {
+  if (window.__revDialogOverride) return;
+  window.__revDialogOverride = true;
+  window.__revDialogHistory = [];
+  function record(type, message, defaultValue) {
+    const entry = { type, message: String(message ?? ''), ts: Date.now() };
+    if (defaultValue !== undefined) entry.default = String(defaultValue);
+    window.__revDialogHistory.push(entry);
+    if (window.__revDialogHistory.length > 100) window.__revDialogHistory.shift();
+    try { console.log('[rev-' + type + ']', message); } catch (e) {}
+  }
+  window.alert = function(msg) { record('alert', msg); };
+  window.confirm = function(msg) { record('confirm', msg); return true; };
+  window.prompt = function(msg, def) { record('prompt', msg, def); return def == null ? '' : String(def); };
+})();
+`
+
+// Whether to auto-dismiss any native CDP-level dialog that slips past the
+// script override. Defaults true; UI/MCP toggle exposed via getter/setter.
+let dialogAutoDismiss = true
+
+export function getDialogAutoDismiss(): boolean {
+  return dialogAutoDismiss
+}
+
+export function setDialogAutoDismiss(v: boolean): void {
+  dialogAutoDismiss = v
+}
+
+export interface DialogRecord {
+  ts: number
+  type: 'alert' | 'confirm' | 'prompt' | 'beforeunload'
+  message: string
+  url: string
+}
+
+const dialogHistory: DialogRecord[] = []
+const MAX_DIALOG_HISTORY = 100
+
+export function getDialogHistory(limit = 50): DialogRecord[] {
+  return dialogHistory.slice(-limit)
+}
+
+export function clearDialogHistory(): void {
+  dialogHistory.length = 0
+}
+
 const STEALTH_INIT_SCRIPT = `
 (() => {
   const SPOOFED_VERSION = ${JSON.stringify(SPOOFED_CHROME_VERSION)}
@@ -1032,13 +1090,20 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
       await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
         source: VISUALIZER_INIT_SCRIPT
       })
-      // Inject stealth + visualizer into the already-loaded document too, so
-      // they're available immediately on the very first page (before any navigation).
+      await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+        source: DIALOG_OVERRIDE_SCRIPT
+      })
+      // Inject stealth + visualizer + dialog override into the already-loaded
+      // document too, so they're available immediately on the very first page
+      // (before any navigation).
       await dbg
         .sendCommand('Runtime.evaluate', { expression: STEALTH_INIT_SCRIPT })
         .catch(() => {})
       await dbg
         .sendCommand('Runtime.evaluate', { expression: VISUALIZER_INIT_SCRIPT })
+        .catch(() => {})
+      await dbg
+        .sendCommand('Runtime.evaluate', { expression: DIALOG_OVERRIDE_SCRIPT })
         .catch(() => {})
       // Apply user-defined injected snippets
       if (loadInjectionsHook) {
@@ -1204,6 +1269,37 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
         exception: p.exceptionDetails.exception,
         stackTrace: p.exceptionDetails.stackTrace
       })
+    } else if (method === 'Page.javaScriptDialogOpening') {
+      // Safety net for any native dialog that bypassed the script override
+      // (e.g. dialogs triggered before our addScriptToEvaluateOnNewDocument
+      // got a chance to run, or from `<a target=_blank>` flows in some
+      // Chromium versions). Capture the content, then dismiss.
+      const p = params as {
+        url: string
+        message: string
+        type: 'alert' | 'confirm' | 'prompt' | 'beforeunload'
+        defaultPrompt?: string
+      }
+      dialogHistory.push({
+        ts: Date.now(),
+        type: p.type,
+        message: p.message ?? '',
+        url: p.url ?? ''
+      })
+      if (dialogHistory.length > MAX_DIALOG_HISTORY) dialogHistory.shift()
+      appendConsole({
+        ts: Date.now(),
+        type: 'dialog',
+        text: `[${p.type}] ${p.message ?? ''}`
+      })
+      if (dialogAutoDismiss) {
+        void dbg
+          .sendCommand('Page.handleJavaScriptDialog', {
+            accept: true,
+            ...(p.type === 'prompt' ? { promptText: p.defaultPrompt ?? '' } : {})
+          })
+          .catch((e) => console.error('[cdp] handleJavaScriptDialog:', e))
+      }
     } else if (method === 'Debugger.paused') {
       const p = params as DebuggerPausedParams
       debuggerPaused = { callFrames: p.callFrames, reason: p.reason }

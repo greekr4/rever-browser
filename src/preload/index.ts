@@ -198,10 +198,71 @@ const api = {
       ipcRenderer.invoke('console:exceptions', limit),
     clear: (): Promise<void> => ipcRenderer.invoke('console:clear')
   },
+  dialog: {
+    getSettings: (): Promise<{
+      autoDismiss: boolean
+      history: Array<{ ts: number; type: string; message: string; url: string }>
+    }> => ipcRenderer.invoke('dialog:get-settings'),
+    setAutoDismiss: (enabled: boolean): Promise<{ autoDismiss: boolean }> =>
+      ipcRenderer.invoke('dialog:set-auto-dismiss', enabled),
+    history: (limit?: number): Promise<
+      Array<{ ts: number; type: string; message: string; url: string }>
+    > => ipcRenderer.invoke('dialog:history', limit),
+    clearHistory: (): Promise<boolean> => ipcRenderer.invoke('dialog:clear-history')
+  },
   ws: {
     list: (): Promise<StoredRequestSummary[]> => ipcRenderer.invoke('ws:list'),
     frames: (requestId: string, since?: number, limit?: number): Promise<WSFrame[]> =>
       ipcRenderer.invoke('ws:frames', requestId, since, limit)
+  },
+  storage: {
+    cookies: (urls?: string[]): Promise<{
+      cookies: Array<{
+        name: string
+        value: string
+        domain: string
+        path: string
+        expires?: number
+        secure?: boolean
+        httpOnly?: boolean
+        sameSite?: string
+      }>
+      origin: string | null
+    }> => ipcRenderer.invoke('storage:cookies', urls),
+    cookieSet: (params: {
+      name: string
+      value: string
+      url?: string
+      domain?: string
+      path?: string
+      secure?: boolean
+      httpOnly?: boolean
+      sameSite?: 'Strict' | 'Lax' | 'None'
+      expires?: number
+    }): Promise<{ success: boolean }> => ipcRenderer.invoke('storage:cookie-set', params),
+    cookieDelete: (params: {
+      name: string
+      url?: string
+      domain?: string
+      path?: string
+    }): Promise<boolean> => ipcRenderer.invoke('storage:cookie-delete', params),
+    localGet: (): Promise<Record<string, string>> => ipcRenderer.invoke('storage:local-get'),
+    localSet: (key: string, value: string): Promise<boolean> =>
+      ipcRenderer.invoke('storage:local-set', key, value),
+    localDelete: (key: string): Promise<boolean> => ipcRenderer.invoke('storage:local-delete', key),
+    localClear: (): Promise<boolean> => ipcRenderer.invoke('storage:local-clear'),
+    sessionGet: (): Promise<Record<string, string>> => ipcRenderer.invoke('storage:session-get'),
+    sessionSet: (key: string, value: string): Promise<boolean> =>
+      ipcRenderer.invoke('storage:session-set', key, value),
+    sessionDelete: (key: string): Promise<boolean> =>
+      ipcRenderer.invoke('storage:session-delete', key),
+    sessionClear: (): Promise<boolean> => ipcRenderer.invoke('storage:session-clear'),
+    persistenceGet: (): Promise<{ enabled: boolean; snapshotCount: number }> =>
+      ipcRenderer.invoke('cookie-persistence:get'),
+    persistenceSet: (enabled: boolean): Promise<{ enabled: boolean }> =>
+      ipcRenderer.invoke('cookie-persistence:set', enabled),
+    persistenceSnapshot: (): Promise<{ snapshotCount: number }> =>
+      ipcRenderer.invoke('cookie-persistence:snapshot')
   },
   onReloadRequest: (handler: (opts: { ignoreCache: boolean }) => void): (() => void) => {
     const listener = (_e: unknown, opts: { ignoreCache: boolean }) => handler(opts)
