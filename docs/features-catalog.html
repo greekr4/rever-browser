@@ -1,0 +1,1134 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>rever-browser · 신규 기능 카탈로그</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --bg: #0e0e0e;
+    --bg-2: #181818;
+    --bg-3: #222;
+    --border: #2a2a2a;
+    --text: #ebebeb;
+    --dim: #9b9b9b;
+    --accent: #6ee7b7;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --good: #34d399;
+    --code-bg: #111;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --kr: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--text); margin: 0; }
+  body {
+    font: 14.5px/1.7 var(--kr);
+    padding: 36px 44px 100px;
+    max-width: 1100px;
+    margin: 0 auto;
+    word-break: keep-all;
+  }
+  h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.02em; font-weight: 700; }
+  h1 small { color: var(--dim); font-weight: 400; font-size: 14px; margin-left: 10px; }
+  h2 {
+    font-size: 19px;
+    margin: 44px 0 14px;
+    padding: 8px 0 6px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+  h3 { font-size: 16px; margin: 0; letter-spacing: -0.01em; }
+  p { color: var(--text); margin: 8px 0; }
+  a { color: var(--accent); }
+  code, pre { font-family: var(--mono); }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 13px 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.65;
+    color: #d8d8d8;
+  }
+  code:not(pre code) {
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 12.5px;
+    border: 1px solid var(--border);
+    color: #d8d8d8;
+  }
+  .lead {
+    color: var(--dim);
+    margin: 6px 0 28px;
+    font-size: 14px;
+    line-height: 1.75;
+  }
+  .toc {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 22px;
+    margin: 24px 0;
+  }
+  .toc-title {
+    font-size: 12px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+  }
+  .toc-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px 24px;
+  }
+  .toc a {
+    color: var(--text);
+    text-decoration: none;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 13.5px;
+  }
+  .toc a:hover { color: var(--accent); }
+  .toc .num {
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    min-width: 22px;
+    text-align: right;
+  }
+
+  .feat {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px 26px;
+    margin: 22px 0;
+  }
+  .feat header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .feat header h3 { flex: 0 0 auto; }
+  .id {
+    font-family: var(--mono);
+    color: var(--dim);
+    font-size: 11.5px;
+    margin-left: 4px;
+  }
+  .tier {
+    display: inline-block;
+    background: #1f3a3a;
+    color: var(--accent);
+    border: 1px solid #2a5050;
+    padding: 1px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+  }
+  .tier.t2 { background: #2d2d3a; color: #c4b5fd; border-color: #4040d0; }
+  .tier.t3 { background: #322522; color: #fb923c; border-color: #6e3a26; }
+  .tier.t4 { background: #1e1e1e; color: var(--dim); border-color: #333; }
+  .surface { display: inline-flex; gap: 4px; margin-left: auto; }
+  .pill {
+    background: var(--bg-3);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+  }
+  .pill.mcp { background: #1a2a2a; color: #6ee7b7; border-color: #285050; }
+  .pill.ui  { background: #2a1a2a; color: #f0abfc; border-color: #503050; }
+
+  .feat-desc {
+    color: #d8d8d8;
+    margin: 0 0 14px;
+    line-height: 1.75;
+    font-size: 14px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 14px;
+    margin: 10px 0;
+    align-items: start;
+  }
+  .grid .label {
+    color: var(--dim);
+    font-size: 11.5px;
+    font-weight: 500;
+    padding-top: 4px;
+    letter-spacing: 0.02em;
+  }
+  table.signature {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    font-family: var(--mono);
+  }
+  table.signature td {
+    padding: 5px 9px;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border);
+  }
+  table.signature td.k { color: var(--accent); white-space: nowrap; font-weight: 500; }
+  table.signature td.t { color: var(--warn); white-space: nowrap; }
+  table.signature td.d { color: #c8c8c8; font-family: var(--kr); font-size: 12.5px; }
+
+  .chal {
+    display: inline-block;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 8px;
+    margin: 2px 4px 2px 0;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--dim);
+  }
+  .chal strong { color: var(--text); font-weight: 600; }
+  .chal .kr {
+    font-family: var(--kr);
+    color: #b0b0b0;
+    margin-left: 4px;
+    font-size: 11.5px;
+  }
+
+  .mock {
+    background: #0c0c0c;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .mock-head {
+    background: #161616;
+    padding: 7px 13px;
+    font-size: 11.5px;
+    color: var(--dim);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .mock-head .dot { width: 9px; height: 9px; border-radius: 50%; background: #333; }
+  .mock-body { padding: 12px; font-family: var(--mono); font-size: 11.5px; color: #ccc; }
+  .row {
+    display: grid;
+    grid-template-columns: 130px 1fr 170px 60px;
+    gap: 6px;
+    padding: 5px 6px;
+    border-bottom: 1px solid #1f1f1f;
+  }
+  .row strong { color: #ddd; }
+  .row .v { color: #b9b9b9; }
+  .row .tag {
+    font-size: 10px;
+    background: #222;
+    border: 1px solid #333;
+    padding: 0 5px;
+    border-radius: 3px;
+    margin-right: 3px;
+  }
+  .chip-bar { display: flex; gap: 6px; padding: 9px 0; }
+  .chip {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #ddd;
+    font-family: var(--kr);
+  }
+  .chip.active { background: #244; border-color: #377; color: var(--accent); }
+
+  .legend {
+    color: var(--dim);
+    font-size: 12.5px;
+    margin-top: 24px;
+    text-align: center;
+  }
+  .kpi {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 10px 0 18px;
+  }
+  .kpi div {
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .kpi div b { color: var(--accent); font-family: var(--mono); font-size: 16px; margin-right: 4px; }
+
+  blockquote {
+    margin: 16px 0 0;
+    padding: 12px 16px;
+    border-left: 3px solid var(--accent);
+    background: rgba(110, 231, 183, 0.06);
+    font-size: 13px;
+    color: #c8c8c8;
+    border-radius: 0 6px 6px 0;
+    line-height: 1.75;
+  }
+  blockquote b { color: var(--accent); }
+
+  .cover-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 8px 0 18px; }
+  .cover-table th, .cover-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  .cover-table th { background: var(--bg-2); font-weight: 500; color: var(--dim); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .cover-table td.n { text-align: right; font-family: var(--mono); color: var(--accent); width: 80px; }
+  .cover-table td.tool { font-family: var(--mono); font-size: 12.5px; color: #d8d8d8; }
+  .cover-table td.tool b { color: var(--accent); font-weight: 600; }
+  .legend-bar { display: flex; gap: 8px; margin: 4px 0 18px; font-size: 11.5px; color: var(--dim); flex-wrap: wrap; }
+
+  .step { margin: 4px 0; }
+  .step .num {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    text-align: center;
+    background: #1f3a3a;
+    color: var(--accent);
+    border-radius: 50%;
+    margin-right: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    vertical-align: middle;
+  }
+
+  .why {
+    background: #15191f;
+    border: 1px solid #243040;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 10px 0 14px;
+    font-size: 13px;
+    color: #c8c8c8;
+  }
+  .why-label {
+    color: #93c5fd;
+    font-weight: 600;
+    margin-right: 6px;
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<h1>rever-browser 신규 기능 카탈로그 <small>webhacking.kr 분석 기반 · 17개 기능</small></h1>
+<p class="lead">
+  <a href="https://webhacking.kr/chall.php" target="_blank">webhacking.kr/chall.php</a>의
+  60개 챌린지를 모두 분석해서 거기서 요구되는 기법들을
+  <strong>이 브라우저(rever-browser)에 붙일 기능</strong>으로 도출한 결과입니다.
+  각 항목마다 <em>왜 필요한지 · MCP 툴 시그니처 · AI 에이전트 호출 예시 · 매핑된 챌린지</em>를 보여줍니다.
+  Tier 1-1 (쿠키 / 스토리지 에디터)은 UI까지 함께 구현되어 있고, 나머지는 에이전트가 MCP로 호출하는 형태입니다.
+</p>
+
+<div class="kpi">
+  <div><b>17</b>개 기능</div>
+  <div><b>40+</b>개 신규 MCP 툴</div>
+  <div><b>1</b>개 UI 패널 (Storage)</div>
+  <div><b>~95%</b> 챌린지 커버리지</div>
+  <div><b>13</b>개 기법 카테고리 대응</div>
+</div>
+
+<div class="toc">
+  <div class="toc-title">목차</div>
+  <div class="toc-grid">
+    <a href="#f1"><span class="num">01</span>쿠키 / 스토리지 에디터 <span class="tier">T1</span></a>
+    <a href="#f2"><span class="num">02</span>헤더 프로파일 주입기 <span class="tier">T1</span></a>
+    <a href="#f3"><span class="num">03</span>HAR 익스포트 <span class="tier">T1</span></a>
+    <a href="#f4"><span class="num">04</span>인트루더 / 블라인드 오라클 <span class="tier t2">T2 ★</span></a>
+    <a href="#f5"><span class="num">05</span>로컬 오버라이드 <span class="tier t2">T2</span></a>
+    <a href="#f6"><span class="num">06</span>병렬 버스트 (레이스) <span class="tier t2">T2</span></a>
+    <a href="#f7"><span class="num">07</span>웹소켓 송신기 <span class="tier t2">T2</span></a>
+    <a href="#f8"><span class="num">08</span>크립토 랩 <span class="tier t3">T3</span></a>
+    <a href="#f9"><span class="num">09</span>역난독화 v2 <span class="tier t3">T3</span></a>
+    <a href="#f10"><span class="num">10</span>저장형 페이로드 테스터 <span class="tier t3">T3</span></a>
+    <a href="#f11"><span class="num">11</span>CRLF 인젝션 테스터 <span class="tier t3">T3</span></a>
+    <a href="#f12"><span class="num">12</span>경로 / 누출 프로브 <span class="tier t3">T3</span></a>
+    <a href="#f17"><span class="num">13</span>LFI / php-filter 프로브 <span class="tier t3">T3</span></a>
+    <a href="#f13"><span class="num">14</span>파인딩 노트북 <span class="tier t4">T4</span></a>
+    <a href="#f14"><span class="num">15</span>보안 헤더 인스펙터 <span class="tier t4">T4</span></a>
+    <a href="#f15"><span class="num">16</span>DOM 라이브 에디터 <span class="tier t4">T4</span></a>
+    <a href="#f16"><span class="num">17</span>서비스 워커 인스펙터 <span class="tier t4">T4</span></a>
+  </div>
+  <div class="legend-bar">
+    <span><span class="tier">T1</span> 핵심 / 항상 쓰임</span>
+    <span><span class="tier t2">T2</span> 시그니처 기능</span>
+    <span><span class="tier t3">T3</span> 차별화 도구</span>
+    <span><span class="tier t4">T4</span> 보조 / 인프라</span>
+    <span><span class="pill mcp">MCP</span> 에이전트 호출</span>
+    <span><span class="pill ui">UI</span> 사람 직접 클릭</span>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 1. Cookies / Storage -->
+<section class="feat" id="f1">
+  <header>
+    <h3>01. 쿠키 / 스토리지 에디터</h3>
+    <span class="id">tools/storage.ts · panels/CookiesPanel.tsx</span>
+    <span class="tier">Tier 1</span>
+    <span class="surface"><span class="pill mcp">MCP</span><span class="pill ui">UI</span></span>
+  </header>
+  <p class="feat-desc">
+    활성 페이지의 쿠키와 <code>localStorage</code>·<code>sessionStorage</code>를
+    표 형태로 보면서 인라인 편집할 수 있는 패널입니다.
+    더블클릭으로 값 수정, 모달에서 <code>Secure</code>·<code>HttpOnly</code>·<code>SameSite</code>·<code>expires</code>까지 변경.
+    AI 에이전트는 같은 동작을 <code>cookie_set</code>으로 호출합니다.
+  </p>
+  <div class="why">
+    <span class="why-label">왜 필요한가</span>
+    쿠키·세션 변조는 거의 모든 인증 우회 챌린지의 첫 단계입니다.
+    DevTools는 클릭 한 번에 값만 바꿀 수 있지만, base64/JWT 인코딩된 값을 디코딩하며 편집하거나,
+    AI에게 "user_lv 쿠키 11로 바꿔줘"라고 자연어로 시키려면 전용 surface가 필요합니다.
+  </div>
+
+  <div class="grid">
+    <div class="label">MCP 툴</div>
+    <div>
+      <table class="signature">
+        <tr><td class="k">cookie_set</td><td class="t">(name, value, url?, domain?, path?, secure?, httpOnly?, sameSite?, expires?)</td></tr>
+        <tr><td class="k">cookie_delete</td><td class="t">(name, url?, domain?, path?)</td></tr>
+        <tr><td class="k">cookie_list</td><td class="t">(urls?)</td></tr>
+        <tr><td class="k">local_storage_get/set/delete/clear</td><td class="t">()</td></tr>
+        <tr><td class="k">session_storage_get/set/delete/clear</td><td class="t">()</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="label">사용 예시</div>
+    <div>
+<pre>// 사용자 발화
+"이 페이지의 user_lv 쿠키를 11로 바꾸고 새로고침해줘"
+
+// 에이전트 동작
+cookie_set({ name: "user_lv", value: "11" })
+browser_navigate({ url: location.href })</pre>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div>
+      <span class="chal"><strong>old-1</strong><span class="kr">user_lv 오버플로</span></span>
+      <span class="chal"><strong>old-19</strong><span class="kr">클라이언트 검증만</span></span>
+      <span class="chal"><strong>old-24</strong><span class="kr">PHP extract() 우회</span></span>
+      <span class="chal"><strong>old-32</strong><span class="kr">투표 anti-replay</span></span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="label">UI 미리보기</div>
+    <div class="mock">
+      <div class="mock-head">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <strong style="color:#ddd">Storage</strong>
+        <span style="margin-left:auto;color:#666">https://webhacking.kr</span>
+      </div>
+      <div class="mock-body">
+        <div class="chip-bar">
+          <span class="chip active">Cookies 4</span>
+          <span class="chip">localStorage 2</span>
+          <span class="chip">sessionStorage 0</span>
+        </div>
+        <div class="row" style="background:#161616;color:#888;border:0">
+          <div>이름</div><div>값</div><div>플래그 / 만료</div><div></div>
+        </div>
+        <div class="row">
+          <div><strong>user_lv</strong></div>
+          <div class="v">1</div>
+          <div><span class="tag">Lax</span> 세션</div>
+          <div>✎  ✕</div>
+        </div>
+        <div class="row">
+          <div><strong>PHPSESSID</strong></div>
+          <div class="v">2k9qj…h7m</div>
+          <div><span class="tag">HttpOnly</span><span class="tag">Lax</span></div>
+          <div>✎  ✕</div>
+        </div>
+        <div class="row">
+          <div><strong>flag</strong></div>
+          <div class="v">eyJhbGciOi…</div>
+          <div>세션</div>
+          <div>✎  ✕</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="feat" id="f2">
+  <header>
+    <h3>02. 헤더 프로파일 주입기</h3>
+    <span class="id">tools/headers.ts</span>
+    <span class="tier">Tier 1</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    자주 쓰는 HTTP 헤더 조합을 "프리셋"으로 저장해두고, 한 번의 호출로
+    이후의 모든 매칭 요청에 자동 주입합니다.
+    내부적으로는 <code>Fetch.requestPaused</code> 인터셉트 룰을 등록하는 방식입니다.
+  </p>
+  <div class="why">
+    <span class="why-label">왜 필요한가</span>
+    "관리자는 내부 IP에서만 접근 가능" 같은 게이트를 우회하려면 <code>X-Forwarded-For: 127.0.0.1</code>을
+    매번 수동으로 넣어줘야 합니다. 프리셋으로 만들어두면 에이전트가 "트러스트된 IP로 위장해줘"라는 한 줄
+    지시만으로 활성화할 수 있고, 페이지 이동에도 유지됩니다.
+  </div>
+
+  <div class="grid">
+    <div class="label">MCP 툴</div>
+    <div>
+      <table class="signature">
+        <tr><td class="k">header_preset_list</td><td class="t">()</td></tr>
+        <tr><td class="k">header_preset_save</td><td class="t">(name, headers, urlPattern?)</td></tr>
+        <tr><td class="k">header_preset_apply</td><td class="t">(name)</td></tr>
+        <tr><td class="k">header_preset_disable</td><td class="t">(name)</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="label">빌트인 프리셋</div>
+    <div>
+      <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.85">
+        <li><b style="color:var(--accent);font-family:var(--mono)">localhost-trust</b> — X-Forwarded-For / X-Real-IP / X-Originating-IP = 127.0.0.1 (내부 IP 화이트리스트 우회)</li>
+        <li><b style="color:var(--accent);font-family:var(--mono)">mobile-safari-ua</b> — iPhone Safari 17 UA (모바일 전용 페이지 강제 진입)</li>
+        <li><b style="color:var(--accent);font-family:var(--mono)">googlebot</b> — Googlebot 2.1 UA (페이월/봇 화이트리스트)</li>
+        <li><b style="color:var(--accent);font-family:var(--mono)">referer-trust</b> — Referer: https://www.google.com/</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="label">사용 예시</div>
+    <div><pre>// 사용자 발화
+"이 페이지는 내부 IP만 통과시키는데 우회해줘"
+
+// 에이전트
+header_preset_apply({ name: "localhost-trust" })
+browser_navigate({ url })
+// 이제부터 모든 요청에 X-Forwarded-For: 127.0.0.1 자동 첨부</pre></div>
+  </div>
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div>
+      <span class="chal"><strong>old-8</strong><span class="kr">UA 기반 SQLi</span></span>
+      <span class="chal"><strong>old-33</strong><span class="kr">멀티스테이지 헤더</span></span>
+      <span class="chal"><strong>old-38</strong><span class="kr">admin viewer 로그</span></span>
+      <span class="chal"><strong>old-52</strong><span class="kr">Basic-Auth + 내부 IP</span></span>
+      <span class="chal"><strong>old-11</strong><span class="kr">regex 헤더 게이트</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="feat" id="f3">
+  <header>
+    <h3>03. HAR 익스포트</h3>
+    <span class="id">tools/har.ts</span>
+    <span class="tier">Tier 1</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    캡처한 트래픽 전부를 HAR 1.2 JSON 포맷으로 내보냅니다.
+    Burp Suite, Caido, 브라우저 DevTools 등 외부 도구에서 "Import HAR"로 바로 열 수 있어서,
+    rever-browser에서 캡처만 한 뒤 분석은 익숙한 다른 툴로 넘기는 워크플로우가 가능합니다.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature"><tr><td class="k">har_export</td><td class="t">(host?, limit?, includeBodies?)</td></tr></table></div>
+  </div>
+  <div class="grid">
+    <div class="label">사용 예시</div>
+    <div><pre>"이 세션 트래픽 전부 HAR로 뽑아줘"
+→ har_export({ limit: 500 })
+→ HAR JSON 반환 → 터미널 파이프로 .har 파일 저장 후 Burp Suite에 import</pre></div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="feat" id="f4">
+  <header>
+    <h3>04. 인트루더 / 블라인드 오라클 <span style="color:var(--accent);font-size:13px;margin-left:4px">★ 시그니처 기능</span></h3>
+    <span class="id">tools/intruder.ts</span>
+    <span class="tier t2">Tier 2</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    Burp Suite의 <em>Intruder</em>에 해당하는 자동 fuzzer입니다.
+    베이스 요청의 URL · body · 헤더에 마커 <code>§§</code>를 넣고 페이로드 리스트를 주면,
+    각 페이로드로 치환된 요청을 브라우저 컨텍스트에서 발사하여
+    <code>{status, length, durationMs, bodyHash}</code> 표를 돌려줍니다.
+  </p>
+  <div class="why">
+    <span class="why-label">왜 필요한가</span>
+    Blind SQL Injection은 응답 길이·상태 코드·응답 시간의 미세한 차이로
+    한 글자씩 데이터를 빼내야 합니다. 사람이 수동으로 할 수 없고,
+    Burp Intruder는 유료 (Community는 속도 제한). rever-browser에서
+    자연어 지시 한 줄로 같은 일을 할 수 있게 만드는 것이 핵심 차별점입니다.
+  </div>
+
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature">
+      <tr><td class="k">intruder_run</td><td class="t">(requestId, payloads, marker?, concurrency?, diffBaseline?)</td></tr>
+    </table></div>
+  </div>
+
+  <div class="grid">
+    <div class="label">진행 흐름</div>
+    <div>
+      <div class="step"><span class="num">1</span>Repeater에서 베이스 요청을 열고, 변조할 위치에 <code>§§</code> 마커 삽입</div>
+      <div class="step"><span class="num">2</span>저장된 <code>requestId</code>로 <code>intruder_run</code> 호출</div>
+      <div class="step"><span class="num">3</span>결과를 응답 길이 / 응답 시간 / 해시로 정렬하여 outlier 발견</div>
+      <div class="step"><span class="num">4</span>"이 글자가 정답" 확정 → 다음 자리로 자동 재귀</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="label">사용 예시</div>
+    <div><pre>// 사용자 발화
+"old-9의 blind SQLi로 admin 패스워드 첫글자만 알아내줘"
+
+// 에이전트
+intruder_run({
+  requestId: "req_abc",
+  payloads: ["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p"],
+  marker: "§§"
+})
+
+// 결과 (응답 길이 정렬)
+| payload | status | length | durationMs |
+|---------|--------|--------|------------|
+| p       | 200    | 4231   | 110        |  ← outlier!
+| a       | 200    | 4180   | 105        |
+| b       | 200    | 4180   | 108        |
+| ...     |        |        |            |
+
+→ "첫글자는 p" 확정. 두 번째 자리에 § 옮겨서 재귀.</pre></div>
+  </div>
+
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div>
+      <span class="chal"><strong>old-2</strong><span class="kr">쿠키 blind</span></span>
+      <span class="chal"><strong>old-9</strong><span class="kr">하드 blind</span></span>
+      <span class="chal"><strong>old-13</strong><span class="kr">100% blind</span></span>
+      <span class="chal"><strong>old-21</strong><span class="kr">로그인 blind</span></span>
+      <span class="chal"><strong>old-22</strong><span class="kr">MD5 reverse</span></span>
+      <span class="chal"><strong>old-29</strong><span class="kr">필터 blind</span></span>
+      <span class="chal"><strong>old-55</strong><span class="kr">LEFT() hex</span></span>
+      <span class="chal"><strong>old-57</strong><span class="kr">time-based</span></span>
+      <span class="chal" style="color:var(--accent)">+ 거의 모든 SQLi 챌린지</span>
+    </div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="feat" id="f5">
+  <header>
+    <h3>05. 로컬 오버라이드</h3>
+    <span class="id">tools/override.ts</span>
+    <span class="tier t2">Tier 2</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    특정 URL의 응답을 인라인 문자열 또는 로컬 파일로 대체합니다.
+    Chrome DevTools의 "Local Overrides"와 동일한 기능을 MCP로 노출.
+    안티봇 스크립트 무력화, 난독화된 번들을 deobfuscate한 버전으로 교체,
+    클라이언트 비교문 패치 등에 사용합니다.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature">
+      <tr><td class="k">override_add</td><td class="t">(urlPattern, body?, file?, mimeType?)</td></tr>
+      <tr><td class="k">override_list</td><td class="t">()</td></tr>
+      <tr><td class="k">override_remove</td><td class="t">(id)</td></tr>
+    </table></div>
+  </div>
+  <div class="grid">
+    <div class="label">사용 예시</div>
+    <div><pre>// "detect.js의 봇 탐지 함수를 빈 함수로 교체"
+override_add({
+  urlPattern: "*/detect.js",
+  body: "window.detectBot = () => false;",
+  mimeType: "application/javascript"
+})
+
+// 또는 로컬 파일로 통째 교체
+override_add({
+  urlPattern: "*/app.bundle.js",
+  file: "/Users/me/app.bundle.deob.js"
+})</pre></div>
+  </div>
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div>
+      <span class="chal"><strong>old-12</strong><span class="kr">JSFuck</span></span>
+      <span class="chal"><strong>old-34</strong><span class="kr">debugger 트랩</span></span>
+      <span class="chal"><strong>old-54</strong><span class="kr">async fetch leak</span></span>
+      <span class="chal" style="color:var(--accent)">+ 실전 안티봇 우회</span>
+    </div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="feat" id="f6">
+  <header>
+    <h3>06. 병렬 버스트 (레이스 컨디션)</h3>
+    <span class="id">tools/burst.ts</span>
+    <span class="tier t2">Tier 2</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    같은 요청을 N개 동시에 발사합니다.
+    응답들의 타이밍 히스토그램 (min / p50 / p95 / max)과 개별 응답 통계를 반환.
+    TOCTOU 버그 — 세션 파일 레이스, 쿠폰 중복 사용, 재고 음수, 동시 출금 — 탐지에 사용.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature"><tr><td class="k">burst_send</td><td class="t">(requestId, n, parallelism?, modifications?)</td></tr></table></div>
+  </div>
+  <div class="grid">
+    <div class="label">사용 예시</div>
+    <div><pre>// "이 응모 폼을 동시에 30번 쏴서 race 있나 봐줘"
+burst_send({ requestId, n: 30, parallelism: 30 })
+
+// 결과
+{
+  count: 30,
+  wallClockMs: 612,
+  statusCounts: { 200: 27, 409: 3 },   ← 정상이면 200=1, 409=29 이어야 함
+  timing: { minMs: 102, p50Ms: 215, p95Ms: 480, maxMs: 612 },
+  results: [...]
+}
+// 27번이 통과 → race 취약. 응모 27배 가능.</pre></div>
+  </div>
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div>
+      <span class="chal"><strong>old-37</strong><span class="kr">upload + delete 윈도우</span></span>
+      <span class="chal"><strong>old-60</strong><span class="kr">sleep() 세션 race</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="feat" id="f7">
+  <header>
+    <h3>07. 웹소켓 송신기</h3>
+    <span class="id">tools/websocket.ts (확장)</span>
+    <span class="tier t2">Tier 2</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    페이지 로드 시점에 <code>window.WebSocket</code> 생성자를 래핑해서,
+    이후 만들어지는 모든 소켓을 캡처합니다.
+    캡처된 소켓에 대해 임의의 프레임 (텍스트 또는 base64 바이너리)을 송신할 수 있습니다.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature">
+      <tr><td class="k">ws_capture_enable</td><td class="t">()</td><td class="d">래퍼 설치 (페이지 리로드 필요)</td></tr>
+      <tr><td class="k">ws_capture_list</td><td class="t">()</td><td class="d">id · url · readyState 반환</td></tr>
+      <tr><td class="k">ws_send</td><td class="t">(captureId, payload, asBinary?)</td><td class="d">프레임 전송</td></tr>
+    </table></div>
+  </div>
+  <div class="grid">
+    <div class="label">사용 예시</div>
+    <div><pre>// "socket.io로 admin 권한 메시지 보내봐"
+ws_capture_enable()
+browser_navigate({ url })            // 페이지 리로드
+ws_capture_list()
+// → [{ id: 0, url: "wss://target/socket", readyState: 1 }]
+
+ws_send({
+  captureId: 0,
+  payload: JSON.stringify({ type: "setRole", role: "admin" })
+})</pre></div>
+  </div>
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div><span class="chal"><strong>old-58</strong><span class="kr">Socket.IO admin role</span></span></div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="feat" id="f8">
+  <header>
+    <h3>08. 크립토 랩</h3>
+    <span class="id">tools/crypto.ts</span>
+    <span class="tier t3">Tier 3</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    인코딩 체인 디코더, 반복 해시, HMAC 계산, 그리고 PHP <code>==</code> /
+    <code>md5(...,true)</code> SQLi에 쓰이는 <em>매직 해시</em> 사전을 내장한 도구 모음입니다.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature">
+      <tr><td class="k">crypto_chain</td><td class="t">(input, transforms[])</td><td class="d">base64 / hex / url / rot13 / reverse / json / utf8 파이프라인</td></tr>
+      <tr><td class="k">hash_iter</td><td class="t">(input, algorithm, iterations, encoding?)</td><td class="d">SHA1 N회 같은 반복 해시</td></tr>
+      <tr><td class="k">hmac_compute</td><td class="t">(message, key, algorithm, encoding?)</td><td class="d">API 서명 검증</td></tr>
+      <tr><td class="k">magic_hash_lookup</td><td class="t">(algorithm?)</td><td class="d">"0e…숫자만" 매직 해시 + raw-md5 SQLi 페이로드</td></tr>
+    </table></div>
+  </div>
+  <div class="grid">
+    <div class="label">사용 예시</div>
+    <div><pre>// "old-6 쿠키 디코더 만들어줘. base64 후 rot13 같음"
+crypto_chain({
+  input: "QzNeJWJfMW1nb2EkbWg=",
+  transforms: ["base64-decode", "rot13"]
+})
+// → { final: "1qmZ.t<x.f]>...." }   (한 단계 더 reverse 필요해 보임)
+
+// "old-51 매직 해시 후보 보여줘"
+magic_hash_lookup({ algorithm: "md5" })
+// → [
+//     { value: "240610708", hash: "0e462097..." },
+//     { value: "QNKCDZO",  hash: "0e830400..." },
+//     ...
+//   ]</pre></div>
+  </div>
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div>
+      <span class="chal"><strong>old-4</strong><span class="kr">SHA1 × 500</span></span>
+      <span class="chal"><strong>old-6</strong><span class="kr">base64 + rot</span></span>
+      <span class="chal"><strong>old-22</strong><span class="kr">MD5 reverse</span></span>
+      <span class="chal"><strong>old-51</strong><span class="kr">매직 해시 SQLi</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="feat" id="f9">
+  <header>
+    <h3>09. 역난독화 v2</h3>
+    <span class="id">tools/deob.ts</span>
+    <span class="tier t3">Tier 3</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    JSFuck / AAencode / JJencode / Dean Edwards packer / hex-array / webpack 같은
+    난독화 패커를 자동 식별하고, 패커별 적절한 unpacker를 체인으로 적용합니다.
+    기존 <code>deobfuscate_script</code> (webcrack 한 발) 위에 패커 특화 레시피를 얹은 형태.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature">
+      <tr><td class="k">deob_detect</td><td class="t">(requestId)</td><td class="d">→ { packer, confidence, evidence[] }</td></tr>
+      <tr><td class="k">deob_auto</td><td class="t">(requestId)</td><td class="d">→ { detected, steps[], finalBytes, preview }</td></tr>
+    </table></div>
+  </div>
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div>
+      <span class="chal"><strong>old-12</strong><span class="kr">JSFuck/aa-encode</span></span>
+      <span class="chal"><strong>old-34</strong><span class="kr">packed JS</span></span>
+      <span class="chal" style="color:var(--accent)">+ 실전 PerimeterX / DataDome / Akamai</span>
+    </div>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="feat" id="f10">
+  <header>
+    <h3>10. 저장형 페이로드 테스터</h3>
+    <span class="id">tools/payload_probe.ts</span>
+    <span class="tier t3">Tier 3</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    요청 슬롯 (<code>§</code> 마커)에 XSS 페이로드를 차례로 주입한 뒤,
+    응답 본문에서 <em>그대로 반영 / HTML 이스케이프 / URL 인코딩</em> 형태로 reflect 되었는지 확인합니다.
+    페이로드가 떨어진 어휘적 컨텍스트 (script / attribute / text)까지 추정해줍니다.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature"><tr><td class="k">payload_probe</td><td class="t">(requestId, payloads?)</td></tr></table></div>
+  </div>
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div>
+      <span class="chal"><strong>old-23</strong><span class="kr">필터된 stored XSS</span></span>
+      <span class="chal"><strong>old-26</strong><span class="kr">이중 인코딩 우회</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- 11 -->
+<section class="feat" id="f11">
+  <header>
+    <h3>11. CRLF 인젝션 테스터</h3>
+    <span class="id">tools/crlf.ts</span>
+    <span class="tier t3">Tier 3</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    <code>%0d%0a</code>, 유니코드 CR/LF 같은 CRLF 변종을
+    요청 슬롯 (<code>§</code>)에 주입하고,
+    응답 헤더에 주입된 헤더가 나오는지 / 본문에 빈 줄 뒤 스크립트가 들어가는지 검사합니다.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature"><tr><td class="k">crlf_test</td><td class="t">(requestId, payloads?)</td></tr></table></div>
+  </div>
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div>
+      <span class="chal"><strong>old-38</strong><span class="kr">로그 라인 위조</span></span>
+      <span class="chal"><strong>old-47</strong><span class="kr">이메일 Cc 주입</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- 12 -->
+<section class="feat" id="f12">
+  <header>
+    <h3>12. 경로 / 누출 프로브</h3>
+    <span class="id">tools/path_probe.ts</span>
+    <span class="tier t3">Tier 3</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    <code>.git/HEAD</code>, <code>.env</code>, <code>*.swp</code>, <code>wp-config.php</code>,
+    <code>server-status</code>, sourcemap 등 흔한 백업·디스클로저 경로를 빌트인 워드리스트로
+    훑어보고 200 이상 응답이 떨어진 경로를 하이라이트합니다. 사용자가 커스텀 워드리스트를 더할 수도 있음.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature"><tr><td class="k">path_probe</td><td class="t">(baseUrl?, wordlist?, concurrency?, useDefault?)</td></tr></table></div>
+  </div>
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div>
+      <span class="chal"><strong>old-36</strong><span class="kr">vim .swp 노출</span></span>
+      <span class="chal" style="color:var(--accent)">+ 실전 recon</span>
+    </div>
+  </div>
+</section>
+
+<!-- 17 -->
+<section class="feat" id="f17">
+  <header>
+    <h3>13. LFI / php-filter 프로브</h3>
+    <span class="id">tools/path_probe.ts (lfi_probe)</span>
+    <span class="tier t3">Tier 3</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    <code>php://filter/convert.base64-encode/resource=...</code>, 디렉토리 트래버설 변종 등
+    LFI 페이로드 세트를 취약 파라미터 슬롯 (<code>§</code>)에 적용합니다.
+    응답 길이와 상태 코드로 성공 여부를 판단할 수 있게 표를 반환.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature"><tr><td class="k">lfi_probe</td><td class="t">(requestId, payloads?)</td></tr></table></div>
+  </div>
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div><span class="chal"><strong>old-25</strong><span class="kr">php://filter 소스 노출</span></span></div>
+  </div>
+</section>
+
+<!-- 13 -->
+<section class="feat" id="f13">
+  <header>
+    <h3>14. 파인딩 노트북</h3>
+    <span class="id">tools/findings.ts</span>
+    <span class="tier t4">Tier 4</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    리버싱 진행 중에 흥미로운 요청·페이로드·관찰점을 evidence로 저장해두는 인메모리 노트북입니다.
+    Burp의 "Issues", Caido의 "Findings"에 해당. 에이전트가 자동으로 채워나가고,
+    사람은 나중에 보고서로 정리할 때 참고합니다. severity·tags 지원.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature">
+      <tr><td class="k">finding_add</td><td class="t">(title, body, severity?, requestId?, tags?)</td></tr>
+      <tr><td class="k">finding_list</td><td class="t">(tag?, severity?)</td></tr>
+      <tr><td class="k">finding_remove</td><td class="t">(id)</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<!-- 14 -->
+<section class="feat" id="f14">
+  <header>
+    <h3>15. 보안 헤더 인스펙터</h3>
+    <span class="id">tools/security_inspect.ts</span>
+    <span class="tier t4">Tier 4</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    활성 페이지의 응답 헤더를 CSP / HSTS / X-Frame-Options / CORS 관점에서 분석해서
+    심각도가 매겨진 이슈 목록을 돌려줍니다. <code>'unsafe-inline'</code>, 와일드카드 CORS 등
+    잘 알려진 패턴을 검출.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature"><tr><td class="k">security_inspect</td><td class="t">(url?)</td></tr></table></div>
+  </div>
+</section>
+
+<!-- 15 -->
+<section class="feat" id="f15">
+  <header>
+    <h3>16. DOM 라이브 에디터</h3>
+    <span class="id">tools/dom_edit.ts</span>
+    <span class="tier t4">Tier 4</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    CSS 셀렉터로 매칭되는 첫 요소의 속성·스타일·텍스트를 변경하거나 제거합니다.
+    CSS 퍼즐 챌린지나 클라이언트 측 게이트를 빠르게 토글할 때 사용.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature">
+      <tr><td class="k">dom_set_attr</td><td class="t">(selector, attr, value)</td></tr>
+      <tr><td class="k">dom_set_style</td><td class="t">(selector, property, value)</td></tr>
+      <tr><td class="k">dom_set_text</td><td class="t">(selector, text)</td></tr>
+      <tr><td class="k">dom_remove</td><td class="t">(selector)</td></tr>
+    </table></div>
+  </div>
+  <div class="grid">
+    <div class="label">사용 예시</div>
+    <div><pre>// old-10: "이 링크의 left를 1600px로 옮겨야 정답"
+dom_set_style({
+  selector: "#yOu_ar3_admin",
+  property: "left",
+  value: "1600px"
+})</pre></div>
+  </div>
+  <div class="grid">
+    <div class="label">매핑 챌린지</div>
+    <div><span class="chal"><strong>old-10</strong><span class="kr">CSS 슬라이드</span></span></div>
+  </div>
+</section>
+
+<!-- 16 -->
+<section class="feat" id="f16">
+  <header>
+    <h3>17. 서비스 워커 인스펙터</h3>
+    <span class="id">tools/sw_inspect.ts</span>
+    <span class="tier t4">Tier 4</span>
+    <span class="surface"><span class="pill mcp">MCP</span></span>
+  </header>
+  <p class="feat-desc">
+    등록된 Service Worker 목록과 Cache API 엔트리를 조회하고, scope 단위로 unregister 할 수 있습니다.
+    SW가 옛 응답을 캐싱해서 패치한 페이지가 안 보일 때, 또는 SW 경유 요청을 추적할 때 사용.
+  </p>
+  <div class="grid">
+    <div class="label">시그니처</div>
+    <div><table class="signature">
+      <tr><td class="k">sw_list</td><td class="t">()</td></tr>
+      <tr><td class="k">sw_caches</td><td class="t">()</td></tr>
+      <tr><td class="k">sw_unregister</td><td class="t">(scope)</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+
+<h2>아키텍처 요약</h2>
+<p>
+  모든 기능은 프로젝트의 2-layer 컨벤션을 따릅니다:
+  비즈니스 로직은 <code>src/main/*.ts</code> 또는 <code>src/main/mcp/tools/*.ts</code>의
+  얇은 Node 측 모듈에 두고, MCP 툴 레이어는 Zod 검증과 <code>ok/err</code> 래퍼만 추가합니다.
+  렌더러는 같은 primitive를 preload IPC (<code>window.rev.*</code>) 통해 사용 — 에이전트와
+  사람의 UI가 동일한 내부 함수를 호출합니다.
+</p>
+<pre>
+src/main/mcp/tools/
+├── storage.ts          (신규)   ⇄ src/main/index.ts IPC ⇄ panels/CookiesPanel.tsx (UI 포함)
+├── headers.ts          (신규)
+├── har.ts              (신규)
+├── intruder.ts         (신규)  ★
+├── override.ts         (신규)   chrome-cdp intercept 레이어 재사용
+├── burst.ts            (신규)   repeater.ts 재사용
+├── crypto.ts           (신규)   순수 Node
+├── deob.ts             (신규)   script-analysis.ts의 runWebcrack 재사용
+├── payload_probe.ts    (신규)
+├── crlf.ts             (신규)
+├── path_probe.ts       (신규)   + lfi_probe
+├── findings.ts         (신규)
+├── security_inspect.ts (신규)
+├── dom_edit.ts         (신규)
+├── sw_inspect.ts       (신규)
+└── websocket.ts        (확장)   ws_capture_enable / ws_capture_list / ws_send
+</pre>
+
+<h2>webhacking.kr 챌린지 커버리지</h2>
+<p>60개 old 챌린지를 기법 카테고리별로 묶고, 어떤 (신규/기존) 툴이 주력으로 쓰이는지 매핑한 표:</p>
+<table class="cover-table">
+  <thead>
+    <tr>
+      <th>기법 카테고리</th>
+      <th>챌린지 수</th>
+      <th>주력 신규 툴</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Blind SQLi (boolean / time-based)</td><td class="n">~9</td><td class="tool"><b>intruder_run</b></td></tr>
+    <tr><td>Classic / UNION / 인코딩 SQLi</td><td class="n">~13</td><td class="tool">repeater + intruder + header_preset</td></tr>
+    <tr><td>쿠키 / 세션 변조</td><td class="n">~4</td><td class="tool"><b>CookiesPanel</b> + cookie_set</td></tr>
+    <tr><td>JS 리버싱 / 역난독화</td><td class="n">~10</td><td class="tool">deob_auto + override_add</td></tr>
+    <tr><td>PHP 미설정 / 멀티스테이지</td><td class="n">~6</td><td class="tool">header_preset + cookie_set + path_probe</td></tr>
+    <tr><td>헤더 / CRLF</td><td class="n">~6</td><td class="tool">crlf_test + header_preset</td></tr>
+    <tr><td>파일 업로드</td><td class="n">~4</td><td class="tool">기존 intercept_continue</td></tr>
+    <tr><td>해시 / 암호 퍼즐</td><td class="n">~3</td><td class="tool"><b>crypto_chain · hash_iter · magic_hash_lookup</b></td></tr>
+    <tr><td>LFI / 디스클로저</td><td class="n">~2</td><td class="tool">path_probe + lfi_probe</td></tr>
+    <tr><td>레이스 컨디션</td><td class="n">~2</td><td class="tool"><b>burst_send</b></td></tr>
+    <tr><td>웹소켓</td><td class="n">~2</td><td class="tool"><b>ws_send</b></td></tr>
+    <tr><td>XSS reflected / stored</td><td class="n">~2</td><td class="tool">payload_probe</td></tr>
+    <tr><td>DOM / CSS 퍼즐</td><td class="n">~1</td><td class="tool"><b>dom_set_style</b></td></tr>
+  </tbody>
+</table>
+
+<blockquote>
+  <b>솔직한 한계 (사용자 검토용)</b><br>
+  ① <b>header_preset</b>은 기존 intercept-modify 경로를 사용합니다. XHR/fetch는 잘 잡히지만,
+  document 레벨 요청 (페이지 진입 첫 GET)까지 헤더가 주입되는지는 빌드에서 확인이 필요합니다.<br>
+  ② <b>ws_send</b>는 <code>ws_capture_enable</code> 이후 새로 만들어진 소켓만 잡힙니다.
+  이미 연결된 소켓이 있으면 페이지 reload가 필요합니다.<br>
+  ③ <b>deob_auto</b>의 hex-array / Dean Edwards packer 처리는 regex 기반 휴리스틱입니다.
+  무거운 일은 webcrack이 하고, 손으로 만든 별난 packer는 수동 한 스텝이 필요할 수 있습니다.<br>
+  ④ <b>burst_send</b>는 페이지의 <code>fetch()</code>를 경유합니다.
+  진짜 저수준 race 타이밍이 필요하면 Node 측 <code>replay_request</code>가 더 깨끗합니다.
+</blockquote>
+
+<p class="legend">
+  2026-05-21 작성 · 17개 기능 전부 <code>src/main/mcp/tools/</code>에 구현 완료 ·
+  UI는 1번 (Storage)만 출하, 2~17번은 현재 에이전트 (MCP) 호출 전용
+</p>
+
+</body>
+</html>
