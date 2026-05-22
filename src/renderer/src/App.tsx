@@ -204,34 +204,37 @@ function App() {
           >
             {browserMode === 'embedded' && (
               <>
-                <button type="button" onClick={() => activeRef()?.goBack()} title="Back">
+                <button
+                  className="toolbar-btn"
+                  type="button"
+                  onClick={() => activeRef()?.goBack()}
+                  title="Back"
+                >
                   ←
                 </button>
-                <button type="button" onClick={() => activeRef()?.goForward()} title="Forward">
+                <button
+                  className="toolbar-btn"
+                  type="button"
+                  onClick={() => activeRef()?.goForward()}
+                  title="Forward"
+                >
                   →
                 </button>
-                <button type="button" onClick={() => activeRef()?.reload()} title="Reload">
-                  ↻
-                </button>
                 <button
+                  className="toolbar-btn"
                   type="button"
                   onClick={() => activeRef()?.reload(true)}
                   title="Hard Reload (clear cache)"
                 >
-                  ⟳
+                  ↻
                 </button>
                 <button
+                  className="toolbar-btn"
                   type="button"
                   onClick={openViewSource}
                   disabled={!activeTab || !/^https?:\/\//i.test(activeTab.url)}
                   title="View page source in a new tab (view-source:)"
-                  style={{
-                    fontFamily: 'ui-monospace, monospace',
-                    fontSize: 10,
-                    padding: '2px 5px',
-                    letterSpacing: -0.5,
-                    opacity: 0.85
-                  }}
+                  style={{ fontFamily: 'ui-monospace, monospace' }}
                 >
                   &lt;/&gt;
                 </button>
@@ -241,10 +244,17 @@ function App() {
               value={urlDraft}
               onChange={(e) => setUrlDraft(e.target.value)}
               placeholder="https://..."
-              style={{ flex: 1, padding: '4px 10px', fontFamily: 'ui-monospace, monospace' }}
+              style={{
+                flex: 1,
+                height: 28,
+                padding: '0 10px',
+                fontFamily: 'ui-monospace, monospace',
+                boxSizing: 'border-box'
+              }}
             />
-            <button type="submit">Go</button>
+            <button className="toolbar-btn" type="submit">Go</button>
             <button
+              className="toolbar-btn"
               type="button"
               onClick={() => {
                 if (activeOrigin) cycleTheme(activeOrigin)
@@ -256,7 +266,6 @@ function App() {
                   : 'No site loaded'
               }
               style={{
-                fontSize: 11,
                 background: activeTheme === 'light'
                   ? '#eee'
                   : activeTheme === 'dark'
@@ -274,11 +283,11 @@ function App() {
               {activeTheme === 'auto' ? 'Auto' : activeTheme === 'light' ? 'Light' : 'Dark'}
             </button>
             <button
+              className="toolbar-btn"
               type="button"
               onClick={onToggleViewport}
               title="Toggle desktop/mobile viewport"
               style={{
-                fontSize: 11,
                 background: viewportMode === 'mobile' ? '#244' : undefined,
                 borderColor: viewportMode === 'mobile' ? '#377' : undefined
               }}
@@ -286,11 +295,11 @@ function App() {
               {viewportMode === 'mobile' ? 'Mobile' : 'Desktop'}
             </button>
             <button
+              className="toolbar-btn"
               type="button"
               onClick={() => setBrowserMode(browserMode === 'embedded' ? 'external' : 'embedded')}
               title="Toggle embedded/external Chrome"
               style={{
-                fontSize: 11,
                 background: browserMode === 'external' ? '#242' : undefined,
                 borderColor: browserMode === 'external' ? '#373' : undefined
               }}

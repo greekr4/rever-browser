@@ -109,20 +109,13 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
     history: 'History'
   }
 
-  // Chips ride above the bottom panel using the SAME spring as the panel,
-  // so the two animate in lockstep (no judder).
-  const chipsY = openPanel ? -bottomPanel.width : 0
+  // The bottom menu bar is fixed at the bottom; the panel slides up above it.
   const SPRING = { type: 'spring' as const, stiffness: 320, damping: 32 }
 
   return (
     <>
-      {/* Chip stack — horizontal, bottom-right of webview container */}
-      <motion.div
-        className="chip-stack"
-        ref={chipStackRef}
-        animate={{ y: chipsY }}
-        transition={SPRING}
-      >
+      {/* Bottom menu bar — full width, fixed at bottom of webview area */}
+      <div className="chip-stack" ref={chipStackRef}>
         <ChipButton
           label="Traffic"
           active={openPanel === 'traffic'}
@@ -170,7 +163,7 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
           badge={historyCount > 0 ? String(historyCount) : undefined}
           onClick={() => toggle('history')}
         />
-      </motion.div>
+      </div>
 
       {/* Bottom slide panel */}
       <AnimatePresence>
