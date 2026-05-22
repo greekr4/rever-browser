@@ -40,6 +40,21 @@ button {
 button:hover:not(:disabled) { background: #333; }
 button:disabled { opacity: 0.5; cursor: default; }
 
+/* Unified toolbar button — applied to every nav-bar button so icon-only
+   and text buttons share the same height/padding regardless of label. */
+.toolbar-btn {
+  height: 28px;
+  min-width: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
 /* Markdown */
 .md { line-height: 1.55; word-break: break-word; }
 .md--dim { opacity: 0.6; font-style: italic; }
@@ -157,45 +172,55 @@ button:disabled { opacity: 0.5; cursor: default; }
    pointer events (it would otherwise swallow the mousemove). */
 body.resizing webview { pointer-events: none; }
 
-/* ── Floating chip stack ─────────────────────────────────────── */
+/* ── Bottom menu bar (formerly floating chips) ───────────────── */
 .chip-stack {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 40px;
   display: flex;
   flex-direction: row;
-  gap: 6px;
-  z-index: 100;
-  padding: 6px;
-  background: rgba(20, 20, 22, 0.65);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
-  /* y is animated via framer-motion to stay in sync with the panel */
-  will-change: transform;
+  align-items: center;
+  gap: 4px;
+  z-index: 110;
+  padding: 0 10px;
+  background: rgba(18, 18, 20, 0.92);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  box-sizing: border-box;
+  overflow-x: auto;
 }
 
+.chip-stack::-webkit-scrollbar { height: 0; }
+
 .chip {
-  padding: 8px 14px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: transparent;
   border: 1px solid transparent;
-  color: #fff;
-  font-size: 11px;
+  color: #ccc;
+  font-size: 12px;
   cursor: pointer;
-  text-align: left;
-  transition: background 0.15s, border-color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .chip:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
 }
 
 .chip.active {
-  background: rgba(80, 140, 255, 0.22);
-  border-color: rgba(120, 170, 255, 0.4);
+  background: rgba(80, 140, 255, 0.18);
+  border-color: rgba(120, 170, 255, 0.35);
+  color: #fff;
 }
 
 .chip-count {
@@ -203,17 +228,17 @@ body.resizing webview { pointer-events: none; }
   opacity: 0.7;
 }
 
-/* ── Bottom slide panel ──────────────────────────────────────── */
+/* ── Bottom slide panel — sits above the 40px bottom menu bar ──── */
 .chip-panel-bottom {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: 40px;
   background: rgba(20, 20, 22, 0.85);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  z-index: 110;
+  z-index: 100;
   box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
