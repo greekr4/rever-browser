@@ -271,7 +271,24 @@ export function ChatPanel() {
     return new ACPChatTransport({ agentDef })
   }, [agentId, agentBinPath])
 
-  const { messages, sendMessage, status, stop, setMessages } = useChat({ transport })
+  // @ai-sdk/react's useChat only recreates its internal Chat when `id`
+  // changes — a fresh `transport` prop alone is ignored. Without this key
+  // change, switching agents keeps sending prompts to the old (still-alive)
+  // session, which is why a Gemini-selected chat was answering as Claude.
+  const chatKey = `${agentId}::${agentBinPath ?? ''}`
+
+  // Tear down the previous ACP session when the agent (and thus transport)
+  // changes, so we don't leak the old child process.
+  useEffect(() => {
+    return () => {
+      void transport.reset()
+    }
+  }, [transport])
+
+  const { messages, sendMessage, status, stop, setMessages } = useChat({
+    id: chatKey,
+    transport
+  })
   const busy = status === 'streaming' || status === 'submitted'
 
   // Fetch model list whenever the session reaches a quiet state (= just spawned

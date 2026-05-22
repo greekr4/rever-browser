@@ -159,7 +159,15 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
                 }}
               >
                 <div style={tileIconChip}>{tile.def.icon}</div>
-                <div style={{ fontSize: 11, fontWeight: 500, textAlign: 'center' }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    textAlign: 'center',
+                    wordBreak: 'break-word',
+                    lineHeight: 1.2
+                  }}
+                >
                   {tile.def.name}
                 </div>
                 <div
@@ -167,7 +175,9 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
                     fontSize: 9,
                     color: STATUS_COLOR[tile.status],
                     textTransform: 'uppercase',
-                    letterSpacing: 0.3
+                    letterSpacing: 0.3,
+                    wordBreak: 'break-word',
+                    lineHeight: 1.2
                   }}
                 >
                   {STATUS_LABEL[tile.status]}
@@ -217,8 +227,10 @@ const popoverStyle: React.CSSProperties = {
   top: 'calc(100% + 6px)',
   left: 0,
   zIndex: 50,
-  width: 340,
-  maxWidth: 'calc(100vw - 24px)',
+  // Shrink to fit the chat panel (--chat-w is set on .agent-panel in App.tsx)
+  // so we don't overflow past the panel's right edge when the user makes the
+  // chat panel narrow. Fallback to 100vw when --chat-w isn't available.
+  width: 'min(340px, calc(var(--chat-w, 100vw) - 24px))',
   maxHeight: '70vh',
   overflowY: 'auto',
   background: '#161616',
@@ -237,7 +249,9 @@ const popoverHeader: React.CSSProperties = {
 
 const gridStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(3, 1fr)',
+  // Reflow columns based on available width: ~3 columns at 340px, 2 columns
+  // when the chat panel is narrow (~220px), so tiles never get clipped.
+  gridTemplateColumns: 'repeat(auto-fill, minmax(86px, 1fr))',
   gap: 6
 }
 
@@ -247,13 +261,15 @@ const tileStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'flex-start',
   gap: 4,
-  padding: '10px 6px',
+  padding: '10px 4px',
   minHeight: 100,
   background: '#1c1c1c',
   border: '1px solid #2a2a2a',
   borderRadius: 6,
   color: '#eee',
-  textAlign: 'center'
+  textAlign: 'center',
+  minWidth: 0,
+  overflow: 'hidden'
 }
 
 const tileIconChip: React.CSSProperties = {

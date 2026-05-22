@@ -345,7 +345,8 @@ function App() {
             display: 'flex',
             flexDirection: 'column',
             minHeight: 0,
-            borderLeft: '1px solid #2a2a2a'
+            borderLeft: '1px solid #2a2a2a',
+            ['--chat-w' as never]: `${chat.width}px`
           }}
         >
           <ChatPanel />
