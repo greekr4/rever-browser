@@ -7,7 +7,9 @@ import { FloatingChips } from '@/components/FloatingChips'
 import { ScreencastView } from '@/components/ScreencastView'
 import { TabBar } from '@/components/TabBar'
 import { WebviewTab, type WebviewTabHandle } from '@/components/WebviewTab'
+import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { ChatPanel } from '@/components/chat/ChatPanel'
+import { requestPermissionFromUser } from '@/ai/acp-permission'
 import { useCdpEvents } from '@/hooks/use-cdp-events'
 import { useResizable } from '@/hooks/use-resizable'
 import { useBrowserModeStore } from '@/stores/browser-mode'
@@ -41,6 +43,12 @@ function App() {
       if (url) addTab(url)
     })
   }, [addTab])
+
+  // Route agent permission requests from main to the permission queue / UI.
+  // No-ops while auto-approve is on (requestPermissionFromUser resolves inline).
+  useEffect(() => {
+    return window.rev.acp.onPermissionRequest(requestPermissionFromUser)
+  }, [])
 
   const [urlDraft, setUrlDraft] = useState(activeTab?.url ?? '')
   const viewportMode = useViewportStore((s) => s.mode)
@@ -163,6 +171,7 @@ function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <PermissionPrompt />
       <header
         style={
           {

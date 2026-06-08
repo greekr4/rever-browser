@@ -14,6 +14,7 @@ export interface StoredRequest {
   responseHeaders?: Record<string, string>
   responseBody?: string
   responseBodyBase64?: boolean
+  responseBodyTruncated?: boolean
   responseBodyError?: string
   // initiator info
   initiatorType?: string
@@ -37,6 +38,9 @@ export interface WSFrame {
 }
 
 const wsFrames = new Map<string, WSFrame[]>()
+// Cap frames per request so a single long-lived socket can't grow unbounded
+// even while its request stays inside the ring buffer.
+const MAX_WS_FRAMES_PER_REQUEST = 2000
 
 export function appendWsFrame(requestId: string, frame: WSFrame): void {
   let frames = wsFrames.get(requestId)
@@ -45,6 +49,7 @@ export function appendWsFrame(requestId: string, frame: WSFrame): void {
     wsFrames.set(requestId, frames)
   }
   frames.push(frame)
+  if (frames.length > MAX_WS_FRAMES_PER_REQUEST) frames.shift()
 }
 
 export function getWsFrames(requestId: string, since?: number): WSFrame[] {
@@ -102,6 +107,18 @@ export function getExceptions(): RuntimeException[] {
 }
 
 const MAX_ENTRIES = 500
+// Per-body byte ceiling. 8MB sits above webcrack's 5MB deobfuscation limit, so
+// large JS bundles (the whole point of this tool) survive intact, while a
+// pathological multi-hundred-MB body can't blow up the ring buffer. Bodies past
+// the cap are truncated and flagged.
+const MAX_BODY_CHARS = 8 * 1024 * 1024
+
+function capBody<T extends Partial<StoredRequest>>(req: T): T {
+  if (req.responseBody != null && req.responseBody.length > MAX_BODY_CHARS) {
+    return { ...req, responseBody: req.responseBody.slice(0, MAX_BODY_CHARS), responseBodyTruncated: true }
+  }
+  return req
+}
 
 const order: string[] = []
 const entries = new Map<string, StoredRequest>()
@@ -109,11 +126,17 @@ const entries = new Map<string, StoredRequest>()
 function evictIfNeeded() {
   while (order.length > MAX_ENTRIES) {
     const oldest = order.shift()
-    if (oldest) entries.delete(oldest)
+    if (oldest) {
+      entries.delete(oldest)
+      // Free any WebSocket frames keyed by this requestId — otherwise the
+      // wsFrames map grows forever as requests churn through the ring buffer.
+      wsFrames.delete(oldest)
+    }
   }
 }
 
-export function upsertRequest(req: Partial<StoredRequest> & { requestId: string }) {
+export function upsertRequest(rawReq: Partial<StoredRequest> & { requestId: string }) {
+  const req = capBody(rawReq)
   const existing = entries.get(req.requestId)
   if (existing) {
     Object.assign(existing, req)

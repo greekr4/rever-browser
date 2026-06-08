@@ -3,6 +3,11 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import type {
+  RequestPermissionRequest,
+  RequestPermissionResponse
+} from '@agentclientprotocol/sdk'
+
 import {
   attachCdpCapture,
   clearDialogHistory,
@@ -20,6 +25,11 @@ import {
   manualSnapshot,
   setStickyEnabled
 } from './cookie-persistence'
+import {
+  importChromeCookies,
+  listChromeProfiles,
+  type ChromeImportOptions
+} from './chrome-cookie-import'
 import { detectAgents, type AgentProbe } from './acp-detect'
 import { launchExternalChrome, killExternalChrome } from './external-chrome'
 import { attachExternalCdp, detachExternalCdp, getExternalTarget } from './external-cdp'
@@ -63,6 +73,20 @@ app.userAgentFallback = app.userAgentFallback
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
 
 let mainWindow: BrowserWindow | null = null
+
+// ── Agent permission round-trip ───────────────────────────────────────────
+// The agent's requestPermission flows main → renderer → main over a
+// correlation id. The renderer answers via 'acp:permission-respond'; a guard
+// timeout (slightly longer than the renderer's own 60s decision window) rejects
+// if the renderer is gone, so the agent loop can't deadlock on a missing UI.
+interface PendingPermission {
+  resolve: (response: RequestPermissionResponse) => void
+  reject: (err: Error) => void
+  timer: ReturnType<typeof setTimeout>
+}
+const pendingPermissions = new Map<string, PendingPermission>()
+const PERMISSION_GUARD_MS = 65_000
+let permissionSeq = 0
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -199,10 +223,42 @@ app.whenReady().then(() => {
     'acp:prompt',
     async (event, sessionId: string, text: string, channel: string) => {
       const sender = event.sender
-      return promptAcpSession(sessionId, text, (notification) => {
-        if (sender.isDestroyed()) return
-        sender.send(channel, notification)
-      })
+      const requestPermission = (
+        req: RequestPermissionRequest
+      ): Promise<RequestPermissionResponse> =>
+        new Promise((resolve, reject) => {
+          if (sender.isDestroyed()) {
+            reject(new Error('renderer destroyed'))
+            return
+          }
+          const id = `perm:${permissionSeq++}`
+          const timer = setTimeout(() => {
+            pendingPermissions.delete(id)
+            reject(new Error('permission request timed out (renderer not responding)'))
+          }, PERMISSION_GUARD_MS)
+          pendingPermissions.set(id, { resolve, reject, timer })
+          sender.send('acp:permission-request', { id, request: req })
+        })
+      return promptAcpSession(
+        sessionId,
+        text,
+        (notification) => {
+          if (sender.isDestroyed()) return
+          sender.send(channel, notification)
+        },
+        requestPermission
+      )
+    }
+  )
+
+  ipcMain.on(
+    'acp:permission-respond',
+    (_event, id: string, response: RequestPermissionResponse) => {
+      const pending = pendingPermissions.get(id)
+      if (!pending) return
+      clearTimeout(pending.timer)
+      pendingPermissions.delete(id)
+      pending.resolve(response)
     }
   )
 
@@ -354,6 +410,12 @@ app.whenReady().then(() => {
     const n = await manualSnapshot()
     return { snapshotCount: n }
   })
+
+  // ── Real Chrome cookie import (macOS) ─────────────────────────────────────
+  ipcMain.handle('chrome-cookies:profiles', () => listChromeProfiles())
+  ipcMain.handle('chrome-cookies:import', (_event, opts: ChromeImportOptions) =>
+    importChromeCookies(opts)
+  )
 
   // ── JS dialog auto-dismiss IPC ────────────────────────────────────────────
   ipcMain.handle('dialog:get-settings', () => ({
