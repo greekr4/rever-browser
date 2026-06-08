@@ -32,6 +32,9 @@ interface SessionEntry {
   connection: ClientSideConnection
   sessionId: string
   onUpdate: ((n: SessionNotification) => void) | null
+  requestPermission:
+    | ((req: RequestPermissionRequest) => Promise<RequestPermissionResponse>)
+    | null
   dead: boolean
   availableModels: ModelInfo[]
   currentModelId: string | null
@@ -75,7 +78,17 @@ export async function spawnAcpSession(
     async requestPermission(
       params: RequestPermissionRequest
     ): Promise<RequestPermissionResponse> {
-      // M0: auto-approve. UI permission round-trip wired in M0.5+.
+      // Route to the renderer's permission UI when a prompt is in flight.
+      // Falls back to auto-approve if no handler is attached or the round-trip
+      // fails/times out — so the agent loop can never deadlock on a missing UI.
+      const handler = entryRef?.requestPermission
+      if (handler) {
+        try {
+          return await handler(params)
+        } catch (e) {
+          console.error('[acp] permission round-trip failed, auto-approving:', e)
+        }
+      }
       return {
         outcome: { outcome: 'selected', optionId: pickAutoApproveOption(params) }
       }
@@ -113,6 +126,7 @@ export async function spawnAcpSession(
     connection,
     sessionId: result.sessionId,
     onUpdate: null,
+    requestPermission: null,
     dead: false,
     availableModels: modelState?.availableModels ?? [],
     currentModelId: modelState?.currentModelId ?? null
@@ -131,13 +145,15 @@ export async function spawnAcpSession(
 export async function promptAcpSession(
   sessionId: string,
   text: string,
-  onUpdate: (n: SessionNotification) => void
+  onUpdate: (n: SessionNotification) => void,
+  requestPermission?: (req: RequestPermissionRequest) => Promise<RequestPermissionResponse>
 ): Promise<{ stopReason: string }> {
   const entry = sessions.get(sessionId)
   if (!entry) throw new Error(`unknown ACP session: ${sessionId}`)
   if (entry.dead) throw new Error(`ACP session is dead: ${sessionId}`)
 
   entry.onUpdate = onUpdate
+  entry.requestPermission = requestPermission ?? null
   try {
     const res = await entry.connection.prompt({
       sessionId: entry.sessionId,
@@ -146,6 +162,7 @@ export async function promptAcpSession(
     return { stopReason: res.stopReason }
   } finally {
     entry.onUpdate = null
+    entry.requestPermission = null
   }
 }
 

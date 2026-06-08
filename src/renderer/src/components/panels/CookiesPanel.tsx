@@ -125,6 +125,8 @@ export function CookiesPanel() {
         </div>
       )}
 
+      {section === 'cookies' && <ChromeImportBar />}
+
       {section === 'cookies' && (
         <div
           style={{
@@ -506,6 +508,96 @@ function CookieEditor({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function ChromeImportBar() {
+  const [profiles, setProfiles] = useState<string[]>([])
+  const [profile, setProfile] = useState('Default')
+  const [hosts, setHosts] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+
+  useEffect(() => {
+    void window.rev.storage.chromeProfiles().then((p) => {
+      setProfiles(p)
+      if (p.length > 0 && !p.includes('Default')) setProfile(p[0])
+    })
+  }, [])
+
+  // Hidden on platforms / setups where no Chrome profile with cookies exists.
+  if (profiles.length === 0) return null
+
+  const run = async () => {
+    setBusy(true)
+    setResult(null)
+    try {
+      const hostList = hosts.split(',').map((h) => h.trim()).filter(Boolean)
+      const r = await window.rev.storage.chromeImport({ profile, hosts: hostList })
+      if (!r.ok) {
+        setResult(`⚠ ${r.error ?? 'import failed'}`)
+      } else {
+        const extra = [
+          r.undecryptable ? `${r.undecryptable} app-bound skipped` : null,
+          r.skipped ? `${r.skipped} skipped` : null
+        ]
+          .filter(Boolean)
+          .join(' · ')
+        setResult(`✓ imported ${r.imported}/${r.total}${extra ? ` · ${extra}` : ''}`)
+      }
+    } catch (e) {
+      setResult(`⚠ ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 10px',
+        marginBottom: 8,
+        border: '1px solid #2a2a2a',
+        borderRadius: 4,
+        background: '#161616',
+        fontSize: 11,
+        flexWrap: 'wrap'
+      }}
+    >
+      <strong style={{ color: '#ccc' }}>Import cookies from Chrome</strong>
+      <select
+        value={profile}
+        onChange={(e) => setProfile(e.target.value)}
+        disabled={busy}
+        style={{ background: '#111', color: '#eee', border: '1px solid #333', borderRadius: 3, padding: '2px 4px' }}
+        title="Chrome profile to import from"
+      >
+        {profiles.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </select>
+      <input
+        placeholder="domains, comma-separated (blank = all)"
+        value={hosts}
+        onChange={(e) => setHosts(e.target.value)}
+        disabled={busy}
+        style={{ ...addInput, flex: 1, minWidth: 160 }}
+        title="Only import cookies whose host contains one of these substrings"
+      />
+      <button onClick={() => void run()} disabled={busy} style={addBtn} title="Decrypt and inject into the persist:rever partition (asks for Keychain access)">
+        {busy ? 'Importing…' : 'Import'}
+      </button>
+      {result && (
+        <span style={{ opacity: 0.8, color: result.startsWith('⚠') ? '#f0a0a0' : '#9fe0b0', width: '100%' }}>
+          {result}
+        </span>
+      )}
     </div>
   )
 }

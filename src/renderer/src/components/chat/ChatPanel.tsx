@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { ACPChatTransport } from '@/ai/acp-transport'
+import { useAcpAutoApprove, setAcpAutoApprove } from '@/ai/acp-permission'
 import { ACP_AGENTS, type ACPAgentID } from '@/constants'
 import { AgentPicker } from './AgentPicker'
 import { formatOutput } from '@/lib/format-json'
@@ -329,6 +330,7 @@ export function ChatPanel() {
     }
   }
   const waiting = status === 'submitted'
+  const autoApprove = useAcpAutoApprove()
   const draftPending = useChatDraft((s) => s.pending)
   const consumeDraft = useChatDraft((s) => s.consume)
 
@@ -410,6 +412,26 @@ export function ChatPanel() {
           )}
         </select>
         <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: 12 }}>{status}</span>
+        <button
+          type="button"
+          onClick={() => setAcpAutoApprove(!autoApprove)}
+          title={
+            autoApprove
+              ? 'Tool permissions are auto-approved — click to require manual approval'
+              : 'Tool permissions require manual approval — click to auto-approve'
+          }
+          style={{
+            fontSize: 11,
+            padding: '3px 8px',
+            borderRadius: 4,
+            cursor: 'pointer',
+            background: autoApprove ? '#1f2a1f' : '#2a261f',
+            border: `1px solid ${autoApprove ? '#2a4a2a' : '#4a402a'}`,
+            color: autoApprove ? '#aea' : '#eca'
+          }}
+        >
+          {autoApprove ? 'Auto-approve' : 'Manual approve'}
+        </button>
         <button
           type="button"
           onClick={onReset}

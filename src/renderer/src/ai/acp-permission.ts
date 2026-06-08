@@ -91,6 +91,15 @@ export function respondToPermission(optionId: string) {
   entry.resolve({ outcome: { outcome: 'selected', optionId } })
 }
 
+export function approveCurrentPermission() {
+  const entry = usePermissionStore.getState().queue.at(0)
+  if (!entry) return
+  removeEntry(entry)
+  entry.resolve({
+    outcome: { outcome: 'selected', optionId: findBestAllowOption(entry.request) }
+  })
+}
+
 export function rejectCurrentPermission() {
   const entry = usePermissionStore.getState().queue.at(0)
   if (!entry) return

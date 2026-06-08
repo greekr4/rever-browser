@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+import type {
+  RequestPermissionRequest,
+  RequestPermissionResponse
+} from '@agentclientprotocol/sdk'
+
 export interface AcpAgentDef {
   id: string
   command: string
@@ -151,6 +156,26 @@ const api = {
 
     cancel: (sessionId: string): Promise<void> => ipcRenderer.invoke('acp:cancel', sessionId),
     kill: (sessionId: string): Promise<void> => ipcRenderer.invoke('acp:kill', sessionId),
+
+    // Agent permission requests pushed from main. The handler resolves with the
+    // user's decision; the result is sent back over the correlation id so the
+    // agent's tool call continues. Register once (e.g. on app mount).
+    onPermissionRequest: (
+      handler: (request: RequestPermissionRequest) => Promise<RequestPermissionResponse>
+    ): (() => void) => {
+      const listener = (
+        _e: unknown,
+        payload: { id: string; request: RequestPermissionRequest }
+      ): void => {
+        Promise.resolve(handler(payload.request))
+          .then((response) => ipcRenderer.send('acp:permission-respond', payload.id, response))
+          .catch(() => {
+            // Swallow — main's guard timeout falls back to auto-approve.
+          })
+      }
+      ipcRenderer.on('acp:permission-request', listener)
+      return () => ipcRenderer.removeListener('acp:permission-request', listener)
+    },
     modelState: (
       sessionId: string
     ): Promise<{
@@ -262,7 +287,19 @@ const api = {
     persistenceSet: (enabled: boolean): Promise<{ enabled: boolean }> =>
       ipcRenderer.invoke('cookie-persistence:set', enabled),
     persistenceSnapshot: (): Promise<{ snapshotCount: number }> =>
-      ipcRenderer.invoke('cookie-persistence:snapshot')
+      ipcRenderer.invoke('cookie-persistence:snapshot'),
+    chromeProfiles: (): Promise<string[]> => ipcRenderer.invoke('chrome-cookies:profiles'),
+    chromeImport: (opts: {
+      profile?: string
+      hosts?: string[]
+    }): Promise<{
+      ok: boolean
+      imported: number
+      skipped: number
+      undecryptable: number
+      total: number
+      error?: string
+    }> => ipcRenderer.invoke('chrome-cookies:import', opts)
   },
   onReloadRequest: (handler: (opts: { ignoreCache: boolean }) => void): (() => void) => {
     const listener = (_e: unknown, opts: { ignoreCache: boolean }) => handler(opts)
