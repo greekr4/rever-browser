@@ -2,7 +2,7 @@ import { session } from 'electron'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { pbkdf2Sync, createDecipheriv } from 'node:crypto'
-import { copyFileSync, existsSync, rmSync, readdirSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, rmSync, readdirSync, statSync, mkdtempSync, mkdirSync, chmodSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -119,14 +119,16 @@ async function readEncryptedCookies(profile: string): Promise<RawCookie[]> {
 
   // Copy the db (+ WAL sidecars) so we read a consistent snapshot while Chrome
   // holds the live file locked.
-  const stamp = `${process.pid}-${Date.now()}`
-  const tmp = join(tmpdir(), `rev-chrome-cookies-${stamp}.db`)
-  const cleanup: string[] = [tmp]
+  // 0700 전용 디렉터리에 복사해 다른 사용자가 쿠키 파일을 읽지 못하게 한다.
+  const tmpDir = mkdtempSync(join(tmpdir(), 'rev-chrome-cookies-'))
+  try { mkdirSync(tmpDir, { recursive: true }); chmodSync(tmpDir, 0o700) } catch {}
+  const tmp = join(tmpDir, 'Cookies.db')
+  const cleanup: string[] = [tmpDir]
   copyFileSync(src, tmp)
   for (const ext of ['-wal', '-shm']) {
     if (existsSync(src + ext)) {
       copyFileSync(src + ext, tmp + ext)
-      cleanup.push(tmp + ext)
+      // cleanup은 tmpDir 통째로 삭제하므로 개별 파일은 불필요
     }
   }
 
@@ -144,7 +146,7 @@ async function readEncryptedCookies(profile: string): Promise<RawCookie[]> {
     const trimmed = stdout.trim()
     return trimmed ? (JSON.parse(trimmed) as RawCookie[]) : []
   } finally {
-    for (const f of cleanup) rmSync(f, { force: true })
+    for (const f of cleanup) rmSync(f, { force: true, recursive: true })
   }
 }
 
@@ -158,6 +160,13 @@ export async function importChromeCookies(
 
   const profile = opts.profile || 'Default'
   const hostFilters = (opts.hosts ?? []).map((h) => h.toLowerCase()).filter(Boolean)
+
+  // 빈 host 필터는 전체 Chrome 쿠키를 앱에 주입한다. 이는 보안상 위험하지만
+  // 기존 IPC/UI 호출부를 깨지 않기 위해 에러 대신 경고 로그만 남긴다.
+  // 향후 UI에서 명시적 확인 절차를 추가할 것을 권장한다.
+  if (hostFilters.length === 0) {
+    console.warn('[chrome-cookie-import] WARNING: no host filter specified — importing ALL cookies from profile. This is a security risk.')
+  }
 
   let key: Buffer
   try {

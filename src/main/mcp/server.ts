@@ -75,10 +75,22 @@ interface RunningServer {
   close: () => Promise<void>
 }
 
+const READ_BODY_LIMIT = 16 * 1024 * 1024 // 16MB
+
 async function readBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
-    req.on('data', (c: Buffer) => chunks.push(c))
+    let total = 0
+    req.on('data', (c: Buffer) => {
+      total += c.length
+      if (total > READ_BODY_LIMIT) {
+        // 413 은 핸들러에서 처리 — 여기서는 에러를 throw해 reject
+        reject(Object.assign(new Error('request body too large'), { statusCode: 413 }))
+        req.destroy()
+        return
+      }
+      chunks.push(c)
+    })
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8')
       if (!raw) {
@@ -102,6 +114,25 @@ export function startMcpServer(): Promise<RunningServer> {
   cached = (async () => {
     const transports = new Map<string, StreamableHTTPServerTransport>()
 
+    // 바인딩 포트 — listen 후 설정, Origin 검증에 사용
+    let boundPort = 0
+
+    // Origin 헤더 DNS rebinding 검증.
+    // 에이전트 자체 요청은 Origin 헤더를 보내지 않으므로 origin 없는 경우는 통과.
+    function isOriginAllowed(origin: string | undefined): boolean {
+      if (!origin) return true // 에이전트 or same-process 요청
+      try {
+        const { hostname, port } = new URL(origin)
+        const p = port || (origin.startsWith('https') ? '443' : '80')
+        return (
+          (hostname === '127.0.0.1' || hostname === 'localhost') &&
+          p === String(boundPort)
+        )
+      } catch {
+        return false
+      }
+    }
+
     const handle = async (req: IncomingMessage, res: ServerResponse) => {
       try {
         if (req.url !== '/mcp') {
@@ -110,11 +141,31 @@ export function startMcpServer(): Promise<RunningServer> {
           return
         }
 
+        // POST initialize 시 Origin 헤더 존재하면 신뢰 가능한 출처인지 확인
+        if (req.method === 'POST') {
+          const origin = req.headers['origin'] as string | undefined
+          if (!isOriginAllowed(origin)) {
+            res.statusCode = 403
+            res.end('forbidden: untrusted origin')
+            return
+          }
+        }
+
         const sessionId = req.headers['mcp-session-id'] as string | undefined
         let transport = sessionId ? transports.get(sessionId) : undefined
 
         if (req.method === 'POST') {
-          const body = await readBody(req)
+          let body: unknown
+          try {
+            body = await readBody(req)
+          } catch (e: unknown) {
+            const status = (e as { statusCode?: number }).statusCode === 413 ? 413 : 400
+            if (!res.headersSent) {
+              res.statusCode = status
+              res.end(status === 413 ? 'request body too large' : 'bad request')
+            }
+            return
+          }
 
           if (!transport) {
             if (!isInitializeRequest(body)) {
@@ -126,7 +177,9 @@ export function startMcpServer(): Promise<RunningServer> {
               sessionIdGenerator: () => randomUUID(),
               onsessioninitialized: (sid) => {
                 transports.set(sid, transport!)
-              }
+              },
+              enableDnsRebindingProtection: true,
+              allowedHosts: [`127.0.0.1:${boundPort}`, `localhost:${boundPort}`]
             })
             transport.onclose = () => {
               if (transport!.sessionId) transports.delete(transport!.sessionId)
@@ -169,6 +222,7 @@ export function startMcpServer(): Promise<RunningServer> {
     })
     const addr = server.address()
     if (!addr || typeof addr === 'string') throw new Error('failed to bind MCP server')
+    boundPort = addr.port
     const url = `http://127.0.0.1:${addr.port}/mcp`
     console.log('[mcp] listening on', url)
 

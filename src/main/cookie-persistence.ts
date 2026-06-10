@@ -1,4 +1,4 @@
-import { app, session, type Cookie } from 'electron'
+import { app, session, safeStorage, type Cookie } from 'electron'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
 
@@ -97,7 +97,15 @@ async function dumpSessionCookies(): Promise<void> {
       httpOnly: c.httpOnly,
       sameSite: sameSiteOut(c.sameSite)
     }))
-    writeFileSync(storePath(), JSON.stringify(entries, null, 2))
+    const json = JSON.stringify(entries, null, 2)
+    if (safeStorage.isEncryptionAvailable()) {
+      // 암호화해서 바이너리로 저장한다.
+      writeFileSync(storePath(), safeStorage.encryptString(json))
+    } else {
+      // 암호화 불가 환경(headless 등)에서는 평문으로 저장하되 경고를 남긴다.
+      console.warn('[sticky-cookies] safeStorage unavailable, storing cookies as plaintext')
+      writeFileSync(storePath(), json)
+    }
     console.log(`[sticky-cookies] dumped ${entries.length} session cookies to disk`)
   } catch (e) {
     console.error('[sticky-cookies] dump failed:', e)
@@ -108,8 +116,20 @@ async function restoreSessionCookies(): Promise<void> {
   if (!settings.stickyEnabled) return
   try {
     if (!existsSync(storePath())) return
-    const raw = readFileSync(storePath(), 'utf8')
-    const entries: StickyEntry[] = JSON.parse(raw)
+    let json: string
+    if (safeStorage.isEncryptionAvailable()) {
+      // readFileSync를 Buffer로 읽어 decryptString에 전달한다.
+      const buf = readFileSync(storePath())
+      try {
+        json = safeStorage.decryptString(buf)
+      } catch {
+        // 이전 버전의 평문 파일일 수 있으므로 폴백한다.
+        json = buf.toString('utf8')
+      }
+    } else {
+      json = readFileSync(storePath(), 'utf8')
+    }
+    const entries: StickyEntry[] = JSON.parse(json)
     const sess = session.fromPartition(PARTITION)
     const expiry = Math.floor(Date.now() / 1000) + STICKY_EXTEND_SECONDS
     let restored = 0
@@ -168,15 +188,30 @@ export async function manualSnapshot(): Promise<number> {
     httpOnly: c.httpOnly,
     sameSite: sameSiteOut(c.sameSite)
   }))
-  writeFileSync(storePath(), JSON.stringify(entries, null, 2))
+  const json = JSON.stringify(entries, null, 2)
+  if (safeStorage.isEncryptionAvailable()) {
+    writeFileSync(storePath(), safeStorage.encryptString(json))
+  } else {
+    writeFileSync(storePath(), json)
+  }
   return entries.length
 }
 
 export function getSnapshotCount(): number {
   try {
     if (!existsSync(storePath())) return 0
-    const raw = readFileSync(storePath(), 'utf8')
-    return JSON.parse(raw).length
+    let json: string
+    if (safeStorage.isEncryptionAvailable()) {
+      const buf = readFileSync(storePath())
+      try {
+        json = safeStorage.decryptString(buf)
+      } catch {
+        json = buf.toString('utf8')
+      }
+    } else {
+      json = readFileSync(storePath(), 'utf8')
+    }
+    return JSON.parse(json).length
   } catch {
     return 0
   }

@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
+import path from 'node:path'
 
+import { app } from 'electron'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import {
@@ -11,6 +13,23 @@ import {
   type InterceptRule
 } from '../../chrome-cdp'
 import { ok, err, errorMessage } from '../utils'
+
+const OVERRIDE_FILE_SIZE_LIMIT = 5 * 1024 * 1024 // 5MB
+
+// 허용 디렉터리: <userData>/overrides
+function getAllowedOverrideDir(): string {
+  return path.join(app.getPath('userData'), 'overrides')
+}
+
+// 경로 탈출 여부 검사. 허용 디렉터리 밖이면 에러 메시지 반환.
+function resolveOverridePath(file: string): { resolved: string } | { error: string } {
+  const allowedDir = getAllowedOverrideDir()
+  const resolved = path.resolve(file)
+  if (!resolved.startsWith(allowedDir + path.sep) && resolved !== allowedDir) {
+    return { error: `file path is outside the allowed override directory (${allowedDir})` }
+  }
+  return { resolved }
+}
 
 // Local store of override rule IDs so we can list "just overrides" separately
 // from other intercept rules.
@@ -32,7 +51,22 @@ export function registerOverrideTools(mcp: McpServer) {
     async ({ urlPattern, body, file, mimeType }) => {
       try {
         if (body == null && !file) return err('provide body or file')
-        const text = file ? readFileSync(file, 'utf8') : (body ?? '')
+        let text: string
+        if (file) {
+          const check = resolveOverridePath(file)
+          if ('error' in check) return err(check.error)
+          try {
+            const stat = statSync(check.resolved)
+            if (stat.size > OVERRIDE_FILE_SIZE_LIMIT) {
+              return err(`file exceeds size limit (${OVERRIDE_FILE_SIZE_LIMIT} bytes)`)
+            }
+          } catch (e) {
+            return err(`cannot stat file: ${errorMessage(e)}`)
+          }
+          text = readFileSync(check.resolved, 'utf8')
+        } else {
+          text = body ?? ''
+        }
         const rule: InterceptRule = {
           id: randomUUID(),
           urlPattern,
