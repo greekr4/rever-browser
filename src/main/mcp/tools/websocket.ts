@@ -3,10 +3,13 @@ import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { getActiveTarget } from '../../chrome-cdp'
-import { listRequests, getWsFrames } from '../../traffic-store'
+import { listRequests, getWsFrames, getRequest } from '../../traffic-store'
 import { ok, err, errorMessage } from '../utils'
 
 const MAX_PAYLOAD_BYTES = 1024
+
+// 재부착 시 중복 등록 방지 — target webContentsId → scriptIdentifier
+const wsCaptureScriptIds = new Map<number, string>()
 
 const WS_CAPTURE_SCRIPT = `(() => {
   if (window.__revWSCapture) return;
@@ -67,10 +70,11 @@ export function registerWebSocketTools(mcp: McpServer) {
       }
     },
     async ({ requestId, since, limit }) => {
-      const frames = getWsFrames(requestId, since)
-      if (frames.length === 0 && !listRequests({ limit: 1 }).some(() => true)) {
-        return err(`no WebSocket frames found for requestId: ${requestId}`)
+      // requestId 존재 여부 먼저 확인 — 없으면 명확한 에러 반환
+      if (!getRequest(requestId)) {
+        return err(`unknown requestId: ${requestId} — use list_websockets to find valid IDs`)
       }
+      const frames = getWsFrames(requestId, since)
       const sliced = frames.slice(-(limit ?? 100))
       const formatted = sliced.map((f) => {
         const payload = f.payloadData
@@ -98,9 +102,19 @@ export function registerWebSocketTools(mcp: McpServer) {
       const target = getActiveTarget()
       if (!target) return err('no active browser target')
       try {
-        await target.dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+        // 이전에 등록한 스크립트가 있으면 제거 (재부착 누수 방지)
+        const wcId = target.wc.id
+        const prevId = wsCaptureScriptIds.get(wcId)
+        if (prevId) {
+          await target.dbg
+            .sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: prevId })
+            .catch(() => {})
+          wsCaptureScriptIds.delete(wcId)
+        }
+        const res = (await target.dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
           source: WS_CAPTURE_SCRIPT
-        })
+        })) as { identifier: string }
+        wsCaptureScriptIds.set(wcId, res.identifier)
         // Also try to install on current document (will be a no-op if already
         // there or if document scripts already created sockets via OrigWS).
         await target.dbg.sendCommand('Runtime.evaluate', {
