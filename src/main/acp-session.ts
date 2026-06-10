@@ -68,6 +68,14 @@ export async function spawnAcpSession(
     console.error(`[ACP ${agentDef.id}]`, buf.toString())
   })
 
+  // PATH에 바이너리가 없거나 실행 권한이 없을 때 ENOENT/EACCES 에러가 발생한다.
+  // 핸들러 없이 방치하면 main 프로세스가 죽으므로 반드시 등록한다.
+  let childError: Error | null = null
+  child.on('error', (e) => {
+    childError = e
+    console.error(`[ACP ${agentDef.id}] spawn error:`, e.message)
+  })
+
   const input = Writable.toWeb(child.stdin) as WritableStream<Uint8Array>
   const output = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>
   const stream = ndJsonStream(input, output)
@@ -100,23 +108,43 @@ export async function spawnAcpSession(
 
   const connection = new ClientSideConnection((_agent: Agent) => clientImpl, stream)
 
-  await connection.initialize({
-    protocolVersion: PROTOCOL_VERSION,
-    clientCapabilities: {}
+  // 바이너리가 없거나 stdio가 끊겼을 때 영원히 pending되는 것을 방지하기 위해
+  // initialize / newSession 모두 10초 타임아웃을 적용한다.
+  function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error(`ACP ${label} timed out after ${ms}ms`)), ms)
+      )
+    ])
+  }
+
+  await withTimeout(
+    connection.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} }),
+    10_000,
+    'initialize'
+  ).catch((e) => {
+    // childError가 있으면 더 구체적인 메시지를 포함해 던진다.
+    if (childError) throw new Error(`Failed to spawn agent "${agentDef.command}": ${childError.message}`)
+    throw e
   })
 
   const mcp = await startMcpServer()
-  const result = await connection.newSession({
-    cwd,
-    mcpServers: [
-      {
-        type: 'http',
-        name: 'rever-traffic',
-        url: mcp.url,
-        headers: []
-      }
-    ]
-  })
+  const result = await withTimeout(
+    connection.newSession({
+      cwd,
+      mcpServers: [
+        {
+          type: 'http',
+          name: 'rever-traffic',
+          url: mcp.url,
+          headers: []
+        }
+      ]
+    }),
+    10_000,
+    'newSession'
+  )
 
   console.log('[acp:newSession] result keys:', Object.keys(result), 'models:', JSON.stringify((result as { models?: unknown }).models))
   const modelState = (result as { models?: { availableModels?: ModelInfo[]; currentModelId?: string } | null }).models
@@ -134,9 +162,13 @@ export async function spawnAcpSession(
   entryRef = entry
   sessions.set(result.sessionId, entry)
 
-  child.on('close', () => {
+  // child가 닫히면 세션을 dead로 표시한다. 진행 중인 prompt는 connection
+  // 레벨에서 끊기므로 promptAcpSession 내의 connection.prompt()가 자연스럽게
+  // reject된다 (ndJsonStream이 closed stream에서 에러를 던진다).
+  child.on('close', (code) => {
     entry.dead = true
     sessions.delete(result.sessionId)
+    console.warn(`[ACP ${agentDef.id}] child closed with code ${code}`)
   })
 
   return { sessionId: result.sessionId }

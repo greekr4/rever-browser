@@ -112,6 +112,8 @@ const MAX_ENTRIES = 500
 // pathological multi-hundred-MB body can't blow up the ring buffer. Bodies past
 // the cap are truncated and flagged.
 const MAX_BODY_CHARS = 8 * 1024 * 1024
+// 전체 바디 누적 예산: 256MB. 초과 시 가장 오래된 엔트리의 responseBody를 비워낸다.
+const MAX_TOTAL_BODY_BYTES = 256 * 1024 * 1024
 
 function capBody<T extends Partial<StoredRequest>>(req: T): T {
   if (req.responseBody != null && req.responseBody.length > MAX_BODY_CHARS) {
@@ -122,15 +124,34 @@ function capBody<T extends Partial<StoredRequest>>(req: T): T {
 
 const order: string[] = []
 const entries = new Map<string, StoredRequest>()
+// 현재 누적 바디 바이트 수 (UTF-16 코드 유닛 기준, JS string.length)
+let totalBodyBytes = 0
 
 function evictIfNeeded() {
   while (order.length > MAX_ENTRIES) {
     const oldest = order.shift()
     if (oldest) {
+      const e = entries.get(oldest)
+      if (e?.responseBody) {
+        totalBodyBytes = Math.max(0, totalBodyBytes - e.responseBody.length)
+      }
       entries.delete(oldest)
       // Free any WebSocket frames keyed by this requestId — otherwise the
       // wsFrames map grows forever as requests churn through the ring buffer.
       wsFrames.delete(oldest)
+    }
+  }
+  // 전역 바디 예산 초과 시 가장 오래된 엔트리부터 responseBody를 비운다.
+  // 엔트리 자체는 유지해 메타데이터(URL, status 등)는 접근 가능하게 한다.
+  if (totalBodyBytes > MAX_TOTAL_BODY_BYTES) {
+    for (const id of order) {
+      if (totalBodyBytes <= MAX_TOTAL_BODY_BYTES) break
+      const e = entries.get(id)
+      if (e?.responseBody) {
+        totalBodyBytes = Math.max(0, totalBodyBytes - e.responseBody.length)
+        e.responseBody = undefined
+        e.responseBodyTruncated = true
+      }
     }
   }
 }
@@ -139,17 +160,28 @@ export function upsertRequest(rawReq: Partial<StoredRequest> & { requestId: stri
   const req = capBody(rawReq)
   const existing = entries.get(req.requestId)
   if (existing) {
+    // responseBody가 교체될 때 전역 카운터를 갱신한다.
+    if (req.responseBody !== undefined) {
+      const old = existing.responseBody?.length ?? 0
+      const next = req.responseBody?.length ?? 0
+      totalBodyBytes = Math.max(0, totalBodyBytes - old) + next
+    }
     Object.assign(existing, req)
+    evictIfNeeded()
     return
   }
-  entries.set(req.requestId, {
+  const newEntry: StoredRequest = {
     url: '',
     host: '',
     method: '',
     resourceType: 'Other',
     startedAt: Date.now(),
     ...req
-  })
+  }
+  if (newEntry.responseBody) {
+    totalBodyBytes += newEntry.responseBody.length
+  }
+  entries.set(req.requestId, newEntry)
   order.push(req.requestId)
   evictIfNeeded()
 }
@@ -190,4 +222,5 @@ export function getRequest(requestId: string): StoredRequest | undefined {
 export function clearTraffic() {
   order.length = 0
   entries.clear()
+  totalBodyBytes = 0
 }
