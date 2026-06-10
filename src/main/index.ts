@@ -47,6 +47,7 @@ import {
   getConsoleSince,
   getExceptions,
   clearConsole,
+  clearTraffic,
   listRequests,
   getWsFrames
 } from './traffic-store'
@@ -289,6 +290,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle('traffic:get', (_event, requestId: string) => {
     return getRequest(requestId) ?? null
+  })
+
+  ipcMain.handle('traffic:clear', () => {
+    clearTraffic()
+    return true
   })
 
   ipcMain.handle(

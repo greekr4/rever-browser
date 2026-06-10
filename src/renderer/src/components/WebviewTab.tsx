@@ -50,10 +50,8 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
           ready = false
         }
         if (!ready) {
-          console.log('[webview] deferring loadURL until dom-ready', url)
           const onReady = () => {
             wv.removeEventListener('dom-ready', onReady)
-            console.log('[webview] dom-ready, loading deferred URL', url)
             wv.loadURL(url).catch((e) => console.error('[webview] loadURL failed', e))
           }
           wv.addEventListener('dom-ready', onReady)
@@ -76,6 +74,8 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     const wv = wvRef.current
     if (!wv) return
     let attached = false
+    // tryAttach 성공 시 실제 id를 저장해 cleanup에서 올바르게 detach
+    let attachedId: number | null = null
 
     const tryAttach = async () => {
       if (attached) return
@@ -89,6 +89,7 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
       const ok = await window.rev.cdp.attach(id)
       if (ok) {
         attached = true
+        attachedId = id
         updateTab(tab.id, { webContentsId: id })
       }
     }
@@ -169,8 +170,8 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
       unsubTheme()
 
       // Best-effort detach when the tab unmounts (closed).
-      const id = tab.webContentsId
-      if (id) void window.rev.cdp.detach(id)
+      // attachedId는 tryAttach 성공 시 기록한 실제 id (tab.webContentsId는 마운트 시점 null일 수 있음)
+      if (attachedId) void window.rev.cdp.detach(attachedId)
     }
     // tab.id is stable for a tab's lifetime; don't depend on tab.url which
     // would tear down listeners on every navigation.

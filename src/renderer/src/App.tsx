@@ -97,10 +97,12 @@ function App() {
 
   useEffect(() => {
     const off = window.rev.onReloadRequest(({ ignoreCache }) => {
-      activeRef()?.reload(ignoreCache)
+      // 스토어에서 현재 activeId를 직접 읽어 스테일 클로저 방지
+      const id = useTabsStore.getState().activeId
+      const handle = id ? tabRefs.current.get(id) : undefined
+      handle?.reload(ignoreCache)
     })
     return off
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Launch / teardown external Chrome when mode switches
@@ -163,7 +165,6 @@ function App() {
       console.warn('[address-bar] no active webview ref', { activeId, mapKeys: [...tabRefs.current.keys()] })
       return
     }
-    console.log('[address-bar] loadURL', target)
     handle.loadURL(target)
   }
 

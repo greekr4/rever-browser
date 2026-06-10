@@ -2,6 +2,8 @@ import { create } from 'zustand'
 
 import type { NetworkEvent, TrafficEntry } from '@/types/traffic'
 
+const MAX_ENTRIES = 500
+
 interface TrafficState {
   entries: Record<string, TrafficEntry>
   order: string[]
@@ -40,6 +42,13 @@ export const useTrafficStore = create<TrafficState>((set, get) => ({
           startedAt: event.timestamp
         }
         order = [...s.order, id]
+        // 상한 초과 시 오래된 항목 제거
+        if (order.length > MAX_ENTRIES) {
+          const removed = order.splice(0, order.length - MAX_ENTRIES)
+          const nextEntries = { ...s.entries, [id]: next }
+          for (const rid of removed) delete nextEntries[rid]
+          return { entries: nextEntries, order }
+        }
       } else if (event.type === 'response') {
         if (!existing) return s
         next = {

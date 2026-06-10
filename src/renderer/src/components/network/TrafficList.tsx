@@ -13,7 +13,7 @@ function buildPrefill(rows: TrafficEntry[]): string {
   const lines = rows.map(
     (r) => `- ${r.method} ${r.url} (id: ${r.requestId}${r.status ? `, status: ${r.status}` : ''})`
   )
-  return `다음 요청들을 분석해줘. 필요하면 get_request로 상세 봐:\n${lines.join('\n')}\n\n질문: `
+  return `Analyze these requests. Use get_request for details if needed:\n${lines.join('\n')}\n\nQuestion: `
 }
 
 export function TrafficList() {
@@ -105,7 +105,14 @@ export function TrafficList() {
             Traffic ({list.length}
             {list.length !== fullList.length ? ` / ${fullList.length}` : ''})
           </strong>
-          <button onClick={clear} style={{ marginLeft: 'auto', fontSize: 11 }}>
+          <button
+            onClick={() => {
+              clear()
+              void window.rev.traffic.clear()
+            }}
+            style={{ marginLeft: 'auto', fontSize: 11 }}
+            title="Clear captured traffic"
+          >
             Clear
           </button>
         </div>

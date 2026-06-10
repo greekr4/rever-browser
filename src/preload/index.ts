@@ -198,7 +198,8 @@ const api = {
   },
   traffic: {
     get: (requestId: string): Promise<StoredRequestSummary | null> =>
-      ipcRenderer.invoke('traffic:get', requestId)
+      ipcRenderer.invoke('traffic:get', requestId),
+    clear: (): Promise<void> => ipcRenderer.invoke('traffic:clear')
   },
   repeater: {
     send: (

@@ -75,8 +75,11 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       this.sessionId = sessionId
     }
 
-    const promptText = this.sentContext ? text : `${this.systemPrompt}\n\n${text}`
-    this.sentContext = true
+    const alreadySentContext = this.sentContext
+    const promptText = alreadySentContext ? text : `${this.systemPrompt}\n\n${text}`
+    // self 참조: ReadableStream start 콜백은 arrow function이 아니므로 this를 미리 캡처
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this
     const sessionId = this.sessionId
 
     return new ReadableStream<UIMessageChunk>({
@@ -150,6 +153,9 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
             textStarted = result.textStarted
           })
           .then((res) => {
+            // 프롬프트가 성공적으로 완료된 후에 sentContext를 true로 설정
+            // (실패 시에는 시스템 프롬프트가 다음 시도에서 재전송됨)
+            if (!alreadySentContext) self.sentContext = true
             finish(res.stopReason === 'end_turn' ? 'stop' : 'other')
           })
           .catch((e) => {
