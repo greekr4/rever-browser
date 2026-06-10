@@ -64,13 +64,23 @@ export async function launchExternalChrome(): Promise<{ port: number; pid: numbe
       if (!isNaN(stalePid)) {
         try {
           process.kill(stalePid, 0)
-          // Still alive — reuse if port is known
+          // 프로세스가 살아있다.
           if (chromePort !== null) {
+            // 현재 세션에서 spawn한 것이면 재사용한다.
             return { port: chromePort, pid: stalePid }
           }
+          // 앱 재시작 후 chromePort가 없는 경우: stale 프로세스가 살아있으므로
+          // 새 Chrome을 spawn하기 전에 SIGTERM으로 정리한다.
+          try {
+            process.kill(stalePid, 'SIGTERM')
+            console.warn('[external-chrome] killed stale Chrome pid:', stalePid)
+          } catch {
+            // 이미 죽었거나 권한 없음 — 무시
+          }
+          unlinkSync(pidFile)
         } catch {
           // Dead process — clean up
-          unlinkSync(pidFile)
+          try { unlinkSync(pidFile) } catch {}
         }
       }
     } catch {

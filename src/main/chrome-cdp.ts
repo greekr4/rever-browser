@@ -100,6 +100,7 @@ interface RequestWillBeSentParams {
   type?: string
   timestamp: number
   initiator?: Initiator
+  redirectResponse?: object
 }
 
 interface WebSocketCreatedParams {
@@ -468,7 +469,12 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
   dbg.on('message', (_event, method, params) => {
     if (method === 'Network.requestWillBeSent') {
       const p = params as RequestWillBeSentParams
-      bumpInFlight(targetId, +1)
+      // 리다이렉트 체인은 같은 requestId로 requestWillBeSent를 여러 번 보낸다.
+      // redirectResponse가 있으면 이전 in-flight를 이미 완료한 것이므로 net 0 (no bump).
+      // redirectResponse가 없는 최초 요청만 +1 한다.
+      if (!p.redirectResponse) {
+        bumpInFlight(targetId, +1)
+      }
       const resourceType = p.type ?? 'Other'
       const initiator = p.initiator
       upsertRequest({
@@ -611,11 +617,13 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
           console.warn('[probe] failed to persist', e)
         }
       }
-      appendConsole({ ts: Math.round(p.timestamp * 1000), type: p.type, text, args: p.args, stackTrace: p.stackTrace })
+      // CDP consoleAPICalled.timestamp는 이미 epoch 밀리초이므로 *1000 불필요
+      appendConsole({ ts: Date.now(), type: p.type, text, args: p.args, stackTrace: p.stackTrace })
     } else if (method === 'Runtime.exceptionThrown') {
       const p = params as RuntimeExceptionThrownParams
+      // CDP exceptionThrown.timestamp도 epoch 밀리초이므로 *1000 불필요
       appendException({
-        ts: Math.round(p.timestamp * 1000),
+        ts: Date.now(),
         text: p.exceptionDetails.text,
         exception: p.exceptionDetails.exception,
         stackTrace: p.exceptionDetails.stackTrace
@@ -687,6 +695,10 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
 
   dbg.on('detach', (_event, reason) => {
     console.warn('[cdp] detached from', targetId, reason)
+    // 재-attach 시 핸들러 중복을 막기 위해 리스너를 제거한다.
+    // removeAllListeners('detach')는 이 콜백 실행 후이므로 안전하다.
+    dbg.removeAllListeners('message')
+    dbg.removeAllListeners('detach')
     attached.delete(targetId)
     inFlight.delete(targetId)
     debuggerPaused = null
@@ -700,6 +712,9 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
 export function detachCdpCapture(targetId: number): boolean {
   const t = attached.get(targetId)
   if (!t) return false
+  // 명시적 detach 시에도 리스너를 먼저 제거해 재-attach 시 중복을 방지한다.
+  t.dbg.removeAllListeners('message')
+  t.dbg.removeAllListeners('detach')
   try {
     t.dbg.detach()
   } catch {}
