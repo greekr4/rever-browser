@@ -70,13 +70,24 @@ export interface GrepOptions {
   after: number
 }
 
+// grepBody 본문 크기 상한: 10MB
+const GREP_BODY_MAX_BYTES = 10 * 1024 * 1024
+// 단일 grepBody 호출당 최대 exec 시도 횟수 (ReDoS 방어)
+const GREP_MAX_EXEC_ATTEMPTS = 10_000
+
 export function grepBody(body: string, regex: RegExp, opts: GrepOptions): GrepMatch[] {
+  // 본문 크기 상한 — 초과 시 빈 결과 반환
+  if (body.length > GREP_BODY_MAX_BYTES) {
+    return []
+  }
   const out: GrepMatch[] = []
   const flags = regex.flags.includes('g') ? regex.flags : regex.flags + 'g'
   const re = new RegExp(regex.source, flags)
   const seen = new Set<string>()
   let m: RegExpExecArray | null
+  let attempts = 0
   while ((m = re.exec(body)) && out.length < opts.max) {
+    if (++attempts > GREP_MAX_EXEC_ATTEMPTS) break
     if (m[0].length === 0) {
       re.lastIndex++
       continue
