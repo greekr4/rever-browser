@@ -109,26 +109,33 @@ interface EditorProps {
 }
 
 function RequestEditor({ active, onChange }: EditorProps) {
+  // 인덱스 기반 key를 유지하기 위해 [key, value] 쌍 배열로 관리
   const headerEntries = useMemo(() => Object.entries(active.headers), [active.headers])
 
-  const setHeaderKey = (oldKey: string, newKey: string) => {
-    const next: Record<string, string> = {}
-    for (const [k, v] of Object.entries(active.headers)) {
-      if (k === oldKey) {
-        if (newKey) next[newKey] = v
-      } else {
-        next[k] = v
-      }
+  // entries 배열 → headers 객체 변환 헬퍼
+  const entriesToHeaders = (entries: [string, string][]): Record<string, string> => {
+    const result: Record<string, string> = {}
+    for (const [k, v] of entries) {
+      if (k) result[k] = v
     }
-    onChange({ headers: next })
+    return result
   }
-  const setHeaderValue = (key: string, value: string) => {
-    onChange({ headers: { ...active.headers, [key]: value } })
+
+  const setHeaderKey = (idx: number, newKey: string) => {
+    const next = headerEntries.map((pair, i) =>
+      i === idx ? ([newKey, pair[1]] as [string, string]) : pair
+    )
+    onChange({ headers: entriesToHeaders(next) })
   }
-  const removeHeader = (key: string) => {
-    const next = { ...active.headers }
-    delete next[key]
-    onChange({ headers: next })
+  const setHeaderValue = (idx: number, value: string) => {
+    const next = headerEntries.map((pair, i) =>
+      i === idx ? ([pair[0], value] as [string, string]) : pair
+    )
+    onChange({ headers: entriesToHeaders(next) })
+  }
+  const removeHeader = (idx: number) => {
+    const next = headerEntries.filter((_, i) => i !== idx)
+    onChange({ headers: entriesToHeaders(next) })
   }
   const addHeader = () => {
     let name = 'X-New-Header'
@@ -202,12 +209,12 @@ function RequestEditor({ active, onChange }: EditorProps) {
           }}
         >
           <tbody>
-            {headerEntries.map(([k, v]) => (
-              <tr key={k}>
+            {headerEntries.map(([k, v], idx) => (
+              <tr key={idx}>
                 <td style={{ padding: 1, width: '40%' }}>
                   <input
                     value={k}
-                    onChange={(e) => setHeaderKey(k, e.target.value)}
+                    onChange={(e) => setHeaderKey(idx, e.target.value)}
                     spellCheck={false}
                     style={{
                       width: '100%',
@@ -220,7 +227,7 @@ function RequestEditor({ active, onChange }: EditorProps) {
                 <td style={{ padding: 1 }}>
                   <input
                     value={v}
-                    onChange={(e) => setHeaderValue(k, e.target.value)}
+                    onChange={(e) => setHeaderValue(idx, e.target.value)}
                     spellCheck={false}
                     style={{
                       width: '100%',
@@ -232,7 +239,7 @@ function RequestEditor({ active, onChange }: EditorProps) {
                 </td>
                 <td style={{ padding: 1, width: 24 }}>
                   <button
-                    onClick={() => removeHeader(k)}
+                    onClick={() => removeHeader(idx)}
                     title="Remove header"
                     style={{ padding: '2px 6px', fontSize: 11, lineHeight: 1 }}
                   >

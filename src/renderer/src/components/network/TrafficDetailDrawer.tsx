@@ -6,6 +6,7 @@ import { tryPretty } from '@/lib/format-json'
 import type { StoredRequestSummary } from '../../../../preload'
 
 type Tab = 'overview' | 'headers' | 'body'
+type LoadState = 'loading' | 'notfound' | 'error' | StoredRequestSummary
 
 export function TrafficDetailDrawer({
   requestId,
@@ -14,17 +15,27 @@ export function TrafficDetailDrawer({
   requestId: string
   onClose: () => void
 }) {
-  const [data, setData] = useState<StoredRequestSummary | null>(null)
+  const [state, setState] = useState<LoadState>('loading')
   const [tab, setTab] = useState<Tab>('overview')
   const pushDraft = useChatDraft((s) => s.push)
 
+  // data accessor — null 상태 구분 후 사용
+  const data: StoredRequestSummary | null =
+    state !== 'loading' && state !== 'notfound' && state !== 'error' ? state : null
+
   useEffect(() => {
     let cancelled = false
-    setData(null)
+    setState('loading')
     setTab('overview')
-    void window.rev.traffic.get(requestId).then((d) => {
-      if (!cancelled) setData(d)
-    })
+    window.rev.traffic
+      .get(requestId)
+      .then((d) => {
+        if (cancelled) return
+        setState(d ?? 'notfound')
+      })
+      .catch(() => {
+        if (!cancelled) setState('error')
+      })
     return () => {
       cancelled = true
     }
@@ -33,9 +44,9 @@ export function TrafficDetailDrawer({
   const onSendToChat = () => {
     if (!data) return
     pushDraft(
-      `이 요청을 분석해줘: ${data.method} ${data.url} (id: ${data.requestId}${
+      `Analyze this request: ${data.method} ${data.url} (id: ${data.requestId}${
         data.status ? `, status: ${data.status}` : ''
-      })\n\n질문: `
+      })\n\nQuestion: `
     )
   }
 
@@ -95,7 +106,13 @@ export function TrafficDetailDrawer({
       </nav>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 12, fontSize: 12 }}>
-        {!data && <p style={{ opacity: 0.5 }}>Loading…</p>}
+        {state === 'loading' && <p style={{ opacity: 0.5 }}>Loading…</p>}
+        {state === 'notfound' && (
+          <p style={{ opacity: 0.5 }}>Request no longer in capture buffer.</p>
+        )}
+        {state === 'error' && (
+          <p style={{ color: '#f88' }}>Failed to load request details.</p>
+        )}
         {data && tab === 'overview' && <Overview data={data} />}
         {data && tab === 'headers' && <Headers data={data} />}
         {data && tab === 'body' && <Body data={data} />}

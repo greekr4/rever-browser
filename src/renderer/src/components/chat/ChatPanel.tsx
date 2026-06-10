@@ -305,7 +305,6 @@ export function ChatPanel() {
     let cancelled = false
     void window.rev.acp.modelState(sid).then((state) => {
       if (cancelled) return
-      console.log('[chat] modelState ←', state)
       if (!state) {
         setModels([])
         setCurrentModel(null)
