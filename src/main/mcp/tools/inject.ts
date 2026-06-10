@@ -78,6 +78,14 @@ export async function loadAndApplyInjections(target: { dbg: Debugger; wc: WebCon
     if (!s.enabled) continue
     if (!hostMatches(s.hostGlob, host)) continue
     try {
+      // 이전 등록이 있으면 먼저 제거 (재부착 시 중복 누수 방지)
+      const prevIdentifier = idMap.get(s.id)
+      if (prevIdentifier) {
+        await target.dbg
+          .sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: prevIdentifier })
+          .catch(() => {})
+        idMap.delete(s.id)
+      }
       const res = (await target.dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
         source: s.code
       })) as { identifier: string }

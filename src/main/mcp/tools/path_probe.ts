@@ -2,7 +2,8 @@ import { z } from 'zod'
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
-import { repeaterSendRaw } from '../../repeater'
+import { getActiveTarget } from '../../chrome-cdp'
+import { repeaterSendRaw, buildRequestSpec } from '../../repeater'
 import { ok, err, errorMessage } from '../utils'
 
 const DEFAULT_WORDLIST = [
@@ -87,7 +88,6 @@ export function registerPathProbeTools(mcp: McpServer) {
       try {
         let origin = baseUrl
         if (!origin) {
-          const { getActiveTarget } = await import('../../chrome-cdp')
           const target = getActiveTarget()
           if (!target) return err('no active page; supply baseUrl')
           const r = (await target.dbg.sendCommand('Runtime.evaluate', {
@@ -115,7 +115,7 @@ export function registerPathProbeTools(mcp: McpServer) {
             const u = queue.shift()
             if (!u) break
             try {
-              const target = (await import('../../chrome-cdp')).getActiveTarget()
+              const target = getActiveTarget()
               if (!target) break
               const expr = `(async () => {
                 try {
@@ -177,7 +177,6 @@ export function registerPathProbeTools(mcp: McpServer) {
     },
     async ({ requestId, payloads }) => {
       try {
-        const { buildRequestSpec } = await import('../../repeater')
         const spec = buildRequestSpec(requestId, undefined)
         const list = payloads ?? LFI_TEMPLATES
         const results: Array<{ payload: string; status: number; length: number; preview: string }> = []

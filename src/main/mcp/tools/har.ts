@@ -5,6 +5,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { listRequests, getRequest } from '../../traffic-store'
 import { ok, err, errorMessage } from '../utils'
 
+// per-entry 본문 최대 256KB, 전체 JSON 응답 최대 50MB
+const BODY_TRUNCATE_BYTES = 256 * 1024
+const HAR_RESPONSE_SIZE_LIMIT = 50 * 1024 * 1024
+
 interface HarHeader {
   name: string
   value: string
@@ -81,10 +85,15 @@ export function registerHarTools(mcp: McpServer) {
                 size: full.responseBody?.length ?? 0,
                 mimeType: full.mimeType ?? '',
                 ...(includeBodies && full.responseBody
-                  ? {
-                      text: full.responseBody,
-                      ...(full.responseBodyBase64 ? { encoding: 'base64' } : {})
-                    }
+                  ? (() => {
+                      const body = full.responseBody
+                      const truncated = body.length > BODY_TRUNCATE_BYTES
+                      return {
+                        text: truncated ? body.slice(0, BODY_TRUNCATE_BYTES) : body,
+                        ...(full.responseBodyBase64 ? { encoding: 'base64' } : {}),
+                        ...(truncated ? { comment: `truncated (original ${body.length} bytes)` } : {})
+                      }
+                    })()
                   : {})
               },
               redirectURL: '',
@@ -108,7 +117,13 @@ export function registerHarTools(mcp: McpServer) {
           }
         }
 
-        return ok(JSON.stringify(har, null, 2))
+        const serialized = JSON.stringify(har, null, 2)
+        if (serialized.length > HAR_RESPONSE_SIZE_LIMIT) {
+          return err(
+            `HAR output too large (${serialized.length} bytes). Reduce limit or use host filter.`
+          )
+        }
+        return ok(serialized)
       } catch (e) {
         return err(errorMessage(e))
       }

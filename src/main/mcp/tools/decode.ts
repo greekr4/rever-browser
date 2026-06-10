@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
-import { ok, err } from '../utils'
+import { ok, err, errorMessage } from '../utils'
 
 function decodeBase64Url(s: string): string {
   const padded = s.replace(/-/g, '+').replace(/_/g, '/').padEnd(s.length + ((4 - (s.length % 4)) % 4), '=')
@@ -103,7 +103,7 @@ export function registerDecodeTools(mcp: McpServer) {
 
         return ok(JSON.stringify({ type: 'unknown', note: 'Could not detect encoding', raw: v }, null, 2))
       } catch (e) {
-        return err(e instanceof Error ? e.message : String(e))
+        return err(errorMessage(e))
       }
     }
   )
