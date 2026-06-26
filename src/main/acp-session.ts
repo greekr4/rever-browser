@@ -140,7 +140,14 @@ export async function spawnAcpSession(
           url: mcp.url,
           headers: []
         }
-      ]
+      ],
+      // settingSources를 빈 배열로 두지 않으면 claude-agent-acp가 사용자의
+      // ~/.claude.json에 등록된 모든 개인 MCP 서버(playwright/notion/postgres 등
+      // 20여 개)를 매 세션마다 띄운다. 이 부팅이 ~9.5초 걸려 아래 newSession
+      // 10초 타임아웃을 자주 넘긴다("ACP newSession timed out"). 에이전트에는
+      // 위에서 명시한 rever-traffic MCP만 있으면 되므로 개인 설정 로딩을 끈다.
+      // (인증은 settingSources와 무관하게 유지된다.)
+      _meta: { claudeCode: { options: { settingSources: [] } } }
     }),
     10_000,
     'newSession'
