@@ -1,5 +1,5 @@
 import { useChat } from '@ai-sdk/react'
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -78,7 +78,7 @@ const MD_COMPONENTS = {
   pre: ({ children }: { children?: React.ReactNode }) => <CodeBlock>{children}</CodeBlock>
 }
 
-function Markdown({ text, dim }: { text: string; dim?: boolean }) {
+const Markdown = memo(function Markdown({ text, dim }: { text: string; dim?: boolean }) {
   return (
     <div className={`md${dim ? ' md--dim' : ''}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
@@ -86,7 +86,7 @@ function Markdown({ text, dim }: { text: string; dim?: boolean }) {
       </ReactMarkdown>
     </div>
   )
-}
+})
 
 interface ToolPart {
   type: string
@@ -235,6 +235,31 @@ function WorkGroup({ parts }: { parts: AnyPart[] }) {
     </div>
   )
 }
+
+// 메시지 1개를 렌더한다. React.memo로 감싸 message 참조가 바뀐 메시지만 다시
+// 그리게 한다. AI SDK는 완료된 메시지의 객체 참조를 유지하고 스트리밍 중인
+// 마지막 메시지만 새 객체로 교체하므로, 토큰마다 과거 메시지 전체를
+// react-markdown으로 재파싱하던 O(N²) 비용이 스트리밍 중인 1개로 줄어든다.
+interface ChatMessageLike {
+  id: string
+  role: string
+  parts: AnyPart[]
+}
+
+const MessageItem = memo(function MessageItem({ message }: { message: ChatMessageLike }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>{message.role}</div>
+      {groupParts(message.parts).map((g) =>
+        g.kind === 'text' ? (
+          <Markdown key={g.key} text={(g.part as { text: string }).text} />
+        ) : (
+          <WorkGroup key={g.key} parts={g.parts} />
+        )
+      )}
+    </div>
+  )
+})
 
 const preStyle: React.CSSProperties = {
   background: '#0c0c0c',
@@ -463,16 +488,7 @@ export function ChatPanel() {
             </p>
           )}
           {messages.map((m) => (
-            <div key={m.id} style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>{m.role}</div>
-              {groupParts(m.parts as unknown as AnyPart[]).map((g) =>
-                g.kind === 'text' ? (
-                  <Markdown key={g.key} text={(g.part as { text: string }).text} />
-                ) : (
-                  <WorkGroup key={g.key} parts={g.parts} />
-                )
-              )}
-            </div>
+            <MessageItem key={m.id} message={m as unknown as ChatMessageLike} />
           ))}
           {waiting && <Thinking />}
         </div>
