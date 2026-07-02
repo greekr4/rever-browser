@@ -73,4 +73,4 @@ The MCP server starts lazily on the first agent spawn and binds to a random loca
 
 ## License
 
-Private project.
+[MIT](./LICENSE)
