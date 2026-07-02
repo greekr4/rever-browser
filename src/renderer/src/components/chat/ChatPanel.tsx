@@ -7,8 +7,12 @@ import { ACPChatTransport } from '@/ai/acp-transport'
 import { useAcpAutoApprove, setAcpAutoApprove } from '@/ai/acp-permission'
 import { ACP_AGENTS, type ACPAgentID } from '@/constants'
 import { AgentPicker } from './AgentPicker'
+import { ChatHistoryMenu } from './ChatHistoryMenu'
 import { formatOutput } from '@/lib/format-json'
 import { useChatDraft } from '@/stores/chat-draft'
+import { newConversationId, useChatHistory } from '@/stores/chat-history'
+
+import type { UIMessage } from 'ai'
 
 const SCROLL_BOTTOM_THRESHOLD = 32
 
@@ -280,7 +284,12 @@ interface ModelEntry {
 }
 
 export function ChatPanel() {
-  const [agentId, setAgentId] = useState<ACPAgentID>('claude-code')
+  // Restore the most recently used conversation on launch so a reload/restart
+  // doesn't drop the last chat. The persist store hydrates synchronously from
+  // localStorage, so getState() already has the saved conversations here.
+  const restored = useChatHistory.getState().conversations[0] ?? null
+
+  const [agentId, setAgentId] = useState<ACPAgentID>(restored?.agentId ?? 'claude-code')
   // Absolute path returned by detectAgents(). When set, we pass it to the
   // transport instead of the bare bin name so spawn doesn't depend on the
   // Electron child process's PATH (notably broken on Windows for .cmd shims).
@@ -291,17 +300,37 @@ export function ChatPanel() {
   const [currentModel, setCurrentModel] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
+  // --- Conversation history wiring ---------------------------------------
+  // `chatKey` drives useChat's Chat lifecycle: it changes only when we want a
+  // fresh Chat (agent switch, "New chat", or opening a saved conversation via
+  // sessionSeq). The storage id lives in currentIdRef so the draft→saved
+  // transition doesn't churn chatKey and lose the in-flight message.
+  const [sessionSeq, setSessionSeq] = useState(0)
+  const [currentId, setCurrentId] = useState<string | null>(restored?.id ?? null)
+  const [seedMessages, setSeedMessages] = useState<UIMessage[]>(restored?.messages ?? [])
+  const currentIdRef = useRef<string | null>(restored?.id ?? null)
+  const saveConversation = useChatHistory((s) => s.save)
+
+  // One transport per agent identity. The resolved binary path is applied in
+  // place (see effect below) rather than baked into the memo deps — otherwise
+  // async PATH detection would swap the transport and wipe the conversation.
   const transport = useMemo(() => {
     const base = ACP_AGENTS.find((a) => a.id === agentId)!
-    const agentDef = agentBinPath ? { ...base, command: agentBinPath } : base
-    return new ACPChatTransport({ agentDef })
-  }, [agentId, agentBinPath])
+    return new ACPChatTransport({ agentDef: base })
+  }, [agentId])
+
+  // PATH detection resolves after mount; push the absolute path into the live
+  // transport so the next spawn uses it, without recreating the transport.
+  useEffect(() => {
+    if (agentBinPath) transport.setCommand(agentBinPath)
+  }, [transport, agentBinPath])
 
   // @ai-sdk/react's useChat only recreates its internal Chat when `id`
-  // changes — a fresh `transport` prop alone is ignored. Without this key
-  // change, switching agents keeps sending prompts to the old (still-alive)
-  // session, which is why a Gemini-selected chat was answering as Claude.
-  const chatKey = `${agentId}::${agentBinPath ?? ''}`
+  // changes — a fresh `transport` prop alone is ignored. Keying on agentId
+  // (switch agents → fresh chat + torn-down session) and sessionSeq (new /
+  // opened conversation) covers every case where we intend to reseed; resolving
+  // the binary path must NOT reset the chat, so it stays out of the key.
+  const chatKey = `${agentId}::${sessionSeq}`
 
   // Tear down the previous ACP session when the agent (and thus transport)
   // changes, so we don't leak the old child process.
@@ -311,11 +340,21 @@ export function ChatPanel() {
     }
   }, [transport])
 
-  const { messages, sendMessage, status, stop, setMessages } = useChat({
+  const { messages, sendMessage, status, stop } = useChat({
     id: chatKey,
-    transport
+    transport,
+    messages: seedMessages
   })
   const busy = status === 'streaming' || status === 'submitted'
+
+  // Persist the conversation whenever a turn settles. Streaming updates are
+  // skipped (status !== 'ready'), so this writes once per completed turn.
+  useEffect(() => {
+    if (status !== 'ready') return
+    const id = currentIdRef.current
+    if (!id || messages.length === 0) return
+    saveConversation({ id, agentId, messages: messages as UIMessage[] })
+  }, [status, messages, agentId, saveConversation])
 
   // Fetch model list whenever the session reaches a quiet state (= just spawned
   // or just finished a turn). The agent only exposes models AFTER newSession.
@@ -358,14 +397,40 @@ export function ChatPanel() {
   const draftPending = useChatDraft((s) => s.pending)
   const consumeDraft = useChatDraft((s) => s.consume)
 
-  const onReset = async () => {
+  // Start a fresh, empty conversation: kill the current agent session and
+  // reseed useChat with an empty message list via a new sessionSeq.
+  const onNewChat = async () => {
     if (busy) {
       try {
         stop()
       } catch {}
     }
     await transport.reset()
-    setMessages([])
+    currentIdRef.current = null
+    setCurrentId(null)
+    setSeedMessages([])
+    setSessionSeq((n) => n + 1)
+    setInput('')
+    setAutoScroll(true)
+  }
+
+  // Load a saved conversation into the panel. Note: this restores the visible
+  // transcript only — the agent has no server-side memory of it, so the next
+  // message spawns a fresh session (system prompt re-sent).
+  const openConversation = async (id: string) => {
+    const conv = useChatHistory.getState().conversations.find((c) => c.id === id)
+    if (!conv) return
+    if (busy) {
+      try {
+        stop()
+      } catch {}
+    }
+    await transport.reset()
+    currentIdRef.current = conv.id
+    setCurrentId(conv.id)
+    setSeedMessages(conv.messages)
+    setAgentId(conv.agentId)
+    setSessionSeq((n) => n + 1)
     setInput('')
     setAutoScroll(true)
   }
@@ -402,6 +467,14 @@ export function ChatPanel() {
     e.preventDefault()
     const text = input.trim()
     if (!text || busy) return
+    // Assign a storage id for the draft on first send. This does NOT change
+    // chatKey, so the in-flight message isn't lost; the save effect picks it
+    // up from currentIdRef once the turn completes.
+    if (!currentIdRef.current) {
+      const id = newConversationId()
+      currentIdRef.current = id
+      setCurrentId(id)
+    }
     setInput('')
     setAutoScroll(true)
     void sendMessage({ text })
@@ -414,8 +487,14 @@ export function ChatPanel() {
           agentId={agentId}
           disabled={busy}
           onChange={(id, resolvedPath) => {
-            setAgentId(id)
             setAgentBinPath(resolvedPath)
+            // A real agent switch starts a fresh draft (a conversation is bound
+            // to one agent). Path-only resolution keeps the same id/chat.
+            if (id === agentId) return
+            currentIdRef.current = null
+            setCurrentId(null)
+            setSeedMessages([])
+            setAgentId(id)
           }}
         />
         <select
@@ -456,22 +535,23 @@ export function ChatPanel() {
         >
           {autoApprove ? 'Auto-approve' : 'Manual approve'}
         </button>
+        <ChatHistoryMenu currentId={currentId} disabled={busy} onOpen={openConversation} />
         <button
           type="button"
-          onClick={onReset}
-          title="Kill the agent session and clear the conversation"
+          onClick={onNewChat}
+          title="Start a new conversation (kills the current agent session)"
           style={{
             fontSize: 11,
             padding: '3px 8px',
-            background: '#2a1f1f',
-            border: '1px solid #4a2a2a',
-            color: '#eaa',
+            background: '#1f242a',
+            border: '1px solid #2a3a4a',
+            color: '#ace',
             borderRadius: 4,
             cursor: 'pointer'
           }}
           disabled={messages.length === 0 && !busy}
         >
-          Reset
+          + New
         </button>
       </header>
 

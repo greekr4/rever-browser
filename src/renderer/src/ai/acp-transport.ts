@@ -50,6 +50,16 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     return this.sessionId
   }
 
+  /**
+   * Update the binary path used for the next spawn without recreating the
+   * transport. PATH detection resolves asynchronously after mount, so we
+   * apply the resolved absolute path in place — recreating the transport (or
+   * changing the chat id) would wipe the current conversation.
+   */
+  setCommand(command: string): void {
+    this.agentDef = { ...this.agentDef, command }
+  }
+
   async sendMessages({
     messages,
     abortSignal
