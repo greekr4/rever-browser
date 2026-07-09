@@ -42,11 +42,7 @@ import {
   spawnSession,
   type AgentDef
 } from './agent-router'
-import {
-  getAnthropicApiKey,
-  hasAnthropicApiKey,
-  setAnthropicApiKey
-} from './settings'
+import { getApiKey, hasApiKey, setApiKey, type ApiProvider } from './settings'
 import {
   getRequest,
   getConsoleSince,
@@ -225,11 +221,11 @@ app.whenReady().then(() => {
     return spawnSession(agentDef, scratch)
   })
 
-  ipcMain.handle('settings:get-api-key', () => getAnthropicApiKey())
-  ipcMain.handle('settings:has-api-key', () => hasAnthropicApiKey())
-  ipcMain.handle('settings:set-api-key', (_event, key: string) => {
-    setAnthropicApiKey(key)
-    return hasAnthropicApiKey()
+  ipcMain.handle('settings:get-api-key', (_event, provider: ApiProvider) => getApiKey(provider))
+  ipcMain.handle('settings:has-api-key', (_event, provider: ApiProvider) => hasApiKey(provider))
+  ipcMain.handle('settings:set-api-key', (_event, provider: ApiProvider, key: string) => {
+    setApiKey(provider, key)
+    return hasApiKey(provider)
   })
 
   ipcMain.handle(

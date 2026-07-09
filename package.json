@@ -22,6 +22,7 @@
     "ai": "^6",
     "chrome-remote-interface": "^0.33.3",
     "framer-motion": "^12.38.0",
+    "openai": "^6.45.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "zustand": "^5.0.12"

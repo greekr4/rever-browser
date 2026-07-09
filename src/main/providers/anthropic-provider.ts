@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { randomUUID } from 'node:crypto'
 
 import { startMcpServer } from '../mcp/server'
-import { getAnthropicApiKey } from '../settings'
+import { getApiKey } from '../settings'
 
 import type { SessionNotification } from '@agentclientprotocol/sdk'
 
@@ -111,7 +111,7 @@ export async function promptAnthropicSession(
   if (!session) throw new Error(`unknown Anthropic session: ${sessionId}`)
   if (session.dead) throw new Error(`Anthropic session is dead: ${sessionId}`)
 
-  const apiKey = getAnthropicApiKey()
+  const apiKey = getApiKey('anthropic')
   if (!apiKey) {
     throw new Error('No Anthropic API key set. Add one in settings (Anthropic API key).')
   }

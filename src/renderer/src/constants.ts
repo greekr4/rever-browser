@@ -1,4 +1,4 @@
-export type ACPAgentID = 'claude-code' | 'codex' | 'anthropic'
+export type ACPAgentID = 'claude-code' | 'codex' | 'anthropic' | 'openai'
 
 export interface ACPAgentDef {
   id: ACPAgentID
@@ -13,10 +13,10 @@ export interface ACPAgentDef {
   acpSupported: boolean
   /**
    * How the agent loop runs. 'acp' spawns an external ACP binary; 'anthropic'
-   * calls the Anthropic Messages API directly in-process and is gated on an API
-   * key instead of a PATH binary.
+   * and 'openai' call their respective APIs directly in-process and are gated on
+   * an API key instead of a PATH binary.
    */
-  provider?: 'acp' | 'anthropic'
+  provider?: 'acp' | 'anthropic' | 'openai'
   /** Short hint shown in the picker when the binary isn't found. */
   installHint: string
   /** Single character used in the picker tile. */
@@ -33,6 +33,16 @@ export const ACP_AGENTS: ACPAgentDef[] = [
     provider: 'anthropic',
     installHint: 'Add an Anthropic API key in settings',
     icon: 'A'
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI (API)',
+    command: '',
+    args: [],
+    acpSupported: true,
+    provider: 'openai',
+    installHint: 'Add an OpenAI API key in settings',
+    icon: 'O'
   },
   {
     id: 'claude-code',

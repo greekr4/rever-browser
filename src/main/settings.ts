@@ -2,16 +2,23 @@ import { app, safeStorage } from 'electron'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-// Anthropic API 키를 userData 아래에 safeStorage로 암호화 저장한다.
+// LLM provider API 키를 userData 아래에 safeStorage로 암호화 저장한다.
 // safeStorage(OS 키체인)를 쓸 수 없는 환경에서는 평문 폴백을 사용하되,
 // 파일에 어떤 방식으로 저장됐는지 프리픽스로 구분한다.
-function keyFile(): string {
-  return path.join(app.getPath('userData'), 'anthropic-key.bin')
+export type ApiProvider = 'anthropic' | 'openai'
+
+const ENV_VAR: Record<ApiProvider, string> = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY'
 }
 
-export function setAnthropicApiKey(key: string): void {
+function keyFile(provider: ApiProvider): string {
+  return path.join(app.getPath('userData'), `${provider}-key.bin`)
+}
+
+export function setApiKey(provider: ApiProvider, key: string): void {
   const trimmed = key.trim()
-  const file = keyFile()
+  const file = keyFile(provider)
   if (!trimmed) {
     // 빈 값은 저장 파일 자체를 비워 "키 없음"으로 만든다.
     writeFileSync(file, '')
@@ -25,8 +32,8 @@ export function setAnthropicApiKey(key: string): void {
   }
 }
 
-export function getAnthropicApiKey(): string | null {
-  const file = keyFile()
+export function getApiKey(provider: ApiProvider): string | null {
+  const file = keyFile(provider)
   if (existsSync(file)) {
     const buf = readFileSync(file)
     if (buf.length > 4) {
@@ -43,9 +50,9 @@ export function getAnthropicApiKey(): string | null {
     }
   }
   // 파일이 없거나 비었으면 환경변수로 폴백한다(개발 편의).
-  return process.env.ANTHROPIC_API_KEY ?? null
+  return process.env[ENV_VAR[provider]] ?? null
 }
 
-export function hasAnthropicApiKey(): boolean {
-  return !!getAnthropicApiKey()
+export function hasApiKey(provider: ApiProvider): boolean {
+  return !!getApiKey(provider)
 }
