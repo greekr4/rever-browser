@@ -16,6 +16,7 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.20.0",
     "@ai-sdk/react": "^3.0.170",
+    "@anthropic-ai/sdk": "^0.110.0",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^6",
