@@ -15,19 +15,30 @@ interface AgentTileInfo {
   status: 'ready' | 'not-installed' | 'needs-key' | 'unsupported'
 }
 
-// Sentinel passed to onChange for the Anthropic provider, which has no PATH
-// binary — the router dispatches on the agent id, so the value is unused.
-const ANTHROPIC_SENTINEL = 'anthropic'
+// Providers gated on an API key rather than a PATH binary.
+type KeyProvider = 'anthropic' | 'openai'
+const KEY_PROVIDERS: { id: KeyProvider; label: string }[] = [
+  { id: 'anthropic', label: 'Anthropic API key' },
+  { id: 'openai', label: 'OpenAI API key' }
+]
 
-function buildTiles(detection: AgentDetection, hasApiKey: boolean): AgentTileInfo[] {
+// Sentinel passed to onChange for API providers, which have no PATH binary —
+// the router dispatches on the agent id, so the value is unused.
+const API_SENTINEL = 'api'
+
+function buildTiles(
+  detection: AgentDetection,
+  apiKeys: Record<KeyProvider, boolean>
+): AgentTileInfo[] {
   return ACP_AGENTS.map((def) => {
-    if (def.provider === 'anthropic') {
+    if (def.provider === 'anthropic' || def.provider === 'openai') {
+      const hasKey = apiKeys[def.provider]
       return {
         def,
-        resolvedPath: hasApiKey ? ANTHROPIC_SENTINEL : null,
-        detected: hasApiKey,
-        selectable: hasApiKey,
-        status: hasApiKey ? 'ready' : 'needs-key'
+        resolvedPath: hasKey ? API_SENTINEL : null,
+        detected: hasKey,
+        selectable: hasKey,
+        status: hasKey ? 'ready' : 'needs-key'
       }
     }
     const resolvedPath = detection.resolved[def.command] ?? null
@@ -71,27 +82,33 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
   const [open, setOpen] = useState(false)
   const [detection, setDetection] = useState<AgentDetection>({ resolved: {} })
   const [loading, setLoading] = useState(true)
-  const [hasApiKey, setHasApiKey] = useState(false)
-  const [keyInput, setKeyInput] = useState('')
-  const [savingKey, setSavingKey] = useState(false)
+  const [apiKeys, setApiKeys] = useState<Record<KeyProvider, boolean>>({
+    anthropic: false,
+    openai: false
+  })
+  const [keyInput, setKeyInput] = useState<Record<KeyProvider, string>>({
+    anthropic: '',
+    openai: ''
+  })
+  const [savingKey, setSavingKey] = useState<KeyProvider | null>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     let cancelled = false
-    const probes = ACP_AGENTS.filter((a) => a.provider !== 'anthropic' && a.command).map((a) => ({
-      command: a.command,
-      fallbackBins: a.fallbackBins
-    }))
+    const probes = ACP_AGENTS.filter(
+      (a) => a.provider !== 'anthropic' && a.provider !== 'openai' && a.command
+    ).map((a) => ({ command: a.command, fallbackBins: a.fallbackBins }))
     void Promise.all([
       window.rev.acp.listAvailable(probes),
-      window.rev.settings.hasApiKey()
-    ]).then(([results, keyPresent]) => {
+      window.rev.settings.hasApiKey('anthropic'),
+      window.rev.settings.hasApiKey('openai')
+    ]).then(([results, anthropicKey, openaiKey]) => {
       if (cancelled) return
       const resolved: Record<string, string | null> = {}
       for (const r of results) resolved[r.command] = r.resolvedPath
       setDetection({ resolved })
-      setHasApiKey(keyPresent)
+      setApiKeys({ anthropic: anthropicKey, openai: openaiKey })
       setLoading(false)
     })
     return () => {
@@ -99,20 +116,20 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
     }
   }, [])
 
-  const saveApiKey = async () => {
-    const key = keyInput.trim()
+  const saveApiKey = async (provider: KeyProvider) => {
+    const key = keyInput[provider].trim()
     if (!key) return
-    setSavingKey(true)
+    setSavingKey(provider)
     try {
-      const ok = await window.rev.settings.setApiKey(key)
-      setHasApiKey(ok)
-      if (ok) setKeyInput('')
+      const ok = await window.rev.settings.setApiKey(provider, key)
+      setApiKeys((prev) => ({ ...prev, [provider]: ok }))
+      if (ok) setKeyInput((prev) => ({ ...prev, [provider]: '' }))
     } finally {
-      setSavingKey(false)
+      setSavingKey(null)
     }
   }
 
-  const tiles = useMemo(() => buildTiles(detection, hasApiKey), [detection, hasApiKey])
+  const tiles = useMemo(() => buildTiles(detection, apiKeys), [detection, apiKeys])
   const selected = tiles.find((t) => t.def.id === agentId) ?? tiles[0]
 
   // Push the resolved absolute path to the parent once detection finishes.
@@ -220,28 +237,34 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
               </button>
             ))}
           </div>
-          <div style={keyRowStyle}>
-            <label style={{ fontSize: 11, opacity: 0.7 }}>
-              Anthropic API key {hasApiKey ? '· saved' : '· not set'}
-            </label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input
-                type="password"
-                value={keyInput}
-                onChange={(e) => setKeyInput(e.target.value)}
-                placeholder={hasApiKey ? 'Replace key…' : 'sk-ant-…'}
-                style={keyInputStyle}
-              />
-              <button
-                type="button"
-                onClick={() => void saveApiKey()}
-                disabled={savingKey || !keyInput.trim()}
-                style={keySaveStyle}
-              >
-                {savingKey ? '…' : 'Save'}
-              </button>
+          {KEY_PROVIDERS.map((kp) => (
+            <div key={kp.id} style={keyRowStyle}>
+              <label style={{ fontSize: 11, opacity: 0.7 }}>
+                {kp.label} {apiKeys[kp.id] ? '· saved' : '· not set'}
+              </label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  type="password"
+                  value={keyInput[kp.id]}
+                  onChange={(e) =>
+                    setKeyInput((prev) => ({ ...prev, [kp.id]: e.target.value }))
+                  }
+                  placeholder={
+                    apiKeys[kp.id] ? 'Replace key…' : kp.id === 'openai' ? 'sk-…' : 'sk-ant-…'
+                  }
+                  style={keyInputStyle}
+                />
+                <button
+                  type="button"
+                  onClick={() => void saveApiKey(kp.id)}
+                  disabled={savingKey === kp.id || !keyInput[kp.id].trim()}
+                  style={keySaveStyle}
+                >
+                  {savingKey === kp.id ? '…' : 'Save'}
+                </button>
+              </div>
             </div>
-          </div>
+          ))}
         </div>
       )}
     </div>
