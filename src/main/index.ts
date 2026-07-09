@@ -34,14 +34,19 @@ import { detectAgents, type AgentProbe } from './acp-detect'
 import { launchExternalChrome, killExternalChrome } from './external-chrome'
 import { attachExternalCdp, detachExternalCdp, getExternalTarget } from './external-cdp'
 import {
-  cancelAcpSession,
-  getSessionModelState,
-  killAcpSession,
-  promptAcpSession,
-  setSessionModel,
-  spawnAcpSession,
+  cancelSession,
+  killSession,
+  promptSession,
+  sessionModelState,
+  setSessionModelRouted,
+  spawnSession,
   type AgentDef
-} from './acp-session'
+} from './agent-router'
+import {
+  getAnthropicApiKey,
+  hasAnthropicApiKey,
+  setAnthropicApiKey
+} from './settings'
 import {
   getRequest,
   getConsoleSince,
@@ -217,7 +222,14 @@ app.whenReady().then(() => {
     } catch (e) {
       console.warn('[acp:spawn] failed to ensure scratch dir', e)
     }
-    return spawnAcpSession(agentDef, scratch)
+    return spawnSession(agentDef, scratch)
+  })
+
+  ipcMain.handle('settings:get-api-key', () => getAnthropicApiKey())
+  ipcMain.handle('settings:has-api-key', () => hasAnthropicApiKey())
+  ipcMain.handle('settings:set-api-key', (_event, key: string) => {
+    setAnthropicApiKey(key)
+    return hasAnthropicApiKey()
   })
 
   ipcMain.handle(
@@ -240,7 +252,7 @@ app.whenReady().then(() => {
           pendingPermissions.set(id, { resolve, reject, timer })
           sender.send('acp:permission-request', { id, request: req })
         })
-      return promptAcpSession(
+      return promptSession(
         sessionId,
         text,
         (notification) => {
@@ -264,19 +276,19 @@ app.whenReady().then(() => {
   )
 
   ipcMain.handle('acp:cancel', async (_event, sessionId: string) => {
-    return cancelAcpSession(sessionId)
+    return cancelSession(sessionId)
   })
 
   ipcMain.handle('acp:kill', async (_event, sessionId: string) => {
-    return killAcpSession(sessionId)
+    return killSession(sessionId)
   })
 
   ipcMain.handle('acp:model-state', (_event, sessionId: string) => {
-    return getSessionModelState(sessionId)
+    return sessionModelState(sessionId)
   })
 
   ipcMain.handle('acp:set-model', async (_event, sessionId: string, modelId: string) => {
-    return setSessionModel(sessionId, modelId)
+    return setSessionModelRouted(sessionId, modelId)
   })
 
   ipcMain.handle('viewport:get', () => getViewport())

@@ -12,11 +12,24 @@ interface AgentTileInfo {
   resolvedPath: string | null
   detected: boolean
   selectable: boolean
-  status: 'ready' | 'not-installed' | 'unsupported'
+  status: 'ready' | 'not-installed' | 'needs-key' | 'unsupported'
 }
 
-function buildTiles(detection: AgentDetection): AgentTileInfo[] {
+// Sentinel passed to onChange for the Anthropic provider, which has no PATH
+// binary — the router dispatches on the agent id, so the value is unused.
+const ANTHROPIC_SENTINEL = 'anthropic'
+
+function buildTiles(detection: AgentDetection, hasApiKey: boolean): AgentTileInfo[] {
   return ACP_AGENTS.map((def) => {
+    if (def.provider === 'anthropic') {
+      return {
+        def,
+        resolvedPath: hasApiKey ? ANTHROPIC_SENTINEL : null,
+        detected: hasApiKey,
+        selectable: hasApiKey,
+        status: hasApiKey ? 'ready' : 'needs-key'
+      }
+    }
     const resolvedPath = detection.resolved[def.command] ?? null
     const detected = resolvedPath !== null
     const selectable = def.acpSupported && detected
@@ -32,12 +45,14 @@ function buildTiles(detection: AgentDetection): AgentTileInfo[] {
 const STATUS_LABEL: Record<AgentTileInfo['status'], string> = {
   ready: 'Ready',
   'not-installed': 'Not installed',
+  'needs-key': 'Needs API key',
   unsupported: 'Not yet ACP-compatible'
 }
 
 const STATUS_COLOR: Record<AgentTileInfo['status'], string> = {
   ready: '#3aa55d',
   'not-installed': '#888',
+  'needs-key': '#c98a3a',
   unsupported: '#c98a3a'
 }
 
@@ -56,20 +71,27 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
   const [open, setOpen] = useState(false)
   const [detection, setDetection] = useState<AgentDetection>({ resolved: {} })
   const [loading, setLoading] = useState(true)
+  const [hasApiKey, setHasApiKey] = useState(false)
+  const [keyInput, setKeyInput] = useState('')
+  const [savingKey, setSavingKey] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     let cancelled = false
-    const probes = ACP_AGENTS.map((a) => ({
+    const probes = ACP_AGENTS.filter((a) => a.provider !== 'anthropic' && a.command).map((a) => ({
       command: a.command,
       fallbackBins: a.fallbackBins
     }))
-    void window.rev.acp.listAvailable(probes).then((results) => {
+    void Promise.all([
+      window.rev.acp.listAvailable(probes),
+      window.rev.settings.hasApiKey()
+    ]).then(([results, keyPresent]) => {
       if (cancelled) return
       const resolved: Record<string, string | null> = {}
       for (const r of results) resolved[r.command] = r.resolvedPath
       setDetection({ resolved })
+      setHasApiKey(keyPresent)
       setLoading(false)
     })
     return () => {
@@ -77,7 +99,20 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
     }
   }, [])
 
-  const tiles = useMemo(() => buildTiles(detection), [detection])
+  const saveApiKey = async () => {
+    const key = keyInput.trim()
+    if (!key) return
+    setSavingKey(true)
+    try {
+      const ok = await window.rev.settings.setApiKey(key)
+      setHasApiKey(ok)
+      if (ok) setKeyInput('')
+    } finally {
+      setSavingKey(false)
+    }
+  }
+
+  const tiles = useMemo(() => buildTiles(detection, hasApiKey), [detection, hasApiKey])
   const selected = tiles.find((t) => t.def.id === agentId) ?? tiles[0]
 
   // Push the resolved absolute path to the parent once detection finishes.
@@ -185,6 +220,28 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
               </button>
             ))}
           </div>
+          <div style={keyRowStyle}>
+            <label style={{ fontSize: 11, opacity: 0.7 }}>
+              Anthropic API key {hasApiKey ? '· saved' : '· not set'}
+            </label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="password"
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+                placeholder={hasApiKey ? 'Replace key…' : 'sk-ant-…'}
+                style={keyInputStyle}
+              />
+              <button
+                type="button"
+                onClick={() => void saveApiKey()}
+                disabled={savingKey || !keyInput.trim()}
+                style={keySaveStyle}
+              >
+                {savingKey ? '…' : 'Save'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -270,6 +327,36 @@ const tileStyle: React.CSSProperties = {
   textAlign: 'center',
   minWidth: 0,
   overflow: 'hidden'
+}
+
+const keyRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  marginTop: 10,
+  paddingTop: 10,
+  borderTop: '1px solid #2a2a2a'
+}
+
+const keyInputStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  padding: '5px 8px',
+  background: '#1c1c1c',
+  border: '1px solid #333',
+  borderRadius: 6,
+  color: '#eee',
+  fontSize: 12
+}
+
+const keySaveStyle: React.CSSProperties = {
+  padding: '5px 12px',
+  background: '#2a2a2a',
+  border: '1px solid #333',
+  borderRadius: 6,
+  color: '#eee',
+  fontSize: 12,
+  cursor: 'pointer'
 }
 
 const tileIconChip: React.CSSProperties = {

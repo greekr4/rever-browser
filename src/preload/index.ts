@@ -185,6 +185,11 @@ const api = {
     setModel: (sessionId: string, modelId: string): Promise<void> =>
       ipcRenderer.invoke('acp:set-model', sessionId, modelId)
   },
+  settings: {
+    getApiKey: (): Promise<string | null> => ipcRenderer.invoke('settings:get-api-key'),
+    hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:has-api-key'),
+    setApiKey: (key: string): Promise<boolean> => ipcRenderer.invoke('settings:set-api-key', key)
+  },
   viewport: {
     get: (): Promise<ViewportMode> => ipcRenderer.invoke('viewport:get'),
     set: (mode: ViewportMode): Promise<ViewportMode> => ipcRenderer.invoke('viewport:set', mode),
