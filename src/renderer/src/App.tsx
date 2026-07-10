@@ -185,7 +185,7 @@ function App() {
           } as React.CSSProperties
         }
       >
-        <strong style={{ fontSize: 13, marginLeft: 60 }}>rever-browser</strong>
+        <strong style={{ fontSize: 13, marginLeft: 80 }}>rever-browser</strong>
         <span style={{ fontSize: 11, opacity: 0.6 }}>
           {anyAttached ? '● CDP attached' : '○ attaching…'}
         </span>
