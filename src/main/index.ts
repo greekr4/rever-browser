@@ -62,6 +62,9 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// out/main -> project root -> resources/icon.png (Windows/Linux window + dev dock).
+const appIcon = path.join(__dirname, '../../resources/icon.png')
+
 // Strip "Electron/..." and the app-name token from the default UA so sites
 // with bot/WAF rules don't reject us. The embedded Chrome version is left
 // untouched — Electron 41 ships Chromium 146, which matches the engine's
@@ -96,6 +99,9 @@ function createWindow() {
     height: 1000,
     backgroundColor: '#0e0e0e',
     titleBarStyle: 'hiddenInset',
+    // Packaged builds get the icon from build/icon.{icns,ico}; this covers
+    // the Windows/Linux window + taskbar in dev.
+    ...(process.platform !== 'darwin' ? { icon: appIcon } : {}),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -176,6 +182,11 @@ function installMenu() {
 
 app.whenReady().then(() => {
   installMenu()
+
+  // macOS dev-mode dock icon (packaged builds use build/icon.icns).
+  if (process.platform === 'darwin' && !app.isPackaged) {
+    app.dock?.setIcon(appIcon)
+  }
 
   // Real Chrome shows a prompt for accelerometer/camera/clipboard/geolocation/
   // microphone/midi/notifications/etc. — Electron's default is to grant most
