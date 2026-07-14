@@ -42,6 +42,28 @@ interface SessionEntry {
 
 const sessions = new Map<string, SessionEntry>()
 
+// Claude Code CLI가 부모 프로세스에서 물려받은 CLAUDECODE / CLAUDE_CODE_* 변수를
+// 보고 "nested session"으로 판단해 기동을 거부한다 (rever-browser 자체를 Claude
+// Code 세션 안에서 실행한 경우). 에이전트 자식 프로세스는 독립 세션이어야 하므로
+// 해당 변수들을 제거한 env를 만들어 넘긴다.
+function agentEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env }
+  const isClaudeSessionVar = (name: string): boolean =>
+    name === 'CLAUDECODE' || name.startsWith('CLAUDE_CODE_')
+  if (process.platform === 'win32') {
+    // Windows는 환경변수 이름이 대소문자를 구분하지 않아 'ClaudeCode' 같은
+    // 변형 표기로도 상속될 수 있다. 대문자로 정규화해 비교한다.
+    for (const key of Object.keys(env)) {
+      if (isClaudeSessionVar(key.toUpperCase())) delete env[key]
+    }
+  } else {
+    for (const key of Object.keys(env)) {
+      if (isClaudeSessionVar(key)) delete env[key]
+    }
+  }
+  return env
+}
+
 function pickAutoApproveOption(req: RequestPermissionRequest): string {
   const allowAlways = req.options.find((o) => o.kind === 'allow_always')
   if (allowAlways) return allowAlways.optionId
@@ -61,6 +83,7 @@ export async function spawnAcpSession(
   const child = spawn(agentDef.command, agentDef.args, {
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
+    env: agentEnv(),
     shell: process.platform === 'win32'
   }) as ChildProcessByStdio<Writable, Readable, Readable>
 
