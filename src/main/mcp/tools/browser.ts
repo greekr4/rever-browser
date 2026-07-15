@@ -7,7 +7,7 @@ import { getActiveTarget, waitForSettle } from '../../chrome-cdp'
 import { setViewport } from '../../viewport'
 import { evalInPage } from '../cdp-eval'
 import { humanScroll } from '../human-input'
-import { clickRef, takeSnapshot, typeRef } from '../snapshot'
+import { clickRef, clickSelector, takeSnapshot, typeRef, typeSelector } from '../snapshot'
 import { ok, err, errorMessage } from '../utils'
 
 /**
@@ -114,6 +114,53 @@ export function registerBrowserTools(mcp: McpServer) {
   )
 
   mcp.registerTool(
+    'browser_click_selector',
+    {
+      description:
+        'Click the first element matching a CSS selector, using the SAME human-shaped cursor move + click as browser_click (visualised on the page, fires trusted events). Use this to interact when you located an element via dom_extract / browser_evaluate and have no snapshot ref — NEVER poke the DOM with raw JS (.click()/dispatchEvent) to interact, as that skips the cursor animation and trips bot detection. Returns a fresh snapshot.',
+      inputSchema: {
+        selector: z
+          .string()
+          .describe('CSS selector for the target, e.g. "#q" or "button.search-btn"')
+      }
+    },
+    async ({ selector }) => {
+      try {
+        await clickSelector(selector)
+        return await snapshotAfter(`clicked selector ${selector}`)
+      } catch (e) {
+        return err(errorMessage(e))
+      }
+    }
+  )
+
+  mcp.registerTool(
+    'browser_type_selector',
+    {
+      description:
+        'Type into the first element matching a CSS selector, using the SAME human-shaped focus + per-keystroke timing as browser_type (visualised, fires real trusted key events that survive bot detection). Use when you have a selector but no snapshot ref. Set submit=true to press Enter after typing. Returns a fresh snapshot — do NOT set the value with raw JS.',
+      inputSchema: {
+        selector: z
+          .string()
+          .describe('CSS selector for the input/textarea, e.g. "#q"'),
+        text: z.string().describe('Text to type into the field'),
+        submit: z
+          .boolean()
+          .optional()
+          .describe('If true, presses Enter after typing (default false)')
+      }
+    },
+    async ({ selector, text, submit }) => {
+      try {
+        await typeSelector(selector, text, submit ?? false)
+        return await snapshotAfter(`typed into selector ${selector}${submit ? ' + submit' : ''}`)
+      } catch (e) {
+        return err(errorMessage(e))
+      }
+    }
+  )
+
+  mcp.registerTool(
     'browser_scroll',
     {
       description:
@@ -175,6 +222,80 @@ export function registerBrowserTools(mcp: McpServer) {
         })
         const result = await evalInPage<unknown>(expression)
         return ok(typeof result === 'string' ? result : JSON.stringify(result, null, 2))
+      } catch (e) {
+        return err(errorMessage(e))
+      }
+    }
+  )
+
+  mcp.registerTool(
+    'dom_extract',
+    {
+      description:
+        'Extract structured data from the rendered DOM by CSS selector. For each matching element, pulls the requested fields (text/href/src/value/html) plus any named attributes. This is the primary way to scrape results from server-rendered (SSR) pages — no JSON API required. Prefer this over ad-hoc browser_evaluate for pulling lists (search results, tables, cards).',
+      inputSchema: {
+        selector: z
+          .string()
+          .describe('CSS selector, e.g. "a.result__title" or "ul.list > li"'),
+        fields: z
+          .array(z.enum(['text', 'href', 'src', 'value', 'html']))
+          .optional()
+          .describe("Built-in fields to pull per node. Default ['text']."),
+        attrs: z
+          .array(z.string())
+          .optional()
+          .describe('Extra attribute names to read, e.g. ["data-id","aria-label"]'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .optional()
+          .describe('Max nodes to return (default 50). Guards against huge dumps.')
+      }
+    },
+    async ({ selector, fields, attrs, limit }) => {
+      const fieldList = fields && fields.length ? fields : ['text']
+      const attrList = attrs ?? []
+      const cap = limit ?? 50
+      const PER_NODE_CHARS = 500
+      emitAiAction({ kind: 'extract', label: 'AI dom_extract', detail: selector.slice(0, 80) })
+      // Build an in-page expression with all params embedded as JSON literals so
+      // the selector/attribute names can't break out of the string. evalInPage
+      // runs with returnByValue, so we return plain serialisable objects.
+      const expr = `(() => {
+  const selector = ${JSON.stringify(selector)};
+  const fields = ${JSON.stringify(fieldList)};
+  const attrs = ${JSON.stringify(attrList)};
+  const limit = ${JSON.stringify(cap)};
+  const CAP = ${PER_NODE_CHARS};
+  const clip = (s) => s.length > CAP ? s.slice(0, CAP) + '…' : s;
+  const nodes = Array.from(document.querySelectorAll(selector));
+  const matched = nodes.length;
+  const items = nodes.slice(0, limit).map((el, index) => {
+    const out = { index };
+    if (fields.includes('text')) out.text = clip((el.innerText || el.textContent || '').trim());
+    if (fields.includes('href')) { const h = el.getAttribute('href'); if (h != null) out.href = el.href || h; }
+    if (fields.includes('src')) { const s = el.getAttribute('src'); if (s != null) out.src = el.src || s; }
+    if (fields.includes('value') && 'value' in el) out.value = el.value;
+    if (fields.includes('html')) out.html = clip(el.innerHTML || '');
+    if (attrs.length) {
+      const a = {};
+      for (const name of attrs) { const v = el.getAttribute(name); if (v != null) a[name] = v; }
+      if (Object.keys(a).length) out.attrs = a;
+    }
+    return out;
+  });
+  return { matched, count: items.length, truncated: matched > items.length, items };
+})()`
+      try {
+        const result = await evalInPage<{
+          matched: number
+          count: number
+          truncated: boolean
+          items: Record<string, unknown>[]
+        }>(expr)
+        return ok(JSON.stringify(result, null, 2))
       } catch (e) {
         return err(errorMessage(e))
       }

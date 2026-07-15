@@ -157,7 +157,7 @@ export function ScreencastView() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#000',
+        background: 'var(--viewport-bg)',
         overflow: 'hidden'
       }}
     >

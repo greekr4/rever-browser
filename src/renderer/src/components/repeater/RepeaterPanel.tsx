@@ -45,7 +45,7 @@ export function RepeaterPanel() {
       <div
         style={{
           padding: '8px 12px',
-          borderBottom: '1px solid #2a2a2a',
+          borderBottom: '1px solid var(--border)',
           display: 'flex',
           gap: 8,
           alignItems: 'center',
@@ -81,7 +81,7 @@ export function RepeaterPanel() {
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            borderRight: '1px solid #2a2a2a',
+            borderRight: '1px solid var(--border)',
             minWidth: 0,
             minHeight: 0
           }}
@@ -153,7 +153,7 @@ function RequestEditor({ active, onChange }: EditorProps) {
           opacity: 0.6,
           textTransform: 'uppercase',
           letterSpacing: 0.5,
-          borderBottom: '1px solid #1f1f1f'
+          borderBottom: '1px solid var(--border)'
         }}
       >
         Request
@@ -275,10 +275,10 @@ function RequestEditor({ active, onChange }: EditorProps) {
             width: '100%',
             minHeight: 120,
             padding: 8,
-            background: '#0c0c0c',
-            border: '1px solid #1f1f1f',
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
             borderRadius: 4,
-            color: '#e6e6e6',
+            color: 'var(--text)',
             fontFamily: 'ui-monospace, monospace',
             fontSize: 11,
             resize: 'vertical',
@@ -307,7 +307,7 @@ function ResponseViewer({ history, loading, error }: ResponseProps) {
           opacity: 0.6,
           textTransform: 'uppercase',
           letterSpacing: 0.5,
-          borderBottom: '1px solid #1f1f1f'
+          borderBottom: '1px solid var(--border)'
         }}
       >
         Response
@@ -341,8 +341,8 @@ function ResponseViewer({ history, loading, error }: ResponseProps) {
                 style={{
                   margin: '4px 0 0',
                   padding: 8,
-                  background: '#0c0c0c',
-                  border: '1px solid #1f1f1f',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border)',
                   borderRadius: 4,
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-all'
@@ -357,8 +357,8 @@ function ResponseViewer({ history, loading, error }: ResponseProps) {
               style={{
                 margin: 0,
                 padding: 8,
-                background: '#0c0c0c',
-                border: '1px solid #1f1f1f',
+                background: 'var(--bg)',
+                border: '1px solid var(--border)',
                 borderRadius: 4,
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-all'
@@ -383,7 +383,7 @@ function HistoryStrip({ history, onRestore }: HistoryStripProps) {
   return (
     <div
       style={{
-        borderTop: '1px solid #2a2a2a',
+        borderTop: '1px solid var(--border)',
         padding: '6px 10px',
         maxHeight: 110,
         overflow: 'auto',

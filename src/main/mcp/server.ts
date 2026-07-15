@@ -34,6 +34,7 @@ import { registerSecurityInspectTools } from './tools/security_inspect'
 import { registerDomEditTools } from './tools/dom_edit'
 import { registerServiceWorkerTools } from './tools/sw_inspect'
 import { registerDialogTools } from './tools/dialog'
+import { registerVisionTools } from './tools/vision'
 
 function buildMcpServer(): McpServer {
   const mcp = new McpServer({ name: 'rever-traffic', version: '0.1.0' })
@@ -67,6 +68,7 @@ function buildMcpServer(): McpServer {
   registerDomEditTools(mcp)
   registerServiceWorkerTools(mcp)
   registerDialogTools(mcp)
+  registerVisionTools(mcp)
   return mcp
 }
 

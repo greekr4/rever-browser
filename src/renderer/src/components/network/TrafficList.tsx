@@ -93,7 +93,7 @@ export function TrafficList() {
       <header
         style={{
           padding: '8px 12px',
-          borderBottom: '1px solid #2a2a2a',
+          borderBottom: '1px solid var(--border)',
           display: 'flex',
           flexDirection: 'column',
           gap: 6,
@@ -133,8 +133,8 @@ export function TrafficList() {
                   padding: '2px 8px',
                   fontSize: 10,
                   borderRadius: 10,
-                  background: active ? '#2a4a6a' : '#1a1a1a',
-                  borderColor: active ? '#4a7ab0' : '#333'
+                  background: active ? '#2a4a6a' : 'var(--surface)',
+                  borderColor: active ? '#4a7ab0' : 'var(--border-2)'
                 }}
               >
                 {t}
@@ -173,7 +173,7 @@ export function TrafficList() {
           <p style={{ padding: 12, opacity: 0.5 }}>Open a page — traffic will appear here.</p>
         )}
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={{ position: 'sticky', top: 0, background: '#1a1a1a', zIndex: 1 }}>
+          <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
             <tr>
               <th style={{ ...th, width: 24, padding: '6px 4px' }}></th>
               <th style={th}>Method</th>
@@ -193,7 +193,7 @@ export function TrafficList() {
                   key={e.requestId}
                   onClick={() => onRowClick(e.requestId)}
                   style={{
-                    borderBottom: '1px solid #1f1f1f',
+                    borderBottom: '1px solid var(--border)',
                     background: isActive ? '#1d2a3a' : isSelected ? '#1a1f1a' : undefined,
                     cursor: 'pointer'
                   }}
@@ -275,7 +275,7 @@ export function TrafficList() {
 const th: React.CSSProperties = {
   textAlign: 'left',
   padding: '6px 8px',
-  borderBottom: '1px solid #2a2a2a',
+  borderBottom: '1px solid var(--border)',
   fontWeight: 'normal',
   opacity: 0.7
 }

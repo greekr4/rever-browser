@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, session, shell, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeTheme, session, shell, type MenuItemConstructorOptions } from 'electron'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -93,12 +93,32 @@ const pendingPermissions = new Map<string, PendingPermission>()
 const PERMISSION_GUARD_MS = 65_000
 let permissionSeq = 0
 
+// Window Controls Overlay colors per theme (Windows/Linux). Kept in sync with
+// the renderer's app theme via the 'theme:set-titlebar' IPC handler.
+const TITLEBAR_OVERLAY = {
+  dark: { color: '#161616', symbolColor: '#cfcfcf', height: 40 },
+  light: { color: '#eef0f2', symbolColor: '#333333', height: 40 }
+} as const
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 1000,
     backgroundColor: '#0e0e0e',
-    titleBarStyle: 'hiddenInset',
+    // Chrome-like clean chrome: hide the native title bar and let the app's own
+    // tab strip act as the draggable title area. On Windows/Linux the native
+    // min/max/close buttons render as a Window Controls Overlay in the top-right
+    // (color-matched to the app theme); on macOS the traffic lights inset over it.
+    // Initial overlay follows the OS scheme; the renderer corrects it to the
+    // stored theme on mount via the 'theme:set-titlebar' IPC below.
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const }
+      : {
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: nativeTheme.shouldUseDarkColors
+            ? TITLEBAR_OVERLAY.dark
+            : TITLEBAR_OVERLAY.light
+        }),
     // Packaged builds get the icon from build/icon.{icns,ico}; this covers
     // the Windows/Linux window + taskbar in dev.
     ...(process.platform !== 'darwin' ? { icon: appIcon } : {}),
@@ -213,6 +233,18 @@ app.whenReady().then(() => {
 
   ipcMain.handle('cdp:set-active', async (_event, webContentsId: number) => {
     return setActiveTarget(webContentsId)
+  })
+
+  ipcMain.handle('theme:set-titlebar', (_event, resolved: 'light' | 'dark') => {
+    // macOS has no recolorable overlay (traffic lights); no-op there.
+    if (process.platform === 'darwin') return
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    try {
+      mainWindow.setTitleBarOverlay(TITLEBAR_OVERLAY[resolved === 'light' ? 'light' : 'dark'])
+    } catch {
+      // setTitleBarOverlay throws if the window wasn't created with an overlay
+      // (shouldn't happen off-darwin) — ignore.
+    }
   })
 
   ipcMain.handle('acp:list-available', async (_event, probes: AgentProbe[]) => {

@@ -186,7 +186,7 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
         {
           flex: 1,
           minWidth: 0,
-          background: '#000',
+          background: 'var(--viewport-bg)',
           display: active ? 'flex' : 'none'
         } as React.CSSProperties
       }

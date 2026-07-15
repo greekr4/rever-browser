@@ -207,7 +207,7 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
                   ...tileStyle,
                   opacity: tile.selectable ? 1 : 0.45,
                   cursor: tile.selectable ? 'pointer' : 'not-allowed',
-                  borderColor: tile.def.id === agentId ? '#4a8ddb' : '#2a2a2a'
+                  borderColor: tile.def.id === agentId ? '#4a8ddb' : 'var(--border)'
                 }}
               >
                 <div style={tileIconChip}>{tile.def.icon}</div>
@@ -276,10 +276,10 @@ const triggerStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 6,
   padding: '4px 8px',
-  background: '#1c1c1c',
-  border: '1px solid #333',
+  background: 'var(--bg-bar)',
+  border: '1px solid var(--border-2)',
   borderRadius: 6,
-  color: '#eee',
+  color: 'var(--text)',
   cursor: 'pointer',
   fontSize: 12
 }
@@ -291,7 +291,7 @@ const iconChip: React.CSSProperties = {
   width: 18,
   height: 18,
   borderRadius: 4,
-  background: '#333',
+  background: 'var(--surface-3)',
   fontSize: 11,
   fontWeight: 700
 }
@@ -313,8 +313,8 @@ const popoverStyle: React.CSSProperties = {
   width: 'min(340px, calc(var(--chat-w, 100vw) - 24px))',
   maxHeight: '70vh',
   overflowY: 'auto',
-  background: '#161616',
-  border: '1px solid #2a2a2a',
+  background: 'var(--bg-bar)',
+  border: '1px solid var(--border)',
   borderRadius: 8,
   padding: 10,
   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)'
@@ -343,10 +343,10 @@ const tileStyle: React.CSSProperties = {
   gap: 4,
   padding: '10px 4px',
   minHeight: 100,
-  background: '#1c1c1c',
-  border: '1px solid #2a2a2a',
+  background: 'var(--bg-bar)',
+  border: '1px solid var(--border)',
   borderRadius: 6,
-  color: '#eee',
+  color: 'var(--text)',
   textAlign: 'center',
   minWidth: 0,
   overflow: 'hidden'
@@ -358,26 +358,26 @@ const keyRowStyle: React.CSSProperties = {
   gap: 6,
   marginTop: 10,
   paddingTop: 10,
-  borderTop: '1px solid #2a2a2a'
+  borderTop: '1px solid var(--border)'
 }
 
 const keyInputStyle: React.CSSProperties = {
   flex: 1,
   minWidth: 0,
   padding: '5px 8px',
-  background: '#1c1c1c',
-  border: '1px solid #333',
+  background: 'var(--bg-bar)',
+  border: '1px solid var(--border-2)',
   borderRadius: 6,
-  color: '#eee',
+  color: 'var(--text)',
   fontSize: 12
 }
 
 const keySaveStyle: React.CSSProperties = {
   padding: '5px 12px',
-  background: '#2a2a2a',
-  border: '1px solid #333',
+  background: 'var(--surface-2)',
+  border: '1px solid var(--border-2)',
   borderRadius: 6,
-  color: '#eee',
+  color: 'var(--text)',
   fontSize: 12,
   cursor: 'pointer'
 }
@@ -386,7 +386,7 @@ const tileIconChip: React.CSSProperties = {
   width: 32,
   height: 32,
   borderRadius: 8,
-  background: '#2a2a2a',
+  background: 'var(--surface-2)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',

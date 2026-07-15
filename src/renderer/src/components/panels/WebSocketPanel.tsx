@@ -128,7 +128,7 @@ export function WebSocketPanel() {
               >
                 {f.direction === 'sent' ? '↑' : '↓'}
               </span>
-              <span style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap', color: '#e6e6e6' }}>
+              <span style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
                 {payload}
               </span>
             </div>

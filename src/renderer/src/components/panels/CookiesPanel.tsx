@@ -60,7 +60,7 @@ export function CookiesPanel() {
   }, [refresh])
 
   return (
-    <div style={{ padding: 10, fontSize: 12, color: '#ddd', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <div style={{ padding: 10, fontSize: 12, color: 'var(--text-2)', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}>
         <SectionTab label="Cookies" count={cookies.length} active={section === 'cookies'} onClick={() => setSection('cookies')} />
         <SectionTab label="localStorage" count={Object.keys(local).length} active={section === 'local'} onClick={() => setSection('local')} />
@@ -78,9 +78,9 @@ export function CookiesPanel() {
             gap: 8,
             padding: '6px 10px',
             marginBottom: 8,
-            border: '1px solid #2a2a2a',
+            border: '1px solid var(--border)',
             borderRadius: 4,
-            background: sticky.enabled ? 'rgba(110, 231, 183, 0.05)' : '#161616',
+            background: sticky.enabled ? 'rgba(110, 231, 183, 0.05)' : 'var(--bg-bar)',
             fontSize: 11
           }}
         >
@@ -93,7 +93,7 @@ export function CookiesPanel() {
                 setSticky((s) => ({ ...s, enabled: r.enabled }))
               }}
             />
-            <strong style={{ color: sticky.enabled ? '#6ee7b7' : '#ccc' }}>
+            <strong style={{ color: sticky.enabled ? '#6ee7b7' : 'var(--text-2)' }}>
               Sticky session cookies
             </strong>
           </label>
@@ -110,9 +110,9 @@ export function CookiesPanel() {
               setSticky((s) => ({ ...s, snapshotCount: r.snapshotCount }))
             }}
             style={{
-              background: '#1a1a1a',
-              border: '1px solid #333',
-              color: '#ccc',
+              background: 'var(--surface)',
+              border: '1px solid var(--border-2)',
+              color: 'var(--text-2)',
               padding: '3px 9px',
               borderRadius: 3,
               fontSize: 10,
@@ -135,9 +135,9 @@ export function CookiesPanel() {
             gap: 8,
             padding: '6px 10px',
             marginBottom: 8,
-            border: '1px solid #2a2a2a',
+            border: '1px solid var(--border)',
             borderRadius: 4,
-            background: dialog.autoDismiss ? 'rgba(110, 231, 183, 0.05)' : '#161616',
+            background: dialog.autoDismiss ? 'rgba(110, 231, 183, 0.05)' : 'var(--bg-bar)',
             fontSize: 11
           }}
         >
@@ -150,7 +150,7 @@ export function CookiesPanel() {
                 setDialog((d) => ({ ...d, autoDismiss: r.autoDismiss }))
               }}
             />
-            <strong style={{ color: dialog.autoDismiss ? '#6ee7b7' : '#ccc' }}>
+            <strong style={{ color: dialog.autoDismiss ? '#6ee7b7' : 'var(--text-2)' }}>
               Auto-dismiss alert / confirm / prompt
             </strong>
           </label>
@@ -167,9 +167,9 @@ export function CookiesPanel() {
                   setDialog((d) => ({ ...d, history: [] }))
                 }}
                 style={{
-                  background: '#1a1a1a',
-                  border: '1px solid #333',
-                  color: '#ccc',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border-2)',
+                  color: 'var(--text-2)',
                   padding: '3px 9px',
                   borderRadius: 3,
                   fontSize: 10,
@@ -186,9 +186,9 @@ export function CookiesPanel() {
       {section === 'cookies' && dialog.history.length > 0 && (
         <div
           style={{
-            border: '1px solid #2a2a2a',
+            border: '1px solid var(--border)',
             borderRadius: 4,
-            background: '#0e0e0e',
+            background: 'var(--bg)',
             marginBottom: 8,
             maxHeight: 110,
             overflow: 'auto',
@@ -204,7 +204,7 @@ export function CookiesPanel() {
                 key={d.ts + ':' + i}
                 style={{
                   padding: '3px 8px',
-                  borderBottom: '1px solid #1c1c1c',
+                  borderBottom: '1px solid var(--border-2)',
                   display: 'flex',
                   gap: 8
                 }}
@@ -218,21 +218,21 @@ export function CookiesPanel() {
                           ? '#60a5fa'
                           : d.type === 'prompt'
                             ? '#f0abfc'
-                            : '#888',
+                            : 'var(--text-dim)',
                     fontWeight: 700,
                     minWidth: 60
                   }}
                 >
                   {d.type.toUpperCase()}
                 </span>
-                <span style={{ flex: 1, color: '#ddd', wordBreak: 'break-all' }}>{d.message}</span>
+                <span style={{ flex: 1, color: 'var(--text-2)', wordBreak: 'break-all' }}>{d.message}</span>
                 <span style={{ opacity: 0.5 }}>{new Date(d.ts).toLocaleTimeString()}</span>
               </div>
             ))}
         </div>
       )}
 
-      <div style={{ flex: 1, overflow: 'auto', border: '1px solid #2a2a2a', borderRadius: 4 }}>
+      <div style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 4 }}>
         {section === 'cookies' && (
           <table style={tableStyle}>
             <thead style={theadStyle}>
@@ -305,7 +305,7 @@ export function CookiesPanel() {
                           if (e.key === 'Enter') e.currentTarget.blur()
                           if (e.key === 'Escape') setEditing(null)
                         }}
-                        style={{ width: '100%', background: '#111', color: '#eee', border: '1px solid #444', padding: 2, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}
+                        style={{ width: '100%', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-3)', padding: 2, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}
                       />
                     ) : (
                       <code style={valStyle} onDoubleClick={() => setEditing({ key: k, value: v })}>{truncate(v, 120)}</code>
@@ -446,7 +446,7 @@ function CookieEditor({
         zIndex: 1000
       }}
     >
-      <div style={{ background: '#1c1c1c', border: '1px solid #333', borderRadius: 6, padding: 18, width: 460, color: '#eee' }}>
+      <div style={{ background: 'var(--bg-bar)', border: '1px solid var(--border-2)', borderRadius: 6, padding: 18, width: 460, color: 'var(--text)' }}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>{isNew ? 'New cookie' : `Edit ${c.name}`}</div>
         <Field label="name">
           <input
@@ -475,7 +475,7 @@ function CookieEditor({
           <label>
             SameSite
             <select
-              style={{ marginLeft: 4, background: '#111', color: '#eee', border: '1px solid #333' }}
+              style={{ marginLeft: 4, background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-2)' }}
               value={c.sameSite ?? ''}
               onChange={(e) => setC({ ...c, sameSite: e.target.value || undefined })}
             >
@@ -561,19 +561,19 @@ function ChromeImportBar() {
         gap: 8,
         padding: '6px 10px',
         marginBottom: 8,
-        border: '1px solid #2a2a2a',
+        border: '1px solid var(--border)',
         borderRadius: 4,
-        background: '#161616',
+        background: 'var(--bg-bar)',
         fontSize: 11,
         flexWrap: 'wrap'
       }}
     >
-      <strong style={{ color: '#ccc' }}>Import cookies from Chrome</strong>
+      <strong style={{ color: 'var(--text-2)' }}>Import cookies from Chrome</strong>
       <select
         value={profile}
         onChange={(e) => setProfile(e.target.value)}
         disabled={busy}
-        style={{ background: '#111', color: '#eee', border: '1px solid #333', borderRadius: 3, padding: '2px 4px' }}
+        style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-2)', borderRadius: 3, padding: '2px 4px' }}
         title="Chrome profile to import from"
       >
         {profiles.map((p) => (
@@ -616,9 +616,9 @@ function SectionTab({ label, count, active, onClick }: { label: string; count: n
     <button
       onClick={onClick}
       style={{
-        background: active ? '#244' : '#1a1a1a',
-        border: '1px solid ' + (active ? '#377' : '#333'),
-        color: '#ddd',
+        background: active ? '#244' : 'var(--surface)',
+        border: '1px solid ' + (active ? '#377' : 'var(--border-2)'),
+        color: 'var(--text-2)',
         padding: '4px 10px',
         borderRadius: 4,
         fontSize: 11,
@@ -631,7 +631,7 @@ function SectionTab({ label, count, active, onClick }: { label: string; count: n
 }
 
 function Tag({ children }: { children: React.ReactNode }) {
-  return <span style={{ background: '#222', border: '1px solid #444', borderRadius: 3, padding: '0 4px', fontSize: 10, marginRight: 3 }}>{children}</span>
+  return <span style={{ background: 'var(--surface-2)', border: '1px solid var(--border-3)', borderRadius: 3, padding: '0 4px', fontSize: 10, marginRight: 3 }}>{children}</span>
 }
 
 function truncate(s: string, n: number) {
@@ -639,17 +639,17 @@ function truncate(s: string, n: number) {
 }
 
 function Th({ children }: { children?: React.ReactNode }) {
-  return <th style={{ textAlign: 'left', padding: '5px 7px', borderBottom: '1px solid #2a2a2a', fontWeight: 500, fontSize: 11, opacity: 0.75 }}>{children}</th>
+  return <th style={{ textAlign: 'left', padding: '5px 7px', borderBottom: '1px solid var(--border)', fontWeight: 500, fontSize: 11, opacity: 0.75 }}>{children}</th>
 }
 function Td({ children, style, colSpan }: { children?: React.ReactNode; style?: React.CSSProperties; colSpan?: number }) {
-  return <td colSpan={colSpan} style={{ padding: '4px 7px', borderBottom: '1px solid #1f1f1f', verticalAlign: 'top', ...style }}>{children}</td>
+  return <td colSpan={colSpan} style={{ padding: '4px 7px', borderBottom: '1px solid var(--border)', verticalAlign: 'top', ...style }}>{children}</td>
 }
 
 const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontFamily: 'ui-monospace, monospace', fontSize: 11 }
-const theadStyle: React.CSSProperties = { position: 'sticky', top: 0, background: '#161616' }
+const theadStyle: React.CSSProperties = { position: 'sticky', top: 0, background: 'var(--bg-bar)' }
 const trStyle: React.CSSProperties = {}
-const valStyle: React.CSSProperties = { background: '#111', padding: '1px 4px', borderRadius: 2, wordBreak: 'break-all', cursor: 'text', display: 'inline-block', maxWidth: '100%' }
-const btnStyle: React.CSSProperties = { background: '#1a1a1a', border: '1px solid #333', color: '#ccc', padding: '2px 6px', borderRadius: 3, fontSize: 10, cursor: 'pointer', marginLeft: 3 }
+const valStyle: React.CSSProperties = { background: 'var(--bg)', padding: '1px 4px', borderRadius: 2, wordBreak: 'break-all', cursor: 'text', display: 'inline-block', maxWidth: '100%' }
+const btnStyle: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border-2)', color: 'var(--text-2)', padding: '2px 6px', borderRadius: 3, fontSize: 10, cursor: 'pointer', marginLeft: 3 }
 const addBtn: React.CSSProperties = { ...btnStyle, padding: '4px 10px', fontSize: 11 }
-const addInput: React.CSSProperties = { background: '#111', color: '#eee', border: '1px solid #333', padding: '4px 6px', fontSize: 11, borderRadius: 3, fontFamily: 'ui-monospace, monospace' }
-const editorInput: React.CSSProperties = { width: '100%', background: '#111', color: '#eee', border: '1px solid #333', padding: '4px 8px', fontFamily: 'ui-monospace, monospace', fontSize: 11, borderRadius: 3, boxSizing: 'border-box' }
+const addInput: React.CSSProperties = { background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-2)', padding: '4px 6px', fontSize: 11, borderRadius: 3, fontFamily: 'ui-monospace, monospace' }
+const editorInput: React.CSSProperties = { width: '100%', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-2)', padding: '4px 8px', fontFamily: 'ui-monospace, monospace', fontSize: 11, borderRadius: 3, boxSizing: 'border-box' }

@@ -6,8 +6,30 @@
     <title>rever-browser</title>
     <style>
       html, body, #root { margin: 0; padding: 0; height: 100%; }
-      body { background: #0e0e0e; color: #e8e8e8; font-family: ui-sans-serif, system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif; }
+      body { font-family: ui-sans-serif, system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif; }
     </style>
+    <script>
+      // Apply the resolved theme to <html data-theme> before first paint so the
+      // app never flashes the wrong theme on launch. Mirrors app-theme store.
+      (function () {
+        try {
+          var raw = localStorage.getItem('rev:app-theme');
+          var mode = raw ? (JSON.parse(raw).state || {}).mode : 'system';
+          if (mode !== 'light' && mode !== 'dark') mode = 'system';
+          var dark =
+            mode === 'dark' ||
+            (mode === 'system' &&
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var theme = dark ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.style.background = dark ? '#0e0e0e' : '#fbfbfc';
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.style.background = '#0e0e0e';
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -45,7 +45,7 @@ export function HistoryPanel() {
       style={{
         padding: 10,
         fontSize: 12,
-        color: '#ddd',
+        color: 'var(--text-2)',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
@@ -59,9 +59,9 @@ export function HistoryPanel() {
           placeholder="Filter by URL or title"
           style={{
             flex: 1,
-            background: '#111',
-            color: '#eee',
-            border: '1px solid #333',
+            background: 'var(--bg)',
+            color: 'var(--text)',
+            border: '1px solid var(--border-2)',
             padding: '4px 8px',
             fontSize: 11,
             borderRadius: 3,
@@ -86,9 +86,9 @@ export function HistoryPanel() {
         style={{
           flex: 1,
           overflow: 'auto',
-          border: '1px solid #2a2a2a',
+          border: '1px solid var(--border)',
           borderRadius: 4,
-          background: '#161616'
+          background: 'var(--bg-bar)'
         }}
       >
         {filtered.length === 0 && (
@@ -102,12 +102,12 @@ export function HistoryPanel() {
               style={{
                 position: 'sticky',
                 top: 0,
-                background: '#1a1a1a',
+                background: 'var(--surface)',
                 padding: '4px 10px',
                 fontSize: 10,
                 fontWeight: 600,
                 color: '#8aa',
-                borderBottom: '1px solid #2a2a2a',
+                borderBottom: '1px solid var(--border)',
                 textTransform: 'uppercase',
                 letterSpacing: 0.5
               }}
@@ -126,13 +126,13 @@ export function HistoryPanel() {
                   padding: '6px 10px',
                   background: 'transparent',
                   border: 'none',
-                  borderBottom: '1px solid #1f1f1f',
-                  color: '#ddd',
+                  borderBottom: '1px solid var(--border)',
+                  color: 'var(--text-2)',
                   textAlign: 'left',
                   cursor: 'pointer',
                   fontSize: 11
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#1f1f1f')}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
                 <span style={{ opacity: 0.55, width: 50, fontFamily: 'ui-monospace, monospace' }}>
@@ -145,7 +145,7 @@ export function HistoryPanel() {
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      color: '#eee'
+                      color: 'var(--text)'
                     }}
                   >
                     {entry.title || hostnameOf(entry.url)}
@@ -186,7 +186,7 @@ function Favicon({ url }: { url: string }) {
         style={{
           width: 16,
           height: 16,
-          background: '#333',
+          background: 'var(--surface-3)',
           borderRadius: 2,
           flexShrink: 0
         }}
@@ -235,9 +235,9 @@ function hostnameOf(url: string): string {
 }
 
 const btnStyle: React.CSSProperties = {
-  background: '#1a1a1a',
-  border: '1px solid #333',
-  color: '#ccc',
+  background: 'var(--surface)',
+  border: '1px solid var(--border-2)',
+  color: 'var(--text-2)',
   padding: '4px 10px',
   borderRadius: 3,
   fontSize: 11,

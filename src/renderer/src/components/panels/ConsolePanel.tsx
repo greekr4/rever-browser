@@ -11,8 +11,8 @@ const TYPE_COLOR: Record<string, string> = {
   warning: '#ffd93d',
   warn: '#ffd93d',
   info: '#74b9ff',
-  log: '#e6e6e6',
-  debug: '#888'
+  log: 'var(--text)',
+  debug: 'var(--text-dim)'
 }
 
 export function ConsolePanel() {
@@ -69,7 +69,7 @@ export function ConsolePanel() {
             style={{
               padding: '2px 10px',
               borderBottom: '1px solid rgba(255,255,255,0.03)',
-              color: TYPE_COLOR[e.type] ?? '#e6e6e6',
+              color: TYPE_COLOR[e.type] ?? 'var(--text)',
               display: 'flex',
               gap: 8,
               alignItems: 'flex-start'

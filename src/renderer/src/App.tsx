@@ -15,10 +15,16 @@ import { useResizable } from '@/hooks/use-resizable'
 import { useBrowserModeStore } from '@/stores/browser-mode'
 import { useNavigationRequestStore } from '@/stores/navigation-request'
 import { useTabsStore } from '@/stores/tabs'
+import { useAppThemeStore, resolveTheme } from '@/stores/app-theme'
 import { useViewportStore } from '@/stores/viewport'
 import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 
 type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history'
+
+// macOS insets its traffic lights over the top-left of our bar; Windows/Linux
+// draw min/max/close as an overlay on the top-right. Reserve space on the
+// matching side so the tab strip never slides under the window buttons.
+const IS_MAC = typeof navigator !== 'undefined' && navigator.userAgent.includes('Macintosh')
 
 function App() {
   useCdpEvents()
@@ -29,6 +35,28 @@ function App() {
 
   const browserMode = useBrowserModeStore((s) => s.mode)
   const setBrowserMode = useBrowserModeStore((s) => s.setMode)
+
+  const themeMode = useAppThemeStore((s) => s.mode)
+  const cycleAppTheme = useAppThemeStore((s) => s.cycle)
+
+  // Apply the resolved app theme to <html data-theme> and sync the native
+  // titlebar overlay. Re-runs on manual mode change; also listens for OS
+  // scheme changes while in 'system' mode.
+  useEffect(() => {
+    const apply = (): void => {
+      const resolved = resolveTheme(themeMode)
+      document.documentElement.setAttribute('data-theme', resolved)
+      document.documentElement.style.background = resolved === 'dark' ? '#0e0e0e' : '#fbfbfc'
+      void window.rev.theme.setTitlebar(resolved)
+    }
+    apply()
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = (): void => {
+      if (useAppThemeStore.getState().mode === 'system') apply()
+    }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [themeMode])
 
   const themeByOrigin = useWebviewThemeStore((s) => s.byOrigin)
   const cycleTheme = useWebviewThemeStore((s) => s.cycle)
@@ -168,28 +196,48 @@ function App() {
     handle.loadURL(target)
   }
 
-  const anyAttached = tabs.some((t) => t.webContentsId)
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <PermissionPrompt />
-      <header
+      <div
         style={
           {
             display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-            padding: '10px 14px',
-            borderBottom: '1px solid #2a2a2a',
+            alignItems: 'flex-end',
+            height: 40,
+            flexShrink: 0,
+            background: 'var(--bg-bar)',
+            borderBottom: '1px solid var(--border)',
+            paddingLeft: IS_MAC ? 78 : 8,
+            paddingRight: IS_MAC ? 8 : 140,
             WebkitAppRegion: 'drag'
           } as React.CSSProperties
         }
       >
-        <strong style={{ fontSize: 13, marginLeft: 80 }}>rever-browser</strong>
-        <span style={{ fontSize: 11, opacity: 0.6 }}>
-          {anyAttached ? '● CDP attached' : '○ attaching…'}
-        </span>
-      </header>
+        {browserMode === 'embedded' ? (
+          <TabBar />
+        ) : (
+          <span style={{ flex: 1, fontSize: 12, opacity: 0.6, marginBottom: 11 }}>
+            rever-browser — External Chrome
+          </span>
+        )}
+        <button
+          className="toolbar-btn"
+          type="button"
+          onClick={() => cycleAppTheme()}
+          title={`Theme: ${themeMode} — click to cycle System → Light → Dark`}
+          style={
+            {
+              flexShrink: 0,
+              marginLeft: 8,
+              marginBottom: 6,
+              WebkitAppRegion: 'no-drag'
+            } as React.CSSProperties
+          }
+        >
+          {themeMode === 'system' ? '🖥️' : themeMode === 'light' ? '☀️' : '🌙'}
+        </button>
+      </div>
 
       <main style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <section
@@ -201,14 +249,13 @@ function App() {
             position: 'relative'
           }}
         >
-          {browserMode === 'embedded' && <TabBar />}
           <form
             onSubmit={onSubmit}
             style={{
               display: 'flex',
               gap: 6,
               padding: '6px 10px',
-              borderBottom: '1px solid #2a2a2a',
+              borderBottom: '1px solid var(--border)',
               alignItems: 'center'
             }}
           >
@@ -220,7 +267,9 @@ function App() {
                   onClick={() => activeRef()?.goBack()}
                   title="Back"
                 >
-                  ←
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M15 18l-6-6 6-6" />
+                  </svg>
                 </button>
                 <button
                   className="toolbar-btn"
@@ -228,7 +277,9 @@ function App() {
                   onClick={() => activeRef()?.goForward()}
                   title="Forward"
                 >
-                  →
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
                 </button>
                 <button
                   className="toolbar-btn"
@@ -236,7 +287,10 @@ function App() {
                   onClick={() => activeRef()?.reload(true)}
                   title="Hard Reload (clear cache)"
                 >
-                  ↻
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="23 4 23 10 17 10" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                  </svg>
                 </button>
                 <button
                   className="toolbar-btn"
@@ -355,7 +409,7 @@ function App() {
             display: 'flex',
             flexDirection: 'column',
             minHeight: 0,
-            borderLeft: '1px solid #2a2a2a',
+            borderLeft: '1px solid var(--border)',
             ['--chat-w' as never]: `${chat.width}px`
           }}
         >

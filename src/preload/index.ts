@@ -37,6 +37,7 @@ export type AiActionKind =
   | 'snapshot'
   | 'screenshot'
   | 'evaluate'
+  | 'extract'
 
 export interface AiAction {
   kind: AiActionKind
@@ -184,6 +185,12 @@ const api = {
     } | null> => ipcRenderer.invoke('acp:model-state', sessionId),
     setModel: (sessionId: string, modelId: string): Promise<void> =>
       ipcRenderer.invoke('acp:set-model', sessionId, modelId)
+  },
+  theme: {
+    // Keep the native window-controls overlay (Windows/Linux) in sync with the
+    // app theme. No-op on macOS (traffic lights aren't recolorable this way).
+    setTitlebar: (resolved: 'light' | 'dark'): Promise<void> =>
+      ipcRenderer.invoke('theme:set-titlebar', resolved)
   },
   settings: {
     getApiKey: (provider: 'anthropic' | 'openai'): Promise<string | null> =>

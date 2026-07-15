@@ -57,13 +57,13 @@ export function TrafficDetailDrawer({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: '#0f0f0f'
+        background: 'var(--bg)'
       }}
     >
       <header
         style={{
           padding: '8px 12px',
-          borderBottom: '1px solid #2a2a2a',
+          borderBottom: '1px solid var(--border)',
           display: 'flex',
           gap: 8,
           alignItems: 'center',
@@ -82,7 +82,7 @@ export function TrafficDetailDrawer({
       <nav
         style={{
           display: 'flex',
-          borderBottom: '1px solid #2a2a2a',
+          borderBottom: '1px solid var(--border)',
           fontSize: 12
         }}
       >
@@ -95,8 +95,8 @@ export function TrafficDetailDrawer({
               padding: '6px 8px',
               border: 'none',
               borderRadius: 0,
-              background: tab === t ? '#1a1a1a' : 'transparent',
-              color: tab === t ? '#fff' : '#999',
+              background: tab === t ? 'var(--surface)' : 'transparent',
+              color: tab === t ? 'var(--text)' : 'var(--text-dim)',
               borderBottom: tab === t ? '2px solid #4a8fff' : '2px solid transparent'
             }}
           >
@@ -164,7 +164,7 @@ function Overview({ data }: { data: StoredRequestSummary }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <tbody>
               {queryParams.map(([k, v], i) => (
-                <tr key={`${k}-${i}`} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                <tr key={`${k}-${i}`} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td
                     style={{
                       padding: '3px 6px',
@@ -202,7 +202,7 @@ function HeaderTable({ headers }: { headers: Record<string, string> | undefined 
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
       <tbody>
         {Object.entries(headers).map(([k, v]) => (
-          <tr key={k} style={{ borderBottom: '1px solid #1a1a1a' }}>
+          <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
             <td style={{ padding: '3px 6px', opacity: 0.7, verticalAlign: 'top', width: 130 }}>
               {k}
             </td>
@@ -236,8 +236,8 @@ function BodyBlock({ label, body }: { label: string; body?: string }) {
           style={{
             margin: 0,
             padding: 10,
-            background: '#0a0a0a',
-            border: '1px solid #1a1a1a',
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
             borderRadius: 4,
             maxHeight: 360,
             overflow: 'auto',

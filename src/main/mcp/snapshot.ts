@@ -162,15 +162,37 @@ async function resolveObjectId(ref: string): Promise<string> {
   return res.object.objectId
 }
 
-export async function clickRef(ref: string): Promise<void> {
-  const entry = refMap.get(ref)
-  const objectId = await resolveObjectId(ref)
-  const target = getActiveTarget()!
-  const label = `AI click${entry?.name ? ` "${entry.name.slice(0, 32)}"` : ''}`
-  emitAiAction({ kind: 'click', label, detail: entry?.role })
+/**
+ * Resolve a CSS selector to a live RemoteObject id for its first match. Throws
+ * if nothing matches. This lets selector-based tools reuse the exact same
+ * human-input path (cursor move + flash + real events) as ref-based ones
+ * WITHOUT needing a prior browser_snapshot — the fix for pages whose snapshot
+ * is too big to be practical (the agent used to fall back to raw JS, which
+ * skips the whole animation and fires no trusted events).
+ */
+async function resolveSelectorObjectId(selector: string): Promise<string> {
+  const target = getActiveTarget()
+  if (!target) throw new Error('no active browser target')
+  const res = (await target.dbg.sendCommand('Runtime.evaluate', {
+    expression: `document.querySelector(${JSON.stringify(selector)})`,
+    returnByValue: false
+  })) as { result: { objectId?: string } }
+  if (!res.result.objectId) {
+    throw new Error(`no element matches selector: ${selector}`)
+  }
+  return res.result.objectId
+}
 
-  // 1. Scroll into view + return target center. No flash yet — overlay
-  //    appears only once the cursor has actually arrived.
+/**
+ * Core click: given an already-resolved objectId + a human-readable label,
+ * run the full scroll → thinking pause → cursor move → flash → press/release
+ * sequence. The overlay flash appears only once the cursor has arrived. Shared
+ * by clickRef (snapshot ref) and clickSelector (CSS selector).
+ */
+async function clickObjectId(objectId: string, label: string, role?: string): Promise<void> {
+  const target = getActiveTarget()!
+  emitAiAction({ kind: 'click', label, detail: role })
+
   const result = (await target.dbg.sendCommand('Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: `async function() {
@@ -184,11 +206,9 @@ export async function clickRef(ref: string): Promise<void> {
   })) as { result: { value: { x: number; y: number } } }
   const { x, y } = result.result.value
 
-  // 2. Human-shaped pause, then move the cursor to the target.
   await thinkingPause()
   await humanMouseMove(x, y)
 
-  // 3. Cursor has arrived — NOW flash the highlight, then press/release.
   await target.dbg.sendCommand('Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: `function(label) {
@@ -199,14 +219,18 @@ export async function clickRef(ref: string): Promise<void> {
   await humanPressRelease(x, y)
 }
 
-export async function typeRef(ref: string, text: string, submit: boolean): Promise<void> {
-  const entry = refMap.get(ref)
-  const objectId = await resolveObjectId(ref)
+/** Core type: same human-shaped sequence as clickObjectId, then focus + type
+ * (+ optional Enter) via real CDP key events. Shared by typeRef/typeSelector. */
+async function typeObjectId(
+  objectId: string,
+  text: string,
+  submit: boolean,
+  label: string,
+  role?: string
+): Promise<void> {
   const target = getActiveTarget()!
-  const label = `AI type${entry?.name ? ` → "${entry.name.slice(0, 24)}"` : ''}`
   emitAiAction({ kind: 'type', label, detail: text.slice(0, 80) })
 
-  // 1. Scroll into view, get coords (no flash yet).
   const result = (await target.dbg.sendCommand('Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: `async function() {
@@ -220,11 +244,9 @@ export async function typeRef(ref: string, text: string, submit: boolean): Promi
   })) as { result: { value: { x: number; y: number } } }
   const { x, y } = result.result.value
 
-  // 2. Pause + move cursor.
   await thinkingPause()
   await humanMouseMove(x, y)
 
-  // 3. Cursor arrived — flash highlight, then click to focus, then type.
   await target.dbg.sendCommand('Runtime.callFunctionOn', {
     objectId,
     functionDeclaration: `function(label) {
@@ -234,4 +256,30 @@ export async function typeRef(ref: string, text: string, submit: boolean): Promi
   })
   await humanPressRelease(x, y)
   await humanType(objectId, text, submit)
+}
+
+export async function clickRef(ref: string): Promise<void> {
+  const entry = refMap.get(ref)
+  const objectId = await resolveObjectId(ref)
+  const label = `AI click${entry?.name ? ` "${entry.name.slice(0, 32)}"` : ''}`
+  await clickObjectId(objectId, label, entry?.role)
+}
+
+export async function typeRef(ref: string, text: string, submit: boolean): Promise<void> {
+  const entry = refMap.get(ref)
+  const objectId = await resolveObjectId(ref)
+  const label = `AI type${entry?.name ? ` → "${entry.name.slice(0, 24)}"` : ''}`
+  await typeObjectId(objectId, text, submit, label, entry?.role)
+}
+
+export async function clickSelector(selector: string): Promise<void> {
+  const objectId = await resolveSelectorObjectId(selector)
+  const shortSel = selector.length > 32 ? selector.slice(0, 32) + '…' : selector
+  await clickObjectId(objectId, `AI click "${shortSel}"`)
+}
+
+export async function typeSelector(selector: string, text: string, submit: boolean): Promise<void> {
+  const objectId = await resolveSelectorObjectId(selector)
+  const shortSel = selector.length > 24 ? selector.slice(0, 24) + '…' : selector
+  await typeObjectId(objectId, text, submit, `AI type → "${shortSel}"`)
 }

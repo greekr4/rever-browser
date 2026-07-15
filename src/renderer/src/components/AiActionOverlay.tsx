@@ -9,7 +9,8 @@ const KIND_COLOR: Record<AiAction['kind'], string> = {
   scroll: '#30d158',
   snapshot: '#8e8e93',
   screenshot: '#8e8e93',
-  evaluate: '#ff9f0a'
+  evaluate: '#ff9f0a',
+  extract: '#2dd4bf'
 }
 
 const KIND_TAG: Record<AiAction['kind'], string> = {
@@ -19,7 +20,8 @@ const KIND_TAG: Record<AiAction['kind'], string> = {
   scroll: 'SCROLL',
   snapshot: 'SNAP',
   screenshot: 'SHOT',
-  evaluate: 'EVAL'
+  evaluate: 'EVAL',
+  extract: 'EXTRACT'
 }
 
 const MAX_LOG = 5
@@ -166,9 +168,9 @@ export function AiActionOverlay() {
             left: pos.x,
             top: pos.y,
             zIndex: 999,
-            background: 'rgba(20,20,22,0.78)',
-            color: '#aaa',
-            border: '1px solid #333',
+            background: 'var(--glass-panel)',
+            color: 'var(--text-dim)',
+            border: '1px solid var(--border-2)',
             padding: '3px 9px',
             borderRadius: 999,
             fontSize: 10,
@@ -193,11 +195,11 @@ export function AiActionOverlay() {
             display: 'flex',
             flexDirection: 'column',
             maxWidth: 360,
-            background: 'rgba(18,18,20,0.82)',
-            border: '1px solid #2a2a2a',
+            background: 'var(--glass-bar)',
+            border: '1px solid var(--border)',
             borderRadius: 6,
             backdropFilter: 'blur(8px)',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+            boxShadow: '0 4px 16px var(--shadow)',
             userSelect: dragging ? 'none' : 'auto',
             // Allow clicks on this floating panel so the X / drag handle work.
             // (Previous version had pointerEvents: 'none' for the whole stack.)
@@ -212,10 +214,10 @@ export function AiActionOverlay() {
               alignItems: 'center',
               gap: 6,
               padding: '3px 6px 3px 8px',
-              borderBottom: '1px solid #1f1f1f',
+              borderBottom: '1px solid var(--border)',
               cursor: dragging ? 'grabbing' : 'grab',
               fontSize: 10,
-              color: '#888',
+              color: 'var(--text-dim)',
               fontFamily: 'ui-monospace,Menlo,monospace',
               letterSpacing: 0.4
             }}
@@ -254,11 +256,11 @@ export function AiActionOverlay() {
                 alignItems: 'center',
                 gap: 6,
                 padding: '4px 8px',
-                color: '#ddd',
+                color: 'var(--text-2)',
                 fontSize: 11,
                 fontFamily: 'ui-monospace,Menlo,monospace',
                 opacity: a.id === active?.id ? 1 : 0.65,
-                borderBottom: '1px solid rgba(255,255,255,0.03)'
+                borderBottom: '1px solid var(--glass-hairline)'
               }}
             >
               <span
@@ -300,12 +302,12 @@ const toastStyle: React.CSSProperties = {
   gap: 8,
   padding: '6px 12px',
   borderRadius: 999,
-  background: 'rgba(20, 20, 22, 0.92)',
-  color: '#fff',
+  background: 'var(--glass-bar)',
+  color: 'var(--text)',
   fontSize: 12,
   fontWeight: 600,
   letterSpacing: 0.2,
-  boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+  boxShadow: '0 4px 16px var(--shadow)',
   backdropFilter: 'blur(8px)',
   pointerEvents: 'none',
   animation: 'rev-ai-pop 180ms ease-out'
@@ -314,7 +316,7 @@ const toastStyle: React.CSSProperties = {
 const hdrBtn: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
-  color: '#888',
+  color: 'var(--text-dim)',
   cursor: 'pointer',
   fontSize: 11,
   padding: '0 4px',

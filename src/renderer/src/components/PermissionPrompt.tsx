@@ -20,12 +20,12 @@ const overlay: React.CSSProperties = {
 
 const card: React.CSSProperties = {
   width: 'min(460px, 90vw)',
-  background: '#161616',
-  border: '1px solid #333',
+  background: 'var(--bg-bar)',
+  border: '1px solid var(--border-2)',
   borderRadius: 10,
   padding: 18,
   boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
-  color: '#eee'
+  color: 'var(--text)'
 }
 
 function inputPreview(rawInput: unknown): string | null {
@@ -81,8 +81,8 @@ export function PermissionPrompt() {
         {preview && (
           <pre
             style={{
-              background: '#0c0c0c',
-              border: '1px solid #242424',
+              background: 'var(--bg)',
+              border: '1px solid var(--border)',
               borderRadius: 6,
               padding: 8,
               fontSize: 11,

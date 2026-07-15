@@ -13,9 +13,9 @@ export function TabBar() {
         display: 'flex',
         alignItems: 'flex-end',
         gap: 2,
-        padding: '4px 8px 0',
-        borderBottom: '1px solid #2a2a2a',
-        background: '#161616',
+        flex: 1,
+        minWidth: 0,
+        height: '100%',
         overflowX: 'auto'
       }}
     >
@@ -28,23 +28,26 @@ export function TabBar() {
             onAuxClick={(e) => {
               if (e.button === 1) closeTab(t.id) // middle-click close
             }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 8px 6px 10px',
-              minWidth: 120,
-              maxWidth: 220,
-              cursor: 'pointer',
-              borderRadius: '6px 6px 0 0',
-              background: isActive ? '#0e0e0e' : 'transparent',
-              borderTop: `1px solid ${isActive ? '#333' : 'transparent'}`,
-              borderLeft: `1px solid ${isActive ? '#333' : 'transparent'}`,
-              borderRight: `1px solid ${isActive ? '#333' : 'transparent'}`,
-              fontSize: 12,
-              color: isActive ? '#eee' : '#999',
-              userSelect: 'none'
-            }}
+            style={
+              {
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 8px 6px 10px',
+                minWidth: 120,
+                maxWidth: 220,
+                cursor: 'pointer',
+                borderRadius: '6px 6px 0 0',
+                background: isActive ? 'var(--bg)' : 'transparent',
+                borderTop: `1px solid ${isActive ? 'var(--border-2)' : 'transparent'}`,
+                borderLeft: `1px solid ${isActive ? 'var(--border-2)' : 'transparent'}`,
+                borderRight: `1px solid ${isActive ? 'var(--border-2)' : 'transparent'}`,
+                fontSize: 12,
+                color: isActive ? 'var(--text)' : 'var(--text-dim)',
+                userSelect: 'none',
+                WebkitAppRegion: 'no-drag'
+              } as React.CSSProperties
+            }
           >
             <span
               style={{
@@ -73,7 +76,7 @@ export function TabBar() {
                   justifyContent: 'center',
                   background: 'transparent',
                   border: 'none',
-                  color: '#888',
+                  color: 'var(--text-dim)',
                   cursor: 'pointer',
                   fontSize: 14,
                   lineHeight: 1
@@ -90,18 +93,21 @@ export function TabBar() {
       <button
         type="button"
         onClick={() => addTab('https://www.google.com')}
-        style={{
-          padding: '4px 10px',
-          marginLeft: 4,
-          marginBottom: 2,
-          background: 'transparent',
-          border: '1px solid #333',
-          borderRadius: 4,
-          color: '#bbb',
-          cursor: 'pointer',
-          fontSize: 14,
-          lineHeight: 1
-        }}
+        style={
+          {
+            padding: '4px 10px',
+            marginLeft: 4,
+            marginBottom: 2,
+            background: 'transparent',
+            border: '1px solid var(--border-2)',
+            borderRadius: 4,
+            color: 'var(--text-2)',
+            cursor: 'pointer',
+            fontSize: 14,
+            lineHeight: 1,
+            WebkitAppRegion: 'no-drag'
+          } as React.CSSProperties
+        }
         title="New tab"
       >
         +

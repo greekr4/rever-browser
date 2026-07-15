@@ -80,7 +80,7 @@ export function ChatHistoryMenu({ currentId, onOpen, disabled }: ChatHistoryMenu
                   <div
                     style={{
                       ...rowStyle,
-                      borderColor: c.id === currentId ? '#4a8ddb' : '#2a2a2a'
+                      borderColor: c.id === currentId ? '#4a8ddb' : 'var(--border)'
                     }}
                   >
                     <button
@@ -123,10 +123,10 @@ const triggerStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 4,
   padding: '3px 8px',
-  background: '#1c1c1c',
-  border: '1px solid #333',
+  background: 'var(--bg-bar)',
+  border: '1px solid var(--border-2)',
   borderRadius: 4,
-  color: '#ddd',
+  color: 'var(--text-2)',
   cursor: 'pointer',
   fontSize: 11
 }
@@ -139,8 +139,8 @@ const popoverStyle: React.CSSProperties = {
   width: 'min(320px, calc(var(--chat-w, 100vw) - 24px))',
   maxHeight: '70vh',
   overflowY: 'auto',
-  background: '#161616',
-  border: '1px solid #2a2a2a',
+  background: 'var(--bg-bar)',
+  border: '1px solid var(--border)',
   borderRadius: 8,
   padding: 10,
   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)'
@@ -164,8 +164,8 @@ const listStyle: React.CSSProperties = {
 const rowStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'stretch',
-  background: '#1c1c1c',
-  border: '1px solid #2a2a2a',
+  background: 'var(--bg-bar)',
+  border: '1px solid var(--border)',
   borderRadius: 6,
   overflow: 'hidden'
 }
@@ -179,7 +179,7 @@ const rowMainStyle: React.CSSProperties = {
   padding: '6px 8px',
   background: 'transparent',
   border: 'none',
-  color: '#eee',
+  color: 'var(--text)',
   cursor: 'pointer',
   textAlign: 'left',
   fontFamily: 'inherit'
@@ -193,7 +193,7 @@ const iconChip: React.CSSProperties = {
   width: 20,
   height: 20,
   borderRadius: 4,
-  background: '#2a2a2a',
+  background: 'var(--surface-2)',
   fontSize: 11,
   fontWeight: 700
 }
@@ -222,7 +222,7 @@ const deleteStyle: React.CSSProperties = {
   width: 28,
   background: 'transparent',
   border: 'none',
-  borderLeft: '1px solid #2a2a2a',
+  borderLeft: '1px solid var(--border)',
   color: '#c77',
   cursor: 'pointer',
   fontSize: 16,

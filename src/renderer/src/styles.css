@@ -1,8 +1,86 @@
+/* ── Theme tokens ─────────────────────────────────────────────
+   The app UI is themed via CSS custom properties. Dark is the default
+   (matches the original hardcoded palette so dark renders unchanged);
+   [data-theme="light"] overrides. The resolved theme is written to
+   <html data-theme="..."> by the inline script in index.html (no flash)
+   and kept in sync by the app-theme store. */
+:root,
+:root[data-theme='dark'] {
+  --bg: #0e0e0e;
+  --bg-bar: #161616;
+  --surface: #1a1a1a;
+  --surface-2: #222222;
+  --surface-3: #2a2a2a;
+  --border: #2a2a2a;
+  --border-2: #333333;
+  --border-3: #444444;
+  --text: #e6e6e6;
+  --text-2: #cccccc;
+  --text-dim: #999999;
+  --viewport-bg: #000000;
+  --code-bg: #0c0c0c;
+  --inline-code-bg: #1d1d1d;
+  --link: #7ab7ff;
+  --accent: #4a8fff;
+  --accent-soft: rgba(80, 140, 255, 0.18);
+  --accent-border: rgba(120, 170, 255, 0.35);
+  --glass-bar: rgba(18, 18, 20, 0.92);
+  --glass-panel: rgba(20, 20, 22, 0.85);
+  --glass-hairline: rgba(255, 255, 255, 0.08);
+  --glass-hover: rgba(255, 255, 255, 0.06);
+  --shadow: rgba(0, 0, 0, 0.4);
+  /* Soft state chips (auto-approve / manual / new-chat) */
+  --chip-ok-bg: #1f2a1f;
+  --chip-ok-border: #2a4a2a;
+  --chip-ok-text: #aaeeaa;
+  --chip-warn-bg: #2a261f;
+  --chip-warn-border: #4a402a;
+  --chip-warn-text: #eeccaa;
+  --chip-info-bg: #1f242a;
+  --chip-info-border: #2a3a4a;
+  --chip-info-text: #aaccee;
+}
+
+:root[data-theme='light'] {
+  --bg: #fbfbfc;
+  --bg-bar: #eef0f2;
+  --surface: #ffffff;
+  --surface-2: #f0f1f3;
+  --surface-3: #e6e8ea;
+  --border: #e2e4e8;
+  --border-2: #d3d6db;
+  --border-3: #bcc0c6;
+  --text: #1b1d21;
+  --text-2: #3f444b;
+  --text-dim: #6a7078;
+  --viewport-bg: #ffffff;
+  --code-bg: #f3f4f6;
+  --inline-code-bg: #eceef1;
+  --link: #2f6fed;
+  --accent: #2f6fed;
+  --accent-soft: rgba(47, 111, 237, 0.14);
+  --accent-border: rgba(47, 111, 237, 0.35);
+  --glass-bar: rgba(244, 245, 247, 0.9);
+  --glass-panel: rgba(249, 250, 251, 0.9);
+  --glass-hairline: rgba(0, 0, 0, 0.1);
+  --glass-hover: rgba(0, 0, 0, 0.05);
+  --shadow: rgba(0, 0, 0, 0.16);
+  --chip-ok-bg: #e7f6e9;
+  --chip-ok-border: #bfe3c4;
+  --chip-ok-text: #1f7a34;
+  --chip-warn-bg: #fbf3e2;
+  --chip-warn-border: #e6d5a8;
+  --chip-warn-text: #8a6a1f;
+  --chip-info-bg: #e8f0fb;
+  --chip-info-border: #c3d6ef;
+  --chip-info-text: #2f5fa8;
+}
+
 html, body, #root {
   margin: 0;
   height: 100%;
-  background: #0e0e0e;
-  color: #e6e6e6;
+  background: var(--bg);
+  color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
   overflow: hidden;
@@ -23,21 +101,21 @@ button, input, select {
 }
 
 input, select {
-  background: #1a1a1a;
-  color: #e6e6e6;
-  border: 1px solid #333;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-2);
   border-radius: 4px;
 }
 
 button {
-  background: #2a2a2a;
-  color: #e6e6e6;
-  border: 1px solid #3a3a3a;
+  background: var(--surface-3);
+  color: var(--text);
+  border: 1px solid var(--border-2);
   border-radius: 4px;
   padding: 4px 10px;
   cursor: pointer;
 }
-button:hover:not(:disabled) { background: #333; }
+button:hover:not(:disabled) { background: var(--border-2); }
 button:disabled { opacity: 0.5; cursor: default; }
 
 /* Unified toolbar button — applied to every nav-bar button so icon-only
@@ -74,19 +152,19 @@ button:disabled { opacity: 0.5; cursor: default; }
 .md ul, .md ol { margin: 0.3em 0 0.6em; padding-left: 1.4em; }
 .md li { margin: 0.15em 0; }
 
-.md a { color: #7ab7ff; text-decoration: none; }
+.md a { color: var(--link); text-decoration: none; }
 .md a:hover { text-decoration: underline; }
 
 .md code {
-  background: #1d1d1d;
+  background: var(--inline-code-bg);
   padding: 1px 5px;
   border-radius: 3px;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.92em;
 }
 .md pre {
-  background: #0c0c0c;
-  border: 1px solid #1f1f1f;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 12px;
   margin: 0.4em 0 0.7em;
@@ -101,10 +179,10 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 
 .md blockquote {
-  border-left: 3px solid #444;
+  border-left: 3px solid var(--border-3);
   margin: 0.4em 0;
   padding: 0.1em 0.8em;
-  color: #b8b8b8;
+  color: var(--text-2);
 }
 
 .md table {
@@ -114,14 +192,14 @@ button:disabled { opacity: 0.5; cursor: default; }
   width: 100%;
 }
 .md th, .md td {
-  border: 1px solid #2a2a2a;
+  border: 1px solid var(--border);
   padding: 4px 8px;
   text-align: left;
   vertical-align: top;
 }
-.md th { background: #181818; font-weight: 600; }
+.md th { background: var(--bg-bar); font-weight: 600; }
 
-.md hr { border: none; border-top: 1px solid #2a2a2a; margin: 0.8em 0; }
+.md hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
 
 /* Thinking dots */
 .thinking-dot {
@@ -129,7 +207,7 @@ button:disabled { opacity: 0.5; cursor: default; }
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #888;
+  background: var(--text-dim);
   animation: thinking-pulse 1s ease-in-out infinite;
 }
 @keyframes thinking-pulse {
@@ -142,8 +220,8 @@ button:disabled { opacity: 0.5; cursor: default; }
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid #444;
-  border-top-color: #aaa;
+  border: 2px solid var(--border-3);
+  border-top-color: var(--text-dim);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   flex-shrink: 0;
@@ -157,11 +235,11 @@ button:disabled { opacity: 0.5; cursor: default; }
   flex-shrink: 0;
   width: 4px;
   cursor: col-resize;
-  background: #1f1f1f;
+  background: var(--surface);
   position: relative;
   transition: background 0.15s;
 }
-.splitter:hover, .splitter:active { background: #4a8fff; }
+.splitter:hover, .splitter:active { background: var(--accent); }
 .splitter::before {
   content: '';
   position: absolute;
@@ -185,10 +263,10 @@ body.resizing webview { pointer-events: none; }
   gap: 4px;
   z-index: 110;
   padding: 0 10px;
-  background: rgba(18, 18, 20, 0.92);
+  background: var(--glass-bar);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--glass-hairline);
   box-sizing: border-box;
   overflow-x: auto;
 }
@@ -201,7 +279,7 @@ body.resizing webview { pointer-events: none; }
   border-radius: 6px;
   background: transparent;
   border: 1px solid transparent;
-  color: #ccc;
+  color: var(--text-2);
   font-size: 12px;
   cursor: pointer;
   display: inline-flex;
@@ -213,14 +291,14 @@ body.resizing webview { pointer-events: none; }
 }
 
 .chip:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  background: var(--glass-hover);
+  color: var(--text);
 }
 
 .chip.active {
-  background: rgba(80, 140, 255, 0.18);
-  border-color: rgba(120, 170, 255, 0.35);
-  color: #fff;
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--text);
 }
 
 .chip-count {
@@ -234,12 +312,12 @@ body.resizing webview { pointer-events: none; }
   left: 0;
   right: 0;
   bottom: 40px;
-  background: rgba(20, 20, 22, 0.85);
+  background: var(--glass-panel);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--glass-hairline);
   z-index: 100;
-  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 -12px 40px var(--shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -264,7 +342,7 @@ body.resizing webview { pointer-events: none; }
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid var(--glass-hairline);
   flex-shrink: 0;
 }
 
@@ -277,7 +355,7 @@ body.resizing webview { pointer-events: none; }
 .chip-panel-close {
   background: transparent;
   border: none;
-  color: #888;
+  color: var(--text-dim);
   font-size: 12px;
   padding: 2px 6px;
   border-radius: 4px;
@@ -285,8 +363,8 @@ body.resizing webview { pointer-events: none; }
 }
 
 .chip-panel-close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ccc;
+  background: var(--glass-hover);
+  color: var(--text-2);
 }
 
 .chip-panel-content {
@@ -310,27 +388,27 @@ body.resizing webview { pointer-events: none; }
 }
 
 .botcheck-trigger {
-  background: rgba(20, 20, 22, 0.65);
+  background: var(--glass-panel);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-hairline);
   border-radius: 14px;
   padding: 8px 14px;
   font-size: 11px;
-  color: #fff;
+  color: var(--text);
   cursor: pointer;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 24px var(--shadow);
 }
 
-.botcheck-trigger:hover { background: rgba(40, 40, 42, 0.8); }
+.botcheck-trigger:hover { background: var(--glass-hover); }
 
 .botcheck-menu {
-  background: rgba(20, 20, 22, 0.85);
+  background: var(--glass-panel);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-hairline);
   border-radius: 14px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 12px 40px var(--shadow);
   padding: 8px;
   min-width: 280px;
   display: flex;
@@ -343,7 +421,7 @@ body.resizing webview { pointer-events: none; }
   font-size: 10px;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  color: #888;
+  color: var(--text-dim);
   padding: 6px 10px 4px;
 }
 
@@ -356,26 +434,26 @@ body.resizing webview { pointer-events: none; }
   border-radius: 10px;
   background: transparent;
   border: 1px solid transparent;
-  color: #ddd;
+  color: var(--text-2);
   cursor: pointer;
   text-align: left;
   font-family: inherit;
 }
 
 .botcheck-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: var(--glass-hover);
+  border-color: var(--glass-hover);
 }
 
 .botcheck-item-name {
   font-size: 12px;
   font-weight: 500;
-  color: #eee;
+  color: var(--text);
 }
 
 .botcheck-item-desc {
   font-size: 11px;
-  color: #888;
+  color: var(--text-dim);
 }
 
 /* ── Detail drawer (right side, absolute over webview) ──────── */
@@ -384,12 +462,12 @@ body.resizing webview { pointer-events: none; }
   right: 0;
   top: 0;
   bottom: 0;
-  background: rgba(20, 20, 22, 0.85);
+  background: var(--glass-panel);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid var(--glass-hairline);
   z-index: 115;
-  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.4);
+  box-shadow: -12px 0 40px var(--shadow);
   display: flex;
   flex-direction: column;
   overflow: hidden;

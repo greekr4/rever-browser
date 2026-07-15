@@ -63,9 +63,9 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
           right: 6,
           padding: '2px 8px',
           fontSize: 11,
-          background: '#1d1d1d',
-          border: '1px solid #2e2e2e',
-          color: '#bbb',
+          background: 'var(--surface)',
+          border: '1px solid var(--border-2)',
+          color: 'var(--text-2)',
           borderRadius: 4,
           cursor: 'pointer',
           opacity: 0.85
@@ -112,8 +112,8 @@ function ToolBlock({ part }: { part: ToolPart }) {
   return (
     <div
       style={{
-        background: '#161616',
-        border: '1px solid #2a2a2a',
+        background: 'var(--bg-bar)',
+        border: '1px solid var(--border)',
         borderRadius: 6,
         marginBottom: 6,
         fontSize: 12
@@ -130,7 +130,7 @@ function ToolBlock({ part }: { part: ToolPart }) {
           padding: '6px 10px',
           background: 'transparent',
           border: 'none',
-          color: '#ddd',
+          color: 'var(--text-2)',
           cursor: 'pointer',
           textAlign: 'left',
           fontFamily: 'inherit',
@@ -217,9 +217,9 @@ function WorkGroup({ parts }: { parts: AnyPart[] }) {
           padding: '2px 10px',
           fontSize: 11,
           background: 'transparent',
-          border: '1px solid #2a2a2a',
+          border: '1px solid var(--border)',
           borderRadius: 12,
-          color: '#aaa',
+          color: 'var(--text-dim)',
           cursor: 'pointer'
         }}
       >
@@ -228,7 +228,7 @@ function WorkGroup({ parts }: { parts: AnyPart[] }) {
         <span style={{ opacity: 0.5 }}>· {open ? 'hide' : 'show more'}</span>
       </button>
       {open && (
-        <div style={{ marginTop: 6, paddingLeft: 8, borderLeft: '2px solid #222' }}>
+        <div style={{ marginTop: 6, paddingLeft: 8, borderLeft: '2px solid var(--border)' }}>
           {parts.map((p, i) => {
             if (p.type === 'reasoning') return <Markdown key={i} text={p.text ?? ''} dim />
             if (p.type.startsWith('tool-')) return <ToolBlock key={i} part={p as ToolPart} />
@@ -266,7 +266,7 @@ const MessageItem = memo(function MessageItem({ message }: { message: ChatMessag
 })
 
 const preStyle: React.CSSProperties = {
-  background: '#0c0c0c',
+  background: 'var(--bg)',
   padding: 8,
   fontSize: 11,
   margin: '4px 0 0',
@@ -481,8 +481,8 @@ export function ChatPanel() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid #333' }}>
-      <header style={{ padding: '8px 12px', borderBottom: '1px solid #333', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid var(--border-2)' }}>
+      <header style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-2)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <AgentPicker
           agentId={agentId}
           disabled={busy}
@@ -528,9 +528,9 @@ export function ChatPanel() {
             padding: '3px 8px',
             borderRadius: 4,
             cursor: 'pointer',
-            background: autoApprove ? '#1f2a1f' : '#2a261f',
-            border: `1px solid ${autoApprove ? '#2a4a2a' : '#4a402a'}`,
-            color: autoApprove ? '#aea' : '#eca'
+            background: autoApprove ? 'var(--chip-ok-bg)' : 'var(--chip-warn-bg)',
+            border: `1px solid ${autoApprove ? 'var(--chip-ok-border)' : 'var(--chip-warn-border)'}`,
+            color: autoApprove ? 'var(--chip-ok-text)' : 'var(--chip-warn-text)'
           }}
         >
           {autoApprove ? 'Auto-approve' : 'Manual approve'}
@@ -543,9 +543,9 @@ export function ChatPanel() {
           style={{
             fontSize: 11,
             padding: '3px 8px',
-            background: '#1f242a',
-            border: '1px solid #2a3a4a',
-            color: '#ace',
+            background: 'var(--chip-info-bg)',
+            border: '1px solid var(--chip-info-border)',
+            color: 'var(--chip-info-text)',
             borderRadius: 4,
             cursor: 'pointer'
           }}
@@ -586,9 +586,9 @@ export function ChatPanel() {
               bottom: 12,
               padding: '6px 10px',
               borderRadius: 16,
-              border: '1px solid #444',
-              background: '#1f1f1f',
-              color: '#eee',
+              border: '1px solid var(--border-3)',
+              background: 'var(--surface)',
+              color: 'var(--text)',
               fontSize: 12,
               cursor: 'pointer',
               boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
@@ -599,7 +599,7 @@ export function ChatPanel() {
         )}
       </div>
 
-      <form onSubmit={onSubmit} style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid #333', alignItems: 'center' }}>
+      <form onSubmit={onSubmit} style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--border-2)', alignItems: 'center' }}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
