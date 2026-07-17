@@ -61,6 +61,8 @@ import {
 } from './repeater'
 import { partitionForTab, setActivePartition } from './tab-partition'
 import { applyTabProxy, proxyCredentialsForSession, type TabProxyConfig } from './tab-proxy'
+import { listMcpTools } from './mcp/bridge'
+import { cancelWorkflow, runWorkflow, type RunStep } from './workflow-executor'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -265,6 +267,19 @@ app.whenReady().then(() => {
   // on the visible tab's partition.
   ipcMain.handle('tab:set-active-partition', (_event, tabId: string) => {
     setActivePartition(partitionForTab(tabId))
+    return true
+  })
+
+  // ── Workflow executor (macro replay) ──────────────────────────────────────
+  ipcMain.handle('workflow:list-tools', () => listMcpTools())
+  ipcMain.handle('workflow:run', async (event, steps: RunStep[], channel: string) => {
+    const sender = event.sender
+    return runWorkflow(steps, (progress) => {
+      if (!sender.isDestroyed()) sender.send(channel, progress)
+    })
+  })
+  ipcMain.handle('workflow:cancel', () => {
+    cancelWorkflow()
     return true
   })
 

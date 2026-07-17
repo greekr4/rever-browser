@@ -104,6 +104,25 @@ export interface ProxyConfig {
   password?: string
 }
 
+export interface McpToolInfo {
+  name: string
+  description?: string
+  inputSchema: unknown
+}
+
+export interface WorkflowRunStep {
+  tool: string
+  input: Record<string, unknown>
+}
+
+export interface WorkflowStepProgress {
+  index: number
+  tool: string
+  status: 'running' | 'done' | 'error'
+  output?: string
+  error?: string
+}
+
 export interface StoredRequestSummary {
   requestId: string
   url: string
@@ -209,6 +228,24 @@ const api = {
     // target the right partition.
     setActiveTab: (tabId: string): Promise<boolean> =>
       ipcRenderer.invoke('tab:set-active-partition', tabId)
+  },
+  workflows: {
+    // Available MCP tools, for the macro step editor.
+    listTools: (): Promise<McpToolInfo[]> => ipcRenderer.invoke('workflow:list-tools'),
+    // Run a resolved macro (steps already have {{var}} substituted). Progress
+    // is streamed per step to onProgress.
+    run: (
+      steps: WorkflowRunStep[],
+      onProgress: (p: WorkflowStepProgress) => void
+    ): Promise<WorkflowStepProgress[]> => {
+      const channel = `workflow:progress:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+      const listener = (_e: unknown, p: WorkflowStepProgress): void => onProgress(p)
+      ipcRenderer.on(channel, listener)
+      return ipcRenderer
+        .invoke('workflow:run', steps, channel)
+        .finally(() => ipcRenderer.removeListener(channel, listener))
+    },
+    cancel: (): Promise<boolean> => ipcRenderer.invoke('workflow:cancel')
   },
   settings: {
     getApiKey: (provider: 'anthropic' | 'openai'): Promise<string | null> =>
