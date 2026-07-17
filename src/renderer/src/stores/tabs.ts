@@ -1,5 +1,16 @@
 import { create } from 'zustand'
 
+// Per-tab upstream proxy. Mirrors main/tab-proxy.ts TabProxyConfig. Held in
+// memory only (tabs aren't persisted), so it resets on restart.
+export interface ProxyConfig {
+  enabled: boolean
+  scheme: 'http' | 'https' | 'socks5'
+  host: string
+  port: number
+  username?: string
+  password?: string
+}
+
 export interface Tab {
   id: string
   url: string
@@ -9,6 +20,8 @@ export interface Tab {
   // once — afterwards the user/AI drives navigation via loadURL on the ref,
   // so React doesn't re-mount the webview.
   initialUrl: string
+  // Undefined = direct connection (default).
+  proxy?: ProxyConfig
 }
 
 interface TabsState {
@@ -19,6 +32,7 @@ interface TabsState {
   closeTab: (id: string) => void
   selectTab: (id: string) => void
   updateTab: (id: string, patch: Partial<Omit<Tab, 'id' | 'initialUrl'>>) => void
+  setTabProxy: (id: string, proxy: ProxyConfig | undefined) => void
 }
 
 const INITIAL_URL = 'https://www.google.com'
@@ -78,6 +92,12 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   updateTab: (id, patch) => {
     set((s) => ({
       tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t))
+    }))
+  },
+
+  setTabProxy: (id, proxy) => {
+    set((s) => ({
+      tabs: s.tabs.map((t) => (t.id === id ? { ...t, proxy } : t))
     }))
   }
 }))

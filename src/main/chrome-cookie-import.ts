@@ -6,11 +6,13 @@ import { copyFileSync, existsSync, rmSync, readdirSync, statSync, mkdtempSync, m
 import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 
-// Import session cookies from the real desktop Chrome profile into the
-// app's `persist:rever` partition. This is the single biggest lever for WAF /
-// CAPTCHA avoidance: a brand-new partition with zero cookies looks like a
-// first-time visitor and gets the strictest treatment. Re-using a logged-in
-// Chrome session makes us look like a returning, trusted user.
+import { getActivePartition } from './tab-partition'
+
+// Import session cookies from the real desktop Chrome profile into the active
+// tab's partition. This is the single biggest lever for WAF / CAPTCHA
+// avoidance: a brand-new partition with zero cookies looks like a first-time
+// visitor and gets the strictest treatment. Re-using a logged-in Chrome
+// session makes us look like a returning, trusted user.
 //
 // macOS only. Chrome cookie values are AES-128-CBC encrypted with a key
 // derived (PBKDF2-SHA1) from the "Chrome Safe Storage" password in the login
@@ -18,7 +20,6 @@ import { join } from 'node:path'
 // detected and stripped adaptively below. App-bound `v20` values (newest
 // Chrome) cannot be decrypted via the Keychain and are reported, not faked.
 
-const PARTITION = 'persist:rever'
 const execFileAsync = promisify(execFile)
 
 const IV = Buffer.alloc(16, 0x20) // 16 spaces
@@ -189,7 +190,7 @@ export async function importChromeCookies(
     ? raw.filter((c) => hostFilters.some((f) => c.host.toLowerCase().includes(f)))
     : raw
 
-  const sess = session.fromPartition(PARTITION)
+  const sess = session.fromPartition(getActivePartition())
   const nowSec = Date.now() / 1000
   let imported = 0
   let skipped = 0

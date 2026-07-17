@@ -191,7 +191,9 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
         } as React.CSSProperties
       }
       allowpopups={'true' as unknown as boolean}
-      partition="persist:rever"
+      // Per-tab partition → isolated cookies/storage + independent proxy.
+      // Must match partitionForTab() in main/tab-partition.ts.
+      partition={`persist:rever-${tab.id}`}
     />
   )
 })

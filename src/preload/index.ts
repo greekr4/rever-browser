@@ -95,6 +95,15 @@ export interface RepeaterResponse {
   error?: string
 }
 
+export interface ProxyConfig {
+  enabled: boolean
+  scheme: 'http' | 'https' | 'socks5'
+  host: string
+  port: number
+  username?: string
+  password?: string
+}
+
 export interface StoredRequestSummary {
   requestId: string
   url: string
@@ -191,6 +200,15 @@ const api = {
     // app theme. No-op on macOS (traffic lights aren't recolorable this way).
     setTitlebar: (resolved: 'light' | 'dark'): Promise<void> =>
       ipcRenderer.invoke('theme:set-titlebar', resolved)
+  },
+  proxy: {
+    // Apply (or clear, with null) the given tab's upstream proxy.
+    set: (tabId: string, config: ProxyConfig | null): Promise<boolean> =>
+      ipcRenderer.invoke('proxy:set', tabId, config),
+    // Tell main which tab is active so cookie import / sticky-cookie snapshot
+    // target the right partition.
+    setActiveTab: (tabId: string): Promise<boolean> =>
+      ipcRenderer.invoke('tab:set-active-partition', tabId)
   },
   settings: {
     getApiKey: (provider: 'anthropic' | 'openai'): Promise<string | null> =>

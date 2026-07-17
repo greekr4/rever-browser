@@ -2,7 +2,10 @@ import { app, session, safeStorage, type Cookie } from 'electron'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
 
-const PARTITION = 'persist:rever'
+import { getActivePartition } from './tab-partition'
+
+// Sticky session cookies follow the active tab's partition — tabs are now
+// isolated, so "restore my session cookies" targets whichever tab is in front.
 const SETTINGS_FILE = 'sticky-cookies-settings.json'
 const STORE_FILE = 'sticky-session-cookies.json'
 
@@ -84,7 +87,7 @@ function sameSiteOut(s: Cookie['sameSite']): StickyEntry['sameSite'] {
 async function dumpSessionCookies(): Promise<void> {
   if (!settings.stickyEnabled) return
   try {
-    const sess = session.fromPartition(PARTITION)
+    const sess = session.fromPartition(getActivePartition())
     const all = await sess.cookies.get({})
     const sessionOnly = all.filter((c) => c.session === true)
     const entries: StickyEntry[] = sessionOnly.map((c) => ({
@@ -130,7 +133,7 @@ async function restoreSessionCookies(): Promise<void> {
       json = readFileSync(storePath(), 'utf8')
     }
     const entries: StickyEntry[] = JSON.parse(json)
-    const sess = session.fromPartition(PARTITION)
+    const sess = session.fromPartition(getActivePartition())
     const expiry = Math.floor(Date.now() / 1000) + STICKY_EXTEND_SECONDS
     let restored = 0
     for (const e of entries) {
@@ -175,7 +178,7 @@ export function initCookiePersistence(): void {
 
 export async function manualSnapshot(): Promise<number> {
   // Allow on-demand dump from the UI (without waiting for quit).
-  const sess = session.fromPartition(PARTITION)
+  const sess = session.fromPartition(getActivePartition())
   const all = await sess.cookies.get({})
   const sessionOnly = all.filter((c) => c.session === true)
   const entries: StickyEntry[] = sessionOnly.map((c) => ({

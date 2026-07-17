@@ -4,6 +4,7 @@ import { AiActionOverlay } from '@/components/AiActionOverlay'
 import { BotCheckButton } from '@/components/BotCheckButton'
 import { DetailDrawer } from '@/components/DetailDrawer'
 import { FloatingChips } from '@/components/FloatingChips'
+import { ProxyButton } from '@/components/ProxyButton'
 import { ScreencastView } from '@/components/ScreencastView'
 import { TabBar } from '@/components/TabBar'
 import { WebviewTab, type WebviewTabHandle } from '@/components/WebviewTab'
@@ -116,6 +117,12 @@ function App() {
       void window.rev.cdp.setActive(activeTab.webContentsId)
     }
   }, [activeTab?.webContentsId, activeId])
+
+  // Tell main which tab is active so cookie import / sticky-cookie snapshot
+  // target this tab's (now isolated) partition.
+  useEffect(() => {
+    if (activeId) void window.rev.proxy.setActiveTab(activeId)
+  }, [activeId])
 
   useEffect(() => {
     void window.rev.viewport.get().then(setViewportMode)
@@ -346,6 +353,12 @@ function App() {
             >
               {activeTheme === 'auto' ? 'Auto' : activeTheme === 'light' ? 'Light' : 'Dark'}
             </button>
+            {browserMode === 'embedded' && (
+              <ProxyButton
+                tab={activeTab}
+                onApplied={() => activeRef()?.reload()}
+              />
+            )}
             <button
               className="toolbar-btn"
               type="button"

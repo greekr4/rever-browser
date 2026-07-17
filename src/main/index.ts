@@ -59,6 +59,8 @@ import {
   type RepeaterModifications,
   type RepeaterRequestSpec
 } from './repeater'
+import { partitionForTab, setActivePartition } from './tab-partition'
+import { applyTabProxy, proxyCredentialsForSession, type TabProxyConfig } from './tab-proxy'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -213,9 +215,26 @@ app.whenReady().then(() => {
   // of them silently, which amiunique flagged at 0.07% similarity. Deny by
   // default so the Permissions API reports 'prompt' / 'denied' like a
   // freshly-installed Chrome with no granted sites.
-  const revSession = session.fromPartition('persist:rever')
-  revSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
-  revSession.setPermissionCheckHandler(() => false)
+  //
+  // Tabs now each get their own partition (persist:rever-<tabId>), so apply the
+  // deny-all handlers to every session as it's created rather than to one fixed
+  // partition. The app's own UI runs on the default session — skip it so
+  // clipboard/etc. in the renderer keep working.
+  app.on('session-created', (createdSession) => {
+    if (createdSession === session.defaultSession) return
+    createdSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
+    createdSession.setPermissionCheckHandler(() => false)
+  })
+
+  // Answer per-tab proxy 407 challenges. Site (non-proxy) auth is left to
+  // Electron's default (unchanged) by returning without preventDefault.
+  app.on('login', (event, webContents, _details, authInfo, callback) => {
+    if (!authInfo.isProxy) return
+    const creds = proxyCredentialsForSession(webContents.session)
+    if (!creds) return
+    event.preventDefault()
+    callback(creds.username, creds.password)
+  })
 
   // Initialize sticky-session-cookie persistence (no-op if user has it disabled).
   initCookiePersistence()
@@ -233,6 +252,20 @@ app.whenReady().then(() => {
 
   ipcMain.handle('cdp:set-active', async (_event, webContentsId: number) => {
     return setActiveTarget(webContentsId)
+  })
+
+  // ── Per-tab proxy + active-partition tracking ─────────────────────────────
+  ipcMain.handle('proxy:set', async (_event, tabId: string, config: TabProxyConfig | null) => {
+    await applyTabProxy(tabId, config)
+    return true
+  })
+
+  // The renderer reports the active tab so cookie-persistence / Chrome import
+  // (which use the Electron session.cookies API, not per-webContents CDP) act
+  // on the visible tab's partition.
+  ipcMain.handle('tab:set-active-partition', (_event, tabId: string) => {
+    setActivePartition(partitionForTab(tabId))
+    return true
   })
 
   ipcMain.handle('theme:set-titlebar', (_event, resolved: 'light' | 'dark') => {
