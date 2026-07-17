@@ -3,5 +3,6 @@
 // and its line here — the core (panel/store) needs no other changes.
 import './template'
 import './macro'
+import './pipeline'
 
 export { WorkflowPanel } from './core/WorkflowPanel'

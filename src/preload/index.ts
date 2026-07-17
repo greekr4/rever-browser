@@ -123,6 +123,25 @@ export interface WorkflowStepProgress {
   error?: string
 }
 
+export interface PipeCond {
+  on: 'output' | 'error'
+  op: 'contains' | 'equals' | 'matches' | 'always'
+  value: string
+}
+
+export type ResolvedPipeNode =
+  | { id: string; type: 'tool'; tool: string; input: Record<string, unknown> }
+  | { id: string; type: 'if'; cond: PipeCond; then: ResolvedPipeNode[]; else: ResolvedPipeNode[] }
+
+export interface PipeProgress {
+  nodeId: string
+  tool?: string
+  status: 'running' | 'done' | 'error' | 'branch'
+  output?: string
+  error?: string
+  taken?: 'then' | 'else'
+}
+
 export interface StoredRequestSummary {
   requestId: string
   url: string
@@ -243,6 +262,18 @@ const api = {
       ipcRenderer.on(channel, listener)
       return ipcRenderer
         .invoke('workflow:run', steps, channel)
+        .finally(() => ipcRenderer.removeListener(channel, listener))
+    },
+    // Run a resolved pipeline (branch-aware node tree).
+    runPipeline: (
+      nodes: ResolvedPipeNode[],
+      onProgress: (p: PipeProgress) => void
+    ): Promise<boolean> => {
+      const channel = `workflow:pipe:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+      const listener = (_e: unknown, p: PipeProgress): void => onProgress(p)
+      ipcRenderer.on(channel, listener)
+      return ipcRenderer
+        .invoke('workflow:run-pipeline', nodes, channel)
         .finally(() => ipcRenderer.removeListener(channel, listener))
     },
     cancel: (): Promise<boolean> => ipcRenderer.invoke('workflow:cancel')

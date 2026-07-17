@@ -62,7 +62,13 @@ import {
 import { partitionForTab, setActivePartition } from './tab-partition'
 import { applyTabProxy, proxyCredentialsForSession, type TabProxyConfig } from './tab-proxy'
 import { listMcpTools } from './mcp/bridge'
-import { cancelWorkflow, runWorkflow, type RunStep } from './workflow-executor'
+import {
+  cancelWorkflow,
+  runPipeline,
+  runWorkflow,
+  type ResolvedPipeNode,
+  type RunStep
+} from './workflow-executor'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -278,6 +284,16 @@ app.whenReady().then(() => {
       if (!sender.isDestroyed()) sender.send(channel, progress)
     })
   })
+  ipcMain.handle(
+    'workflow:run-pipeline',
+    async (event, nodes: ResolvedPipeNode[], channel: string) => {
+      const sender = event.sender
+      await runPipeline(nodes, (progress) => {
+        if (!sender.isDestroyed()) sender.send(channel, progress)
+      })
+      return true
+    }
+  )
   ipcMain.handle('workflow:cancel', () => {
     cancelWorkflow()
     return true
