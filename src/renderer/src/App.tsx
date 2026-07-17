@@ -20,7 +20,7 @@ import { useAppThemeStore, resolveTheme } from '@/stores/app-theme'
 import { useViewportStore } from '@/stores/viewport'
 import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 
-type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history'
+type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history' | 'workflows'
 
 // macOS insets its traffic lights over the top-left of our bar; Windows/Linux
 // draw min/max/close as an overlay on the top-right. Reserve space on the

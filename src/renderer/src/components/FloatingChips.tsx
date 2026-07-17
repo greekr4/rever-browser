@@ -12,8 +12,10 @@ import { useResizable } from '@/hooks/use-resizable'
 import { useHistoryStore } from '@/stores/history'
 import { useRepeaterStore } from '@/stores/repeater'
 import { useTrafficStore } from '@/stores/traffic'
+import { WorkflowPanel } from '@/workflows'
+import { useWorkflowsStore } from '@/workflows/core/store'
 
-type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history'
+type PanelId = 'traffic' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history' | 'workflows'
 
 interface FloatingChipsProps {
   openPanel: PanelId | null
@@ -34,6 +36,7 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
   const repeaterSourceId = useRepeaterStore((s) => s.sourceRequestId)
   const repeaterHistoryLen = useRepeaterStore((s) => s.history.length)
   const historyCount = useHistoryStore((s) => s.entries.length)
+  const workflowCount = useWorkflowsStore((s) => s.workflows.length)
 
   // Auto-open the Repeater panel whenever a request gets sent into it from
   // somewhere else in the app (TrafficList "Send to Repeater" button).
@@ -106,7 +109,8 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
     websocket: 'WebSocket',
     repeater: 'Repeater',
     storage: 'Storage',
-    history: 'History'
+    history: 'History',
+    workflows: 'Workflows'
   }
 
   // The bottom menu bar is fixed at the bottom; the panel slides up above it.
@@ -163,6 +167,12 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
           badge={historyCount > 0 ? String(historyCount) : undefined}
           onClick={() => toggle('history')}
         />
+        <ChipButton
+          label="Workflows"
+          active={openPanel === 'workflows'}
+          badge={workflowCount > 0 ? String(workflowCount) : undefined}
+          onClick={() => toggle('workflows')}
+        />
       </div>
 
       {/* Bottom slide panel */}
@@ -208,6 +218,7 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
               {openPanel === 'repeater' && <RepeaterPanel />}
               {openPanel === 'storage' && <CookiesPanel />}
               {openPanel === 'history' && <HistoryPanel />}
+              {openPanel === 'workflows' && <WorkflowPanel />}
             </div>
           </motion.div>
         )}
