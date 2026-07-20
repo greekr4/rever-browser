@@ -159,8 +159,8 @@ export async function humanType(
       code: k.code,
       windowsVirtualKeyCode: k.keyCode
     })
-    await sleep(rand(55, 165))
-    if (Math.random() < 0.08) await sleep(rand(220, 480))
+    await sleep(rand(15, 55))
+    if (Math.random() < 0.04) await sleep(rand(120, 260))
   }
 
   if (submit) {
