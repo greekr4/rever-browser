@@ -40,6 +40,8 @@
 - **Browser automation** — The agent can navigate, click, type, scroll, screenshot, and take accessibility snapshots of the live tab.
 - **Bundle analysis** — Grep, extract, detect the bundler for, and deobfuscate the JavaScript already captured in the traffic store (no re-download), including a `webcrack`-backed deobfuscator.
 - **Deep API tooling** — A broad MCP tool set covering request repeater, intruder, header/override editing, HAR export, source-map recovery, crypto/decode helpers, WebSocket and service-worker inspection, and more.
+- **Browser profiles** — Named persistent or incognito profiles, each an isolated cookie/storage jar. Open a tab under any profile from the tab bar, or create one seeded directly from a real browser profile by name.
+- **Cookie import** — Pull a logged-in session into the active profile from Chrome, Edge, Brave, Arc, Chromium, Vivaldi, Firefox, or Safari (macOS), picking the source browser and profile by its display name.
 
 ## Requirements
 
