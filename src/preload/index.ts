@@ -251,8 +251,11 @@ const api = {
   picker: {
     start: (): Promise<void> => ipcRenderer.invoke('picker:start'),
     stop: (): Promise<void> => ipcRenderer.invoke('picker:stop'),
-    onState: (handler: (payload: { active: boolean }) => void): (() => void) => {
-      const listener = (_e: unknown, payload: { active: boolean }) => handler(payload)
+    onState: (
+      handler: (payload: { active: boolean; mode: 'pick' | 'grab' | null }) => void
+    ): (() => void) => {
+      const listener = (_e: unknown, payload: { active: boolean; mode: 'pick' | 'grab' | null }) =>
+        handler(payload)
       ipcRenderer.on('picker:state', listener)
       return () => ipcRenderer.removeListener('picker:state', listener)
     }

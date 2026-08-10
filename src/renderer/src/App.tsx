@@ -177,9 +177,11 @@ function App() {
 
   useEffect(
     () =>
-      window.rev.picker.onState(({ active }) => {
-        setPickerActive(active)
-        if (!active) setGrabbing(false) // Esc / pick ended → clear grab toggle too
+      // picker and grab share the overlay; `mode` says which one is live so the
+      // two toggles reflect state independently and both clear on stop.
+      window.rev.picker.onState(({ active, mode }) => {
+        setPickerActive(active && mode === 'pick')
+        setGrabbing(active && mode === 'grab')
       }),
     []
   )
@@ -204,16 +206,16 @@ function App() {
     []
   )
 
-  // Esc cancels the picker while the app window has focus. (Main's
+  // Esc cancels the picker or grab while the app window has focus. (Main's
   // before-input-event handler covers Esc while the webview has focus.)
   useEffect(() => {
-    if (!pickerActive) return
+    if (!pickerActive && !grabbing) return
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') void window.rev.picker.stop()
+      if (e.key === 'Escape') void (grabbing ? window.rev.grab.stop() : window.rev.picker.stop())
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [pickerActive])
+  }, [pickerActive, grabbing])
 
   useEffect(() => {
     const off = window.rev.onReloadRequest(({ ignoreCache }) => {

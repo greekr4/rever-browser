@@ -460,17 +460,22 @@ async function copyElementInfo(
 // chrome-cdp.ts's message listener), which copies the element's selector + ref
 // exactly like "Copy Element" and exits the mode.
 
+// picker and grab share one CDP inspect overlay but are distinct modes. Only
+// one is ever active; `grabMode` selects what a click does. The renderer gets
+// both bits via picker:state so its two toolbar toggles never fight.
 let pickerActive = false
+let grabMode = false
 
 function sendPickerState(): void {
   if (mainWindow && !mainWindow.webContents.isDestroyed()) {
-    mainWindow.webContents.send('picker:state', { active: pickerActive })
+    const mode = pickerActive ? (grabMode ? 'grab' : 'pick') : null
+    mainWindow.webContents.send('picker:state', { active: pickerActive, mode })
   }
 }
 
-async function startPicker(): Promise<void> {
+async function enableInspect(): Promise<boolean> {
   const target = getActiveTarget()
-  if (!target) return
+  if (!target) return false
   try {
     await target.dbg.sendCommand('DOM.enable')
     await target.dbg.sendCommand('Overlay.enable')
@@ -485,16 +490,15 @@ async function startPicker(): Promise<void> {
         marginColor: { r: 246, g: 178, b: 107, a: 0.4 }
       }
     })
-    pickerActive = true
+    return true
   } catch (e) {
     // Debugger detached mid-call — stay off rather than crash.
-    console.error('[picker] start failed:', e)
-    pickerActive = false
+    console.error('[inspect] enable failed:', e)
+    return false
   }
-  sendPickerState()
 }
 
-async function stopPicker(): Promise<void> {
+async function disableInspect(): Promise<void> {
   const target = getActiveTarget()
   if (target) {
     try {
@@ -504,7 +508,19 @@ async function stopPicker(): Promise<void> {
       // Debugger detached or page gone — the overlay died with it.
     }
   }
+}
+
+async function startPicker(): Promise<void> {
+  grabMode = false
+  pickerActive = await enableInspect()
+  sendPickerState()
+}
+
+// Shared stop for both modes: kills the overlay and clears both bits.
+async function stopPicker(): Promise<void> {
+  await disableInspect()
   pickerActive = false
+  grabMode = false
   sendPickerState()
 }
 
@@ -557,8 +573,6 @@ async function onPickerNodeRequested(backendNodeId: number): Promise<void> {
 // an element screenshot and its context and hands them to the renderer (chat
 // context + markup editor) instead of copying a selector to the clipboard.
 
-let grabMode = false
-
 const GRAB_ELEMENT_INFO_FN = `function () {
   return {
     tag: this.tagName ? this.tagName.toLowerCase() : null,
@@ -570,11 +584,13 @@ const GRAB_ELEMENT_INFO_FN = `function () {
 
 async function startGrab(): Promise<void> {
   grabMode = true
-  await startPicker()
+  pickerActive = await enableInspect()
+  if (!pickerActive) grabMode = false
+  sendPickerState()
 }
 
+// stopGrab is just the shared stop (kept as a named alias for call-site clarity).
 async function stopGrab(): Promise<void> {
-  grabMode = false
   await stopPicker()
 }
 
