@@ -1,0 +1,65 @@
+import type { TKey } from './en'
+
+// Korean UI strings. Missing keys fall back to English (see useT).
+export const ko: Record<TKey, string> = {
+  'agent.chat': '채팅 (ACP)',
+  'agent.terminal': '터미널 (CLI)',
+
+  'cli.title': '터미널에서 Rever 사용',
+  'cli.desc': 'Claude Code를 실제 터미널에서 실행합니다. Rever의 브라우저·트래픽 도구가 이미 연결돼 있습니다.',
+  'cli.start': 'Claude Code 시작 →',
+  'cli.skillPrompt': '다른 Claude Code 세션에서도 /rever를 쓰고 싶다면 아래를 한 번 실행하세요:',
+  'cli.copy': '복사',
+  'cli.copied': '복사됨 ✓',
+  'cli.installed': '✓ /rever 스킬이 이미 설치됨',
+  'cli.requires': 'claude CLI가 필요합니다(본인 구독 사용). macOS/Linux 전용.',
+  'cli.guide': '가이드',
+  'cli.guideTitle': 'CLI 모드 가이드 보기',
+  'cli.exited': '에이전트 종료 (코드 {code}).',
+  'cli.restart': '재시작',
+
+  'tab.new': '새 탭',
+  'tab.close': '탭 닫기',
+  'tab.newInProfile': '프로필로 새 탭 열기',
+  'profile.openIn': '프로필로 열기',
+  'profile.newName': '새 프로필 이름',
+  'profile.persistent': '+ 영구',
+  'profile.incognito': '+ 시크릿',
+  'profile.persistentHint': '영구 프로필 생성 (재시작해도 유지)',
+  'profile.incognitoHint': '시크릿 프로필 생성 (메모리 전용, 종료 시 삭제)',
+  'profile.importFrom': '브라우저에서 프로필 가져오기',
+  'profile.delete': '프로필 삭제',
+  'profile.incognitoTag': '시크릿',
+
+  'toolbar.viewport.desktop': '데스크톱',
+  'toolbar.viewport.mobile': '모바일',
+  'toolbar.embedded': '내장',
+  'toolbar.external': '외부',
+  'toolbar.viewSource': '페이지 소스를 새 탭에서 보기 (view-source:)',
+  'toolbar.pick': '요소 선택 (셀렉터 + ref 복사)',
+  'toolbar.grab': '요소 그랩 (스크린샷 + 컨텍스트 → 채팅·마크업)',
+  'toolbar.addressPlaceholder': 'https://...',
+  'toolbar.theme': '테마: {mode} — 클릭하면 시스템 → 라이트 → 다크 순환',
+  'toolbar.openChat': '채팅 열기',
+  'toolbar.collapseChat': '채팅 접기',
+
+  'markup.rect': '사각형',
+  'markup.arrow': '화살표',
+  'markup.pen': '펜',
+  'markup.undo': '실행 취소',
+  'markup.clear': '지우기',
+  'markup.copy': '복사',
+  'markup.copied': '복사됨 ✓',
+  'markup.save': 'PNG 저장',
+  'markup.close': '닫기',
+
+  'cookies.importFrom': '쿠키 가져오기:',
+  'cookies.importBrowserTitle': '가져올 브라우저',
+  'cookies.importProfileTitle': '가져올 프로필',
+  'cookies.domainsPlaceholder': '도메인, 쉼표로 구분 (비우면 전체)',
+  'cookies.domainsTitle': '호스트에 이 문자열이 포함된 쿠키만 가져옵니다',
+  'cookies.import': '가져오기',
+  'cookies.importing': '가져오는 중…',
+
+  'lang.label': '언어'
+}
