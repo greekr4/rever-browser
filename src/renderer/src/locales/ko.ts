@@ -61,5 +61,66 @@ export const ko: Record<TKey, string> = {
   'cookies.import': '가져오기',
   'cookies.importing': '가져오는 중…',
 
-  'lang.label': '언어'
+  'lang.label': '언어',
+
+  'common.cancel': '취소',
+  'common.edit': '편집',
+  'common.delete': '삭제',
+  'common.remove': '제거',
+  'common.stop': '중지',
+  'common.clear': '지우기',
+  'common.moveUp': '위로',
+  'common.moveDown': '아래로',
+
+  'panel.noConsole': '콘솔 출력 없음',
+  'panel.noExceptions': '예외 없음',
+  'panel.noWs': 'WS 연결 없음',
+  'panel.noFrames': '프레임 없음',
+  'panel.selectConnection': '연결을 선택하세요',
+  'history.filter': 'URL 또는 제목으로 필터',
+
+  'traffic.clear': '캡처된 트래픽 지우기',
+  'traffic.filter': 'URL 또는 메서드 필터…',
+  'traffic.method': '메서드',
+  'traffic.status': '상태',
+  'traffic.type': '유형',
+  'traffic.url': 'URL',
+  'traffic.size': '크기',
+  'traffic.sendToRepeater': '리피터로 보내기',
+
+  'drawer.request': '요청',
+  'drawer.response': '응답',
+  'drawer.queryParams': '쿼리 파라미터',
+  'drawer.responseBody': '응답 본문',
+
+  'repeater.empty': 'Traffic에서 행을 우클릭하고 "리피터로 보내기"를 선택해 시작하세요.',
+  'repeater.removeHeader': '헤더 제거',
+
+  'chat.input': '입력',
+  'chat.output': '출력',
+  'chat.switchModel': '이 세션의 모델 변경',
+  'chat.newConversation': '새 대화 시작 (현재 에이전트 세션 종료)',
+  'chat.placeholder': '메시지를 입력하세요…',
+  'chat.historyTitle': '대화 기록',
+  'chat.history': '기록',
+  'chat.deleteConversation': '대화 삭제',
+  'chat.chooseAgent': 'AI 에이전트 선택',
+  'chat.chooseAgentShort': '에이전트 선택',
+
+  'macro.goalPlaceholder': '로그인 후 프로필 API 덤프',
+  'macro.steps': '단계',
+  'macro.removeStep': '단계 제거',
+  'macro.waitForPlaceholder': '대기할 셀렉터 (선택)',
+  'macro.waitForTitle': '이 CSS 셀렉터가 매칭될 때까지 폴링 후 단계 실행. 10초 후 실패.',
+  'macro.delayPlaceholder': '지연 ms',
+  'macro.delayTitle': '단계 전 추가 대기 (waitFor 이후 적용)',
+  'macro.saveAsPlaceholder': '저장 이름',
+  'macro.saveAsTitle': '이 단계 결과를 이 이름으로 저장; 이후 {{name}}으로 사용',
+
+  'pipeline.ifLast': '이전 결과가',
+  'pipeline.valuePlaceholder': '값 / 정규식',
+  'pipeline.goalPlaceholder': '엔드포인트 탐색, 200/403으로 분기',
+
+  'template.goalPlaceholder': '이 사이트 인증 흐름 분석',
+  'template.bodyPlaceholder': 'Use 클릭 시 에이전트 채팅 입력에 삽입되는 텍스트.'
 }

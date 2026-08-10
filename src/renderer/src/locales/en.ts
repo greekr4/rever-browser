@@ -67,7 +67,77 @@ export const en = {
   'cookies.importing': 'Importing…',
 
   // Language switcher
-  'lang.label': 'Language'
+  'lang.label': 'Language',
+
+  // Common
+  'common.cancel': 'Cancel',
+  'common.edit': 'Edit',
+  'common.delete': 'Delete',
+  'common.remove': 'Remove',
+  'common.stop': 'Stop',
+  'common.clear': 'Clear',
+  'common.moveUp': 'Move up',
+  'common.moveDown': 'Move down',
+
+  // Panels (empty states)
+  'panel.noConsole': 'No console output',
+  'panel.noExceptions': 'No exceptions',
+  'panel.noWs': 'No WS connections',
+  'panel.noFrames': 'No frames',
+  'panel.selectConnection': 'Select a connection',
+  'history.filter': 'Filter by URL or title',
+
+  // Traffic
+  'traffic.clear': 'Clear captured traffic',
+  'traffic.filter': 'Filter URL or method…',
+  'traffic.method': 'Method',
+  'traffic.status': 'Status',
+  'traffic.type': 'Type',
+  'traffic.url': 'URL',
+  'traffic.size': 'Size',
+  'traffic.sendToRepeater': 'Send to Repeater',
+
+  // Traffic detail drawer
+  'drawer.request': 'Request',
+  'drawer.response': 'Response',
+  'drawer.queryParams': 'Query params',
+  'drawer.responseBody': 'Response body',
+
+  // Repeater
+  'repeater.empty': 'Right-click a row in Traffic and choose "Send to Repeater" to start.',
+  'repeater.removeHeader': 'Remove header',
+
+  // Chat
+  'chat.input': 'input',
+  'chat.output': 'output',
+  'chat.switchModel': 'Switch model for this session',
+  'chat.newConversation': 'Start a new conversation (kills the current agent session)',
+  'chat.placeholder': 'Type a message…',
+  'chat.historyTitle': 'Conversation history',
+  'chat.history': 'History',
+  'chat.deleteConversation': 'Delete conversation',
+  'chat.chooseAgent': 'Choose AI agent',
+  'chat.chooseAgentShort': 'Choose agent',
+
+  // Macro editor
+  'macro.goalPlaceholder': 'Login then dump the profile API',
+  'macro.steps': 'Steps',
+  'macro.removeStep': 'Remove step',
+  'macro.waitForPlaceholder': 'wait for selector (optional)',
+  'macro.waitForTitle': 'Poll until this CSS selector matches, then run the step. Fails the step after 10s.',
+  'macro.delayPlaceholder': 'delay ms',
+  'macro.delayTitle': 'Extra pause before the step, applied after waitFor',
+  'macro.saveAsPlaceholder': 'save as',
+  'macro.saveAsTitle': "Store this step's result under this name; use it later as {{name}}",
+
+  // Pipeline editor
+  'pipeline.ifLast': 'if last',
+  'pipeline.valuePlaceholder': 'value / regex',
+  'pipeline.goalPlaceholder': 'Probe endpoint, branch on 200 vs 403',
+
+  // Template editor
+  'template.goalPlaceholder': "Analyze this site's auth flow",
+  'template.bodyPlaceholder': 'Text inserted into the agent chat input when you click Use.'
 }
 
 export type TKey = keyof typeof en
