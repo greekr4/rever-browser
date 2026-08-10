@@ -92,7 +92,7 @@ pgrep -f "Electron|electron-vite" | xargs -r kill -9
 Rever ships a Claude Code skill so any `claude` session can drive a running Rever Browser and use its ~140 MCP tools for API reversing. It's published as a standalone repo — [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill) — installable with the [`skills`](https://www.npmjs.com/package/skills) CLI (no source checkout needed, so it works for DMG/EXE users):
 
 ```bash
-npx skills add greekr4/rever-browser-skill --global
+npx skills add greekr4/rever-browser-skill --global --agent claude-code
 ```
 
 **Use:** launch the Rever Browser app (it publishes its MCP endpoint on startup), then in any `claude` session type:
