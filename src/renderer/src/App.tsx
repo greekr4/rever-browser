@@ -6,6 +6,7 @@ import { BotCheckButton } from '@/components/BotCheckButton'
 import { DetailDrawer } from '@/components/DetailDrawer'
 import { FloatingChips } from '@/components/FloatingChips'
 import { IpBadge } from '@/components/IpBadge'
+import { MarkupEditor } from '@/components/MarkupEditor'
 import { ProxyButton } from '@/components/ProxyButton'
 import { ScreencastView } from '@/components/ScreencastView'
 import { TabBar } from '@/components/TabBar'
@@ -22,6 +23,7 @@ import { useBookmarksStore } from '@/stores/bookmarks'
 import { useTabsStore } from '@/stores/tabs'
 import { useAppThemeStore, resolveTheme } from '@/stores/app-theme'
 import { useChatCollapsedStore } from '@/stores/chat-collapsed'
+import { useChatDraft } from '@/stores/chat-draft'
 import { useViewportStore } from '@/stores/viewport'
 import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 import { handleAgentRequest } from '@/workflows/core/agent-bridge'
@@ -120,6 +122,10 @@ function App() {
   // Overlay; this mirrors its state for the toolbar toggle, which also turns
   // itself off after a pick or on Esc.
   const [pickerActive, setPickerActive] = useState(false)
+  // Grab: pick an element to capture a screenshot + context. Shares the picker's
+  // overlay; `grabbing` tracks the toolbar toggle separately from the picker.
+  const [grabbing, setGrabbing] = useState(false)
+  const [markupImage, setMarkupImage] = useState<string | null>(null)
 
   const chat = useResizable({ initial: 420, min: 300, max: 720, storageKey: 'rev:chat-w' })
   const chatCollapsed = useChatCollapsedStore((s) => s.collapsed)
@@ -169,7 +175,34 @@ function App() {
     return off
   }, [setViewportMode])
 
-  useEffect(() => window.rev.picker.onState(({ active }) => setPickerActive(active)), [])
+  useEffect(
+    () =>
+      window.rev.picker.onState(({ active }) => {
+        setPickerActive(active)
+        if (!active) setGrabbing(false) // Esc / pick ended → clear grab toggle too
+      }),
+    []
+  )
+
+  // A grabbed element: push its context into the chat draft and open the markup
+  // editor on its screenshot.
+  useEffect(
+    () =>
+      window.rev.grab.onCaptured((c) => {
+        setGrabbing(false)
+        const lines = [
+          'Grabbed element:',
+          c.selector ? `- selector: ${c.selector}` : null,
+          c.ref ? `- ref: ${c.ref} (current snapshot only)` : null,
+          c.info?.tag ? `- tag: <${c.info.tag}>` : null,
+          c.info?.id ? `- id: #${c.info.id}` : null,
+          c.info?.text ? `- text: ${c.info.text}` : null
+        ].filter(Boolean)
+        if (lines.length > 1) useChatDraft.getState().push(lines.join('\n'))
+        if (c.dataUrl) setMarkupImage(c.dataUrl)
+      }),
+    []
+  )
 
   // Esc cancels the picker while the app window has focus. (Main's
   // before-input-event handler covers Esc while the webview has focus.)
@@ -359,6 +392,9 @@ function App() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <PermissionPrompt />
       <CopyToast />
+      {markupImage && (
+        <MarkupEditor imageDataUrl={markupImage} onClose={() => setMarkupImage(null)} />
+      )}
       <div
         style={
           {
@@ -483,6 +519,30 @@ function App() {
                     <line x1="12" y1="18" x2="12" y2="22" />
                     <line x1="2" y1="12" x2="6" y2="12" />
                     <line x1="18" y1="12" x2="22" y2="12" />
+                  </svg>
+                </button>
+                <button
+                  className="toolbar-btn"
+                  type="button"
+                  aria-pressed={grabbing}
+                  onClick={() => {
+                    if (grabbing) {
+                      void window.rev.grab.stop()
+                      setGrabbing(false)
+                    } else {
+                      void window.rev.grab.start()
+                      setGrabbing(true)
+                    }
+                  }}
+                  disabled={!activeTab}
+                  title="Grab an element (screenshot + context → chat & markup)"
+                  style={{
+                    background: grabbing ? 'var(--accent-soft)' : undefined,
+                    borderColor: grabbing ? 'var(--accent-border)' : undefined
+                  }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5z" />
                   </svg>
                 </button>
               </>

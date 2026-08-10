@@ -552,7 +552,96 @@ async function onPickerNodeRequested(backendNodeId: number): Promise<void> {
   await stopPicker()
 }
 
-setInspectNodeHandler((backendNodeId) => void onPickerNodeRequested(backendNodeId))
+// ---- Grab mode (element → screenshot + context for the agent) ---------------
+// Reuses the same CDP inspect overlay as the picker, but on click it captures
+// an element screenshot and its context and hands them to the renderer (chat
+// context + markup editor) instead of copying a selector to the clipboard.
+
+let grabMode = false
+
+const GRAB_ELEMENT_INFO_FN = `function () {
+  return {
+    tag: this.tagName ? this.tagName.toLowerCase() : null,
+    text: ((this.innerText || this.textContent || '').trim()).slice(0, 200),
+    id: this.id || null,
+    cls: typeof this.className === 'string' ? this.className : null
+  }
+}`
+
+async function startGrab(): Promise<void> {
+  grabMode = true
+  await startPicker()
+}
+
+async function stopGrab(): Promise<void> {
+  grabMode = false
+  await stopPicker()
+}
+
+async function onGrabNodeRequested(backendNodeId: number): Promise<void> {
+  const target = getActiveTarget()
+  if (!target) {
+    await stopGrab()
+    return
+  }
+
+  let selector: string | null = null
+  let info: { tag: string | null; text: string; id: string | null; cls: string | null } | null =
+    null
+  try {
+    const { object } = (await target.dbg.sendCommand('DOM.resolveNode', { backendNodeId })) as {
+      object: { objectId?: string }
+    }
+    if (object.objectId) {
+      const sel = (await target.dbg.sendCommand('Runtime.callFunctionOn', {
+        objectId: object.objectId,
+        functionDeclaration: SELECTOR_FROM_ELEMENT_FN,
+        returnByValue: true
+      })) as { result: { value?: unknown } }
+      if (typeof sel.result?.value === 'string') selector = sel.result.value
+      const meta = (await target.dbg.sendCommand('Runtime.callFunctionOn', {
+        objectId: object.objectId,
+        functionDeclaration: GRAB_ELEMENT_INFO_FN,
+        returnByValue: true
+      })) as { result: { value?: typeof info } }
+      if (meta.result?.value) info = meta.result.value
+    }
+  } catch {
+    // Node vanished or debugger detached — fields stay null.
+  }
+
+  const ref = refForBackendNodeId(backendNodeId)
+
+  let rect: ElementRect | null = null
+  try {
+    const { model } = (await target.dbg.sendCommand('DOM.getBoxModel', { backendNodeId })) as {
+      model: { content: number[] }
+    }
+    rect = contentQuadRect(model.content)
+  } catch {
+    // No box model — capture the full viewport instead.
+  }
+
+  // Grab exits inspect mode before the capture so the overlay isn't in the shot.
+  await stopGrab()
+
+  let dataUrl: string | null = null
+  try {
+    const img =
+      rect && rect.width > 0 && rect.height > 0
+        ? await target.wc.capturePage(rect)
+        : await target.wc.capturePage()
+    dataUrl = img.toDataURL()
+  } catch (e) {
+    console.error('[grab] capture failed:', e)
+  }
+
+  mainWindow?.webContents.send('grab:captured', { selector, ref, rect, info, dataUrl })
+}
+
+setInspectNodeHandler((backendNodeId) =>
+  grabMode ? void onGrabNodeRequested(backendNodeId) : void onPickerNodeRequested(backendNodeId)
+)
 
 // Keyboard-level shortcuts shared by the app window and every webview (see the
 // before-input-event listeners). Returns true when the input was consumed —
@@ -563,7 +652,7 @@ function handleBrowserShortcut(input: Electron.Input): boolean {
   // Esc cancels the element picker regardless of which contents has focus —
   // the webview (the common case while hovering) or the app window.
   if (input.key === 'Escape' && pickerActive) {
-    void stopPicker()
+    void (grabMode ? stopGrab() : stopPicker())
     return true
   }
   if (!(input.meta || input.control) || input.alt) return false
@@ -989,6 +1078,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle('picker:start', () => startPicker())
   ipcMain.handle('picker:stop', () => stopPicker())
+  ipcMain.handle('grab:start', () => startGrab())
+  ipcMain.handle('grab:stop', () => stopGrab())
 
   ipcMain.handle('viewport:get', () => getViewport())
   ipcMain.handle('viewport:set', async (_event, mode: ViewportMode) => {

@@ -135,6 +135,15 @@ export interface BrowserInfo {
   profiles: BrowserProfileInfo[]
 }
 
+export interface GrabCapture {
+  selector: string | null
+  ref: string | null
+  rect: { x: number; y: number; width: number; height: number } | null
+  info: { tag: string | null; text: string; id: string | null; cls: string | null } | null
+  // PNG data URL of the grabbed element (or full viewport when no box model).
+  dataUrl: string | null
+}
+
 export interface McpToolInfo {
   name: string
   description?: string
@@ -246,6 +255,17 @@ const api = {
       const listener = (_e: unknown, payload: { active: boolean }) => handler(payload)
       ipcRenderer.on('picker:state', listener)
       return () => ipcRenderer.removeListener('picker:state', listener)
+    }
+  },
+  // Grab: pick an element to capture its screenshot + context for the agent.
+  // Shares the picker's inspect overlay, so picker:state also reflects grab mode.
+  grab: {
+    start: (): Promise<void> => ipcRenderer.invoke('grab:start'),
+    stop: (): Promise<void> => ipcRenderer.invoke('grab:stop'),
+    onCaptured: (handler: (payload: GrabCapture) => void): (() => void) => {
+      const listener = (_e: unknown, payload: GrabCapture) => handler(payload)
+      ipcRenderer.on('grab:captured', listener)
+      return () => ipcRenderer.removeListener('grab:captured', listener)
     }
   },
   acp: {
