@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import type { BrowserId, BrowserInfo } from '../../../../preload'
+
 interface CookieRow {
   name: string
   value: string
@@ -125,7 +127,7 @@ export function CookiesPanel() {
         </div>
       )}
 
-      {section === 'cookies' && <ChromeImportBar />}
+      {section === 'cookies' && <BrowserImportBar />}
 
       {section === 'cookies' && (
         <div
@@ -512,29 +514,46 @@ function CookieEditor({
   )
 }
 
-function ChromeImportBar() {
-  const [profiles, setProfiles] = useState<string[]>([])
-  const [profile, setProfile] = useState('Default')
+function defaultProfileId(profiles: { id: string; name: string }[]): string {
+  return profiles.find((p) => p.id === 'Default')?.id ?? profiles[0]?.id ?? ''
+}
+
+function BrowserImportBar() {
+  const [browsers, setBrowsers] = useState<BrowserInfo[]>([])
+  const [browserId, setBrowserId] = useState<BrowserId | ''>('')
+  const [profile, setProfile] = useState('')
   const [hosts, setHosts] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<string | null>(null)
 
   useEffect(() => {
-    void window.rev.storage.chromeProfiles().then((p) => {
-      setProfiles(p)
-      if (p.length > 0 && !p.includes('Default')) setProfile(p[0])
+    void window.rev.storage.browsers().then((list) => {
+      setBrowsers(list)
+      if (list.length > 0) {
+        setBrowserId(list[0].id)
+        setProfile(defaultProfileId(list[0].profiles))
+      }
     })
   }, [])
 
-  // Hidden on platforms / setups where no Chrome profile with cookies exists.
-  if (profiles.length === 0) return null
+  // Hidden on platforms / setups where no supported browser is detected.
+  if (browsers.length === 0) return null
+
+  const selected = browsers.find((b) => b.id === browserId)
+
+  const onBrowserChange = (id: BrowserId): void => {
+    setBrowserId(id)
+    const b = browsers.find((x) => x.id === id)
+    setProfile(defaultProfileId(b?.profiles ?? []))
+  }
 
   const run = async () => {
+    if (!browserId) return
     setBusy(true)
     setResult(null)
     try {
       const hostList = hosts.split(',').map((h) => h.trim()).filter(Boolean)
-      const r = await window.rev.storage.chromeImport({ profile, hosts: hostList })
+      const r = await window.rev.storage.browserImport({ browser: browserId, profile, hosts: hostList })
       if (!r.ok) {
         setResult(`⚠ ${r.error ?? 'import failed'}`)
       } else {
@@ -568,20 +587,35 @@ function ChromeImportBar() {
         flexWrap: 'wrap'
       }}
     >
-      <strong style={{ color: 'var(--text-2)' }}>Import cookies from Chrome</strong>
+      <strong style={{ color: 'var(--text-2)' }}>Import cookies from</strong>
       <select
-        value={profile}
-        onChange={(e) => setProfile(e.target.value)}
+        value={browserId}
+        onChange={(e) => onBrowserChange(e.target.value as BrowserId)}
         disabled={busy}
         style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-2)', borderRadius: 3, padding: '2px 4px' }}
-        title="Chrome profile to import from"
+        title="Browser to import from"
       >
-        {profiles.map((p) => (
-          <option key={p} value={p}>
-            {p}
+        {browsers.map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.name}
           </option>
         ))}
       </select>
+      {selected && selected.profiles.length > 1 && (
+        <select
+          value={profile}
+          onChange={(e) => setProfile(e.target.value)}
+          disabled={busy}
+          style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-2)', borderRadius: 3, padding: '2px 4px' }}
+          title="Profile to import from"
+        >
+          {selected.profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      )}
       <input
         placeholder="domains, comma-separated (blank = all)"
         value={hosts}
@@ -590,7 +624,7 @@ function ChromeImportBar() {
         style={{ ...addInput, flex: 1, minWidth: 160 }}
         title="Only import cookies whose host contains one of these substrings"
       />
-      <button onClick={() => void run()} disabled={busy} style={addBtn} title="Decrypt and inject into the persist:rever partition (asks for Keychain access)">
+      <button onClick={() => void run()} disabled={busy} style={addBtn} title="Decrypt and inject into the active tab's session (may ask for Keychain access)">
         {busy ? 'Importing…' : 'Import'}
       </button>
       {result && (

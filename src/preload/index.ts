@@ -105,6 +105,36 @@ export interface ProxyConfig {
   password?: string
 }
 
+// Mirrors main/tab-partition.ts BrowserProfile — keep the two in sync.
+export type ProfileKind = 'persistent' | 'incognito'
+export interface BrowserProfile {
+  id: string
+  name: string
+  kind: ProfileKind
+  partition: string
+  source?: string
+}
+
+// Mirrors main/browser-cookie-import.ts — keep the two in sync.
+export type BrowserId =
+  | 'chrome'
+  | 'edge'
+  | 'brave'
+  | 'arc'
+  | 'chromium'
+  | 'vivaldi'
+  | 'firefox'
+  | 'safari'
+export interface BrowserProfileInfo {
+  id: string
+  name: string
+}
+export interface BrowserInfo {
+  id: BrowserId
+  name: string
+  profiles: BrowserProfileInfo[]
+}
+
 export interface McpToolInfo {
   name: string
   description?: string
@@ -460,8 +490,10 @@ const api = {
       ipcRenderer.invoke('cookie-persistence:set', enabled),
     persistenceSnapshot: (): Promise<{ snapshotCount: number }> =>
       ipcRenderer.invoke('cookie-persistence:snapshot'),
-    chromeProfiles: (): Promise<string[]> => ipcRenderer.invoke('chrome-cookies:profiles'),
-    chromeImport: (opts: {
+    // Detected browsers (installed with importable profiles).
+    browsers: (): Promise<BrowserInfo[]> => ipcRenderer.invoke('browser-cookies:list'),
+    browserImport: (opts: {
+      browser: BrowserId
       profile?: string
       hosts?: string[]
     }): Promise<{
@@ -471,7 +503,7 @@ const api = {
       undecryptable: number
       total: number
       error?: string
-    }> => ipcRenderer.invoke('chrome-cookies:import', opts)
+    }> => ipcRenderer.invoke('browser-cookies:import', opts)
   },
   onReloadRequest: (handler: (opts: { ignoreCache: boolean }) => void): (() => void) => {
     const listener = (_e: unknown, opts: { ignoreCache: boolean }) => handler(opts)

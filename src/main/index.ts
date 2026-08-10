@@ -30,10 +30,10 @@ import {
   setStickyEnabled
 } from './cookie-persistence'
 import {
-  importChromeCookies,
-  listChromeProfiles,
-  type ChromeImportOptions
-} from './chrome-cookie-import'
+  importBrowserCookies,
+  listBrowsers,
+  type ImportOptions
+} from './browser-cookie-import'
 import { detectAgents, type AgentProbe } from './acp-detect'
 import { initRendererBridge } from './renderer-bridge'
 import { launchExternalChrome, killExternalChrome } from './external-chrome'
@@ -1102,10 +1102,10 @@ app.whenReady().then(() => {
     return { snapshotCount: n }
   })
 
-  // ── Real Chrome cookie import (macOS) ─────────────────────────────────────
-  ipcMain.handle('chrome-cookies:profiles', () => listChromeProfiles())
-  ipcMain.handle('chrome-cookies:import', (_event, opts: ChromeImportOptions) =>
-    importChromeCookies(opts)
+  // ── Real browser cookie import (macOS) ────────────────────────────────────
+  ipcMain.handle('browser-cookies:list', () => listBrowsers())
+  ipcMain.handle('browser-cookies:import', (_event, opts: ImportOptions) =>
+    importBrowserCookies(opts)
   )
 
   // ── JS dialog auto-dismiss IPC ────────────────────────────────────────────
