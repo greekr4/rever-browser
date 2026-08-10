@@ -25,92 +25,103 @@ export function TerminalPanel() {
   )
 }
 
+const INSTALL_CMD = 'npx skills add greekr4/rever-browser-skill --global --agent claude-code'
+
 function Onboarding({ onStart }: { onStart: () => void }) {
+  const [installed, setInstalled] = useState<boolean | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    void window.rev.skill.status().then((s) => setInstalled(s.installed))
+  }, [])
+
+  const copy = (): void => {
+    void navigator.clipboard.writeText(INSTALL_CMD).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+
   return (
     <div
       style={{
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        gap: 14,
-        padding: 20,
-        overflow: 'auto',
-        color: 'var(--text-2)',
-        fontSize: 13,
-        lineHeight: 1.5
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        gap: 18,
+        padding: '28px 24px',
+        overflow: 'auto'
       }}
     >
-      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>Terminal (CLI) mode</div>
-      <p style={{ margin: 0 }}>
-        Runs the local <strong>Claude Code CLI</strong> in a real terminal, with Rever&apos;s browser
-        &amp; traffic tools wired in automatically — the full CLI instead of the structured ACP chat.
-      </p>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Step n={1} title="Requires the claude CLI">
-          Install and log in once (uses your own Claude subscription):{' '}
-          <code style={codeStyle}>npm i -g @anthropic-ai/claude-code</code>, then{' '}
-          <code style={codeStyle}>claude</code>.
-        </Step>
-        <Step n={2} title="MCP connects automatically">
-          Rever&apos;s ~140 tools are injected via <code style={codeStyle}>--mcp-config</code>. In the
-          terminal, run <code style={codeStyle}>/mcp</code> to confirm the <strong>rever</strong>{' '}
-          server is connected.
-        </Step>
-        <Step n={3} title="Drive the browser from the CLI">
-          Ask it to navigate, capture traffic, or reverse an API — it uses the same live tab as the
-          rest of Rever.
-        </Step>
+      <div style={{ maxWidth: 300, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 26, letterSpacing: 4, color: 'var(--accent)', fontFamily: 'ui-monospace, monospace' }}>
+          &gt;_
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>Rever in your terminal</div>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.5 }}>
+          Run Claude Code in a real terminal, already wired to Rever&apos;s browser and traffic tools.
+        </p>
       </div>
 
-      <p style={{ margin: 0, fontSize: 11, color: 'var(--text-dim)' }}>
-        Switching back to <strong>Chat (ACP)</strong> ends the terminal session. macOS/Linux only.
-      </p>
-
+      {/* Primary path: jump straight into the terminal. */}
       <button
         type="button"
         onClick={onStart}
         style={{
-          alignSelf: 'flex-start',
-          padding: '8px 16px',
-          fontSize: 13,
+          width: 240,
+          maxWidth: '100%',
+          padding: '11px 16px',
+          fontSize: 14,
+          fontWeight: 600,
           background: 'var(--accent)',
           border: '1px solid var(--accent)',
-          borderRadius: 6,
+          borderRadius: 8,
           color: '#fff',
           cursor: 'pointer'
         }}
       >
-        Start Claude Code
+        Start Claude Code →
       </button>
-    </div>
-  )
-}
 
-function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', gap: 10 }}>
-      <div
-        style={{
-          flexShrink: 0,
-          width: 20,
-          height: 20,
-          borderRadius: '50%',
-          background: 'var(--accent-soft)',
-          color: 'var(--accent)',
-          fontSize: 11,
-          fontWeight: 700,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-      >
-        {n}
+      {/* Secondary: the /rever skill for OTHER Claude Code sessions. Show the
+          command and let the user run it in their own terminal. */}
+      <div style={{ width: 300, maxWidth: '100%', paddingTop: 8, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5 }}>
+          Want <code style={codeStyle}>/rever</code> in any Claude Code session? Run this once:
+        </div>
+        <div
+          onClick={copy}
+          title="Click to copy"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 10px',
+            background: 'var(--bg)',
+            border: '1px solid var(--border-2)',
+            borderRadius: 8,
+            cursor: 'pointer',
+            textAlign: 'left'
+          }}
+        >
+          <code style={{ flex: 1, fontFamily: 'ui-monospace, monospace', fontSize: 11, color: 'var(--text-2)', wordBreak: 'break-all', lineHeight: 1.4 }}>
+            {INSTALL_CMD}
+          </code>
+          <span style={{ flexShrink: 0, fontSize: 11, color: copied ? 'var(--status-ok)' : 'var(--text-dim)' }}>
+            {copied ? 'Copied ✓' : 'Copy'}
+          </span>
+        </div>
+        {installed && (
+          <div style={{ fontSize: 11, color: 'var(--status-ok)' }}>✓ /rever skill already installed</div>
+        )}
       </div>
-      <div>
-        <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 2 }}>{title}</div>
-        <div>{children}</div>
-      </div>
+
+      <p style={{ margin: 0, maxWidth: 260, fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.5 }}>
+        Requires the <code style={codeStyle}>claude</code> CLI (your own subscription). macOS/Linux.
+      </p>
     </div>
   )
 }

@@ -260,6 +260,11 @@ const api = {
       return () => ipcRenderer.removeListener('picker:state', listener)
     }
   },
+  // The /rever Claude Code skill: check whether it's installed (the install
+  // command is shown for the user to run themselves).
+  skill: {
+    status: (): Promise<{ installed: boolean }> => ipcRenderer.invoke('skill:status')
+  },
   // Local CLI agent running in a PTY (terminal mode), wired to rever's MCP.
   terminal: {
     spawn: (opts: { cols: number; rows: number; agent: 'claude' | 'shell' }): Promise<string> =>

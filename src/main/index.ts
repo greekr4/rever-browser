@@ -35,6 +35,7 @@ import {
   type ImportOptions
 } from './browser-cookie-import'
 import { detectAgents, type AgentProbe } from './acp-detect'
+import { skillInstalled } from './skill-install'
 import {
   spawnTerminal,
   writeTerminal,
@@ -1119,6 +1120,9 @@ app.whenReady().then(() => {
     resizeTerminal(id, cols, rows)
   )
   ipcMain.on('terminal:kill', (_e, id: string) => killTerminal(id))
+
+  // ── /rever skill status ───────────────────────────────────────────────────
+  ipcMain.handle('skill:status', () => ({ installed: skillInstalled() }))
 
   ipcMain.handle('viewport:get', () => getViewport())
   ipcMain.handle('viewport:set', async (_event, mode: ViewportMode) => {
