@@ -42,6 +42,7 @@
 - **Deep API tooling** — A broad MCP tool set covering request repeater, intruder, header/override editing, HAR export, source-map recovery, crypto/decode helpers, WebSocket and service-worker inspection, and more.
 - **Browser profiles** — Named persistent or incognito profiles, each an isolated cookie/storage jar. Open a tab under any profile from the tab bar, or create one seeded directly from a real browser profile by name.
 - **Cookie import** — Pull a logged-in session into the active profile from Chrome, Edge, Brave, Arc, Chromium, Vivaldi, Firefox, or Safari (macOS), picking the source browser and profile by its display name.
+- **Grab & markup** — Click any element on the page to capture its screenshot and context (selector, ref, tag, text): the context is dropped into the chat for the agent, and the screenshot opens in a markup editor for rectangles, arrows, and freehand notes, then copy to clipboard or save.
 
 ## Requirements
 
