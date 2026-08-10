@@ -76,7 +76,7 @@ become partition-aware so per-tab seeding still works.
   look up the tab owning `wc` and reply with its stored credentials. Store proxy passwords
   encrypted in main via the existing **`src/main/settings.ts`** `safeStorage` pattern
   (new `proxy-<tabId>-cred.bin`), never in the renderer/localStorage.
-- **`src/main/cookie-persistence.ts` / `src/main/chrome-cookie-import.ts`** — these hardcode
+- **`src/main/cookie-persistence.ts` / `src/main/browser-cookie-import.ts`** — these hardcode
   `PARTITION = 'persist:rever'`. Make them take a partition/tabId argument so import and
   snapshot target the active tab's session. On tab creation, optionally seed the new
   partition from the persisted cookie snapshot so "import my Chrome session, then browse"
