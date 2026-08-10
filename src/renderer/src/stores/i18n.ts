@@ -12,13 +12,20 @@ const DICTS: Record<Lang, Partial<Record<TKey, string>>> = { en, ko }
 
 const KEY = 'rev:lang'
 
+// First run: follow the OS/browser locale (Korean → ko), else English.
+function detectLang(): Lang {
+  const stored = localStorage.getItem(KEY) as Lang | null
+  if (stored === 'en' || stored === 'ko') return stored
+  return navigator.language?.toLowerCase().startsWith('ko') ? 'ko' : 'en'
+}
+
 interface I18nState {
   lang: Lang
   setLang: (lang: Lang) => void
 }
 
 export const useI18nStore = create<I18nState>((set) => ({
-  lang: (localStorage.getItem(KEY) as Lang) || 'en',
+  lang: detectLang(),
   setLang: (lang) => {
     localStorage.setItem(KEY, lang)
     set({ lang })
