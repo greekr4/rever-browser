@@ -322,6 +322,18 @@ const api = {
     setActiveTab: (tabId: string): Promise<boolean> =>
       ipcRenderer.invoke('tab:set-active-partition', tabId)
   },
+  // Named browsing profiles. Persistent profiles survive restarts and back
+  // cookie import; incognito profiles are ephemeral (in-memory partition).
+  profiles: {
+    list: (): Promise<BrowserProfile[]> => ipcRenderer.invoke('profiles:list'),
+    create: (name: string, kind: ProfileKind, source?: string): Promise<BrowserProfile> =>
+      ipcRenderer.invoke('profiles:create', name, kind, source),
+    delete: (id: string): Promise<boolean> => ipcRenderer.invoke('profiles:delete', id),
+    // Register a profile tab's partition with main (no proxy) so cookie import /
+    // current-ip target that profile's session.
+    registerTabPartition: (tabId: string, partition: string): Promise<boolean> =>
+      ipcRenderer.invoke('tab:register-partition', tabId, partition)
+  },
   // Current outbound public IP as seen through the given tab's session (so a
   // tab-level proxy is reflected). Falls back to the active tab's partition
   // when tabId is omitted. Never rejects — errors come back as { error }.

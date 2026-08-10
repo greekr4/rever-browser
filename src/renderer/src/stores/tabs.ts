@@ -22,10 +22,13 @@ export interface Tab {
   initialUrl: string
   // Undefined = direct connection (default).
   proxy?: ProxyConfig
-  // Isolated session partition (proxy tabs only). Undefined = the shared
-  // persist:rever-shared partition. Set once at creation — a webview's
-  // partition cannot change after mount.
+  // Isolated session partition (proxy or non-default profile tabs). Undefined =
+  // the shared persist:rever-shared partition. Set once at creation — a
+  // webview's partition cannot change after mount.
   partition?: string
+  // Which named profile this tab browses under. Undefined / 'default' = the
+  // Default (shared) profile. Used for the tab-bar label.
+  profileId?: string
 }
 
 interface TabsState {
@@ -34,7 +37,12 @@ interface TabsState {
 
   addTab: (
     url: string,
-    opts?: { activate?: boolean; proxy?: ProxyConfig; partition?: string }
+    opts?: {
+      activate?: boolean
+      proxy?: ProxyConfig
+      partition?: string
+      profileId?: string
+    }
   ) => string
   closeTab: (id: string) => void
   reopenTab: () => void
@@ -74,7 +82,8 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       webContentsId: null,
       initialUrl: url,
       proxy: opts?.proxy,
-      partition: opts?.partition
+      partition: opts?.partition,
+      profileId: opts?.profileId
     }
     set((s) => ({
       tabs: [...s.tabs, tab],

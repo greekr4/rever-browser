@@ -64,7 +64,16 @@ import {
   type RepeaterModifications,
   type RepeaterRequestSpec
 } from './repeater'
-import { getActivePartition, partitionForTab, registerTabPartition, setActivePartition } from './tab-partition'
+import {
+  getActivePartition,
+  partitionForTab,
+  registerTabPartition,
+  setActivePartition,
+  listProfiles,
+  createProfile,
+  deleteProfile,
+  type ProfileKind
+} from './tab-partition'
 import { applyTabProxy, proxyCredentialsForSession, type TabProxyConfig } from './tab-proxy'
 import { listMcpTools } from './mcp/bridge'
 import {
@@ -781,6 +790,23 @@ app.whenReady().then(() => {
   // on the visible tab's partition.
   ipcMain.handle('tab:set-active-partition', (_event, tabId: string) => {
     setActivePartition(partitionForTab(tabId))
+    return true
+  })
+
+  // Register a non-proxy tab's partition (e.g. a profile tab) so cookie import /
+  // sticky-cookie snapshot / current-ip resolve to the right session.
+  ipcMain.handle('tab:register-partition', (_event, tabId: string, partition: string) => {
+    registerTabPartition(tabId, partition)
+    return true
+  })
+
+  // ── Browser profiles ──────────────────────────────────────────────────────
+  ipcMain.handle('profiles:list', () => listProfiles())
+  ipcMain.handle('profiles:create', (_event, name: string, kind: ProfileKind, source?: string) =>
+    createProfile(name, kind, source)
+  )
+  ipcMain.handle('profiles:delete', (_event, id: string) => {
+    deleteProfile(id)
     return true
   })
 
