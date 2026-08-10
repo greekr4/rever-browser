@@ -8,7 +8,7 @@
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
-    "postinstall": "bash scripts/patch-electron-name.sh",
+    "postinstall": "bash scripts/patch-electron-name.sh && electron-rebuild -f -w node-pty",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
@@ -21,15 +21,19 @@
     "@anthropic-ai/sdk": "^0.110.0",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "ai": "^6",
     "chrome-remote-interface": "^0.33.3",
     "framer-motion": "^12.38.0",
+    "node-pty": "^1.1.0",
     "openai": "^6.45.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
     "@types/chrome-remote-interface": "^0.33.0",
     "@types/node": "^22.10.5",
     "@types/react": "^19.1.8",

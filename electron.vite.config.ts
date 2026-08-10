@@ -7,7 +7,9 @@ export default defineConfig({
     build: {
       outDir: 'out/main',
       rollupOptions: {
-        external: ['bufferutil', 'utf-8-validate']
+        // node-pty is a native module; it must stay external (its .node binary
+        // can't be bundled) and load from node_modules at runtime.
+        external: ['bufferutil', 'utf-8-validate', 'node-pty']
       }
     },
     resolve: {
