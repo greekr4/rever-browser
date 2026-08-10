@@ -89,13 +89,10 @@ pgrep -f "Electron|electron-vite" | xargs -r kill -9
 
 ## Use Rever from Claude Code (the `/rever` skill)
 
-Rever ships a Claude Code skill (`skills/rever/`) so any `claude` session can drive a running Rever Browser and use its ~140 MCP tools for API reversing.
-
-**Install (global):**
+Rever ships a Claude Code skill so any `claude` session can drive a running Rever Browser and use its ~140 MCP tools for API reversing. It's published as a standalone repo — [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill) — installable with the [`skills`](https://www.npmjs.com/package/skills) CLI (no source checkout needed, so it works for DMG/EXE users):
 
 ```bash
-mkdir -p ~/.claude/skills/rever
-cp skills/rever/SKILL.md skills/rever/rever.py ~/.claude/skills/rever/
+npx skills add greekr4/rever-browser-skill --global
 ```
 
 **Use:** launch the Rever Browser app (it publishes its MCP endpoint on startup), then in any `claude` session type:
@@ -104,7 +101,7 @@ cp skills/rever/SKILL.md skills/rever/rever.py ~/.claude/skills/rever/
 /rever
 ```
 
-The skill resolves the app's endpoint and either registers it as native MCP tools (`claude mcp add --transport http rever …`) or calls tools directly via the bundled `rever.py`. See `skills/rever/SKILL.md` for the tool map and reversing workflow. macOS for now (the endpoint path is under `~/Library/Application Support/`).
+The skill resolves the app's endpoint and either registers it as native MCP tools (`claude mcp add --transport http rever …`) or calls tools directly via the bundled `rever.py`. macOS for now (the endpoint path is under `~/Library/Application Support/`). The in-repo copy under `skills/rever/` is the development source mirrored to that repo.
 
 ## Usage
 
