@@ -26,6 +26,7 @@ import { useAppThemeStore, resolveTheme } from '@/stores/app-theme'
 import { useAgentModeStore } from '@/stores/agent-mode'
 import { useChatCollapsedStore } from '@/stores/chat-collapsed'
 import { useChatDraft } from '@/stores/chat-draft'
+import { useI18nStore, useT } from '@/stores/i18n'
 import { useViewportStore } from '@/stores/viewport'
 import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 import { handleAgentRequest } from '@/workflows/core/agent-bridge'
@@ -134,6 +135,9 @@ function App() {
   const setChatCollapsed = useChatCollapsedStore((s) => s.setCollapsed)
   const agentMode = useAgentModeStore((s) => s.mode)
   const setAgentMode = useAgentModeStore((s) => s.setMode)
+  const lang = useI18nStore((s) => s.lang)
+  const setLang = useI18nStore((s) => s.setLang)
+  const t = useT()
 
 
   const tabRefs = useRef<Map<string, WebviewTabHandle>>(new Map())
@@ -428,7 +432,7 @@ function App() {
           className="toolbar-btn"
           type="button"
           onClick={() => cycleAppTheme()}
-          title={`Theme: ${themeMode} — click to cycle System → Light → Dark`}
+          title={t('toolbar.theme', { mode: themeMode })}
           style={
             {
               flexShrink: 0,
@@ -439,6 +443,23 @@ function App() {
           }
         >
           {themeMode === 'system' ? '🖥️' : themeMode === 'light' ? '☀️' : '🌙'}
+        </button>
+        <button
+          className="toolbar-btn"
+          type="button"
+          onClick={() => setLang(lang === 'en' ? 'ko' : 'en')}
+          title={t('lang.label')}
+          style={
+            {
+              flexShrink: 0,
+              marginLeft: 4,
+              marginBottom: 6,
+              fontSize: 11,
+              WebkitAppRegion: 'no-drag'
+            } as React.CSSProperties
+          }
+        >
+          {lang === 'en' ? 'EN' : '한'}
         </button>
       </div>
 
@@ -500,7 +521,7 @@ function App() {
                   type="button"
                   onClick={openViewSource}
                   disabled={!activeTab || !/^https?:\/\//i.test(activeTab.url)}
-                  title="View page source in a new tab (view-source:)"
+                  title={t('toolbar.viewSource')}
                   style={{ fontFamily: 'ui-monospace, monospace' }}
                 >
                   &lt;/&gt;
@@ -513,7 +534,7 @@ function App() {
                     void (pickerActive ? window.rev.picker.stop() : window.rev.picker.start())
                   }}
                   disabled={!activeTab}
-                  title="Pick an element (copies selector + ref)"
+                  title={t('toolbar.pick')}
                   style={{
                     background: pickerActive ? 'var(--accent-soft)' : undefined,
                     borderColor: pickerActive ? 'var(--accent-border)' : undefined
@@ -541,7 +562,7 @@ function App() {
                     }
                   }}
                   disabled={!activeTab}
-                  title="Grab an element (screenshot + context → chat & markup)"
+                  title={t('toolbar.grab')}
                   style={{
                     background: grabbing ? 'var(--accent-soft)' : undefined,
                     borderColor: grabbing ? 'var(--accent-border)' : undefined
@@ -557,7 +578,7 @@ function App() {
               ref={addressInputRef}
               value={urlDraft}
               onChange={(e) => setUrlDraft(e.target.value)}
-              placeholder="https://..."
+              placeholder={t('toolbar.addressPlaceholder')}
               style={{
                 flex: 1,
                 height: 28,
@@ -643,7 +664,7 @@ function App() {
                 borderColor: viewportMode === 'mobile' ? '#377' : undefined
               }}
             >
-              {viewportMode === 'mobile' ? 'Mobile' : 'Desktop'}
+              {viewportMode === 'mobile' ? t('toolbar.viewport.mobile') : t('toolbar.viewport.desktop')}
             </button>
             <div
               role="group"
@@ -663,7 +684,7 @@ function App() {
                   borderColor: browserMode === 'embedded' ? 'var(--accent-border)' : undefined
                 }}
               >
-                Embedded
+                {t('toolbar.embedded')}
               </button>
               <button
                 className="toolbar-btn"
@@ -678,7 +699,7 @@ function App() {
                   borderColor: browserMode === 'external' ? 'var(--accent-border)' : undefined
                 }}
               >
-                External
+                {t('toolbar.external')}
               </button>
             </div>
           </form>
@@ -800,8 +821,8 @@ function App() {
           className="chat-toggle-handle"
           style={{ right: chatCollapsed ? 2 : chat.width + 4 }}
           onClick={() => setChatCollapsed(!chatCollapsed)}
-          title={chatCollapsed ? 'Open chat' : 'Collapse chat'}
-          aria-label={chatCollapsed ? 'Open chat' : 'Collapse chat'}
+          title={chatCollapsed ? t('toolbar.openChat') : t('toolbar.collapseChat')}
+          aria-label={chatCollapsed ? t('toolbar.openChat') : t('toolbar.collapseChat')}
         >
           {chatCollapsed ? '‹' : '›'}
         </button>
@@ -830,8 +851,8 @@ function App() {
               flexShrink: 0
             }}
           >
-            <AgentModeTab label="Chat (ACP)" active={agentMode === 'acp'} onClick={() => setAgentMode('acp')} />
-            <AgentModeTab label="Terminal (CLI)" active={agentMode === 'cli'} onClick={() => setAgentMode('cli')} />
+            <AgentModeTab label={t('agent.chat')} active={agentMode === 'acp'} onClick={() => setAgentMode('acp')} />
+            <AgentModeTab label={t('agent.terminal')} active={agentMode === 'cli'} onClick={() => setAgentMode('cli')} />
           </div>
           {/* Keep ChatPanel mounted (preserves ACP session) but hidden in CLI
               mode; mount the terminal only while selected so the PTY is killed

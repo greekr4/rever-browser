@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { useT } from '@/stores/i18n'
+
 // Screenshot annotation overlay. Draws the captured image on a canvas and lets
 // the user mark it up with rectangles, arrows, and freehand strokes, then copy
 // the result to the clipboard or save it. Fed by Grab (element capture).
@@ -24,6 +26,7 @@ interface Props {
 }
 
 export function MarkupEditor({ imageDataUrl, onClose }: Props) {
+  const t = useT()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
   const [tool, setTool] = useState<Tool>('rect')
@@ -165,9 +168,9 @@ export function MarkupEditor({ imageDataUrl, onClose }: Props) {
           flexWrap: 'wrap'
         }}
       >
-        <ToolBtn label="▭" active={tool === 'rect'} onClick={() => setTool('rect')} title="Rectangle" />
-        <ToolBtn label="↗" active={tool === 'arrow'} onClick={() => setTool('arrow')} title="Arrow" />
-        <ToolBtn label="✎" active={tool === 'pen'} onClick={() => setTool('pen')} title="Pen" />
+        <ToolBtn label="▭" active={tool === 'rect'} onClick={() => setTool('rect')} title={t('markup.rect')} />
+        <ToolBtn label="↗" active={tool === 'arrow'} onClick={() => setTool('arrow')} title={t('markup.arrow')} />
+        <ToolBtn label="✎" active={tool === 'pen'} onClick={() => setTool('pen')} title={t('markup.pen')} />
         <div style={{ width: 1, height: 20, background: 'var(--border-2)', margin: '0 4px' }} />
         {COLORS.map((c) => (
           <button
@@ -188,16 +191,16 @@ export function MarkupEditor({ imageDataUrl, onClose }: Props) {
         ))}
         <div style={{ width: 1, height: 20, background: 'var(--border-2)', margin: '0 4px' }} />
         <BarBtn onClick={() => setShapes((s) => s.slice(0, -1))} disabled={shapes.length === 0}>
-          Undo
+          {t('markup.undo')}
         </BarBtn>
         <BarBtn onClick={() => setShapes([])} disabled={shapes.length === 0}>
-          Clear
+          {t('markup.clear')}
         </BarBtn>
         <BarBtn onClick={() => void copy()} primary>
-          {copied ? 'Copied ✓' : 'Copy'}
+          {copied ? t('markup.copied') : t('markup.copy')}
         </BarBtn>
-        <BarBtn onClick={download}>Save PNG</BarBtn>
-        <BarBtn onClick={onClose}>Close</BarBtn>
+        <BarBtn onClick={download}>{t('markup.save')}</BarBtn>
+        <BarBtn onClick={onClose}>{t('markup.close')}</BarBtn>
       </div>
 
       <div style={{ maxWidth: '90vw', maxHeight: '78vh', overflow: 'auto', borderRadius: 6 }}>

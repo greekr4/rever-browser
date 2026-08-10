@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 
+import { useT } from '@/stores/i18n'
+
 // A local CLI agent (Claude Code) running in a real PTY, wired to rever's MCP.
 // First switch shows an onboarding card; after that it goes straight to the
 // terminal (remembered in localStorage).
@@ -28,6 +30,7 @@ export function TerminalPanel() {
 const INSTALL_CMD = 'npx skills add greekr4/rever-browser-skill --global --agent claude-code'
 
 function Onboarding({ onStart }: { onStart: () => void }) {
+  const t = useT()
   const [installed, setInstalled] = useState<boolean | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -60,9 +63,9 @@ function Onboarding({ onStart }: { onStart: () => void }) {
         <div style={{ fontSize: 26, letterSpacing: 4, color: 'var(--accent)', fontFamily: 'ui-monospace, monospace' }}>
           &gt;_
         </div>
-        <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>Rever in your terminal</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>{t('cli.title')}</div>
         <p style={{ margin: 0, fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.5 }}>
-          Run Claude Code in a real terminal, already wired to Rever&apos;s browser and traffic tools.
+          {t('cli.desc')}
         </p>
       </div>
 
@@ -83,14 +86,14 @@ function Onboarding({ onStart }: { onStart: () => void }) {
           cursor: 'pointer'
         }}
       >
-        Start Claude Code →
+        {t('cli.start')}
       </button>
 
       {/* Secondary: the /rever skill for OTHER Claude Code sessions. Show the
           command and let the user run it in their own terminal. */}
       <div style={{ width: 300, maxWidth: '100%', paddingTop: 8, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5 }}>
-          Want <code style={codeStyle}>/rever</code> in any Claude Code session? Run this once:
+          {t('cli.skillPrompt')}
         </div>
         <div
           onClick={copy}
@@ -111,31 +114,24 @@ function Onboarding({ onStart }: { onStart: () => void }) {
             {INSTALL_CMD}
           </code>
           <span style={{ flexShrink: 0, fontSize: 11, color: copied ? 'var(--status-ok)' : 'var(--text-dim)' }}>
-            {copied ? 'Copied ✓' : 'Copy'}
+            {copied ? t('cli.copied') : t('cli.copy')}
           </span>
         </div>
         {installed && (
-          <div style={{ fontSize: 11, color: 'var(--status-ok)' }}>✓ /rever skill already installed</div>
+          <div style={{ fontSize: 11, color: 'var(--status-ok)' }}>{t('cli.installed')}</div>
         )}
       </div>
 
       <p style={{ margin: 0, maxWidth: 260, fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.5 }}>
-        Requires the <code style={codeStyle}>claude</code> CLI (your own subscription). macOS/Linux.
+        {t('cli.requires')}
       </p>
     </div>
   )
 }
 
-const codeStyle: React.CSSProperties = {
-  fontFamily: 'ui-monospace, monospace',
-  fontSize: 11,
-  background: 'var(--bg)',
-  border: '1px solid var(--border-2)',
-  borderRadius: 3,
-  padding: '1px 4px'
-}
 
 function TerminalView({ onShowGuide }: { onShowGuide: () => void }) {
+  const t = useT()
   const hostRef = useRef<HTMLDivElement>(null)
   const [exited, setExited] = useState<number | null>(null)
   const [restartKey, setRestartKey] = useState(0)
@@ -210,7 +206,7 @@ function TerminalView({ onShowGuide }: { onShowGuide: () => void }) {
         <button
           type="button"
           onClick={onShowGuide}
-          title="Show CLI mode guide"
+          title={t('cli.guideTitle')}
           style={{
             background: 'transparent',
             border: 'none',
@@ -220,7 +216,7 @@ function TerminalView({ onShowGuide }: { onShowGuide: () => void }) {
             padding: '2px 6px'
           }}
         >
-          ⓘ Guide
+          ⓘ {t('cli.guide')}
         </button>
       </div>
       <div ref={hostRef} style={{ flex: 1, minHeight: 0, padding: 6, background: '#0b0d12' }} />
@@ -236,7 +232,7 @@ function TerminalView({ onShowGuide }: { onShowGuide: () => void }) {
             borderTop: '1px solid var(--border)'
           }}
         >
-          <span>Agent exited (code {exited}).</span>
+          <span>{t('cli.exited', { code: exited })}</span>
           <button
             type="button"
             onClick={() => setRestartKey((k) => k + 1)}
@@ -250,7 +246,7 @@ function TerminalView({ onShowGuide }: { onShowGuide: () => void }) {
               cursor: 'pointer'
             }}
           >
-            Restart
+            {t('cli.restart')}
           </button>
         </div>
       )}

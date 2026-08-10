@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { BrowserInfo, BrowserProfileInfo } from '../../../preload'
+import { useT } from '@/stores/i18n'
 import { useProfilesStore } from '@/stores/profiles'
 import { useTabsStore } from '@/stores/tabs'
 
 export function TabBar() {
+  const tr = useT()
   const tabs = useTabsStore((s) => s.tabs)
   const activeId = useTabsStore((s) => s.activeId)
   const selectTab = useTabsStore((s) => s.selectTab)
@@ -195,7 +197,7 @@ export function TabBar() {
                   fontSize: 14,
                   lineHeight: 1
                 }}
-                title="Close tab"
+                title={tr('tab.close')}
               >
                 ×
               </button>
@@ -222,7 +224,7 @@ export function TabBar() {
             WebkitAppRegion: 'no-drag'
           } as React.CSSProperties
         }
-        title="New tab"
+        title={tr('tab.new')}
       >
         +
       </button>
@@ -245,7 +247,7 @@ export function TabBar() {
               WebkitAppRegion: 'no-drag'
             } as React.CSSProperties
           }
-          title="New tab in profile"
+          title={tr('tab.newInProfile')}
         >
           👤
         </button>
@@ -283,7 +285,7 @@ export function TabBar() {
                 letterSpacing: 0.5
               }}
             >
-              Open in profile
+              {tr('profile.openIn')}
             </div>
             {profiles.map((p) => (
               <div
@@ -333,7 +335,7 @@ export function TabBar() {
                       cursor: 'pointer',
                       fontSize: 13
                     }}
-                    title="Delete profile"
+                    title={tr('profile.delete')}
                   >
                     ×
                   </button>
@@ -346,7 +348,7 @@ export function TabBar() {
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="New profile name"
+              placeholder={tr('profile.newName')}
               style={{
                 width: '100%',
                 boxSizing: 'border-box',
@@ -373,9 +375,9 @@ export function TabBar() {
                   cursor: 'pointer',
                   fontSize: 11
                 }}
-                title="Create a persistent profile (survives restart)"
+                title={tr('profile.persistentHint')}
               >
-                + Persistent
+                {tr('profile.persistent')}
               </button>
               <button
                 type="button"
@@ -390,9 +392,9 @@ export function TabBar() {
                   cursor: 'pointer',
                   fontSize: 11
                 }}
-                title="Create an incognito profile (in-memory, cleared on quit)"
+                title={tr('profile.incognitoHint')}
               >
-                + Incognito
+                {tr('profile.incognito')}
               </button>
             </div>
 
@@ -408,7 +410,7 @@ export function TabBar() {
                     letterSpacing: 0.5
                   }}
                 >
-                  Import profile from browser
+                  {tr('profile.importFrom')}
                 </div>
                 {browsers.map((b) => {
                   const expanded = expandedBrowser === b.id

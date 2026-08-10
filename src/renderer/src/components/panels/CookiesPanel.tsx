@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import type { BrowserId, BrowserInfo } from '../../../../preload'
+import { useT } from '@/stores/i18n'
 
 interface CookieRow {
   name: string
@@ -519,6 +520,7 @@ function defaultProfileId(profiles: { id: string; name: string }[]): string {
 }
 
 function BrowserImportBar() {
+  const t = useT()
   const [browsers, setBrowsers] = useState<BrowserInfo[]>([])
   const [browserId, setBrowserId] = useState<BrowserId | ''>('')
   const [profile, setProfile] = useState('')
@@ -587,13 +589,13 @@ function BrowserImportBar() {
         flexWrap: 'wrap'
       }}
     >
-      <strong style={{ color: 'var(--text-2)' }}>Import cookies from</strong>
+      <strong style={{ color: 'var(--text-2)' }}>{t('cookies.importFrom')}</strong>
       <select
         value={browserId}
         onChange={(e) => onBrowserChange(e.target.value as BrowserId)}
         disabled={busy}
         style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-2)', borderRadius: 3, padding: '2px 4px' }}
-        title="Browser to import from"
+        title={t('cookies.importBrowserTitle')}
       >
         {browsers.map((b) => (
           <option key={b.id} value={b.id}>
@@ -607,7 +609,7 @@ function BrowserImportBar() {
           onChange={(e) => setProfile(e.target.value)}
           disabled={busy}
           style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-2)', borderRadius: 3, padding: '2px 4px' }}
-          title="Profile to import from"
+          title={t('cookies.importProfileTitle')}
         >
           {selected.profiles.map((p) => (
             <option key={p.id} value={p.id}>
@@ -617,15 +619,15 @@ function BrowserImportBar() {
         </select>
       )}
       <input
-        placeholder="domains, comma-separated (blank = all)"
+        placeholder={t('cookies.domainsPlaceholder')}
         value={hosts}
         onChange={(e) => setHosts(e.target.value)}
         disabled={busy}
         style={{ ...addInput, flex: 1, minWidth: 160 }}
-        title="Only import cookies whose host contains one of these substrings"
+        title={t('cookies.domainsTitle')}
       />
       <button onClick={() => void run()} disabled={busy} style={addBtn} title="Decrypt and inject into the active tab's session (may ask for Keychain access)">
-        {busy ? 'Importing…' : 'Import'}
+        {busy ? t('cookies.importing') : t('cookies.import')}
       </button>
       {result && (
         <span style={{ opacity: 0.8, color: result.startsWith('⚠') ? 'var(--status-error)' : 'var(--status-ok)', width: '100%' }}>
