@@ -87,6 +87,25 @@ If HMR doesn't pick up a change to main- or preload-process code, kill the Elect
 pgrep -f "Electron|electron-vite" | xargs -r kill -9
 ```
 
+## Use Rever from Claude Code (the `/rever` skill)
+
+Rever ships a Claude Code skill (`skills/rever/`) so any `claude` session can drive a running Rever Browser and use its ~140 MCP tools for API reversing.
+
+**Install (global):**
+
+```bash
+mkdir -p ~/.claude/skills/rever
+cp skills/rever/SKILL.md skills/rever/rever.py ~/.claude/skills/rever/
+```
+
+**Use:** launch the Rever Browser app (it publishes its MCP endpoint on startup), then in any `claude` session type:
+
+```
+/rever
+```
+
+The skill resolves the app's endpoint and either registers it as native MCP tools (`claude mcp add --transport http rever …`) or calls tools directly via the bundled `rever.py`. See `skills/rever/SKILL.md` for the tool map and reversing workflow. macOS for now (the endpoint path is under `~/Library/Application Support/`).
+
 ## Usage
 
 1. Run `bun run dev` to launch the app.
