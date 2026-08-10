@@ -37,6 +37,7 @@
 
 - **Live traffic capture** — All `Network.*` events from the browsed tab are recorded into a ring buffer. Response bodies are fetched lazily and image/video/font/CSS payloads are skipped to keep the buffer lean.
 - **AI agent chat** — Talk to a coding agent that sees the captured traffic and can act on the page. Claude Code is the default; Codex is also supported.
+- **ACP or terminal mode** — Switch the agent pane between the structured ACP chat and a real terminal running the local Claude Code CLI, with rever's MCP server wired in automatically so the CLI agent gets the same browser/traffic tools.
 - **Browser automation** — The agent can navigate, click, type, scroll, screenshot, and take accessibility snapshots of the live tab.
 - **Bundle analysis** — Grep, extract, detect the bundler for, and deobfuscate the JavaScript already captured in the traffic store (no re-download), including a `webcrack`-backed deobfuscator.
 - **Deep API tooling** — A broad MCP tool set covering request repeater, intruder, header/override editing, HAR export, source-map recovery, crypto/decode helpers, WebSocket and service-worker inspection, and more.
