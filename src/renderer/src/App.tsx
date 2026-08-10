@@ -14,6 +14,7 @@ import { WebviewTab, type WebviewTabHandle } from '@/components/WebviewTab'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { CopyToast } from '@/components/CopyToast'
 import { ChatPanel } from '@/components/chat/ChatPanel'
+import { TerminalPanel } from '@/components/chat/TerminalPanel'
 import { requestPermissionFromUser } from '@/ai/acp-permission'
 import { useCdpEvents } from '@/hooks/use-cdp-events'
 import { useResizable } from '@/hooks/use-resizable'
@@ -22,6 +23,7 @@ import { useNavigationRequestStore } from '@/stores/navigation-request'
 import { useBookmarksStore } from '@/stores/bookmarks'
 import { useTabsStore } from '@/stores/tabs'
 import { useAppThemeStore, resolveTheme } from '@/stores/app-theme'
+import { useAgentModeStore } from '@/stores/agent-mode'
 import { useChatCollapsedStore } from '@/stores/chat-collapsed'
 import { useChatDraft } from '@/stores/chat-draft'
 import { useViewportStore } from '@/stores/viewport'
@@ -130,6 +132,8 @@ function App() {
   const chat = useResizable({ initial: 420, min: 300, max: 720, storageKey: 'rev:chat-w' })
   const chatCollapsed = useChatCollapsedStore((s) => s.collapsed)
   const setChatCollapsed = useChatCollapsedStore((s) => s.setCollapsed)
+  const agentMode = useAgentModeStore((s) => s.mode)
+  const setAgentMode = useAgentModeStore((s) => s.setMode)
 
 
   const tabRefs = useRef<Map<string, WebviewTabHandle>>(new Map())
@@ -817,11 +821,62 @@ function App() {
             ['--chat-w' as never]: `${chat.width}px`
           }}
         >
-          <ChatPanel />
+          <div
+            style={{
+              display: 'flex',
+              gap: 4,
+              padding: '6px 8px',
+              borderBottom: '1px solid var(--border)',
+              flexShrink: 0
+            }}
+          >
+            <AgentModeTab label="Chat (ACP)" active={agentMode === 'acp'} onClick={() => setAgentMode('acp')} />
+            <AgentModeTab label="Terminal (CLI)" active={agentMode === 'cli'} onClick={() => setAgentMode('cli')} />
+          </div>
+          {/* Keep ChatPanel mounted (preserves ACP session) but hidden in CLI
+              mode; mount the terminal only while selected so the PTY is killed
+              when you switch away. */}
+          <div style={{ flex: 1, minHeight: 0, display: agentMode === 'acp' ? 'flex' : 'none', flexDirection: 'column' }}>
+            <ChatPanel />
+          </div>
+          {agentMode === 'cli' && (
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <TerminalPanel />
+            </div>
+          )}
         </aside>
 
       </main>
     </div>
+  )
+}
+
+function AgentModeTab({
+  label,
+  active,
+  onClick
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: '5px 8px',
+        fontSize: 11,
+        background: active ? 'var(--accent-soft)' : 'transparent',
+        border: `1px solid ${active ? 'var(--accent-border)' : 'var(--border-2)'}`,
+        borderRadius: 4,
+        color: active ? 'var(--accent)' : 'var(--text-2)',
+        cursor: 'pointer'
+      }}
+    >
+      {label}
+    </button>
   )
 }
 

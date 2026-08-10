@@ -35,6 +35,13 @@ import {
   type ImportOptions
 } from './browser-cookie-import'
 import { detectAgents, type AgentProbe } from './acp-detect'
+import {
+  spawnTerminal,
+  writeTerminal,
+  resizeTerminal,
+  killTerminal,
+  killAllTerminals
+} from './terminal'
 import { initRendererBridge } from './renderer-bridge'
 import { launchExternalChrome, killExternalChrome } from './external-chrome'
 import { attachExternalCdp, detachExternalCdp, getExternalTarget } from './external-cdp'
@@ -1097,6 +1104,22 @@ app.whenReady().then(() => {
   ipcMain.handle('grab:start', () => startGrab())
   ipcMain.handle('grab:stop', () => stopGrab())
 
+  // ── Terminal (local CLI agent) ────────────────────────────────────────────
+  ipcMain.handle(
+    'terminal:spawn',
+    (event, opts: { cols: number; rows: number; agent: 'claude' | 'shell' }) =>
+      spawnTerminal(
+        opts,
+        (id, data) => event.sender.send(`terminal:data:${id}`, data),
+        (id, code) => event.sender.send(`terminal:exit:${id}`, code)
+      )
+  )
+  ipcMain.on('terminal:input', (_e, id: string, data: string) => writeTerminal(id, data))
+  ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) =>
+    resizeTerminal(id, cols, rows)
+  )
+  ipcMain.on('terminal:kill', (_e, id: string) => killTerminal(id))
+
   ipcMain.handle('viewport:get', () => getViewport())
   ipcMain.handle('viewport:set', async (_event, mode: ViewportMode) => {
     const next = await setViewport(mode)
@@ -1330,5 +1353,8 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  killAllTerminals()
   if (process.platform !== 'darwin') app.quit()
 })
+
+app.on('before-quit', () => killAllTerminals())

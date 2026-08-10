@@ -260,6 +260,27 @@ const api = {
       return () => ipcRenderer.removeListener('picker:state', listener)
     }
   },
+  // Local CLI agent running in a PTY (terminal mode), wired to rever's MCP.
+  terminal: {
+    spawn: (opts: { cols: number; rows: number; agent: 'claude' | 'shell' }): Promise<string> =>
+      ipcRenderer.invoke('terminal:spawn', opts),
+    write: (id: string, data: string): void => ipcRenderer.send('terminal:input', id, data),
+    resize: (id: string, cols: number, rows: number): void =>
+      ipcRenderer.send('terminal:resize', id, cols, rows),
+    kill: (id: string): void => ipcRenderer.send('terminal:kill', id),
+    onData: (id: string, handler: (data: string) => void): (() => void) => {
+      const ch = `terminal:data:${id}`
+      const listener = (_e: unknown, data: string) => handler(data)
+      ipcRenderer.on(ch, listener)
+      return () => ipcRenderer.removeListener(ch, listener)
+    },
+    onExit: (id: string, handler: (code: number) => void): (() => void) => {
+      const ch = `terminal:exit:${id}`
+      const listener = (_e: unknown, code: number) => handler(code)
+      ipcRenderer.on(ch, listener)
+      return () => ipcRenderer.removeListener(ch, listener)
+    }
+  },
   // Grab: pick an element to capture its screenshot + context for the agent.
   // Shares the picker's inspect overlay, so picker:state also reflects grab mode.
   grab: {
