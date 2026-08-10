@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { ACP_AGENTS, type ACPAgentDef, type ACPAgentID } from '@/constants'
 
+import { useT } from '@/stores/i18n'
 export interface AgentDetection {
   /** Map keyed by the catalog `command`. */
   resolved: Record<string, string | null>
@@ -79,6 +80,7 @@ interface AgentPickerProps {
  * badges. Only ACP-supported & detected tiles are selectable.
  */
 export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
+  const tr = useT()
   const [open, setOpen] = useState(false)
   const [detection, setDetection] = useState<AgentDetection>({ resolved: {} })
   const [loading, setLoading] = useState(true)
@@ -175,7 +177,7 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
         style={triggerStyle}
-        title="Choose AI agent"
+        title={tr('chat.chooseAgent')}
       >
         <span style={iconChip}>{selected.def.icon}</span>
         <span style={{ fontWeight: 500 }}>{selected.def.name}</span>
@@ -186,7 +188,7 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
       {open && (
         <div ref={popoverRef} style={popoverStyle}>
           <header style={popoverHeader}>
-            <strong style={{ fontSize: 12 }}>Choose agent</strong>
+            <strong style={{ fontSize: 12 }}>{tr('chat.chooseAgentShort')}</strong>
             <span style={{ fontSize: 11, opacity: 0.6 }}>
               {loading ? 'Scanning PATH…' : `${tiles.filter((t) => t.selectable).length} ready`}
             </span>

@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+
+import { useT } from '@/stores/i18n'
 import { useShallow } from 'zustand/react/shallow'
 
 import { useChatDraft } from '@/stores/chat-draft'
@@ -17,6 +19,7 @@ function buildPrefill(rows: TrafficEntry[]): string {
 }
 
 export function TrafficList() {
+  const tr = useT()
   const {
     entries,
     order,
@@ -112,7 +115,7 @@ export function TrafficList() {
               void window.rev.traffic.clear()
             }}
             style={{ marginLeft: 'auto', fontSize: 11 }}
-            title="Clear captured traffic"
+            title={tr('traffic.clear')}
           >
             Clear
           </button>
@@ -120,7 +123,7 @@ export function TrafficList() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter URL or method…"
+          placeholder={tr('traffic.filter')}
           style={{ padding: '4px 8px', fontSize: 11 }}
         />
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -177,11 +180,11 @@ export function TrafficList() {
           <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
             <tr>
               <th style={{ ...th, width: 24, padding: '6px 4px' }}></th>
-              <th style={th}>Method</th>
-              <th style={th}>Status</th>
-              <th style={th}>Type</th>
-              <th style={{ ...th, width: '100%' }}>URL</th>
-              <th style={th}>Size</th>
+              <th style={th}>{tr('traffic.method')}</th>
+              <th style={th}>{tr('traffic.status')}</th>
+              <th style={th}>{tr('traffic.type')}</th>
+              <th style={{ ...th, width: '100%' }}>{tr('traffic.url')}</th>
+              <th style={th}>{tr('traffic.size')}</th>
               <th style={{ ...th, width: 28 }}></th>
             </tr>
           </thead>
@@ -231,7 +234,7 @@ export function TrafficList() {
                   <td style={{ ...td, padding: '2px 4px' }} onClick={(ev) => ev.stopPropagation()}>
                     <button
                       onClick={() => void sendToRepeater(e.requestId)}
-                      title="Send to Repeater"
+                      title={tr('traffic.sendToRepeater')}
                       style={{ fontSize: 10, padding: '1px 6px', lineHeight: 1.2 }}
                     >
                       ↻R
@@ -266,7 +269,7 @@ export function TrafficList() {
           <button onClick={onAskAbout} style={{ marginLeft: 'auto' }}>
             Ask about
           </button>
-          <button onClick={clearSelection}>Clear</button>
+          <button onClick={clearSelection}>{tr('common.clear')}</button>
         </div>
       )}
     </div>

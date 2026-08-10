@@ -1,3 +1,5 @@
+import { useT } from '@/stores/i18n'
+
 import { useEffect, useRef, useState } from 'react'
 
 interface ConsoleEntry {
@@ -16,6 +18,7 @@ const TYPE_COLOR: Record<string, string> = {
 }
 
 export function ConsolePanel() {
+  const t = useT()
   const [entries, setEntries] = useState<ConsoleEntry[]>([])
   const lastTsRef = useRef<number>(0)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -76,7 +79,7 @@ export function ConsolePanel() {
           </div>
         ))}
         {entries.length === 0 && (
-          <div className="panel-empty">No console output</div>
+          <div className="panel-empty">{t('panel.noConsole')}</div>
         )}
       </div>
     </div>

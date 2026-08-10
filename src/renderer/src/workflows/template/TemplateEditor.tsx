@@ -1,10 +1,12 @@
 import type { WorkflowEditorProps } from '../core/registry'
 
+import { useT } from '@/stores/i18n'
 export interface TemplateData {
   body: string
 }
 
 export function TemplateEditor({ workflow, onChange }: WorkflowEditorProps): React.ReactElement {
+  const tr = useT()
   const data = workflow.data as TemplateData
 
   return (
@@ -14,7 +16,7 @@ export function TemplateEditor({ workflow, onChange }: WorkflowEditorProps): Rea
         <input
           value={workflow.name}
           onChange={(e) => onChange({ ...workflow, name: e.target.value })}
-          placeholder="Analyze this site's auth flow"
+          placeholder={tr('template.goalPlaceholder')}
           style={{ height: 28, padding: '0 8px' }}
         />
       </label>
@@ -23,7 +25,7 @@ export function TemplateEditor({ workflow, onChange }: WorkflowEditorProps): Rea
         <textarea
           value={data.body}
           onChange={(e) => onChange({ ...workflow, data: { body: e.target.value } })}
-          placeholder="Text inserted into the agent chat input when you click Use."
+          placeholder={tr('template.bodyPlaceholder')}
           rows={8}
           style={{
             padding: 8,

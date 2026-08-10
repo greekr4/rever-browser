@@ -4,10 +4,12 @@ import { getWorkflowKind, listWorkflowKinds, type WorkflowKind } from './registr
 import { useWorkflowsStore } from './store'
 import type { Workflow } from './types'
 
+import { useT } from '@/stores/i18n'
 // Host panel for all workflow kinds. It knows nothing about individual kinds —
 // it lists whatever modules have registered and delegates editing to each
 // kind's Editor.
 export function WorkflowPanel(): React.ReactElement {
+  const tr = useT()
   const workflows = useWorkflowsStore((s) => s.workflows)
   const upsert = useWorkflowsStore((s) => s.upsert)
   const remove = useWorkflowsStore((s) => s.remove)
@@ -76,7 +78,7 @@ export function WorkflowPanel(): React.ReactElement {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontWeight: 600 }}>{kind?.label ?? draft.kind}</span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-            <button type="button" onClick={() => setDraft(null)}>Cancel</button>
+            <button type="button" onClick={() => setDraft(null)}>{tr('common.cancel')}</button>
             <button
               type="button"
               onClick={save}
@@ -162,8 +164,8 @@ export function WorkflowPanel(): React.ReactElement {
                     {busy ? 'Running…' : kind.actionLabel ?? 'Run'}
                   </button>
                 )}
-                <button type="button" onClick={() => setDraft(w)} title="Edit">Edit</button>
-                <button type="button" onClick={() => setConfirmId(w.id)} title="Delete">✕</button>
+                <button type="button" onClick={() => setDraft(w)} title={tr('common.edit')}>{tr('common.edit')}</button>
+                <button type="button" onClick={() => setConfirmId(w.id)} title={tr('common.delete')}>✕</button>
                 {error && (
                   <div style={{ flexBasis: '100%', color: '#e06c6c', fontSize: 11 }}>{error}</div>
                 )}

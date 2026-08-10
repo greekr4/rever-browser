@@ -4,6 +4,7 @@ import type { WorkflowEditorProps } from '../core/registry'
 import { resolvePipeline } from './resolve'
 import { nodeId, type PipeCond, type PipeNode, type PipelineData } from './types'
 
+import { useT } from '@/stores/i18n'
 interface ToolInfo {
   name: string
   description?: string
@@ -117,15 +118,16 @@ function NodeCard({
         ? '#e06c6c'
         : 'var(--border)'
 
+  const tr = useT()
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <span style={{ ...CONTROL_LABEL, textTransform: 'uppercase', letterSpacing: 0.4 }}>
         {node.type === 'if' ? 'If' : 'Tool'}
       </span>
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-        <button type="button" onClick={() => onMove(-1)} disabled={!canUp} title="Move up">↑</button>
-        <button type="button" onClick={() => onMove(1)} disabled={!canDown} title="Move down">↓</button>
-        <button type="button" onClick={onRemove} title="Remove">✕</button>
+        <button type="button" onClick={() => onMove(-1)} disabled={!canUp} title={tr('common.moveUp')}>↑</button>
+        <button type="button" onClick={() => onMove(1)} disabled={!canDown} title={tr('common.moveDown')}>↓</button>
+        <button type="button" onClick={onRemove} title={tr('common.remove')}>✕</button>
       </div>
     </div>
   )
@@ -164,7 +166,7 @@ function NodeCard({
     <div style={{ border: `1px solid ${border}`, borderRadius: 6, padding: 8, background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: 6 }}>
       {header}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-        <span style={CONTROL_LABEL}>if last</span>
+        <span style={CONTROL_LABEL}>{tr('pipeline.ifLast')}</span>
         <select value={cond.on} onChange={(e) => setCond({ on: e.target.value as PipeCond['on'] })} style={{ height: 24 }}>
           <option value="output">output</option>
           <option value="error">error</option>
@@ -179,7 +181,7 @@ function NodeCard({
           <input
             value={cond.value}
             onChange={(e) => setCond({ value: e.target.value })}
-            placeholder="value / regex"
+            placeholder={tr('pipeline.valuePlaceholder')}
             style={{ height: 24, padding: '0 6px', flex: 1, minWidth: 80, fontFamily: 'ui-monospace, monospace', fontSize: 11 }}
           />
         )}
@@ -218,6 +220,7 @@ function ProgressLine({ prog }: { prog: PipeProgress }): React.ReactElement {
 }
 
 export function PipelineEditor({ workflow, onChange }: WorkflowEditorProps): React.ReactElement {
+  const tr = useT()
   const data = workflow.data as PipelineData
   const [tools, setTools] = useState<ToolInfo[]>([])
   const [running, setRunning] = useState(false)
@@ -274,7 +277,7 @@ export function PipelineEditor({ workflow, onChange }: WorkflowEditorProps): Rea
         <input
           value={workflow.name}
           onChange={(e) => onChange({ ...workflow, name: e.target.value })}
-          placeholder="Probe endpoint, branch on 200 vs 403"
+          placeholder={tr('pipeline.goalPlaceholder')}
           style={{ height: 28, padding: '0 8px' }}
         />
       </label>
@@ -306,7 +309,7 @@ export function PipelineEditor({ workflow, onChange }: WorkflowEditorProps): Rea
 
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {running ? (
-          <button type="button" onClick={cancel} style={{ background: 'var(--surface-3)' }}>Stop</button>
+          <button type="button" onClick={cancel} style={{ background: 'var(--surface-3)' }}>{tr('common.stop')}</button>
         ) : (
           <button
             type="button"

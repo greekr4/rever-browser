@@ -5,6 +5,7 @@ import { tryPretty } from '@/lib/format-json'
 
 import type { StoredRequestSummary } from '../../../../preload'
 
+import { useT } from '@/stores/i18n'
 type Tab = 'overview' | 'headers' | 'body'
 type LoadState = 'loading' | 'notfound' | 'error' | StoredRequestSummary
 
@@ -41,6 +42,7 @@ export function TrafficDetailDrawer({
     }
   }, [requestId])
 
+  const tr = useT()
   const onSendToChat = () => {
     if (!data) return
     pushDraft(
@@ -70,7 +72,7 @@ export function TrafficDetailDrawer({
           fontSize: 12
         }}
       >
-        <strong>Request</strong>
+        <strong>{tr('drawer.request')}</strong>
         <button onClick={onSendToChat} style={{ fontSize: 11 }}>
           Send to chat
         </button>
@@ -141,6 +143,7 @@ function parseQueryParams(url: string): [string, string][] | null {
 }
 
 function Overview({ data }: { data: StoredRequestSummary }) {
+  const tr = useT()
   const elapsed =
     data.completedAt && data.startedAt ? `${data.completedAt - data.startedAt}ms` : '—'
   const queryParams = parseQueryParams(data.url)
@@ -160,7 +163,7 @@ function Overview({ data }: { data: StoredRequestSummary }) {
       <Field label="requestId" value={<code>{data.requestId}</code>} />
       {queryParams && (
         <div style={{ marginTop: 14 }}>
-          <h4 style={{ margin: '0 0 6px', fontSize: 12 }}>Query params</h4>
+          <h4 style={{ margin: '0 0 6px', fontSize: 12 }}>{tr('drawer.queryParams')}</h4>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <tbody>
               {queryParams.map(([k, v], i) => (
@@ -217,11 +220,12 @@ function HeaderTable({ headers }: { headers: Record<string, string> | undefined 
 }
 
 function Headers({ data }: { data: StoredRequestSummary }) {
+  const tr = useT()
   return (
     <div>
-      <h4 style={{ margin: '0 0 6px', fontSize: 12 }}>Request</h4>
+      <h4 style={{ margin: '0 0 6px', fontSize: 12 }}>{tr('drawer.request')}</h4>
       <HeaderTable headers={data.requestHeaders} />
-      <h4 style={{ margin: '14px 0 6px', fontSize: 12 }}>Response</h4>
+      <h4 style={{ margin: '14px 0 6px', fontSize: 12 }}>{tr('drawer.response')}</h4>
       <HeaderTable headers={data.responseHeaders} />
     </div>
   )
@@ -256,17 +260,18 @@ function BodyBlock({ label, body }: { label: string; body?: string }) {
 }
 
 function Body({ data }: { data: StoredRequestSummary }) {
+  const tr = useT()
   return (
     <div>
       <BodyBlock label="Request body" body={data.requestPostData} />
       {data.responseBodyError ? (
         <div>
-          <h4 style={{ margin: '0 0 6px', fontSize: 12 }}>Response body</h4>
+          <h4 style={{ margin: '0 0 6px', fontSize: 12 }}>{tr('drawer.responseBody')}</h4>
           <p style={{ color: 'var(--status-error)', fontSize: 11 }}>error: {data.responseBodyError}</p>
         </div>
       ) : data.responseBodyBase64 ? (
         <div>
-          <h4 style={{ margin: '0 0 6px', fontSize: 12 }}>Response body</h4>
+          <h4 style={{ margin: '0 0 6px', fontSize: 12 }}>{tr('drawer.responseBody')}</h4>
           <p style={{ opacity: 0.5, fontSize: 11 }}>
             (base64-encoded binary, {data.responseBody?.length ?? 0} chars)
           </p>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { WorkflowEditorProps } from '../core/registry'
 
+import { useT } from '@/stores/i18n'
 // Structural mirrors of the preload types (window.rev.workflows.*). Kept local
 // so the macro module stays self-contained and disposable.
 interface McpToolInfo {
@@ -100,6 +101,7 @@ export function resolveSteps(
 }
 
 export function MacroEditor({ workflow, onChange }: WorkflowEditorProps): React.ReactElement {
+  const tr = useT()
   const data = workflow.data as MacroData
   const [tools, setTools] = useState<McpToolInfo[]>([])
   const [running, setRunning] = useState(false)
@@ -182,14 +184,14 @@ export function MacroEditor({ workflow, onChange }: WorkflowEditorProps): React.
         <input
           value={workflow.name}
           onChange={(e) => onChange({ ...workflow, name: e.target.value })}
-          placeholder="Login then dump the profile API"
+          placeholder={tr('macro.goalPlaceholder')}
           style={{ height: 28, padding: '0 8px' }}
         />
       </label>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <span style={{ color: 'var(--text-dim)' }}>Steps</span>
+          <span style={{ color: 'var(--text-dim)' }}>{tr('macro.steps')}</span>
           <button type="button" onClick={addStep} style={{ marginLeft: 'auto' }} disabled={tools.length === 0}>
             + Add step
           </button>
@@ -232,9 +234,9 @@ export function MacroEditor({ workflow, onChange }: WorkflowEditorProps): React.
                     </option>
                   ))}
                 </select>
-                <button type="button" onClick={() => moveStep(i, -1)} disabled={i === 0} title="Move up">↑</button>
-                <button type="button" onClick={() => moveStep(i, 1)} disabled={i === data.steps.length - 1} title="Move down">↓</button>
-                <button type="button" onClick={() => removeStep(s.id)} title="Remove step">✕</button>
+                <button type="button" onClick={() => moveStep(i, -1)} disabled={i === 0} title={tr('common.moveUp')}>↑</button>
+                <button type="button" onClick={() => moveStep(i, 1)} disabled={i === data.steps.length - 1} title={tr('common.moveDown')}>↓</button>
+                <button type="button" onClick={() => removeStep(s.id)} title={tr('macro.removeStep')}>✕</button>
               </div>
 
               {s.tool === AI_TOOL ? (
@@ -257,9 +259,9 @@ export function MacroEditor({ workflow, onChange }: WorkflowEditorProps): React.
                 <input
                   value={s.waitFor ?? ''}
                   onChange={(e) => updateStep(s.id, { waitFor: e.target.value })}
-                  placeholder="wait for selector (optional)"
+                  placeholder={tr('macro.waitForPlaceholder')}
                   spellCheck={false}
-                  title="Poll until this CSS selector matches, then run the step. Fails the step after 10s."
+                  title={tr('macro.waitForTitle')}
                   style={{
                     flex: '1 1 150px',
                     minWidth: 110,
@@ -279,16 +281,16 @@ export function MacroEditor({ workflow, onChange }: WorkflowEditorProps): React.
                       delay: e.target.value === '' ? undefined : Number(e.target.value)
                     })
                   }
-                  placeholder="delay ms"
-                  title="Extra pause before the step, applied after waitFor"
+                  placeholder={tr('macro.delayPlaceholder')}
+                  title={tr('macro.delayTitle')}
                   style={{ width: 84, height: 24, padding: '0 6px', fontSize: 11 }}
                 />
                 <input
                   value={s.saveAs ?? ''}
                   onChange={(e) => updateStep(s.id, { saveAs: e.target.value })}
-                  placeholder="save as"
+                  placeholder={tr('macro.saveAsPlaceholder')}
                   spellCheck={false}
-                  title="Store this step's result under this name; use it later as {{name}}"
+                  title={tr('macro.saveAsTitle')}
                   style={{
                     width: 100,
                     height: 24,

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ACP_AGENTS } from '@/constants'
 import { useChatHistory } from '@/stores/chat-history'
 
+import { useT } from '@/stores/i18n'
 interface ChatHistoryMenuProps {
   currentId: string | null
   onOpen: (id: string) => void
@@ -31,6 +32,7 @@ function agentIcon(id: string): string {
  * the × removes it. Mirrors AgentPicker's popover styling.
  */
 export function ChatHistoryMenu({ currentId, onOpen, disabled }: ChatHistoryMenuProps) {
+  const tr = useT()
   const [open, setOpen] = useState(false)
   const conversations = useChatHistory((s) => s.conversations)
   const remove = useChatHistory((s) => s.remove)
@@ -56,9 +58,9 @@ export function ChatHistoryMenu({ currentId, onOpen, disabled }: ChatHistoryMenu
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
         style={triggerStyle}
-        title="Conversation history"
+        title={tr('chat.historyTitle')}
       >
-        <span>History</span>
+        <span>{tr('chat.history')}</span>
         <span style={{ opacity: 0.6, fontSize: 10 }}>({conversations.length})</span>
         <span style={{ opacity: 0.6, fontSize: 10 }}>▾</span>
       </button>
@@ -66,7 +68,7 @@ export function ChatHistoryMenu({ currentId, onOpen, disabled }: ChatHistoryMenu
       {open && (
         <div ref={popoverRef} style={popoverStyle}>
           <header style={popoverHeader}>
-            <strong style={{ fontSize: 12 }}>History</strong>
+            <strong style={{ fontSize: 12 }}>{tr('chat.history')}</strong>
             <span style={{ fontSize: 11, opacity: 0.6 }}>{conversations.length} saved</span>
           </header>
           {conversations.length === 0 ? (
@@ -102,8 +104,8 @@ export function ChatHistoryMenu({ currentId, onOpen, disabled }: ChatHistoryMenu
                       type="button"
                       onClick={() => remove(c.id)}
                       style={deleteStyle}
-                      title="Delete conversation"
-                      aria-label="Delete conversation"
+                      title={tr('chat.deleteConversation')}
+                      aria-label={tr('chat.deleteConversation')}
                     >
                       ×
                     </button>

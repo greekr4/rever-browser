@@ -14,6 +14,7 @@ import { newConversationId, useChatHistory } from '@/stores/chat-history'
 
 import type { UIMessage } from 'ai'
 
+import { useT } from '@/stores/i18n'
 const SCROLL_BOTTOM_THRESHOLD = 32
 
 function Thinking() {
@@ -104,6 +105,7 @@ interface ToolPart {
 }
 
 function ToolBlock({ part }: { part: ToolPart }) {
+  const tr = useT()
   const [open, setOpen] = useState(false)
   const name = part.title || part.toolName || part.type.replace(/^tool-/, '')
   const state = part.state ?? (part.output != null ? 'done' : part.errorText ? 'error' : '…')
@@ -146,13 +148,13 @@ function ToolBlock({ part }: { part: ToolPart }) {
         <div style={{ padding: '0 10px 8px 28px' }}>
           {part.input != null && (
             <details open style={{ marginTop: 4 }}>
-              <summary style={{ cursor: 'pointer', opacity: 0.7 }}>input</summary>
+              <summary style={{ cursor: 'pointer', opacity: 0.7 }}>{tr('chat.input')}</summary>
               <pre style={preStyle}>{JSON.stringify(part.input, null, 2)}</pre>
             </details>
           )}
           {part.output != null && (
             <details open style={{ marginTop: 4 }}>
-              <summary style={{ cursor: 'pointer', opacity: 0.7 }}>output</summary>
+              <summary style={{ cursor: 'pointer', opacity: 0.7 }}>{tr('chat.output')}</summary>
               <pre style={preStyle}>{formatOutput(part.output)}</pre>
             </details>
           )}
@@ -284,6 +286,7 @@ interface ModelEntry {
 }
 
 export function ChatPanel() {
+  const tr = useT()
   // Restore the most recently used conversation on launch so a reload/restart
   // doesn't drop the last chat. The persist store hydrates synchronously from
   // localStorage, so getState() already has the saved conversations here.
@@ -521,7 +524,7 @@ export function ChatPanel() {
             value={currentModel ?? ''}
             onChange={(e) => void onChangeModel(e.target.value)}
             disabled={busy}
-            title="Switch model for this session"
+            title={tr('chat.switchModel')}
             style={{ maxWidth: 160 }}
           >
             {models.map((m) => (
@@ -556,7 +559,7 @@ export function ChatPanel() {
         <button
           type="button"
           onClick={onNewChat}
-          title="Start a new conversation (kills the current agent session)"
+          title={tr('chat.newConversation')}
           style={{
             fontSize: 11,
             padding: '3px 8px',
@@ -629,7 +632,7 @@ export function ChatPanel() {
               submit()
             }
           }}
-          placeholder="Type a message…"
+          placeholder={tr('chat.placeholder')}
           rows={1}
           style={{
             flex: 1,

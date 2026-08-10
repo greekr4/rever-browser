@@ -1,9 +1,12 @@
+import { useT } from '@/stores/i18n'
+
 import { useMemo, useState } from 'react'
 
 import { useHistoryStore, type HistoryEntry } from '@/stores/history'
 import { useNavigationRequestStore } from '@/stores/navigation-request'
 
 export function HistoryPanel() {
+  const t = useT()
   const entries = useHistoryStore((s) => s.entries)
   const clear = useHistoryStore((s) => s.clear)
   const requestNav = useNavigationRequestStore((s) => s.request)
@@ -56,7 +59,7 @@ export function HistoryPanel() {
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter by URL or title"
+          placeholder={t('history.filter')}
           style={{
             flex: 1,
             background: 'var(--bg)',

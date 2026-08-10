@@ -1,3 +1,5 @@
+import { useT } from '@/stores/i18n'
+
 import { useEffect, useRef, useState } from 'react'
 
 interface WsConnection {
@@ -14,6 +16,7 @@ interface WSFrame {
 }
 
 export function WebSocketPanel() {
+  const t = useT()
   const [connections, setConnections] = useState<WsConnection[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [frames, setFrames] = useState<WSFrame[]>([])
@@ -77,7 +80,7 @@ export function WebSocketPanel() {
         }}
       >
         {connections.length === 0 && (
-          <div className="panel-empty">No WS connections</div>
+          <div className="panel-empty">{t('panel.noWs')}</div>
         )}
         {connections.map((c) => (
           <div
@@ -99,10 +102,10 @@ export function WebSocketPanel() {
       {/* Right: frames */}
       <div style={{ flex: 1, overflowY: 'auto', fontFamily: 'ui-monospace, monospace', fontSize: 11, scrollbarGutter: 'stable' }}>
         {frames.length === 0 && selectedId && (
-          <div className="panel-empty">No frames</div>
+          <div className="panel-empty">{t('panel.noFrames')}</div>
         )}
         {!selectedId && (
-          <div className="panel-empty">Select a connection</div>
+          <div className="panel-empty">{t('panel.selectConnection')}</div>
         )}
         {frames.map((f, i) => {
           const payload = f.payloadData.length > 1024

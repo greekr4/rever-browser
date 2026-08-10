@@ -1,3 +1,5 @@
+import { useT } from '@/stores/i18n'
+
 import { useEffect, useRef, useState } from 'react'
 
 interface RuntimeException {
@@ -12,6 +14,7 @@ interface ExItem extends RuntimeException {
 }
 
 export function ExceptionsPanel() {
+  const t = useT()
   const [items, setItems] = useState<ExItem[]>([])
   const fetchedRef = useRef(false)
 
@@ -80,7 +83,7 @@ export function ExceptionsPanel() {
         </div>
       ))}
       {items.length === 0 && (
-        <div className="panel-empty">No exceptions</div>
+        <div className="panel-empty">{t('panel.noExceptions')}</div>
       )}
       </div>
     </div>

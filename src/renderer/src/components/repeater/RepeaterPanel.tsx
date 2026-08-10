@@ -1,11 +1,13 @@
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
+import { useT } from '@/stores/i18n'
 import { useRepeaterStore, type RepeaterRequestSpec } from '@/stores/repeater'
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 
 export function RepeaterPanel() {
+  const tr = useT()
   const {
     active,
     sourceLabel,
@@ -32,9 +34,7 @@ export function RepeaterPanel() {
 
   if (!active) {
     return (
-      <div className="panel-empty">
-        Right-click a row in Traffic and choose <strong>Send to Repeater</strong> to start.
-      </div>
+      <div className="panel-empty">{tr('repeater.empty')}</div>
     )
   }
 
@@ -99,6 +99,7 @@ interface EditorProps {
 }
 
 function RequestEditor({ active, onChange }: EditorProps) {
+  const tr = useT()
   // 인덱스 기반 key를 유지하기 위해 [key, value] 쌍 배열로 관리
   const headerEntries = useMemo(() => Object.entries(active.headers), [active.headers])
 
@@ -230,7 +231,7 @@ function RequestEditor({ active, onChange }: EditorProps) {
                 <td style={{ padding: 1, width: 24 }}>
                   <button
                     onClick={() => removeHeader(idx)}
-                    title="Remove header"
+                    title={tr('repeater.removeHeader')}
                     style={{ padding: '2px 6px', fontSize: 11, lineHeight: 1 }}
                   >
                     ×
