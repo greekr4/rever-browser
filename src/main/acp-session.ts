@@ -193,6 +193,17 @@ export async function spawnAcpSession(
     'newSession'
   )
 
+  // claude-agent-acp는 세션 권한 모드를 사용자의 ~/.claude/settings.json
+  // permissions.defaultMode에서 그대로 가져온다 (_meta options로는 못 바꿈).
+  // 'dontAsk' 등이면 권한 요청 없이 MCP 도구가 전부 거부되므로, 요청이 항상
+  // 위 requestPermission(auto-approve)으로 오도록 'default'로 강제한다.
+  const modes = (result as { modes?: { currentModeId?: string } | null }).modes
+  if (modes && modes.currentModeId !== 'default') {
+    await connection
+      .setSessionMode({ sessionId: result.sessionId, modeId: 'default' })
+      .catch((e) => console.error('[acp] setSessionMode failed:', e))
+  }
+
   console.log('[acp:newSession] result keys:', Object.keys(result), 'models:', JSON.stringify((result as { models?: unknown }).models))
   const modelState = (result as { models?: { availableModels?: ModelInfo[]; currentModelId?: string } | null }).models
   const entry: SessionEntry = {
