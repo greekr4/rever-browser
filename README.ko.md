@@ -41,7 +41,7 @@
 - **브라우저 자동화** — 안정적인 요소 ref가 포함된 접근성 스냅샷과 함께 클릭, 호버, 입력, 스크롤, 드래그, 캔버스 그리기, 클립보드 붙여넣기, 파일 업로드, 키 입력, 탭·뷰포트 제어, 스크린샷을 실시간 탭에서 수행합니다.
 - **번들 & 스크립트 분석** — 이미 트래픽 저장소에 캡처된 자바스크립트를 재다운로드 없이 grep·추출·번들러 감지·역난독화하며(`webcrack` 기반 역난독화 포함), 임베디드 소스맵으로 원본 TypeScript/JS를 복구합니다. 또한 정적 역난독화가 무의미해지는 안티봇 "VM" 번들(Akamai·리스크 컨트롤·캡차 계열)을 분류해 알려줍니다.
 
-**심층 API 리버싱 도구 표면 — 38개 도메인에 걸친 138개 MCP 도구**를 에이전트(또는 셸)에서 모두 구동할 수 있습니다. 주요 항목:
+**심층 API 리버싱 도구 표면 — 37개 도메인에 걸친 129개 MCP 도구**를 에이전트(또는 셸)에서 모두 구동할 수 있습니다. 주요 항목:
 
 - **리피터 & 인트루더** — 캡처된 요청을 *실제* 브라우저 컨텍스트(그 쿠키·TLS·HTTP/2)로 재전송해 페이지 자체처럼 동작하게 합니다. Burp Intruder 스타일의 마커 퍼저는 페이로드 목록을 순회 발사하고 상태·길이·타이밍·본문 해시를 표로 정리해 블라인드 불리언/타이밍 오라클 열거에 활용합니다. 앱에는 수동 리피터 패널도 내장되어 있습니다.
 - **인터셉션 & 로컬 오버라이드** — 요청을 기록·차단하거나 일시 정지 후 수정하는(보류된 요청을 편집·응답 주입·실패 처리) 프록시 스타일 규칙과, 응답 본문 — 혹은 JS 번들 전체 — 을 로컬 사본으로 교체하는 DevTools 스타일 로컬 오버라이드를 제공합니다.
@@ -100,7 +100,7 @@ pgrep -f "Electron|electron-vite" | xargs -r kill -9
 
 ## Claude Code에서 Rever 사용하기 (`/rever` 스킬)
 
-Rever는 Claude Code 스킬을 함께 제공하여, 어떤 `claude` 세션에서든 실행 중인 Rever Browser를 조작하고 API 리버싱을 위한 138개의 MCP 도구를 사용할 수 있습니다. 별도 저장소 [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill)로 배포되어 있으며, [`skills`](https://www.npmjs.com/package/skills) CLI로 설치할 수 있습니다(소스 체크아웃 불필요 — DMG/EXE 사용자도 바로 사용 가능):
+Rever는 Claude Code 스킬을 함께 제공하여, 어떤 `claude` 세션에서든 실행 중인 Rever Browser를 조작하고 API 리버싱을 위한 129개의 MCP 도구를 사용할 수 있습니다. 별도 저장소 [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill)로 배포되어 있으며, [`skills`](https://www.npmjs.com/package/skills) CLI로 설치할 수 있습니다(소스 체크아웃 불필요 — DMG/EXE 사용자도 바로 사용 가능):
 
 ```bash
 npx skills add greekr4/rever-browser-skill --global --agent claude-code

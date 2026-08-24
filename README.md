@@ -41,7 +41,7 @@
 - **Browser automation** — Accessibility snapshots with stable element refs, plus click, hover, type, scroll, drag, canvas draw, clipboard paste, file upload, key press, tab and viewport control, and screenshots of the live tab.
 - **Bundle & script analysis** — Grep, extract, detect the bundler for, and deobfuscate the JavaScript already captured in the traffic store (no re-download) with a `webcrack`-backed deobfuscator; recover original TypeScript/JS via embedded source maps; and classify anti-bot "VM" bundles (Akamai / risk-control / captcha style) that flag when static deobfuscation is a dead end.
 
-**A deep API-reversing tool surface — 138 MCP tools across 38 domains**, all driven by the agent (or from a shell). Highlights:
+**A deep API-reversing tool surface — 129 MCP tools across 37 domains**, all driven by the agent (or from a shell). Highlights:
 
 - **Repeater & Intruder** — Replay any captured request through the *real* browser context (its cookies, TLS, HTTP/2) so it behaves like the page itself. A Burp-Intruder-style marker fuzzer fires a payload list and tabulates status / length / timing / body-hash for blind boolean or timing-oracle enumeration. A manual Repeater panel is built into the app, too.
 - **Interception & local overrides** — Proxy-style rules that log, block, or pause-and-modify requests (edit, fulfill, or fail a held request), plus DevTools-style Local Overrides that swap a response body — or an entire JS bundle — for a local copy.
@@ -100,7 +100,7 @@ pgrep -f "Electron|electron-vite" | xargs -r kill -9
 
 ## Use Rever from Claude Code (the `/rever` skill)
 
-Rever ships a Claude Code skill so any `claude` session can drive a running Rever Browser and use its 138 MCP tools for API reversing. It's published as a standalone repo — [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill) — installable with the [`skills`](https://www.npmjs.com/package/skills) CLI (no source checkout needed, so it works for DMG/EXE users):
+Rever ships a Claude Code skill so any `claude` session can drive a running Rever Browser and use its 129 MCP tools for API reversing. It's published as a standalone repo — [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill) — installable with the [`skills`](https://www.npmjs.com/package/skills) CLI (no source checkout needed, so it works for DMG/EXE users):
 
 ```bash
 npx skills add greekr4/rever-browser-skill --global --agent claude-code
