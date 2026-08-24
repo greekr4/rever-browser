@@ -46,7 +46,7 @@ Use the issue templates under **New Issue**. Include repro steps and environment
 
 ## Code style
 
-Match the existing style in the file you're editing. Don't refactor unrelated code in the same PR — see the "Surgical Changes" section of `CLAUDE.md`.
+Match the existing style in the file you're editing. Keep PRs surgical — don't refactor or reformat unrelated code in the same PR.
 
 ## License
 
