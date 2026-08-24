@@ -11,7 +11,7 @@
 
 **[🌐 Website](https://greekr4.github.io/rever-browser/)** / **[⬇ Download macOS](https://github.com/greekr4/rever-browser/releases/latest)** / **[⬇ Download Windows](https://github.com/greekr4/rever-browser/releases/latest)**
 
-[Demo](#demo) · [What is it?](#what-is-rever-browser) · [Features](#features) · [Getting started](#getting-started) · [Architecture](#architecture)
+[한국어](./README.ko.md) · [Demo](#demo) · [What is it?](#what-is-rever-browser) · [Features](#features) · [Getting started](#getting-started) · [Architecture](#architecture)
 
 </div>
 
@@ -136,3 +136,7 @@ The MCP server starts lazily on the first agent spawn and binds to a random loca
 All dependencies are listed in [`package.json`](./package.json); every package in the dependency tree uses a permissive license (MIT, Apache-2.0, ISC, or BSD) — no copyleft.
 
 External tools invoked as separate processes (not bundled or distributed with this project): [claude-agent-acp](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp) (Apache-2.0), [codex-acp](https://www.npmjs.com/package/@agentclientprotocol/codex-acp) (Apache-2.0), [webcrack](https://www.npmjs.com/package/webcrack) (MIT).
+
+## Contributing
+
+Bug reports, feature suggestions, and PRs are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow.
