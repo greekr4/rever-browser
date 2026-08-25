@@ -1,0 +1,5 @@
+# Product images are CC-licensed stock (LoremFlickr) with per-image NC/ND terms —
+# not redistributed in this repo. Regenerate locally with ../download-images.sh,
+# or drop your own / CC0 images as 1.jpg … 12.jpg. If missing, the card falls
+# back to an emoji thumbnail (see src/app.ts onerror).
+*.jpg
