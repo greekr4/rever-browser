@@ -503,6 +503,14 @@ export async function humanType(
       code: k.code,
       windowsVirtualKeyCode: k.keyCode
     })
+    // Typing beam + sparks — cosmetic, fire-and-forget for the same reason as
+    // showCursorAt: awaiting would queue behind the page's main thread. Sent to
+    // the focused element's session so an OOPIF input gets its own frame's beam.
+    void target.dbg
+      .sendCommand('Runtime.evaluate', {
+        expression: 'window.__reverAi && window.__reverAi.typeKey()'
+      }, sessionId)
+      .catch(() => {})
     await sleep(rand(15, 55))
     if (Math.random() < 0.04) await sleep(rand(120, 260))
   }

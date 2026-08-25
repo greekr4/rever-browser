@@ -10,15 +10,49 @@ export const VISUALIZER_INIT_SCRIPT = `
   const STYLE = \`
     .cursor {
       position: fixed;
-      width: 22px; height: 22px;
+      width: 30px; height: 30px;
+      margin: -15px 0 0 -15px;
       pointer-events: none;
-      transform-origin: 2px 2px;
-      transition: transform 90ms ease;
-      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.45));
+      filter: drop-shadow(0 0 4px rgba(0,212,255,0.55)) drop-shadow(0 1px 2px rgba(0,0,0,0.45));
       opacity: 0;
+      transition: opacity 120ms ease;
     }
     .cursor.visible { opacity: 1; }
-    .cursor.press   { transform: scale(0.85); }
+    .cursor-corners { position: absolute; inset: 0; animation: cur-spin 4s linear infinite; transition: transform 100ms ease; }
+    .cursor-corners::before, .cursor-corners::after,
+    .cursor-corners i::before, .cursor-corners i::after {
+      content: ''; position: absolute; width: 9px; height: 9px;
+      border: 2px solid #00d4ff;
+    }
+    .cursor-corners::before   { left: 0; top: 0; border-right: none; border-bottom: none; border-radius: 3px 0 0 0; }
+    .cursor-corners::after    { right: 0; top: 0; border-left: none; border-bottom: none; border-radius: 0 3px 0 0; }
+    .cursor-corners i::before { left: 0; bottom: 0; border-right: none; border-top: none; border-radius: 0 0 0 3px; }
+    .cursor-corners i::after  { right: 0; bottom: 0; border-left: none; border-top: none; border-radius: 0 0 3px 0; }
+    .cursor-center {
+      position: absolute; left: 50%; top: 50%; width: 5px; height: 5px;
+      transform: translate(-50%, -50%); border-radius: 50%;
+      background: #00d4ff; box-shadow: 0 0 8px rgba(0,212,255,0.9);
+    }
+    @keyframes cur-spin { to { transform: rotate(360deg) } }
+    .cursor.press .cursor-corners { animation: none; transform: scale(0.62); }
+    .cursor.press .cursor-center  { background: #fff; }
+    .beam {
+      position: fixed; width: 2px; pointer-events: none;
+      background: #00d4ff; box-shadow: 0 0 8px 1px rgba(0,212,255,0.9);
+      border-radius: 1px; opacity: 0;
+    }
+    .beam.visible { animation: beam-blink 950ms step-end infinite; }
+    @keyframes beam-blink { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
+    .spark {
+      position: fixed; width: 4px; height: 4px; border-radius: 50%;
+      background: #7fe7ff; box-shadow: 0 0 6px rgba(0,212,255,0.8);
+      pointer-events: none;
+      animation: spark-fly 480ms ease-out forwards;
+    }
+    @keyframes spark-fly {
+      0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+      100% { opacity: 0; transform: translate(var(--sx), var(--sy)) scale(0.3); }
+    }
     .box {
       position: fixed;
       box-sizing: border-box;
@@ -195,11 +229,9 @@ export const VISUALIZER_INIT_SCRIPT = `
 // Fake cursor that follows real mousemove/down/up events. Because click/type
   // dispatch CDP Input.dispatchMouseEvent, those produce native mouse events
   // here — so this listener auto-tracks AI-driven movement without any IPC.
-  // macOS-style arrow cursor SVG. The hot-spot is the tip (top-left) at (2,2),
-  // which matches transform-origin in CSS so press-scale rotates around the tip.
-  const CURSOR_SVG = '<svg viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">' +
-    '<path d="M2 2 L2 18 L7 13.5 L10 19 L13 17.5 L10 12 L17 12 Z" ' +
-    'fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg>'
+  // AI reticle cursor: rotating corner brackets + center dot. The hot-spot is
+  // the center — the -15px margins in .cursor put it on the event point.
+  const CURSOR_HTML = '<div class="cursor-corners"><i></i></div><div class="cursor-center"></div>'
 
   let cursorEl = null
   let cursorHideTimer = null
@@ -208,7 +240,7 @@ export const VISUALIZER_INIT_SCRIPT = `
     const r = ensure()
     cursorEl = document.createElement('div')
     cursorEl.className = 'cursor'
-    cursorEl.innerHTML = CURSOR_SVG
+    cursorEl.innerHTML = CURSOR_HTML
     r.appendChild(cursorEl)
     return cursorEl
   }
@@ -223,6 +255,74 @@ export const VISUALIZER_INIT_SCRIPT = `
   function setCursorPress(pressed) {
     const c = getCursor()
     if (pressed) c.classList.add('press'); else c.classList.remove('press')
+  }
+
+  // ── Typing beam ───────────────────────────────────────────────────────────────
+  // Neon caret + per-key sparks, fired per keystroke from humanType (same
+  // fire-and-forget cosmetic pattern as showCursorAt). The caret position is
+  // computed here from document.activeElement, so no coordinates cross CDP.
+  // Typed characters are never rendered — safe for password fields (the value
+  // is only measured for width, masked to • so the metrics match the glyphs).
+  let beamEl = null
+  let beamHideTimer = null
+  let measureCtx = null
+  function caretPoint() {
+    const el = document.activeElement
+    if (!el || el === document.body) return null
+    const b = el.getBoundingClientRect()
+    if (b.width === 0 && b.height === 0) return null
+    const tag = el.tagName
+    if (tag === 'INPUT' || tag === 'TEXTAREA') {
+      const cs = getComputedStyle(el)
+      if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d')
+      measureCtx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily
+      const upto = el.selectionEnd == null ? String(el.value).length : el.selectionEnd
+      let txt = String(el.value).slice(0, upto)
+      if (el.type === 'password') txt = '\\u2022'.repeat(txt.length)
+      const lines = txt.split('\\n') // textarea: measure the caret's own line
+      const w = measureCtx.measureText(lines[lines.length - 1]).width
+      const fs = parseFloat(cs.fontSize) || 14
+      const lh = parseFloat(cs.lineHeight) || fs * 1.3
+      const x = Math.min(b.left + (parseFloat(cs.paddingLeft) || 0) + w - el.scrollLeft, b.right - 3)
+      const y = tag === 'TEXTAREA'
+        ? Math.min(b.top + (parseFloat(cs.paddingTop) || 0) + (lines.length - 0.5) * lh - el.scrollTop, b.bottom - lh / 2)
+        : b.top + b.height / 2
+      return { x: Math.max(x, b.left + 2), y, h: Math.min(fs * 1.25, b.height - 2) }
+    }
+    if (el.isContentEditable) {
+      const sel = getSelection()
+      if (sel && sel.rangeCount) {
+        const r = sel.getRangeAt(0).getBoundingClientRect()
+        if (r.height > 0) return { x: r.right, y: r.top + r.height / 2, h: r.height }
+      }
+    }
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2, h: Math.min(18, b.height) }
+  }
+  function typeKey() {
+    const p = caretPoint()
+    if (!p) return
+    const r = ensure()
+    if (!beamEl || !beamEl.isConnected) {
+      beamEl = document.createElement('div')
+      beamEl.className = 'beam'
+      r.appendChild(beamEl)
+    }
+    beamEl.style.left = (p.x + 1) + 'px'
+    beamEl.style.top = (p.y - p.h / 2) + 'px'
+    beamEl.style.height = p.h + 'px'
+    beamEl.classList.add('visible')
+    if (beamHideTimer) clearTimeout(beamHideTimer)
+    beamHideTimer = setTimeout(() => beamEl && beamEl.classList.remove('visible'), 1200)
+    for (let i = 0; i < 3; i++) {
+      const sp = document.createElement('div')
+      sp.className = 'spark'
+      sp.style.left = (p.x + 2) + 'px'
+      sp.style.top = (p.y - 3) + 'px'
+      sp.style.setProperty('--sx', (Math.random() * 26 - 8) + 'px')
+      sp.style.setProperty('--sy', (-6 - Math.random() * 18) + 'px')
+      r.appendChild(sp)
+      setTimeout(() => sp.remove(), 500)
+    }
   }
 
   // ── Perception actions ──────────────────────────────────────────────────
@@ -472,7 +572,7 @@ export const VISUALIZER_INIT_SCRIPT = `
   // Object.getOwnPropertyNames / Reflect.ownKeys to hide it from WASM scanners.
   Object.defineProperty(window, '__reverAi', {
     value: {
-      flashRect, flashElement, pulseAt, showCursorAt, setCursorPress,
+      flashRect, flashElement, pulseAt, showCursorAt, setCursorPress, typeKey,
       navSweep, scanPage, shutter, evalHudStart, evalHudDone, extractHighlight
     },
     enumerable: false,
