@@ -1,17 +1,17 @@
 <!doctype html><meta charset="utf-8"><title>WASM target</title>
 <pre id="truth"></pre><pre id="out"></pre>
-<script>
+<script type="module">
 // GROUND TRUTH (printed so a tool answer is checkable, not guessed):
 //   module URL     /sign.wasm
 //   export name    checksum
 //   wasm_decompile snippet must contain:  (export "checksum"
 document.getElementById('truth').textContent =
   'GROUND TRUTH\n  wasm: /sign.wasm\n  export: checksum\n  expect in wasm_decompile: (export "checksum"';
+import { loadSigner } from '/wasm-caller.js';   // external bundle -> captured Script (for wasm_xref)
 (async () => {
-  const res = await fetch('/sign.wasm');
-  const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
+  const sign = await loadSigner();
   document.getElementById('out').textContent =
-    'checksum(2,3) = ' + instance.exports.checksum(2, 3);   // -> 5, proves it ran
+    'checksum(2,3) = ' + sign(2, 3);   // -> 5, proves it ran
 })();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
 </script>

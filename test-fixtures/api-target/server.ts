@@ -144,6 +144,11 @@ Bun.serve({
         headers: { 'content-type': 'application/wasm' }
       })
     }
+    if (p === '/wasm-caller.js') {
+      return new Response(Bun.file(`${import.meta.dir}/public/wasm-caller.js`), {
+        headers: { 'content-type': 'application/javascript; charset=utf-8' }
+      })
+    }
 
     // --- API -----------------------------------------------------------
     if (p === '/api/v3/login' && req.method === 'POST') {

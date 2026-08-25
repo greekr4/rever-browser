@@ -4,11 +4,19 @@ import {
   encodeRefetchedBody,
   getWasmBuffer,
   listWasm,
-  decompileRequest
+  decompileRequest,
+  extractWasmStrings,
+  parseWatExports,
+  xrefExports
 } from './wasm-analysis'
 import { upsertRequest, clearTraffic } from '../traffic-store'
 
 const WASM_MAGIC = Buffer.from([0x00, 0x61, 0x73, 0x6d]) // "\0asm"
+
+// A real 46-byte module exporting "checksum" (compiled from test-fixtures
+// checksum.wat); lets xrefExports run the actual wabt WAT path.
+const MINIMAL_CHECKSUM_WASM_B64 =
+  'AGFzbQEAAAABBwFgAn9/AX8DAgEABwwBCGNoZWNrc3VtAAAKCQEHACAAIAFqCw=='
 
 // U1 — binary-body encoding decision (the refetchBody fix)
 describe('encodeRefetchedBody', () => {
@@ -89,14 +97,86 @@ describe('decompileRequest error paths', () => {
   })
 
   it('returns an err for an unknown requestId (does not throw)', async () => {
-    const res = await decompileRequest('nope', false)
+    const res = await decompileRequest('nope', 'wat')
     expect('isError' in res && res.isError).toBe(true)
     expect(res.content[0].text).toMatch(/unknown requestId/)
   })
 
   it('returns an install hint when wabt cannot be loaded (does not throw)', async () => {
-    const res = await decompileRequest('w1', false, () => Promise.reject(new Error('module missing')))
+    const res = await decompileRequest('w1', 'wat', () => Promise.reject(new Error('module missing')))
     expect('isError' in res && res.isError).toBe(true)
     expect(res.content[0].text).toMatch(/wabt.*install/i)
+  })
+})
+
+// U5 — strings/constants extraction (grep_wasm)
+describe('extractWasmStrings', () => {
+  it('finds printable runs >= min length, deduped in first-seen order', () => {
+    const NUL = Buffer.from([0x00])
+    const buf = Buffer.concat([
+      NUL,
+      Buffer.from('abc', 'ascii'), // below min 4 -> dropped
+      NUL,
+      Buffer.from('HMAC', 'ascii'),
+      Buffer.from([0x00, 0x01]),
+      Buffer.from('checksum', 'ascii'),
+      NUL,
+      Buffer.from('HMAC', 'ascii') // duplicate -> deduped
+    ])
+    expect(extractWasmStrings(buf, { min: 4 })).toEqual(['HMAC', 'checksum'])
+  })
+
+  it('filters by a regex pattern', () => {
+    const buf = Buffer.concat([
+      Buffer.from('sign_request', 'ascii'),
+      Buffer.from([0x00]),
+      Buffer.from('padding_bytes', 'ascii')
+    ])
+    expect(extractWasmStrings(buf, { pattern: 'sign' })).toEqual(['sign_request'])
+  })
+})
+
+// U6 — WAT export parsing (feeds wasm_xref)
+describe('parseWatExports', () => {
+  it('extracts export names from a WAT dump', () => {
+    const wat = '(module\n  (func (;0;))\n  (export "checksum" (func 0))\n  (export "sign" (func 1)))'
+    expect(parseWatExports(wat)).toEqual(['checksum', 'sign'])
+  })
+})
+
+// U7 — export ↔ JS xref
+describe('xrefExports', () => {
+  beforeEach(() => {
+    clearTraffic()
+    // sign.wasm exporting "checksum" (magic + minimal valid module built at test time)
+    upsertRequest({
+      requestId: 'w1',
+      url: 'http://h/sign.wasm',
+      host: 'h',
+      resourceType: 'Other',
+      mimeType: 'application/wasm',
+      responseBody: MINIMAL_CHECKSUM_WASM_B64,
+      responseBodyBase64: true
+    })
+    upsertRequest({
+      requestId: 'app',
+      url: 'http://h/app.js',
+      host: 'h',
+      resourceType: 'Script',
+      responseBody: 'const r = instance.exports.checksum(2, 3); console.log(r)'
+    })
+  })
+
+  it('links a WASM export to the JS call site that references it', async () => {
+    const res = await xrefExports('w1')
+    expect(Array.isArray(res)).toBe(true)
+    const arr = res as Array<{ export: string; referenced: boolean; hits: unknown[] }>
+    const cx = arr.find((x) => x.export === 'checksum')
+    expect(cx?.referenced).toBe(true)
+    expect(cx?.hits.length).toBeGreaterThan(0)
+  })
+
+  it('returns an error string for an unknown requestId', async () => {
+    expect(typeof (await xrefExports('nope'))).toBe('string')
   })
 })

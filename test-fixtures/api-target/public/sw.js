@@ -1,5 +1,5 @@
 // Present so sw_list / sw_caches / sw_unregister have something real to find.
-const CACHE = 'rever-fixture-v2'
+const CACHE = 'rever-fixture-v3'
 
 self.addEventListener('install', (e) => {
   e.waitUntil(

@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 
 import { getRequest, listRequests, type StoredRequest } from '../traffic-store'
+import { listScripts, grepBody } from './script-analysis'
 import { ok, err, errorMessage } from './utils'
 
 export const WABT_INSTALL_HINT = 'wabt not installed. Install with: bun add -d wabt'
@@ -112,18 +113,18 @@ const WASM_TIMEOUT_MS = 30_000
 const WASM_MAX_OUTPUT = 5 * 1024 * 1024
 
 /**
- * C-like decompilation — the in-process API can't produce it, so shell out to
- * the bundled `bin/wasm-decompile` Emscripten-node script via Electron-as-node
- * (needs no external node on PATH). Writes a temp file (wabt reads a path, not
- * stdin) and always cleans it up. The caller degrades to WAT on any failure.
+ * Shell out to a bundled `bin/<tool>` Emscripten-node script (wasm-decompile,
+ * wasm2c, wasm-objdump …) via Electron-as-node — these produce output the
+ * in-process JS API can't. Writes a temp file (wabt reads a path, not stdin),
+ * passes `extraArgs` before it, and always cleans up. Callers degrade on error.
  */
-export function wasmDecompileFull(wasm: Buffer): Promise<string> {
+export function runWabtBin(tool: string, wasm: Buffer, extraArgs: string[] = []): Promise<string> {
   return new Promise((resolve, reject) => {
     let binPath: string
     try {
       const require = createRequire(import.meta.url)
       const binDir = path.join(path.dirname(require.resolve('wabt/package.json')), 'bin')
-      binPath = path.join(binDir, 'wasm-decompile')
+      binPath = path.join(binDir, tool)
     } catch {
       reject(new Error(WABT_INSTALL_HINT))
       return
@@ -140,7 +141,7 @@ export function wasmDecompileFull(wasm: Buffer): Promise<string> {
 
     let proc: ReturnType<typeof spawn>
     try {
-      proc = spawn(process.execPath, [binPath, tmp], {
+      proc = spawn(process.execPath, [binPath, ...extraArgs, tmp], {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
       })
@@ -177,11 +178,11 @@ export function wasmDecompileFull(wasm: Buffer): Promise<string> {
       clearTimeout(timer)
       cleanup()
       if (killed) {
-        reject(new Error(`wasm-decompile timed out or output exceeded ${WASM_MAX_OUTPUT} bytes`))
+        reject(new Error(`${tool} timed out or output exceeded ${WASM_MAX_OUTPUT} bytes`))
         return
       }
       if (code !== 0 && chunks.length === 0) {
-        reject(new Error(`wasm-decompile exited with code ${code}`))
+        reject(new Error(`${tool} exited with code ${code}`))
         return
       }
       resolve(Buffer.concat(chunks).toString('utf8'))
@@ -189,21 +190,35 @@ export function wasmDecompileFull(wasm: Buffer): Promise<string> {
   })
 }
 
+/** C-like decompilation (`wasm-decompile`). */
+export const wasmDecompileFull = (wasm: Buffer): Promise<string> =>
+  runWabtBin('wasm-decompile', wasm)
+
+/** Full C source (`wasm2c`) — the most readable output for complex routines. */
+export const wasmToC = (wasm: Buffer): Promise<string> => runWabtBin('wasm2c', wasm)
+
+/** Module summary + symbol names (`wasm-objdump -x`): types, imports, exports. */
+export const wasmObjdump = (wasm: Buffer): Promise<string> =>
+  runWabtBin('wasm-objdump', wasm, ['-x'])
+
+export type WasmFormat = 'wat' | 'decompile' | 'c'
+
 /**
- * Full decompile flow behind the tool. Returns an MCP `ok`/`err` content object
- * (kept out of the tool closure so it is directly unit-testable). `full:true`
- * attempts wasm-decompile and degrades to WAT if that path is unavailable.
+ * Render flow behind the tool. Returns an MCP `ok`/`err` content object (kept
+ * out of the tool closure so it is directly unit-testable). Non-WAT formats
+ * shell out and degrade to WAT if that path is unavailable; WAT (in-process)
+ * is the guaranteed baseline.
  */
 export async function decompileRequest(
   requestId: string,
-  full: boolean,
+  format: WasmFormat,
   importWabt: WabtImporter = defaultImportWabt
 ): Promise<ReturnType<typeof ok> | ReturnType<typeof err>> {
   const bytes = getWasmBuffer(requestId)
   if (typeof bytes === 'string') return err(bytes)
-  if (full) {
+  if (format === 'decompile' || format === 'c') {
     try {
-      return ok(await wasmDecompileFull(bytes))
+      return ok(await (format === 'c' ? wasmToC(bytes) : wasmDecompileFull(bytes)))
     } catch {
       // degrade gracefully to WAT-only
     }
@@ -213,4 +228,88 @@ export async function decompileRequest(
   } catch (e) {
     return err(errorMessage(e))
   }
+}
+
+// ── strings / constants extraction ───────────────────────────────────────────
+
+/**
+ * `strings`-style scan of a WASM body: printable-ASCII runs (data section
+ * literals, symbol names, algorithm ids, keys, URLs). Pure — no wabt needed.
+ * Deduped, in first-seen order, optionally filtered by a regex source string.
+ */
+export function extractWasmStrings(
+  buf: Buffer,
+  opts: { min?: number; pattern?: string } = {}
+): string[] {
+  const min = opts.min ?? 4
+  const re = opts.pattern ? new RegExp(opts.pattern) : null
+  const seen = new Set<string>()
+  const out: string[] = []
+  let cur = ''
+  const flush = (): void => {
+    if (cur.length >= min && (!re || re.test(cur)) && !seen.has(cur)) {
+      seen.add(cur)
+      out.push(cur)
+    }
+    cur = ''
+  }
+  for (const byte of buf) {
+    if (byte >= 0x20 && byte <= 0x7e) cur += String.fromCharCode(byte)
+    else flush()
+  }
+  flush()
+  return out
+}
+
+// ── export ↔ JS call-site cross-reference ────────────────────────────────────
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Export names declared in a WAT dump, e.g. `(export "checksum" ...)`. */
+export function parseWatExports(wat: string): string[] {
+  const out: string[] = []
+  const re = /\(export\s+"([^"]+)"/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(wat)) !== null) out.push(m[1])
+  return out
+}
+
+export interface XrefHit {
+  requestId: string
+  url: string
+  snippet: string
+}
+export interface ExportXref {
+  export: string
+  referenced: boolean
+  hits: XrefHit[]
+}
+
+/**
+ * Bridge WASM ↔ JS: for each exported function, grep the captured script
+ * bodies for its name so the agent sees where (and whether) the module is
+ * called — e.g. an export invoked right before a request is signed.
+ */
+export async function xrefExports(
+  requestId: string,
+  importWabt: WabtImporter = defaultImportWabt
+): Promise<ExportXref[] | string> {
+  const bytes = getWasmBuffer(requestId)
+  if (typeof bytes === 'string') return bytes
+  const wat = await wasmToWat(bytes, importWabt)
+  const exports = parseWatExports(wat)
+  const scripts = listScripts({ limit: 200 })
+  return exports.map((name) => {
+    const re = new RegExp('\\b' + escapeRegExp(name) + '\\b', 'g')
+    const hits: XrefHit[] = []
+    for (const s of scripts) {
+      if (!s.responseBody) continue
+      for (const h of grepBody(s.responseBody, re, { max: 5, before: 40, after: 40 })) {
+        hits.push({ requestId: s.requestId, url: s.url, snippet: h.snippet })
+      }
+    }
+    return { export: name, referenced: hits.length > 0, hits }
+  })
 }
