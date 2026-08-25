@@ -47,6 +47,7 @@ import { registerBodyTools } from './tools/body'
 import { registerAntibotTools } from './tools/antibot'
 import { registerGraphqlTools } from './tools/graphql'
 import { registerProtobufTools } from './tools/protobuf'
+import { registerWasmTools } from './tools/wasm'
 
 function buildMcpServer(): McpServer {
   const mcp = new McpServer({ name: 'rever-traffic', version: '0.1.0' })
@@ -89,6 +90,7 @@ function buildMcpServer(): McpServer {
   registerAntibotTools(mcp)
   registerGraphqlTools(mcp)
   registerProtobufTools(mcp)
+  registerWasmTools(mcp)
   return mcp
 }
 

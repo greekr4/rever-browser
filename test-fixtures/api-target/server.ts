@@ -12,6 +12,7 @@
  * Ground truth
  *   HMAC key           s3cr3t-signing-key
  *   JWT secret         jwt-hs256-secret
+ *   WASM module        /sign.wasm exports "checksum" (loaded by /wasm-target.html)
  *   JWT payload        { sub: "u_42", role: "admin", ... }
  *   Signature input    `${method}\n${path}\n${body}\n${ts}`
  *   API base           /api/v3
@@ -131,6 +132,16 @@ Bun.serve({
     if (p === '/sw.js') {
       return new Response(Bun.file(`${import.meta.dir}/public/sw.js`), {
         headers: { 'content-type': 'application/javascript; charset=utf-8' }
+      })
+    }
+    if (p === '/wasm-target.html') {
+      return new Response(Bun.file(`${import.meta.dir}/public/wasm-target.html`), {
+        headers: { 'content-type': 'text/html; charset=utf-8' }
+      })
+    }
+    if (p === '/sign.wasm') {
+      return new Response(Bun.file(`${import.meta.dir}/public/sign.wasm`), {
+        headers: { 'content-type': 'application/wasm' }
       })
     }
 

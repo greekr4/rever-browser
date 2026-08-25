@@ -13,6 +13,7 @@ import {
   type StoredRequest
 } from './traffic-store'
 import { STEALTH_INIT_SCRIPT, SPOOFED_CHROME_VERSION, SPOOFED_CHROME_MAJOR } from './stealth-init'
+import { encodeRefetchedBody } from './mcp/wasm-analysis'
 
 interface AttachedTarget {
   dbg: Debugger
@@ -448,7 +449,7 @@ async function refetchBody(
     if (!res.ok) return null
     const buf = Buffer.from(await res.arrayBuffer())
     if (buf.length > REFETCH_MAX_BYTES) return null
-    return { responseBody: buf.toString('utf8'), responseBodyBase64: false }
+    return encodeRefetchedBody(buf, res.headers.get('content-type')?.split(';')[0]?.trim())
   } catch {
     return null
   }

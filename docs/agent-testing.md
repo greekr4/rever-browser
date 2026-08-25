@@ -60,6 +60,7 @@ python3 -m http.server 8778 --bind 0.0.0.0 &
 | `oopif-demo.html` | `http://127.0.0.1:8777/oopif-demo.html` | realistic OOPIF case: fake checkout with a same-origin coupon widget (visible) vs a cross-site payment widget (`localhost:8778`, pre-patch invisible — P1–P3 and the SECRET string must not appear) |
 | `shadow-fixture.html` | `http://127.0.0.1:8777/shadow-fixture.html` | open/closed/nested shadow roots, inner scroll containers, `*new` node marking |
 | `api-target/` (see below) | `http://127.0.0.1:8779/` | the API-analysis tools — traffic capture, scripts, sourcemaps, crypto, replay/repeater, fuzz probes, WebSocket, storage |
+| `api-target/.../wasm-target.html` | `http://127.0.0.1:8779/wasm-target.html` | `list_wasm` / `wasm_decompile` — loads `/sign.wasm` (export `checksum`); SW-precached, so a reload serves it from cache and exercises the `refetchBody` binary-body fix |
 
 The API target is a Bun server, not a static page, because it needs to sign
 requests, upgrade WebSockets, and register a service worker. Every secret it
@@ -69,6 +70,8 @@ uses is printed in the file header, so a tool's answer is checkable:
 bun test-fixtures/api-target/server.ts   # listens on 8779
 # rebuild the bundle + source map after editing src/:
 cd test-fixtures/api-target && bun build src/app.ts --outdir public --minify --sourcemap=linked --entry-naming app.js
+# rebuild the WASM fixture after editing src/checksum.wat (uses the wabt JS API — no extra CLI):
+bun -e 'const w=await (await import("wabt")).default();const fs=await import("node:fs");const m=w.parseWat("checksum.wat",fs.readFileSync("test-fixtures/api-target/src/checksum.wat","utf8"));fs.writeFileSync("test-fixtures/api-target/public/sign.wasm",Buffer.from(m.toBinary({}).buffer));m.destroy()'
 ```
 
 Its service worker caches `app.js`, so a second load serves the bundle from
