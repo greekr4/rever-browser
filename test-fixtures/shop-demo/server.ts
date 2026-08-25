@@ -116,6 +116,37 @@ const publicView = (p: Product): Omit<Product, 'dealPrice'> => {
   return rest
 }
 
+// ── in-memory cart + orders (single demo user) ───────────────────────
+interface CartLine { id: number; title: string; price: number; qty: number }
+interface Order {
+  id: string
+  items: CartLine[]
+  total: number
+  status: 'placed' | 'cancelled'
+  createdAt: string
+}
+const cart = new Map<number, number>() // productId -> qty
+const orders: Order[] = []
+let orderSeq = 1000
+
+function cartLines(): CartLine[] {
+  const lines: CartLine[] = []
+  for (const [pid, qty] of cart) {
+    const prod = PRODUCTS.find((x) => x.id === pid)
+    if (prod) lines.push({ id: prod.id, title: prod.title, price: prod.price, qty })
+  }
+  return lines
+}
+const cartTotal = (lines: CartLine[]): number => lines.reduce((s, l) => s + l.price * l.qty, 0)
+const cartCount = (): number => [...cart.values()].reduce((s, q) => s + q, 0)
+const parseBody = (body: string): Record<string, unknown> => {
+  try {
+    return JSON.parse(body || '{}')
+  } catch {
+    return {}
+  }
+}
+
 Bun.serve({
   port: PORT,
   async fetch(req) {
@@ -133,7 +164,7 @@ Bun.serve({
         headers: { 'content-type': 'text/css; charset=utf-8' }
       })
     }
-    const img = p.match(/^\/img\/(\d+)\.jpg$/)
+    const img = p.match(/^\/img\/([\w-]+)\.jpg$/)
     if (img) {
       return new Response(Bun.file(`${import.meta.dir}/public/img/${img[1]}.jpg`), {
         headers: { 'content-type': 'image/jpeg', 'cache-control': 'no-store' }
@@ -169,6 +200,83 @@ Bun.serve({
       const prod = PRODUCTS.find((x) => x.id === Number(detail[1]))
       if (!prod) return json({ error: 'not_found' }, 404)
       return json(prod) // detail carries dealPrice (the hidden ground truth)
+    }
+
+    // Add to cart
+    if (p === '/api/cart' && req.method === 'POST') {
+      const denied = await authorize(req, url, body)
+      if (denied) return denied
+      const j = parseBody(body)
+      const pid = Number(j.productId)
+      const qty = Math.max(1, Number(j.qty ?? 1))
+      if (!PRODUCTS.find((x) => x.id === pid))
+        return json({ error: 'no_such_product', productId: pid }, 404)
+      cart.set(pid, (cart.get(pid) ?? 0) + qty)
+      const lines = cartLines()
+      return json({ ok: true, count: cartCount(), items: lines, total: cartTotal(lines) })
+    }
+
+    // View cart
+    if (p === '/api/cart' && req.method === 'GET') {
+      const denied = await authorize(req, url, body)
+      if (denied) return denied
+      const lines = cartLines()
+      return json({ count: cartCount(), items: lines, total: cartTotal(lines), currency: 'USD' })
+    }
+
+    // Remove from cart
+    if (p === '/api/cart/remove' && req.method === 'POST') {
+      const denied = await authorize(req, url, body)
+      if (denied) return denied
+      cart.delete(Number(parseBody(body).productId))
+      const lines = cartLines()
+      return json({ ok: true, count: cartCount(), items: lines, total: cartTotal(lines) })
+    }
+
+    // Place order (checkout the cart)
+    if (p === '/api/orders' && req.method === 'POST') {
+      const denied = await authorize(req, url, body)
+      if (denied) return denied
+      const items = cartLines()
+      if (items.length === 0) return json({ error: 'empty_cart' }, 400)
+      const order: Order = {
+        id: `ord_${orderSeq++}`,
+        items,
+        total: cartTotal(items),
+        status: 'placed',
+        createdAt: new Date().toISOString()
+      }
+      orders.unshift(order)
+      cart.clear()
+      return json(order, 201)
+    }
+
+    // List orders
+    if (p === '/api/orders' && req.method === 'GET') {
+      const denied = await authorize(req, url, body)
+      if (denied) return denied
+      return json({ count: orders.length, orders })
+    }
+
+    // Cancel an order
+    const cancel = p.match(/^\/api\/order\/(ord_\d+)\/cancel$/)
+    if (cancel && req.method === 'POST') {
+      const denied = await authorize(req, url, body)
+      if (denied) return denied
+      const o = orders.find((x) => x.id === cancel[1])
+      if (!o) return json({ error: 'not_found', id: cancel[1] }, 404)
+      if (o.status === 'cancelled') return json({ error: 'already_cancelled', id: o.id }, 409)
+      o.status = 'cancelled'
+      return json({ ok: true, id: o.id, status: o.status })
+    }
+
+    // Order detail
+    const ord = p.match(/^\/api\/order\/(ord_\d+)$/)
+    if (ord && req.method === 'GET') {
+      const denied = await authorize(req, url, body)
+      if (denied) return denied
+      const o = orders.find((x) => x.id === ord[1])
+      return o ? json(o) : json({ error: 'not_found', id: ord[1] }, 404)
     }
 
     return new Response('not found', { status: 404 })

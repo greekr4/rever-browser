@@ -25,5 +25,6 @@ dl 9  air,purifier
 dl 10 kettle,teapot        2
 dl 11 computer,monitor     40
 dl 12 bluetooth,speaker
+dl hero headphones,desk 2   # wide hero banner image
 
-echo "done — 12 images in $(pwd)"
+echo "done — images in $(pwd)"

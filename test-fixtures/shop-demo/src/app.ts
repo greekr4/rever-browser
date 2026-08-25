@@ -67,6 +67,19 @@ function card(p: Product): string {
     </article>`
 }
 
+// Add an item to the (signed) cart and update the header badge.
+async function addToCart(productId: number): Promise<void> {
+  if (!token) await login()
+  const path = `${API_BASE}/cart`
+  const bodyStr = JSON.stringify({ productId, qty: 1 })
+  const headers = await signedHeaders('POST', path, bodyStr, token)
+  const r = await fetch(path, { method: 'POST', headers, body: bodyStr })
+  if (!r.ok) return
+  const data = await r.json()
+  const badge = document.getElementById('cart-count')
+  if (badge) badge.textContent = String(data.count ?? 0)
+}
+
 async function render(): Promise<void> {
   const grid = document.getElementById('grid')
   if (!grid) return
@@ -75,7 +88,14 @@ async function render(): Promise<void> {
     grid.innerHTML = products.map(card).join('')
   } catch (e) {
     grid.innerHTML = `<p class="err">Failed to load products: ${String(e)}</p>`
+    return
   }
+  grid.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.cart-btn')
+    if (!btn) return
+    const id = (btn.closest('.card') as HTMLElement | null)?.dataset.id
+    if (id) void addToCart(Number(id))
+  })
 }
 
 void render()

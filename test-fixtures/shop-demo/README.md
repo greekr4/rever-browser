@@ -31,6 +31,18 @@ cd test-fixtures/shop-demo && bun build src/app.ts --outdir public --sourcemap=l
 | Login | `POST /api/login` → JWT |
 | Deal of the day | product `7` hides `dealPrice: 99` (only in detail) |
 
+### Commerce endpoints (all signed, in-memory)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/cart` | add `{ productId, qty? }` → returns cart + count |
+| GET | `/api/cart` | view cart (items, total) |
+| POST | `/api/cart/remove` | remove `{ productId }` |
+| POST | `/api/orders` | place order from cart → `201` `ord_N` (clears cart) |
+| GET | `/api/orders` | list orders |
+| GET | `/api/order/:id` | order detail |
+| POST | `/api/order/:id/cancel` | cancel (`409` if already cancelled) |
+
 ## Product images
 
 Product images are **not committed** to the repo. They are CC-licensed stock from

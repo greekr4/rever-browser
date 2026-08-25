@@ -77,6 +77,20 @@ function card(p) {
       <button class="cart-btn">Add to Cart</button>
     </article>`;
 }
+async function addToCart(productId) {
+  if (!token)
+    await login();
+  const path = `${API_BASE}/cart`;
+  const bodyStr = JSON.stringify({ productId, qty: 1 });
+  const headers = await signedHeaders("POST", path, bodyStr, token);
+  const r = await fetch(path, { method: "POST", headers, body: bodyStr });
+  if (!r.ok)
+    return;
+  const data = await r.json();
+  const badge = document.getElementById("cart-count");
+  if (badge)
+    badge.textContent = String(data.count ?? 0);
+}
 async function render() {
   const grid = document.getElementById("grid");
   if (!grid)
@@ -86,9 +100,18 @@ async function render() {
     grid.innerHTML = products.map(card).join("");
   } catch (e) {
     grid.innerHTML = `<p class="err">Failed to load products: ${String(e)}</p>`;
+    return;
   }
+  grid.addEventListener("click", (e) => {
+    const btn = e.target.closest(".cart-btn");
+    if (!btn)
+      return;
+    const id = btn.closest(".card")?.dataset.id;
+    if (id)
+      addToCart(Number(id));
+  });
 }
 render();
 
-//# debugId=B5B3EF2E571E417864756E2164756E21
+//# debugId=2881C3933E33AAE764756E2164756E21
 //# sourceMappingURL=app.js.map
