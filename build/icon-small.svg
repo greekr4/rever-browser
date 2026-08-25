@@ -28,19 +28,10 @@
       <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#ffb000" flood-opacity="0.45"/>
     </filter>
   </defs>
-  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#rvr-bg)"/>
-  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#rvr-glow)"/>
-  <rect x="5.2" y="5.2" width="117.6" height="117.6" rx="27" fill="none" stroke="url(#rvr-edge)" stroke-width="2.4"/>
-  <rect x="5" y="5" width="118" height="118" rx="27.5" fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="2"/>
-  <g stroke="url(#rvr-bracket)" stroke-width="7.5" fill="none" stroke-linecap="round">
-    <path d="M25 41 V33.5 a8.5 8.5 0 0 1 8.5 -8.5 H41"/>
-    <path d="M87 25 h7.5 a8.5 8.5 0 0 1 8.5 8.5 V41"/>
-    <path d="M103 87 v7.5 a8.5 8.5 0 0 1 -8.5 8.5 H87"/>
-    <path d="M41 103 H33.5 a8.5 8.5 0 0 1 -8.5 -8.5 V87"/>
-  </g>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="#140f08"/>
+  <rect x="5" y="5" width="118" height="118" rx="27.5" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="2"/>
   <path d="M81 91 V37.5 H63.5 a17.2 17.2 0 0 0 0 34.4 H74 M65.5 71.5 L49.5 91"
-        transform="translate(64 63) scale(0.92) translate(-64 -64)"
-        fill="none" stroke="url(#rvr-glyph)" stroke-width="10.5"
-        stroke-linecap="round" stroke-linejoin="round"
-        filter="url(#rvr-glyphGlow)"/>
+        transform="translate(64 64) scale(1.5) translate(-63.65 -64.25)"
+        fill="none" stroke="#fff2d4" stroke-width="10.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
