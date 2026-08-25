@@ -4,7 +4,7 @@
 
 # rever-browser
 
-### The AI browser for API reverse engineering.
+### An agent-native workbench for API reverse engineering.
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Download](https://img.shields.io/github/v/release/greekr4/rever-browser?label=Download&color=8b5cf6)](https://github.com/greekr4/rever-browser/releases/latest)
