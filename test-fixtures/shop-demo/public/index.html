@@ -10,7 +10,7 @@
 <!-- Top navigation (Amazon-style trade dress, fictional "amajon" brand) -->
 <header class="nav">
   <div class="nav-row">
-    <a class="logo" href="/">
+    <a class="logo" href="/" data-link>
       <span class="logo-word">amajon</span><span class="logo-tld">.com</span>
       <svg class="logo-smile" viewBox="0 0 110 22" aria-hidden="true">
         <path d="M4 8 C 30 24, 84 24, 106 8" fill="none" stroke="#f90" stroke-width="3.5" stroke-linecap="round"/>
@@ -31,64 +31,46 @@
 
     <div class="nav-lang"><span class="flag">🇺🇸</span> EN ▾</div>
 
-    <button class="nav-acct">
+    <a class="nav-acct" id="acct" href="/login" data-link>
       <small>Hello, sign in</small>
       <strong>Account &amp; Lists ▾</strong>
-    </button>
+    </a>
 
-    <button class="nav-orders">
+    <a class="nav-orders" href="/orders" data-link>
       <small>Returns</small>
       <strong>&amp; Orders</strong>
-    </button>
+    </a>
 
-    <button class="nav-cart">
+    <a class="nav-cart" href="/cart" data-link>
       <span class="cart-ico">🛒<span class="cart-count" id="cart-count">0</span></span>
       <strong>Cart</strong>
-    </button>
+    </a>
   </div>
 
   <div class="subnav">
     <button class="subnav-all">☰ All</button>
-    <a href="#">Today's Deals</a>
-    <a href="#">Customer Service</a>
-    <a href="#">Best Sellers</a>
-    <a href="#">New Releases</a>
-    <a href="#">Electronics</a>
-    <a href="#">Books</a>
-    <a href="#">Home &amp; Kitchen</a>
-    <a href="#">Fashion</a>
-    <a class="subnav-deal" href="#">amajon Prime — Free Trial</a>
+    <a href="/" data-link>Today's Deals</a>
+    <a href="/" data-link>Customer Service</a>
+    <a href="/" data-link>Best Sellers</a>
+    <a href="/" data-link>New Releases</a>
+    <a href="/" data-link>Electronics</a>
+    <a href="/" data-link>Books</a>
+    <a href="/" data-link>Home &amp; Kitchen</a>
+    <a href="/" data-link>Fashion</a>
+    <a class="subnav-deal" href="/orders" data-link>amajon Prime — Free Trial</a>
   </div>
 </header>
 
-<main>
-  <section class="hero">
-    <div class="hero-text">
-      <p class="hero-kicker">Today's Deals</p>
-      <h1>Popular electronics<br />at every price</h1>
-      <a class="hero-cta" href="#deals">Shop now</a>
-    </div>
-  </section>
-
-  <section id="deals" class="deals">
-    <div class="deals-head">
-      <h2>Featured products</h2>
-      <span class="deals-note">Prices are loaded from a signed private API</span>
-    </div>
-    <div id="grid" class="grid">
-      <p class="loading">Loading products…</p>
-    </div>
-  </section>
-</main>
+<main id="view"></main>
 
 <button class="to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">Back to top</button>
 
 <footer class="foot">
   <div class="foot-cols">
-    <div><h4>Get to Know Us</h4><a href="#">About amajon</a><a href="#">Careers</a><a href="#">Press Releases</a></div>
-    <div><h4>Payments</h4><a href="#">amajon Card</a><a href="#">Reload Balance</a><a href="#">Currency Converter</a></div>
-    <div><h4>Let Us Help You</h4><a href="#">Track Your Order</a><a href="#">Returns</a><a href="#">Help Center</a></div>
-    <div><h4>Make Money with Us</h4><a href="#">Sell on amajon</a><a href="#">Become an Affiliate</a><a href="#">Advertise</a></div>
+    <div><h4>Get to Know Us</h4><a href="/" data-link>About amajon</a><a href="/" data-link>Careers</a><a href="/" data-link>Press Releases</a></div>
+    <div><h4>Payments</h4><a href="/" data-link>amajon Card</a><a href="/" data-link>Reload Balance</a><a href="/" data-link>Currency Converter</a></div>
+    <div><h4>Let Us Help You</h4><a href="/orders" data-link>Track Your Order</a><a href="/orders" data-link>Returns</a><a href="/" data-link>Help Center</a></div>
+    <div><h4>Make Money with Us</h4><a href="/" data-link>Sell on amajon</a><a href="/" data-link>Become an Affiliate</a><a href="/" data-link>Advertise</a></div>
   </div>
   <div class="foot-bar"><span class="logo-word">amajon</span><span class="logo-tld">.com</span> · Demo store (fictional brand, not a real company)</div>
 </footer>

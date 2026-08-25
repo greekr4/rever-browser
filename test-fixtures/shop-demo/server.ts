@@ -161,7 +161,7 @@ Bun.serve({
     }
     if (p === '/styles.css') {
       return new Response(Bun.file(`${import.meta.dir}/public/styles.css`), {
-        headers: { 'content-type': 'text/css; charset=utf-8' }
+        headers: { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store' }
       })
     }
     const img = p.match(/^\/img\/([\w-]+)\.jpg$/)
@@ -172,7 +172,7 @@ Bun.serve({
     }
     if (p === '/assets/app.js') {
       return new Response(Bun.file(`${import.meta.dir}/public/app.js`), {
-        headers: { 'content-type': 'application/javascript; charset=utf-8' }
+        headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }
       })
     }
     if (p === '/assets/app.js.map') {
@@ -277,6 +277,14 @@ Bun.serve({
       if (denied) return denied
       const o = orders.find((x) => x.id === ord[1])
       return o ? json(o) : json({ error: 'not_found', id: ord[1] }, 404)
+    }
+
+    // SPA fallback: any non-API GET route serves the app shell (client router
+    // handles /product/:id, /cart, /login, /orders).
+    if (req.method === 'GET' && !p.startsWith('/api/')) {
+      return new Response(Bun.file(`${import.meta.dir}/public/index.html`), {
+        headers: { 'content-type': 'text/html; charset=utf-8' }
+      })
     }
 
     return new Response('not found', { status: 404 })

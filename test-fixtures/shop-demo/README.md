@@ -43,6 +43,20 @@ cd test-fixtures/shop-demo && bun build src/app.ts --outdir public --sourcemap=l
 | GET | `/api/order/:id` | order detail |
 | POST | `/api/order/:id/cancel` | cancel (`409` if already cancelled) |
 
+## Pages (client-side SPA)
+
+A tiny history-API router in `src/app.ts` renders these views (the Bun server
+serves the app shell for any non-`/api` route):
+
+- `/` — home (hero + product grid)
+- `/product/:id` — product detail (breadcrumb, image, buy box)
+- `/cart` — shopping cart (delete, subtotal, checkout)
+- `/login` — Amazon-style sign-in
+- `/orders` — order history (cancel order)
+
+Every view calls the signed API, so navigating the store naturally exercises the
+whole endpoint surface for a reversing demo.
+
 ## Product images
 
 Product images are **not committed** to the repo. They are CC-licensed stock from
