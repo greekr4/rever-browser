@@ -1,5 +1,5 @@
 /**
- * "nile" — an Amazon-style storefront used as a reverse-engineering demo target.
+ * "amajon" — an Amazon-style storefront used as a reverse-engineering demo target.
  *
  * It is a FICTIONAL brand (an Amazon parody), not a real company. Everything is
  * local and every secret is printed here so a tool's answer is checkable.
@@ -11,19 +11,19 @@
  * Run:  bun test-fixtures/shop-demo/server.ts        (listens on 8780)
  *
  * Ground truth
- *   HMAC key           nile-price-signing-key-2026
- *   JWT secret         nile-hs256-secret
+ *   HMAC key           amajon-price-signing-key-2026
+ *   JWT secret         amajon-hs256-secret
  *   Signature input    `${method}\n${path}\n${body}\n${ts}`   (x-timestamp, x-signature)
  *   API base           /api
  *   Product feed       GET /api/products         (SIGNED — the demo target)
  *   Product detail     GET /api/product/:id      (SIGNED — carries the deal price)
  *   Login              POST /api/login           (issues the JWT)
- *   Deal of the day    product id 7 hides dealPrice 990 (only in detail)
+ *   Deal of the day    product id 7 hides dealPrice 99 (only in detail)
  */
 
 const PORT = 8780
-const HMAC_KEY = 'nile-price-signing-key-2026'
-const JWT_SECRET = 'nile-hs256-secret'
+const HMAC_KEY = 'amajon-price-signing-key-2026'
+const JWT_SECRET = 'amajon-hs256-secret'
 
 const enc = new TextEncoder()
 
@@ -52,7 +52,7 @@ async function makeJwt(): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
   const payload = b64url(
-    JSON.stringify({ sub: 'u_42', name: 'Demo Shopper', iss: 'nile', iat: now, exp: now + 3600 })
+    JSON.stringify({ sub: 'u_42', name: 'Demo Shopper', iss: 'amajon', iat: now, exp: now + 3600 })
   )
   const sig = b64url(await hmac(JWT_SECRET, `${header}.${payload}`))
   return `${header}.${payload}.${sig}`
@@ -97,18 +97,18 @@ interface Product {
 }
 
 const PRODUCTS: Product[] = [
-  { id: 1, title: 'Wireless Noise-Cancelling Headphones', brand: 'Sonoro', price: 189000, list: 259000, rating: 4.6, reviews: 12483, prime: true, emoji: '🎧', hue: 205 },
-  { id: 2, title: 'Mechanical Keyboard, Hot-Swap RGB', brand: 'KeyForge', price: 96000, list: 129000, rating: 4.7, reviews: 8021, prime: true, emoji: '⌨️', hue: 265 },
-  { id: 3, title: '4K Webcam with Auto-Framing', brand: 'Clario', price: 74000, list: 89000, rating: 4.3, reviews: 3390, prime: false, emoji: '📷', hue: 20 },
-  { id: 4, title: 'Ergonomic Office Chair, Mesh Back', brand: 'Restly', price: 214000, list: 310000, rating: 4.5, reviews: 5567, prime: true, emoji: '🪑', hue: 150 },
-  { id: 5, title: 'Portable SSD 2TB, USB-C', brand: 'FluxDrive', price: 168000, list: 199000, rating: 4.8, reviews: 20114, prime: true, emoji: '💾', hue: 230 },
-  { id: 6, title: 'Smart Standing Desk, 120cm', brand: 'Altura', price: 329000, list: 429000, rating: 4.4, reviews: 2211, prime: false, emoji: '🖥️', hue: 195 },
-  { id: 7, title: 'Espresso Machine, 15-Bar', brand: 'Cremia', price: 149000, list: 219000, rating: 4.6, reviews: 9902, prime: true, emoji: '☕', hue: 25, dealPrice: 990 },
-  { id: 8, title: 'Robot Vacuum with LiDAR', brand: 'Sweepr', price: 279000, list: 389000, rating: 4.5, reviews: 7180, prime: true, emoji: '🤖', hue: 285 },
-  { id: 9, title: 'Air Purifier, HEPA 13', brand: 'Puria', price: 118000, list: 159000, rating: 4.7, reviews: 6634, prime: true, emoji: '🌀', hue: 175 },
-  { id: 10, title: 'Electric Kettle, 1.7L Glass', brand: 'Boilio', price: 39000, list: 55000, rating: 4.4, reviews: 4450, prime: false, emoji: '🫖', hue: 210 },
-  { id: 11, title: 'Monitor 27" QHD 165Hz', brand: 'Vizor', price: 258000, list: 349000, rating: 4.6, reviews: 8890, prime: true, emoji: '🖥️', hue: 245 },
-  { id: 12, title: 'Bluetooth Bookshelf Speakers', brand: 'Sonoro', price: 132000, list: 179000, rating: 4.5, reviews: 3021, prime: true, emoji: '🔊', hue: 15 }
+  { id: 1, title: 'Wireless Noise-Cancelling Headphones', brand: 'Sonoro', price: 189, list: 259, rating: 4.6, reviews: 12483, prime: true, emoji: '🎧', hue: 205 },
+  { id: 2, title: 'Mechanical Keyboard, Hot-Swap RGB', brand: 'KeyForge', price: 96, list: 129, rating: 4.7, reviews: 8021, prime: true, emoji: '⌨️', hue: 265 },
+  { id: 3, title: '4K Webcam with Auto-Framing', brand: 'Clario', price: 74, list: 89, rating: 4.3, reviews: 3390, prime: false, emoji: '📷', hue: 20 },
+  { id: 4, title: 'Ergonomic Office Chair, Mesh Back', brand: 'Restly', price: 214, list: 310, rating: 4.5, reviews: 5567, prime: true, emoji: '🪑', hue: 150 },
+  { id: 5, title: 'Portable SSD 2TB, USB-C', brand: 'FluxDrive', price: 168, list: 199, rating: 4.8, reviews: 20114, prime: true, emoji: '💾', hue: 230 },
+  { id: 6, title: 'Smart Standing Desk, 120cm', brand: 'Altura', price: 329, list: 429, rating: 4.4, reviews: 2211, prime: false, emoji: '🖥️', hue: 195 },
+  { id: 7, title: 'Espresso Machine, 15-Bar', brand: 'Cremia', price: 149, list: 219, rating: 4.6, reviews: 9902, prime: true, emoji: '☕', hue: 25, dealPrice: 99 },
+  { id: 8, title: 'Robot Vacuum with LiDAR', brand: 'Sweepr', price: 279, list: 389, rating: 4.5, reviews: 7180, prime: true, emoji: '🤖', hue: 285 },
+  { id: 9, title: 'Air Purifier, HEPA 13', brand: 'Puria', price: 118, list: 159, rating: 4.7, reviews: 6634, prime: true, emoji: '🌀', hue: 175 },
+  { id: 10, title: 'Electric Kettle, 1.7L Glass', brand: 'Boilio', price: 39, list: 55, rating: 4.4, reviews: 4450, prime: false, emoji: '🫖', hue: 210 },
+  { id: 11, title: 'Monitor 27" QHD 165Hz', brand: 'Vizor', price: 258, list: 349, rating: 4.6, reviews: 8890, prime: true, emoji: '🖥️', hue: 245 },
+  { id: 12, title: 'Bluetooth Bookshelf Speakers', brand: 'Sonoro', price: 132, list: 179, rating: 4.5, reviews: 3021, prime: true, emoji: '🔊', hue: 15 }
 ]
 
 const publicView = (p: Product): Omit<Product, 'dealPrice'> => {
@@ -159,7 +159,7 @@ Bun.serve({
     if (p === '/api/products') {
       const denied = await authorize(req, url, body)
       if (denied) return denied
-      return json({ count: PRODUCTS.length, currency: 'KRW', products: PRODUCTS.map(publicView) })
+      return json({ count: PRODUCTS.length, currency: 'USD', products: PRODUCTS.map(publicView) })
     }
 
     const detail = p.match(/^\/api\/product\/(\d+)$/)
@@ -175,4 +175,4 @@ Bun.serve({
   }
 })
 
-console.log(`nile shop-demo listening on http://127.0.0.1:${PORT}`)
+console.log(`amajon shop-demo listening on http://127.0.0.1:${PORT}`)

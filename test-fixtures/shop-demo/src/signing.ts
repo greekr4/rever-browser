@@ -1,7 +1,7 @@
 // The reversing target: how the price API request is signed. A reverser must
 // recover exactly this from the shipped bundle, so it lives in its own module.
 
-export const HMAC_KEY = 'nile-price-signing-key-2026'
+export const HMAC_KEY = 'amajon-price-signing-key-2026'
 export const API_BASE = '/api'
 
 const enc = new TextEncoder()

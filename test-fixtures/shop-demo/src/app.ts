@@ -38,7 +38,7 @@ async function fetchProducts(): Promise<Product[]> {
   return data.products as Product[]
 }
 
-const won = (n: number): string => '₩' + n.toLocaleString('ko-KR')
+const usd = (n: number): string => '$' + n.toLocaleString('en-US')
 
 function stars(rating: number): string {
   const full = Math.round(rating)
@@ -56,14 +56,14 @@ function card(p: Product): string {
       <div class="brand">${p.brand}</div>
       <h3 class="title">${p.title}</h3>
       <div class="rate"><span class="stars">${stars(p.rating)}</span>
-        <span class="rev">${p.reviews.toLocaleString('ko-KR')}</span></div>
+        <span class="rev">${p.reviews.toLocaleString('en-US')}</span></div>
       <div class="pricerow">
-        <span class="price">${won(p.price)}</span>
-        <span class="list">${won(p.list)}</span>
+        <span class="price">${usd(p.price)}</span>
+        <span class="list">${usd(p.list)}</span>
         <span class="off">-${off}%</span>
       </div>
-      ${p.prime ? '<div class="prime">✔ nile Prime · 무료 익일배송</div>' : '<div class="ship">배송비 ₩3,000</div>'}
-      <button class="cart-btn">장바구니에 담기</button>
+      ${p.prime ? '<div class="prime">✔ amajon Prime · FREE next-day</div>' : '<div class="ship">$3.99 shipping</div>'}
+      <button class="cart-btn">Add to Cart</button>
     </article>`
 }
 
@@ -74,7 +74,7 @@ async function render(): Promise<void> {
     const products = await fetchProducts()
     grid.innerHTML = products.map(card).join('')
   } catch (e) {
-    grid.innerHTML = `<p class="err">상품을 불러오지 못했습니다: ${String(e)}</p>`
+    grid.innerHTML = `<p class="err">Failed to load products: ${String(e)}</p>`
   }
 }
 

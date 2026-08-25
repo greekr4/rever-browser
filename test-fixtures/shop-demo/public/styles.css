@@ -37,7 +37,7 @@ a:hover { text-decoration: underline; color: var(--price-red); }
 .logo { display: flex; align-items: flex-end; padding: 8px 8px 12px; position: relative; }
 .logo-word { font-size: 26px; font-weight: 700; letter-spacing: -1px; line-height: .8; color: #fff; }
 .logo-tld { font-size: 13px; color: #ff9900; align-self: flex-start; margin-top: 4px; }
-.logo-smile { position: absolute; bottom: 2px; left: 6px; width: 74px; height: 14px; }
+.logo-smile { position: absolute; bottom: 2px; left: 6px; width: 100px; height: 14px; }
 
 .deliver { text-align: left; }
 .deliver-pin { font-size: 15px; margin-right: 2px; }
@@ -87,7 +87,7 @@ main { max-width: 1500px; margin: 0 auto; padding: 0 12px 40px; }
   margin-top: 12px; border-radius: 8px; overflow: hidden;
   background: linear-gradient(120deg, #7e5bef 0%, #b06ab3 55%, #febd69 130%);
   color: #fff; display: flex; align-items: center; justify-content: space-between;
-  padding: 34px 48px 90px; min-height: 240px;
+  padding: 34px 48px; min-height: 240px;
 }
 .hero-kicker { text-transform: uppercase; letter-spacing: 2px; font-size: 13px; opacity: .9; margin: 0 0 8px; }
 .hero h1 { font-size: 44px; line-height: 1.1; margin: 0 0 20px; text-shadow: 0 2px 8px rgba(0,0,0,.2); }
@@ -97,18 +97,6 @@ main { max-width: 1500px; margin: 0 auto; padding: 0 12px 40px; }
 }
 .hero-cta:hover { background: #f3f3f3; text-decoration: none; }
 .hero-art { font-size: 64px; letter-spacing: 6px; opacity: .95; filter: drop-shadow(0 6px 10px rgba(0,0,0,.25)); }
-
-/* ── rail of category cards ──────────────────────────── */
-.rail {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
-  margin-top: -60px; position: relative; z-index: 2;
-}
-.rail-card { background: #fff; border-radius: 6px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
-.rail-card h2 { font-size: 19px; margin: 0 0 10px; }
-.rail-emoji {
-  font-size: 60px; text-align: center; background: #f6f7f8; border-radius: 6px;
-  padding: 18px 0; margin-bottom: 10px;
-}
 
 /* ── product grid ────────────────────────────────────── */
 .deals { background: #fff; border-radius: 6px; padding: 20px; margin-top: 22px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
@@ -174,12 +162,11 @@ main { max-width: 1500px; margin: 0 auto; padding: 0 12px 40px; }
 
 /* ── responsive ──────────────────────────────────────── */
 @media (max-width: 1100px) {
-  .rail, .grid { grid-template-columns: repeat(2, 1fr); }
+  .grid { grid-template-columns: repeat(2, 1fr); }
   .hero h1 { font-size: 32px; }
 }
 @media (max-width: 640px) {
   .nav-lang, .nav-orders, .deliver { display: none; }
-  .rail, .grid, .foot-cols { grid-template-columns: 1fr; }
-  .rail { margin-top: 16px; }
+  .grid, .foot-cols { grid-template-columns: 1fr; }
   .hero-art { display: none; }
 }

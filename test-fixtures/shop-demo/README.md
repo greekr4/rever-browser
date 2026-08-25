@@ -23,13 +23,13 @@ cd test-fixtures/shop-demo && bun build src/app.ts --outdir public --sourcemap=l
 
 | | |
 |---|---|
-| HMAC key | `nile-price-signing-key-2026` |
-| JWT secret | `nile-hs256-secret` |
+| HMAC key | `amajon-price-signing-key-2026` |
+| JWT secret | `amajon-hs256-secret` |
 | Signature input | `` `${method}\n${path}\n${body}\n${ts}` `` → headers `x-timestamp`, `x-signature` |
 | Product feed (signed) | `GET /api/products` |
 | Product detail (signed) | `GET /api/product/:id` — carries the hidden `dealPrice` |
 | Login | `POST /api/login` → JWT |
-| Deal of the day | product `7` hides `dealPrice: 990` (only in detail) |
+| Deal of the day | product `7` hides `dealPrice: 99` (only in detail) |
 
 ## Product images
 

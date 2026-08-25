@@ -1,104 +1,97 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>nile.com — 온라인 쇼핑</title>
+<title>amajon.com — Online Shopping</title>
 <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-<!-- Top navigation (Amazon-style trade dress, fictional "nile" brand) -->
+<!-- Top navigation (Amazon-style trade dress, fictional "amajon" brand) -->
 <header class="nav">
   <div class="nav-row">
     <a class="logo" href="/">
-      <span class="logo-word">nile</span><span class="logo-tld">.com</span>
-      <svg class="logo-smile" viewBox="0 0 90 22" aria-hidden="true">
-        <path d="M4 8 C 24 24, 66 24, 86 8" fill="none" stroke="#f90" stroke-width="3.5" stroke-linecap="round"/>
-        <path d="M86 8 l -7 -1 l 3 6 z" fill="#f90"/>
+      <span class="logo-word">amajon</span><span class="logo-tld">.com</span>
+      <svg class="logo-smile" viewBox="0 0 110 22" aria-hidden="true">
+        <path d="M4 8 C 30 24, 84 24, 106 8" fill="none" stroke="#f90" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M106 8 l -7 -1 l 3 6 z" fill="#f90"/>
       </svg>
     </a>
 
     <button class="deliver">
       <span class="deliver-pin">📍</span>
-      <span class="deliver-lines"><small>배송지</small><strong>대한민국</strong></span>
+      <span class="deliver-lines"><small>Deliver to</small><strong>United States</strong></span>
     </button>
 
     <form class="search" onsubmit="return false">
-      <select class="search-cat" aria-label="카테고리"><option>모두</option></select>
-      <input class="search-input" placeholder="nile 검색" aria-label="검색" />
-      <button class="search-go" aria-label="검색">🔍</button>
+      <select class="search-cat" aria-label="Category"><option>All</option></select>
+      <input class="search-input" placeholder="Search amajon" aria-label="Search" />
+      <button class="search-go" aria-label="Search">🔍</button>
     </form>
 
-    <div class="nav-lang"><span class="flag">🇰🇷</span> KO ▾</div>
+    <div class="nav-lang"><span class="flag">🇺🇸</span> EN ▾</div>
 
     <button class="nav-acct">
-      <small>안녕하세요, 로그인</small>
-      <strong>계정 및 목록 ▾</strong>
+      <small>Hello, sign in</small>
+      <strong>Account &amp; Lists ▾</strong>
     </button>
 
     <button class="nav-orders">
-      <small>반품</small>
-      <strong>& 주문</strong>
+      <small>Returns</small>
+      <strong>&amp; Orders</strong>
     </button>
 
     <button class="nav-cart">
       <span class="cart-ico">🛒<span class="cart-count" id="cart-count">0</span></span>
-      <strong>장바구니</strong>
+      <strong>Cart</strong>
     </button>
   </div>
 
   <div class="subnav">
-    <button class="subnav-all">☰ 전체</button>
-    <a href="#">오늘의 딜</a>
-    <a href="#">고객센터</a>
-    <a href="#">베스트셀러</a>
-    <a href="#">신상품</a>
-    <a href="#">전자기기</a>
-    <a href="#">도서</a>
-    <a href="#">홈/주방</a>
-    <a href="#">패션</a>
-    <a class="subnav-deal" href="#">nile Prime 무료체험</a>
+    <button class="subnav-all">☰ All</button>
+    <a href="#">Today's Deals</a>
+    <a href="#">Customer Service</a>
+    <a href="#">Best Sellers</a>
+    <a href="#">New Releases</a>
+    <a href="#">Electronics</a>
+    <a href="#">Books</a>
+    <a href="#">Home &amp; Kitchen</a>
+    <a href="#">Fashion</a>
+    <a class="subnav-deal" href="#">amajon Prime — Free Trial</a>
   </div>
 </header>
 
 <main>
   <section class="hero">
     <div class="hero-text">
-      <p class="hero-kicker">오늘의 특가</p>
-      <h1>다양한 가격대의<br />인기 전자기기</h1>
-      <a class="hero-cta" href="#deals">지금 쇼핑하기</a>
+      <p class="hero-kicker">Today's Deals</p>
+      <h1>Popular electronics<br />at every price</h1>
+      <a class="hero-cta" href="#deals">Shop now</a>
     </div>
     <div class="hero-art">🎧⌨️🖥️🔊💾📷</div>
   </section>
 
-  <section class="rail">
-    <div class="rail-card"><h2>오늘의 딜</h2><div class="rail-emoji">☕</div><a href="#deals">에스프레소 특가</a></div>
-    <div class="rail-card"><h2>베스트셀러</h2><div class="rail-emoji">💾</div><a href="#deals">저장장치</a></div>
-    <div class="rail-card"><h2>업무용 필수템</h2><div class="rail-emoji">🪑</div><a href="#deals">오피스</a></div>
-    <div class="rail-card"><h2>내 게임 시작</h2><div class="rail-emoji">🎮</div><a href="#deals">게이밍</a></div>
-  </section>
-
   <section id="deals" class="deals">
     <div class="deals-head">
-      <h2>오늘의 추천 상품</h2>
-      <span class="deals-note">가격은 서명된 비공개 API로 로드됩니다</span>
+      <h2>Featured products</h2>
+      <span class="deals-note">Prices are loaded from a signed private API</span>
     </div>
     <div id="grid" class="grid">
-      <p class="loading">상품을 불러오는 중…</p>
+      <p class="loading">Loading products…</p>
     </div>
   </section>
 </main>
 
-<button class="to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">맨 위로</button>
+<button class="to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">Back to top</button>
 
 <footer class="foot">
   <div class="foot-cols">
-    <div><h4>nile 소개</h4><a href="#">회사 소개</a><a href="#">채용</a><a href="#">보도자료</a></div>
-    <div><h4>결제</h4><a href="#">nile 카드</a><a href="#">잔액 충전</a><a href="#">전환율</a></div>
-    <div><h4>고객 지원</h4><a href="#">배송 조회</a><a href="#">반품</a><a href="#">고객센터</a></div>
-    <div><h4>함께하기</h4><a href="#">셀러 등록</a><a href="#">제휴</a><a href="#">광고</a></div>
+    <div><h4>Get to Know Us</h4><a href="#">About amajon</a><a href="#">Careers</a><a href="#">Press Releases</a></div>
+    <div><h4>Payments</h4><a href="#">amajon Card</a><a href="#">Reload Balance</a><a href="#">Currency Converter</a></div>
+    <div><h4>Let Us Help You</h4><a href="#">Track Your Order</a><a href="#">Returns</a><a href="#">Help Center</a></div>
+    <div><h4>Make Money with Us</h4><a href="#">Sell on amajon</a><a href="#">Become an Affiliate</a><a href="#">Advertise</a></div>
   </div>
-  <div class="foot-bar"><span class="logo-word">nile</span><span class="logo-tld">.com</span> · 데모용 가상 스토어 (실제 브랜드 아님)</div>
+  <div class="foot-bar"><span class="logo-word">amajon</span><span class="logo-tld">.com</span> · Demo store (fictional brand, not a real company)</div>
 </footer>
 
 <script type="module" src="/assets/app.js"></script>
