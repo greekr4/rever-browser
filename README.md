@@ -40,6 +40,7 @@
 - **ACP or terminal mode** — Switch the agent pane between the structured ACP chat and a real terminal running the local Claude Code CLI, with rever's MCP server wired in automatically so the CLI agent gets the same browser/traffic tools.
 - **Browser automation** — Accessibility snapshots with stable element refs, plus click, hover, type, scroll, drag, canvas draw, clipboard paste, file upload, key press, tab and viewport control, and screenshots of the live tab.
 - **Bundle & script analysis** — Grep, extract, detect the bundler for, and deobfuscate the JavaScript already captured in the traffic store (no re-download) with a `webcrack`-backed deobfuscator; recover original TypeScript/JS via embedded source maps; and classify anti-bot "VM" bundles (Akamai / risk-control / captcha style) that flag when static deobfuscation is a dead end.
+- **WASM analysis** — Disassemble captured `.wasm` modules to readable text — WAT (an always-available in-process baseline), a C-like view, or full C source (`wasm2c`) — summarize their exports and symbol names, scan the body for embedded strings/keys, and cross-reference each export back to the JS that calls it. Closes the blind spot where request signing is compiled into WebAssembly and the Web Crypto hook sees nothing. Reads the `.wasm` bytes already in the traffic store (no re-download), and a capture fix keeps cache- / service-worker-delivered modules intact.
 
 **A deep API-reversing tool surface — 129 MCP tools across 37 domains**, all driven by the agent (or from a shell). Highlights:
 

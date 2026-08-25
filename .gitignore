@@ -17,6 +17,9 @@ release/
 # Private docs — kept in a separate private repo, symlinked back to root.
 # See .private-docs/ for the actual files.
 .private-docs/
+
+# Local design/dev docs — not tracked in the public repo.
+/docs/
 /CLAUDE.md
 /PLAN.md
 /HANDOFF.md
@@ -31,3 +34,4 @@ release/
 /browser-use-deep-dive.html
 /browser-use-import-progress.html
 __pycache__/
+/workthrough
