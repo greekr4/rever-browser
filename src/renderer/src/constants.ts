@@ -89,6 +89,7 @@ export interface CatalogModel {
 
 export const MODEL_CATALOG: CatalogModel[] = [
   // Claude Code (existing subscription) — reconciled against the live ACP list.
+  { agentId: 'claude-code', modelId: 'claude-fable-5', name: 'Claude Fable 5' },
   { agentId: 'claude-code', modelId: 'claude-opus-5', name: 'Claude Opus 5' },
   { agentId: 'claude-code', modelId: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
   { agentId: 'claude-code', modelId: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
