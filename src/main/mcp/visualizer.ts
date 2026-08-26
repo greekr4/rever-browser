@@ -75,6 +75,10 @@ export const VISUALIZER_INIT_SCRIPT = `
       white-space: nowrap;
       letter-spacing: 0.2px;
     }
+    /* Near the top of the viewport the default above-the-box label would clip
+       off the webview's top edge (looks hidden behind the app's toolbar/
+       bookmark bar), so flip it below the box instead. */
+    .label.below { top: 100%; margin-top: 4px; }
     .box.click  .label { background: #ff3b30; }
     .box.hover  .label { background: #ffd60a; color: #111; }
     .box.type   .label { background: #0a84ff; }
@@ -201,7 +205,9 @@ export const VISUALIZER_INIT_SCRIPT = `
     box.style.height = Math.max(rect.h, 8) + 'px'
     if (label) {
       const l = document.createElement('div')
-      l.className = 'label'
+      // Flip the label below the box when the target sits near the top edge,
+      // otherwise the above-the-box label clips off the top of the webview.
+      l.className = rect.y < 24 ? 'label below' : 'label'
       l.textContent = label
       box.appendChild(l)
     }
