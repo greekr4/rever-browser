@@ -116,18 +116,29 @@ const publicView = (p: Product): Omit<Product, 'dealPrice'> => {
   return rest
 }
 
-// ── in-memory cart + orders (single demo user) ───────────────────────
+// ── in-memory cart + orders ──────────────────────────────────────────
+// NOTE: this is a DELIBERATELY VULNERABLE demo target. The seeded holes below
+// (IDOR on orders, unauthenticated admin report, excessive field exposure, and
+// the client-shipped signing key) are intentional — they are what a security
+// self-audit is meant to surface. See README "Seeded vulnerabilities".
 interface CartLine { id: number; title: string; price: number; qty: number }
 interface Order {
   id: string
+  email: string // customer PII — exposed by the IDOR below
   items: CartLine[]
   total: number
   status: 'placed' | 'cancelled'
   createdAt: string
 }
 const cart = new Map<number, number>() // productId -> qty
-const orders: Order[] = []
-let orderSeq = 1000
+const DEMO_EMAIL = 'demo@amajon.com'
+// Pre-existing orders from OTHER customers. Order ids are sequential/guessable
+// and /api/order/:id performs no ownership check -> IDOR leaks their PII.
+const orders: Order[] = [
+  { id: 'ord_1000', email: 'j.harper@gmail.com', items: [{ id: 5, title: 'Portable SSD 2TB, USB-C', price: 168, qty: 1 }], total: 168, status: 'placed', createdAt: '2026-08-24T10:12:00.000Z' },
+  { id: 'ord_1001', email: 'm.tan@outlook.com', items: [{ id: 11, title: 'Monitor 27" QHD 165Hz', price: 258, qty: 1 }], total: 258, status: 'placed', createdAt: '2026-08-24T15:41:00.000Z' }
+]
+let orderSeq = 1002
 
 function cartLines(): CartLine[] {
   const lines: CartLine[] = []
@@ -199,7 +210,10 @@ Bun.serve({
       if (denied) return denied
       const prod = PRODUCTS.find((x) => x.id === Number(detail[1]))
       if (!prod) return json({ error: 'not_found' }, 404)
-      return json(prod) // detail carries dealPrice (the hidden ground truth)
+      // VULN (excessive data exposure): the detail response leaks internal-only
+      // fields the storefront never renders — dealPrice, unit cost, and margin.
+      const cost = Math.round(prod.price * 0.55)
+      return json({ ...prod, cost, margin: prod.price - cost })
     }
 
     // Add to cart
@@ -241,6 +255,7 @@ Bun.serve({
       if (items.length === 0) return json({ error: 'empty_cart' }, 400)
       const order: Order = {
         id: `ord_${orderSeq++}`,
+        email: DEMO_EMAIL,
         items,
         total: cartTotal(items),
         status: 'placed',
@@ -271,12 +286,31 @@ Bun.serve({
     }
 
     // Order detail
+    // VULN (IDOR / BOLA): the token is verified but the order is NOT checked
+    // against the caller — any authenticated caller can read ANY order by its
+    // sequential, guessable id, leaking the customer's email (PII).
     const ord = p.match(/^\/api\/order\/(ord_\d+)$/)
     if (ord && req.method === 'GET') {
       const denied = await authorize(req, url, body)
       if (denied) return denied
       const o = orders.find((x) => x.id === ord[1])
       return o ? json(o) : json({ error: 'not_found', id: ord[1] }, 404)
+    }
+
+    // VULN (broken function-level authorization): an internal admin report with
+    // NO role check. Nothing in the UI links to it, but any valid signature —
+    // forgeable with the client-shipped key — returns every order and the
+    // business's revenue. Classic "hidden = secure" fallacy.
+    if (p === '/api/admin/report' && req.method === 'GET') {
+      const denied = await authorize(req, url, body)
+      if (denied) return denied
+      const revenue = orders.filter((o) => o.status === 'placed').reduce((s, o) => s + o.total, 0)
+      return json({
+        revenue,
+        orderCount: orders.length,
+        customers: [...new Set(orders.map((o) => o.email))],
+        orders
+      })
     }
 
     // SPA fallback: any non-API GET route serves the app shell (client router

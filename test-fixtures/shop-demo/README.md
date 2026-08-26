@@ -1,8 +1,8 @@
-# shop-demo — "nile" storefront (reverse-engineering demo target)
+# shop-demo — "amajon" storefront (security self-audit demo target)
 
 An **Amazon-style** storefront used as a relatable demo target for rever-browser.
-`nile` is a **fictional brand** (an Amazon parody), not a real company — safe to
-show in a public demo.
+`amajon` is a **fictional brand** (an Amazon parody), not a real company — safe to
+show in a public demo. It is **deliberately vulnerable** (see below).
 
 **Why it exists:** a shopper's product/price feed is loaded through a *private,
 HMAC-signed* API — no public API, requests are signed client-side. The demo goal
@@ -42,6 +42,25 @@ cd test-fixtures/shop-demo && bun build src/app.ts --outdir public --sourcemap=l
 | GET | `/api/orders` | list orders |
 | GET | `/api/order/:id` | order detail |
 | POST | `/api/order/:id/cancel` | cancel (`409` if already cancelled) |
+
+## Seeded vulnerabilities (intentional — the audit ground truth)
+
+This is a **deliberately vulnerable** target for a security self-audit demo. Every
+hole below is planted on purpose and documented so a tool's finding is checkable,
+not guessed. None of this is how a real store should be built.
+
+| # | Vulnerability | Class (OWASP) | How to demonstrate |
+|---|---|---|---|
+| V1 | **Signing key shipped in the client** — `amajon-price-signing-key-2026` is in the JS bundle (`src/signing.ts` → `app.js`), so the HMAC "signature" gate is theater: anyone can forge valid requests. | Cryptographic failure / hardcoded secret | White-box: grep the bundle / `crypto_trace`. Black-box: forge a signed request → `200`. |
+| V2 | **IDOR on orders** — `GET /api/order/:id` verifies the token but never checks ownership; ids are sequential (`ord_1000`, `ord_1001`, …). | Broken object-level auth (BOLA) | Request `ord_1000` / `ord_1001` → other customers' orders + emails (PII). |
+| V3 | **Unauthenticated admin report** — `GET /api/admin/report` has no role check and is linked from nowhere. | Broken function-level auth | Guess the path → revenue, all orders, customer emails. |
+| V4 | **Excessive data exposure** — `GET /api/product/:id` leaks internal `dealPrice`, `cost`, `margin` the UI never shows. | Excessive data exposure | Compare the detail JSON to what the page renders. |
+| V5 | **Unscoped order list** — `GET /api/orders` returns *every* customer's orders, not just the caller's. | Broken object-level auth | The Orders page shows other people's orders. |
+| V6 | **Bearer token never validated** — `authorize()` only checks the header starts with `Bearer `; the JWT signature and `exp` are never verified, and `x-timestamp` is folded into the signature but never checked for freshness (no replay window). | Identification & auth failures | Any string as the Bearer token + a valid HMAC sig → `200`; old signatures never expire. |
+
+Ground truth for V1 signing is the same key/scheme listed above; V2/V3/V5 leak the
+seeded emails `j.harper@gmail.com` and `m.tan@outlook.com`. V6: a bogus token such
+as `Bearer not-a-jwt` with a valid signature still returns `200`.
 
 ## Pages (client-side SPA)
 
