@@ -207,6 +207,16 @@ Bun.serve({
         headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }
       })
     }
+    // Obfuscated client-integrity guard (deobfuscate_script reversing target).
+    if (p === '/guard.js') {
+      return new Response(Bun.file(`${import.meta.dir}/public/guard.js`), {
+        headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }
+      })
+    }
+    // Hidden telemetry sink the guard beacons to (recovered by deobfuscation).
+    if (p === '/api/_telemetry/collect') {
+      return new Response(null, { status: 204, headers: { 'access-control-allow-origin': '*' } })
+    }
 
     // --- API ------------------------------------------------------------
     if (p === '/api/login' && req.method === 'POST') {
