@@ -191,6 +191,22 @@ Bun.serve({
         headers: { 'content-type': 'application/json' }
       })
     }
+    // WASM-signed checkout demo (reversing target for wasm_decompile / wasm_xref)
+    if (p === '/secure' || p === '/secure.html') {
+      return new Response(Bun.file(`${import.meta.dir}/public/secure.html`), {
+        headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }
+      })
+    }
+    if (p === '/checkout.wasm') {
+      return new Response(Bun.file(`${import.meta.dir}/public/checkout.wasm`), {
+        headers: { 'content-type': 'application/wasm', 'cache-control': 'no-store' }
+      })
+    }
+    if (p === '/checkout-wasm.js') {
+      return new Response(Bun.file(`${import.meta.dir}/public/checkout-wasm.js`), {
+        headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' }
+      })
+    }
 
     // --- API ------------------------------------------------------------
     if (p === '/api/login' && req.method === 'POST') {

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>reverzon — Secure checkout</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23131921'/><text x='16' y='22' font-size='18' text-anchor='middle' fill='%23febd69' font-family='Arial'>r</text></svg>">
+<style>
+  :root{
+    --navy:#131921; --navy2:#232f3e; --orange:#febd69; --orange-hi:#f3a847;
+    --link:#007185; --ink:#0f1111; --bg:#eaeded; --ok:#067d62; --line:#d5d9d9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Amazon Ember","Helvetica Neue",Arial,sans-serif}
+  .nav{background:var(--navy);color:#fff;display:flex;align-items:center;
+    gap:14px;padding:8px 18px}
+  .logo{font-size:22px;font-weight:800;letter-spacing:-.5px}
+  .logo b{color:var(--orange)}
+  .lock{margin-left:auto;font-size:13px;color:#cfe3dc;display:flex;align-items:center;gap:6px}
+  .wrap{max-width:840px;margin:26px auto;padding:0 18px;display:grid;
+    grid-template-columns:1fr 320px;gap:22px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:20px}
+  h1{font-size:22px;margin:0 0 4px}
+  .muted{color:#565959;font-size:13px}
+  .row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #eee;font-size:14px}
+  .row:last-child{border:0}
+  .grand{font-size:18px;font-weight:800}
+  .grand .amt{color:var(--price-red,#cc0c39)}
+  .tokenbox{margin-top:16px;background:#0b1020;border:1px solid #22304a;border-radius:8px;
+    padding:14px 16px;font-family:ui-monospace,Menlo,monospace}
+  .tokenbox .k{color:#7bdcff;font-size:11px;letter-spacing:.5px;text-transform:uppercase}
+  .tokenbox .v{color:#ffe08a;font-size:20px;font-weight:700;margin-top:4px;word-break:break-all}
+  .tokenbox .sub{color:#8aa0c0;font-size:11px;margin-top:8px;line-height:1.5}
+  .badge{display:inline-flex;align-items:center;gap:6px;background:#e7f5f1;color:var(--ok);
+    border:1px solid #a7d8cb;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;margin-top:6px}
+  .place{width:100%;margin-top:14px;background:var(--orange);border:1px solid #a88734;
+    border-radius:8px;padding:11px;font-size:15px;font-weight:600;cursor:pointer}
+  .place:hover{background:var(--orange-hi)}
+  .side .card{position:sticky;top:20px}
+  .hint{margin-top:10px;font-size:12px;color:#565959;line-height:1.5}
+  code{background:#f0f2f2;border:1px solid #dfe3e3;border-radius:4px;padding:1px 5px;font-size:12px}
+  @media(max-width:760px){.wrap{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+  <div class="nav">
+    <span class="logo">rever<b>zon</b></span>
+    <span class="lock">🔒 Secure checkout</span>
+  </div>
+
+  <div class="wrap">
+    <div class="main">
+      <div class="card">
+        <h1>Review your order</h1>
+        <div class="muted">Shipping to Demo Shopper · Arriving tomorrow</div>
+
+        <div style="margin-top:16px">
+          <div class="row"><span>Monitor 27" QHD 165Hz</span><span>$258.00</span></div>
+          <div class="row"><span>Mechanical Keyboard, Hot-Swap RGB</span><span>$96.00</span></div>
+          <div class="row"><span>Shipping</span><span>FREE</span></div>
+          <div class="row grand"><span>Order total</span><span class="amt" id="total-label">$354.00</span></div>
+        </div>
+
+        <div class="tokenbox">
+          <div class="k">payment integrity token</div>
+          <div class="v" id="token">computing…</div>
+          <div class="badge">✓ computed in WebAssembly (client-side)</div>
+          <div class="sub" id="explain">
+            The browser signs this order with an integrity token before sending it.
+            The signing routine ships as <code>/checkout.wasm</code> — no source, no JS.
+          </div>
+        </div>
+
+        <button class="place" id="place">Place your order</button>
+        <div class="hint">
+          Reverser's task: the <code>x-order-token</code> below is computed by a
+          WebAssembly module. Recover the algorithm from the shipped
+          <code>checkout.wasm</code> — that is what <code>wasm_decompile</code> /
+          <code>wasm_info</code> / <code>wasm_xref</code> do.
+        </div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <div class="grand">Order total: <span id="total-side">$354.00</span></div>
+        <button class="place" id="place2">Place your order</button>
+        <div class="hint">By placing your order you agree to reverzon's (demo) Conditions of Use.</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { loadSigner } from '/checkout-wasm.js'
+    const TOTAL_CENTS = 35400          // $354.00
+    const NONCE = 20260826
+    ;(async () => {
+      try {
+        const sign = await loadSigner()
+        const tok = sign(TOTAL_CENTS, NONCE)
+        const hex = 'rz_' + tok.toString(16).padStart(6, '0')
+        document.getElementById('token').textContent = hex
+        window.__orderToken = hex        // so a tool/agent can read the result
+      } catch (e) {
+        document.getElementById('token').textContent = 'error: ' + e.message
+      }
+    })()
+    for (const id of ['place','place2']) {
+      document.getElementById(id).addEventListener('click', () => {
+        alert('Order placed (demo). x-order-token = ' + (window.__orderToken || '—'))
+      })
+    }
+  </script>
+</body>
+</html>
