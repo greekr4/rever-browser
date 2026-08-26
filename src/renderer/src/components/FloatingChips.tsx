@@ -93,17 +93,21 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
     const handler = (e: MouseEvent) => {
       const target = e.target as Element | null
       if (!target) return
-      if (panelRef.current?.contains(target)) return
+      // Resolve the panel from the live DOM, not panelRef: AnimatePresence
+      // keys the panel on openPanel, so a traffic→repeater switch mounts a new
+      // node and later nulls the shared ref when the old one finishes its exit
+      // animation — leaving panelRef stale. querySelector always finds the
+      // current panel.
+      if (target.closest?.('.chip-panel-bottom')) return
       if (chipStackRef.current?.contains(target)) return
       if (target.closest?.('.detail-drawer')) return
       if (target.closest?.('.agent-panel')) return
-      // The <webview> is a native compositing layer that can steal the
-      // mousedown target even where the panel visually covers it — so a click
-      // on an "empty" spot inside the panel would otherwise report the webview
-      // as the target and close the panel. Fall back to a geometric hit-test:
-      // if the pointer is within the open panel's (or chip bar's) rect, it's
-      // an inside click regardless of what element the event resolved to.
-      if (pointInRect(e, panelRef.current) || pointInRect(e, chipStackRef.current)) return
+      // Geometric fallback: the <webview> native layer can steal the mousedown
+      // target on "empty" spots the panel visually covers, so also treat a
+      // click within any live panel's (or the chip bar's) rect as inside.
+      const panels = document.querySelectorAll<HTMLElement>('.chip-panel-bottom')
+      for (const p of panels) if (pointInRect(e, p)) return
+      if (pointInRect(e, chipStackRef.current)) return
       setOpenPanel(null)
     }
     document.addEventListener('mousedown', handler)
