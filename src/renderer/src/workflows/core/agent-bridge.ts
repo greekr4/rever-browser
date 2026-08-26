@@ -9,6 +9,8 @@ import { newWorkflowId, type Workflow } from './types'
 interface AgentStep {
   tool: string
   input?: Record<string, unknown>
+  waitFor?: string
+  delay?: number
 }
 
 function stepId(): string {
@@ -19,7 +21,9 @@ function toMacroSteps(steps: AgentStep[]): MacroStep[] {
   return steps.map((s) => ({
     id: stepId(),
     tool: s.tool,
-    input: JSON.stringify(s.input ?? {}, null, 2)
+    input: JSON.stringify(s.input ?? {}, null, 2),
+    ...(s.waitFor ? { waitFor: s.waitFor } : {}),
+    ...(s.delay != null ? { delay: s.delay } : {})
   }))
 }
 
@@ -32,7 +36,12 @@ function toAgentSteps(steps: MacroStep[]): AgentStep[] {
       // Keep the raw text visible to the agent so it can fix a broken step.
       return { tool: s.tool, input: { __unparsed: s.input } }
     }
-    return { tool: s.tool, input }
+    return {
+      tool: s.tool,
+      input,
+      ...(s.waitFor ? { waitFor: s.waitFor } : {}),
+      ...(s.delay != null ? { delay: s.delay } : {})
+    }
   })
 }
 

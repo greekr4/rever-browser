@@ -12,7 +12,11 @@ const stepSchema = z.object({
   input: z
     .record(z.string(), z.unknown())
     .optional()
-    .describe('Tool arguments. String values may contain {{var}} placeholders.')
+    .describe('Tool arguments. String values may contain {{var}} placeholders.'),
+  waitFor: z.string().optional().describe('CSS selector to wait for before this step runs'),
+  delay: z.number().optional().describe('Extra pause (ms) before this step runs — useful for pacing a demo'),
+  waitTimeout: z.number().optional().describe('Max ms to wait for waitFor'),
+  saveAs: z.string().optional().describe('Store this step result in the run vars under this name')
 })
 
 /** Reject unknown tool names up front — a bad name only fails at replay time. */
