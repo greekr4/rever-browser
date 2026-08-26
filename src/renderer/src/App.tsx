@@ -39,7 +39,7 @@ type PanelId = 'traffic' | 'apimap' | 'console' | 'exceptions' | 'websocket' | '
 const IS_MAC = typeof navigator !== 'undefined' && navigator.userAgent.includes('Macintosh')
 
 // AI activity floating panel (AiActionOverlay) — off for now, code kept intact.
-const SHOW_AI_ACTIVITY_OVERLAY = false
+const SHOW_AI_ACTIVITY_OVERLAY = true
 
 function App() {
   useCdpEvents()

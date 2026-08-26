@@ -11,7 +11,8 @@ const KIND_COLOR: Record<AiAction['kind'], string> = {
   snapshot: '#8e8e93',
   screenshot: '#8e8e93',
   evaluate: '#ff9f0a',
-  extract: '#2dd4bf'
+  extract: '#2dd4bf',
+  analyze: '#00d4ff'
 }
 
 const KIND_TAG: Record<AiAction['kind'], string> = {
@@ -23,13 +24,14 @@ const KIND_TAG: Record<AiAction['kind'], string> = {
   snapshot: 'SNAP',
   screenshot: 'SHOT',
   evaluate: 'EVAL',
-  extract: 'EXTRACT'
+  extract: 'EXTRACT',
+  analyze: 'ANALYZE'
 }
 
 const MAX_LOG = 5
 const TOAST_TTL = 1800
 const POS_KEY = 'rev:ai-overlay-pos'
-const HIDDEN_KEY = 'rev:ai-overlay-hidden'
+const HIDDEN_KEY = 'rev:ai-overlay-hidden-v2'
 const DEFAULT_POS = { x: 12, y: 12 }
 
 interface ToastedAction extends AiAction {
@@ -51,10 +53,13 @@ function loadPos(): { x: number; y: number } {
 }
 
 function loadHidden(): boolean {
+  // Hidden by default — the panel stays out of the way until the user opens it
+  // (kept, not removed: the small "◷ AI" chip re-shows it).
   try {
-    return localStorage.getItem(HIDDEN_KEY) === '1'
+    const v = localStorage.getItem(HIDDEN_KEY)
+    return v === null ? true : v === '1'
   } catch {
-    return false
+    return true
   }
 }
 
@@ -166,10 +171,10 @@ export function AiActionOverlay() {
         <button
           onClick={() => setHidden(false)}
           style={{
-            position: 'absolute',
+            position: 'fixed',
             left: pos.x,
             top: pos.y,
-            zIndex: 999,
+            zIndex: 2147483000,
             background: 'var(--glass-panel)',
             color: 'var(--text-dim)',
             border: '1px solid var(--border-2)',
@@ -190,10 +195,10 @@ export function AiActionOverlay() {
       {!hidden && recent.length > 0 && (
         <div
           style={{
-            position: 'absolute',
+            position: 'fixed',
             left: pos.x,
             top: pos.y,
-            zIndex: 999,
+            zIndex: 2147483000,
             display: 'flex',
             flexDirection: 'column',
             maxWidth: 360,
@@ -294,11 +299,11 @@ export function AiActionOverlay() {
 }
 
 const toastStyle: React.CSSProperties = {
-  position: 'absolute',
+  position: 'fixed',
   top: 8,
   left: '50%',
   transform: 'translateX(-50%)',
-  zIndex: 1000,
+  zIndex: 2147483000,
   display: 'flex',
   alignItems: 'center',
   gap: 8,

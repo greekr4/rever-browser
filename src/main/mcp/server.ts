@@ -48,9 +48,48 @@ import { registerAntibotTools } from './tools/antibot'
 import { registerGraphqlTools } from './tools/graphql'
 import { registerProtobufTools } from './tools/protobuf'
 import { registerWasmTools } from './tools/wasm'
+import { emitAiAction } from '../ai-events'
+
+function summarizeToolArgs(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const parts: string[] = []
+  for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    if (v == null || typeof v === 'object') continue
+    parts.push(`${k}: ${String(v).slice(0, 40)}`)
+    if (parts.length >= 2) break
+  }
+  return parts.join(' · ') || undefined
+}
+
+/**
+ * Wrap registerTool so EVERY non-browser tool call emits a lightweight activity
+ * event. Browser tools already emit their own visual actions (cursor/box); the
+ * static-analysis tools (scripts, crypto, wasm, probes, …) otherwise run
+ * invisibly, which makes the UI look frozen. This surfaces them in the AI
+ * activity overlay so the user always sees what the agent is doing.
+ */
+function withActivity(mcp: McpServer): void {
+  const orig = mcp.registerTool.bind(mcp) as (...a: unknown[]) => unknown
+  ;(mcp as unknown as { registerTool: (...a: unknown[]) => unknown }).registerTool = (
+    name: unknown,
+    config: unknown,
+    handler: unknown
+  ) => {
+    const toolName = String(name)
+    const fn = handler as (...a: unknown[]) => unknown
+    const wrapped = (...a: unknown[]): unknown => {
+      if (!toolName.startsWith('browser_')) {
+        emitAiAction({ kind: 'analyze', label: toolName.replace(/_/g, ' '), detail: summarizeToolArgs(a[0]) })
+      }
+      return fn(...a)
+    }
+    return orig(toolName, config, wrapped)
+  }
+}
 
 function buildMcpServer(): McpServer {
   const mcp = new McpServer({ name: 'rever-traffic', version: '0.1.0' })
+  withActivity(mcp)
   registerTrafficTools(mcp)
   registerBrowserTools(mcp)
   registerScriptTools(mcp)

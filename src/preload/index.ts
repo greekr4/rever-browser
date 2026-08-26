@@ -39,6 +39,7 @@ export type AiActionKind =
   | 'screenshot'
   | 'evaluate'
   | 'extract'
+  | 'analyze'
 
 export interface AiAction {
   kind: AiActionKind
