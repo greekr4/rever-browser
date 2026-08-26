@@ -139,14 +139,26 @@ export const VISUALIZER_INIT_SCRIPT = `
     .bracket.br { bottom: 14px; right: 14px; border-left: none; border-top: none; border-radius: 0 0 5px 0 }
     @keyframes brk { 0% { opacity: 0; transform: scale(1.5) } 30% { opacity: 1; transform: scale(1) } 70% { opacity: 1 } 100% { opacity: 0 } }
 
-    .hud {
+    /* Stack of analysis cards, anchored bottom-left. Cards flow top→bottom
+       (oldest on top, newest nearest the anchor); the container grows upward.
+       Cards drain from the top one at a time, each with a collapse animation. */
+    .hud-stack {
       position: fixed; left: 14px; bottom: 14px; max-width: 74vw; pointer-events: none;
+      display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+    }
+    .hud {
+      max-width: 74vw; pointer-events: none; max-height: 200px;
       background: rgba(17,17,19,0.94); border: 1px solid rgba(255,159,10,0.55); border-radius: 7px;
       box-shadow: 0 6px 22px rgba(0,0,0,0.45); overflow: hidden;
       animation: hudin 180ms ease-out;
     }
-    .hud.done { animation: hudin 180ms ease-out, fade 420ms ease-in 1600ms forwards; }
+    /* Exit: fade + lift + collapse height so the cards above shift down to fill. */
+    .hud.out { animation: hudout 300ms cubic-bezier(.4,0,.2,1) forwards; }
     @keyframes hudin { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+    @keyframes hudout {
+      from { opacity: 1; max-height: 200px; transform: none }
+      to { opacity: 0; max-height: 0; margin-top: -6px; transform: translateY(-6px) scale(.98) }
+    }
     .hud-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; position: relative; overflow: hidden }
     .hud-tag { background: #ff9f0a; color: #2a1800; font: 800 9px/1 ui-monospace,Menlo,monospace; padding: 3px 5px; border-radius: 3px; letter-spacing: 0.5px }
     .hud-code { font: 12px/1.35 ui-monospace,Menlo,monospace; color: #f2f2f4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
@@ -517,33 +529,59 @@ export const VISUALIZER_INIT_SCRIPT = `
     for (const pos of ['tl', 'tr', 'bl', 'br']) transient(div('bracket ' + pos), 700)
   }
 
-  // Code HUD for browser_evaluate. Two-phase: evalHudStart while the
-  // expression runs (shimmer), evalHudDone once it returns.
-  let hudEl = null
+  // Analysis HUD for backend/static tools (and browser_evaluate). Two-phase:
+  // evalHudStart while the tool runs (shimmer), evalHudDone once it returns.
+  // Cards STACK in .hud-stack instead of overlapping; they drain from the top
+  // (oldest first) one at a time, each with a collapse animation.
+  const MAX_CARDS = 5
+  const pending = [] // cards awaiting their evalHudDone, oldest first
+  function hudStack() {
+    const r = ensure()
+    let s = r.querySelector('.hud-stack')
+    if (!s) { s = div('hud-stack'); r.appendChild(s) }
+    return s
+  }
+  function removeCard(hud) {
+    if (!hud || !hud.isConnected || hud.classList.contains('out')) return
+    hud.classList.add('out')
+    setTimeout(() => hud.remove(), 320)
+  }
   function evalHudStart(expr, tagText) {
-    if (hudEl) hudEl.remove()
     transient(div('ctx-ring'), 1550)
+    const s = hudStack()
     const hud = div('hud')
     const row = div('hud-row')
     const tag = div('hud-tag'); tag.textContent = tagText || 'EVAL'
     const code = div('hud-code'); code.textContent = expr
     row.appendChild(tag); row.appendChild(code); row.appendChild(div('hud-scan'))
     hud.appendChild(row)
-    hudEl = hud
-    // Self-clean if the result call never arrives (page navigated, eval hung).
-    transient(hud, 15000)
+    s.appendChild(hud)
+    pending.push(hud)
+    // Cap the stack — evict the oldest (top) cards past the limit.
+    while (s.children.length > MAX_CARDS) {
+      const top = s.firstChild
+      const i = pending.indexOf(top)
+      if (i >= 0) pending.splice(i, 1)
+      removeCard(top)
+    }
+    // Self-clean if the result call never arrives (page navigated, tool hung).
+    setTimeout(() => {
+      const i = pending.indexOf(hud)
+      if (i >= 0) pending.splice(i, 1)
+      removeCard(hud)
+    }, 15000)
   }
   function evalHudDone(preview, isError) {
-    const hud = hudEl
+    // Finalize the oldest still-running card so the stack drains top-first.
+    const hud = pending.shift()
     if (!hud || !hud.isConnected) return
-    hudEl = null
     const shimmer = hud.querySelector('.hud-scan')
     if (shimmer) shimmer.remove()
     const res = div('hud-result' + (isError ? ' err' : ''))
     res.textContent = (isError ? '✕ ' : '→ ') + preview
     hud.appendChild(res)
     hud.classList.add('done')
-    setTimeout(() => hud.remove(), 2100)
+    setTimeout(() => removeCard(hud), 1400)
   }
 
   // Selector chip + staggered highlight of matched nodes for dom_extract.
