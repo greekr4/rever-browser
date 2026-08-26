@@ -5,8 +5,8 @@ import remarkGfm from 'remark-gfm'
 
 import { ACPChatTransport } from '@/ai/acp-transport'
 import { useAcpAutoApprove, setAcpAutoApprove } from '@/ai/acp-permission'
-import { ACP_AGENTS, type ACPAgentID } from '@/constants'
-import { AgentPicker } from './AgentPicker'
+import { ACP_AGENTS, type ACPAgentID, type CatalogModel } from '@/constants'
+import { ModelPicker } from './ModelPicker'
 import { ChatHistoryMenu } from './ChatHistoryMenu'
 import { formatOutput } from '@/lib/format-json'
 import { useChatDraft } from '@/stores/chat-draft'
@@ -308,6 +308,10 @@ export function ChatPanel() {
   const [autoScroll, setAutoScroll] = useState(true)
   const [models, setModels] = useState<ModelEntry[]>([])
   const [currentModel, setCurrentModel] = useState<string | null>(null)
+  // Model chosen in the unified picker before the session exposes its live
+  // list; reconciled against that list (by id or name) once it loads.
+  const [pendingModel, setPendingModel] = useState<CatalogModel | null>(null)
+  const [selectedModelName, setSelectedModelName] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // --- Conversation history wiring ---------------------------------------
@@ -415,6 +419,23 @@ export function ChatPanel() {
       console.error('[acp] setModel failed', e)
     }
   }
+
+  // Apply a picker choice once the agent's live model list is available. The
+  // catalog id is best-effort for subscription agents, so match by id OR name
+  // and fall back silently if neither is offered.
+  useEffect(() => {
+    if (!pendingModel || pendingModel.agentId !== agentId || models.length === 0) return
+    const wanted = pendingModel.name.toLowerCase()
+    const live =
+      models.find((m) => m.modelId === pendingModel.modelId) ??
+      models.find((m) => m.name.toLowerCase() === wanted)
+    if (live) {
+      if (live.modelId !== currentModel) void onChangeModel(live.modelId)
+      setSelectedModelName(live.name)
+    }
+    setPendingModel(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingModel, models, agentId, currentModel])
   const waiting = status === 'submitted'
   const autoApprove = useAcpAutoApprove()
   const draftPending = useChatDraft((s) => s.pending)
@@ -525,13 +546,16 @@ export function ChatPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid var(--border-2)' }}>
       <header style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-2)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <AgentPicker
+        <ModelPicker
           agentId={agentId}
+          modelName={selectedModelName}
           disabled={busy}
-          onChange={(id, resolvedPath) => {
+          onSelect={(id, resolvedPath, modelId, name) => {
             setAgentBinPath(resolvedPath)
+            setSelectedModelName(name)
+            setPendingModel({ agentId: id, modelId, name })
             // A real agent switch starts a fresh draft (a conversation is bound
-            // to one agent). Path-only resolution keeps the same id/chat.
+            // to one agent). Same-agent model change keeps the id/chat.
             if (id === agentId) return
             currentIdRef.current = null
             setCurrentId(null)
@@ -539,21 +563,6 @@ export function ChatPanel() {
             setAgentId(id)
           }}
         />
-        {models.length > 0 && (
-          <select
-            value={currentModel ?? ''}
-            onChange={(e) => void onChangeModel(e.target.value)}
-            disabled={busy}
-            title={tr('chat.switchModel')}
-            style={{ maxWidth: 160 }}
-          >
-            {models.map((m) => (
-              <option key={m.modelId} value={m.modelId}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        )}
         <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: 12 }}>{status}</span>
         <button
           type="button"

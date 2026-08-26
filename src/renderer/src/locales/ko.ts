@@ -134,6 +134,8 @@ export const ko: Record<TKey, string> = {
   'onboard.ready': '{n}개 사용 가능',
   'onboard.use': '사용',
   'onboard.inUse': '사용 중',
+  'model.search': '모델 검색…',
+  'model.noMatch': '일치하는 모델 없음',
   'onboard.skip': '나중에 하기',
   'onboard.recheck': '다시 확인',
   'onboard.save': '저장',

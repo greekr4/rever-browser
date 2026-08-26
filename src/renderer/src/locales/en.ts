@@ -149,6 +149,8 @@ export const en = {
   'onboard.ready': '{n} ready',
   'onboard.use': 'Use',
   'onboard.inUse': 'In use',
+  'model.search': 'Search models…',
+  'model.noMatch': 'No models match',
   'onboard.skip': 'Skip for now',
   'onboard.recheck': 'Re-check',
   'onboard.save': 'Save',
