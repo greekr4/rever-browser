@@ -148,6 +148,7 @@ export const en = {
   'onboard.scanning': 'Checking your machine…',
   'onboard.ready': '{n} ready',
   'onboard.use': 'Use',
+  'onboard.inUse': 'In use',
   'onboard.skip': 'Skip for now',
   'onboard.recheck': 'Re-check',
   'onboard.save': 'Save',

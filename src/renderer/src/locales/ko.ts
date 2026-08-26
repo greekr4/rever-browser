@@ -133,6 +133,7 @@ export const ko: Record<TKey, string> = {
   'onboard.scanning': '이 컴퓨터를 확인하는 중…',
   'onboard.ready': '{n}개 사용 가능',
   'onboard.use': '사용',
+  'onboard.inUse': '사용 중',
   'onboard.skip': '나중에 하기',
   'onboard.recheck': '다시 확인',
   'onboard.save': '저장',

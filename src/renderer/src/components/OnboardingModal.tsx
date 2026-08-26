@@ -137,11 +137,7 @@ export function OnboardingModal() {
                     type="button"
                     onClick={() => choose(def)}
                     disabled={!ready}
-                    style={{
-                      ...useBtn,
-                      opacity: ready ? 1 : 0.35,
-                      cursor: ready ? 'pointer' : 'not-allowed'
-                    }}
+                    style={ready ? useBtn : useBtnDisabled}
                   >
                     {tr('onboard.use')}
                   </button>
@@ -277,14 +273,26 @@ const codeChip: React.CSSProperties = {
   whiteSpace: 'nowrap'
 }
 
+// WCAG AA: --accent (#2f6fed) is only 4.02:1 on the light card; --accent-text
+// clears 4.5:1 in both themes. Disabled uses a muted surface rather than a
+// low-opacity accent (which dropped to ~1.7:1).
 const useBtn: React.CSSProperties = {
   padding: '5px 14px',
   background: 'var(--accent-soft)',
   border: '1px solid var(--accent-border)',
   borderRadius: 6,
-  color: 'var(--accent)',
+  color: 'var(--accent-text)',
   fontSize: 12,
-  flexShrink: 0
+  flexShrink: 0,
+  cursor: 'pointer'
+}
+
+const useBtnDisabled: React.CSSProperties = {
+  ...useBtn,
+  background: 'var(--surface-3)',
+  border: '1px solid var(--border)',
+  color: 'var(--text-2)',
+  cursor: 'not-allowed'
 }
 
 const keyInputStyle: React.CSSProperties = {

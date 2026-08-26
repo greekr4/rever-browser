@@ -201,14 +201,9 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
                       type="button"
                       onClick={() => pick(def)}
                       disabled={!ready}
-                      style={{
-                        ...useBtn,
-                        opacity: ready ? 1 : 0.35,
-                        cursor: ready ? 'pointer' : 'not-allowed',
-                        ...(active ? { background: 'var(--accent)', color: 'var(--accent-text)' } : null)
-                      }}
+                      style={ready ? (active ? useBtnActive : useBtn) : useBtnDisabled}
                     >
-                      {active ? '✓' : tr('onboard.use')}
+                      {active ? `✓ ${tr('onboard.inUse')}` : tr('onboard.use')}
                     </button>
                   </div>
 
@@ -365,14 +360,32 @@ const codeChip: React.CSSProperties = {
   whiteSpace: 'nowrap'
 }
 
+// WCAG AA: accent-text (not --accent) clears 4.5:1 on the soft/card backgrounds
+// in both themes; white-on-accent fails in dark, so the active state keeps the
+// same readable foreground and marks selection with a solid ring instead.
 const useBtn: React.CSSProperties = {
   padding: '5px 12px',
   background: 'var(--accent-soft)',
   border: '1px solid var(--accent-border)',
   borderRadius: 6,
-  color: 'var(--accent)',
+  color: 'var(--accent-text)',
   fontSize: 12,
-  flexShrink: 0
+  flexShrink: 0,
+  cursor: 'pointer'
+}
+
+const useBtnActive: React.CSSProperties = {
+  ...useBtn,
+  border: '2px solid var(--accent)',
+  fontWeight: 600
+}
+
+const useBtnDisabled: React.CSSProperties = {
+  ...useBtn,
+  background: 'var(--surface-3)',
+  border: '1px solid var(--border)',
+  color: 'var(--text-2)',
+  cursor: 'not-allowed'
 }
 
 const keyInputStyle: React.CSSProperties = {
