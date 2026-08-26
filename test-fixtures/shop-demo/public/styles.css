@@ -33,6 +33,12 @@ a:hover { text-decoration: underline; color: var(--price-red); }
 }
 .nav-row button:hover, .deliver:hover, .nav-acct:hover, .nav-orders:hover,
 .nav-cart:hover, .nav-lang:hover, .logo:hover { border-color: #fff; }
+/* nav items are <a>; kill the global link underline/red-on-hover and stack the
+   small/strong lines vertically (Amazon-style two-line nav item) */
+.logo, .nav-acct, .nav-orders, .nav-cart { text-decoration: none; color: #fff; }
+.logo:hover, .nav-acct:hover, .nav-orders:hover, .nav-cart:hover { color: #fff; text-decoration: none; }
+.nav-acct, .nav-orders { flex-direction: column; align-items: flex-start; gap: 0; line-height: 1.2; }
+.nav-acct small, .nav-orders small { line-height: 1.2; }
 
 .logo { display: flex; align-items: flex-end; padding: 8px 8px 12px; position: relative; }
 .logo-word { font-size: 26px; font-weight: 700; letter-spacing: -1px; line-height: .8; color: #fff; }
