@@ -11,6 +11,7 @@ import type { TKey } from '@/locales/en'
 import { useT } from '@/stores/i18n'
 
 import type { AgentHealth, AgentHealthStatus } from '../../../../preload'
+import { ProviderIcon } from './ProviderIcon'
 
 // unified model picker: one searchable list of every model across
 // providers, grouped by agent. Choosing a model implicitly selects its provider
@@ -161,7 +162,9 @@ export function ModelPicker({ agentId, modelName, onSelect, disabled }: ModelPic
         style={triggerStyle}
         title={tr('chat.chooseAgent')}
       >
-        <span style={iconChip}>{selectedDef.icon}</span>
+        <span style={iconChip}>
+          <ProviderIcon agentId={selectedDef.id} size={14} fallback={selectedDef.icon} />
+        </span>
         <span style={{ fontWeight: 500, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {triggerLabel}
         </span>
@@ -202,7 +205,9 @@ export function ModelPicker({ agentId, modelName, onSelect, disabled }: ModelPic
               return (
                 <div key={def.id}>
                   <div style={groupHeader}>
-                    <span style={groupIcon}>{def.icon}</span>
+                    <span style={groupIcon}>
+                      <ProviderIcon agentId={def.id} size={12} fallback={def.icon} />
+                    </span>
                     <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.3 }}>
                       {def.name}
                     </span>

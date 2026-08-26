@@ -6,6 +6,7 @@ import { hasOnboarded, useAgentChoice } from '@/stores/agent-choice'
 import { useT } from '@/stores/i18n'
 
 import type { AgentHealth, AgentHealthStatus } from '../../../preload'
+import { ProviderIcon } from './chat/ProviderIcon'
 
 // First-run provider setup. Probes every agent for real (ACP handshake /
 // authenticated API call) so a green row means it actually works, and shows
@@ -122,7 +123,9 @@ export function OnboardingModal() {
             return (
               <div key={def.id} style={{ ...row, opacity: scanning && !h ? 0.5 : 1 }}>
                 <div style={rowTop}>
-                  <span style={iconChip}>{def.icon}</span>
+                  <span style={iconChip}>
+                    <ProviderIcon agentId={def.id} size={16} fallback={def.icon} />
+                  </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{def.name}</div>
                     <div style={{ fontSize: 11, color: STATUS_COLOR[status] }}>
