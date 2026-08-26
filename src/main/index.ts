@@ -35,6 +35,7 @@ import {
   type ImportOptions
 } from './browser-cookie-import'
 import { detectAgents, type AgentProbe } from './acp-detect'
+import { probeAgents, type AgentProbeDef } from './agent-probe'
 import { skillInstalled } from './skill-install'
 import {
   spawnTerminal,
@@ -1019,6 +1020,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('acp:list-available', async (_event, probes: AgentProbe[]) => {
     return detectAgents(probes)
+  })
+
+  ipcMain.handle('agent:probe', async (_event, defs: AgentProbeDef[]) => {
+    return probeAgents(defs)
   })
 
   ipcMain.handle('acp:spawn', async (_event, agentDef: AgentDef, _cwd: string) => {

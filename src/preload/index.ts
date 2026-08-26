@@ -22,6 +22,30 @@ export interface AcpAgentProbeResult {
   matchedBin: string | null
 }
 
+export type AgentHealthStatus =
+  | 'ready'
+  | 'not-installed'
+  | 'needs-key'
+  | 'needs-login'
+  | 'auth-failed'
+  | 'failed'
+
+export interface AgentProbeDef {
+  id: string
+  provider?: 'acp' | 'anthropic' | 'openai'
+  command: string
+  fallbackBins?: string[]
+}
+
+export interface AgentHealth {
+  id: string
+  status: AgentHealthStatus
+  resolvedPath: string | null
+  detail: string | null
+  auto: boolean
+  plan: string | null
+}
+
 export interface AcpSessionUpdate {
   sessionId: string
   update: Record<string, unknown>
@@ -301,6 +325,11 @@ const api = {
   acp: {
     listAvailable: (probes: AcpAgentProbe[]): Promise<AcpAgentProbeResult[]> =>
       ipcRenderer.invoke('acp:list-available', probes),
+
+    // Live health check: runs the ACP handshake / an authenticated API call so
+    // a broken install or an expired key doesn't show up as "ready".
+    probe: (defs: AgentProbeDef[]): Promise<AgentHealth[]> =>
+      ipcRenderer.invoke('agent:probe', defs),
 
     spawn: (agentDef: AcpAgentDef, cwd: string): Promise<{ sessionId: string }> =>
       ipcRenderer.invoke('acp:spawn', agentDef, cwd),

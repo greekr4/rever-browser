@@ -40,6 +40,9 @@ export const ko: Record<TKey, string> = {
   'toolbar.grab': '요소 그랩 (스크린샷 + 컨텍스트 → 채팅·마크업)',
   'toolbar.addressPlaceholder': 'https://...',
   'toolbar.theme': '테마: {mode} — 클릭하면 시스템 → 라이트 → 다크 순환',
+  'toolbar.theme.dark': '다크',
+  'toolbar.theme.light': '화이트',
+  'toolbar.theme.system': '컴퓨터',
   'toolbar.openChat': '채팅 열기',
   'toolbar.collapseChat': '채팅 접기',
 
@@ -93,7 +96,7 @@ export const ko: Record<TKey, string> = {
   'drawer.queryParams': '쿼리 파라미터',
   'drawer.responseBody': '응답 본문',
 
-  'repeater.empty': 'Traffic에서 행을 우클릭하고 "리피터로 보내기"를 선택해 시작하세요.',
+  'repeater.empty': 'Traffic에서 요청 행의 "↻R"(리피터로 보내기) 버튼을 눌러 여기로 불러오세요.',
   'repeater.removeHeader': '헤더 제거',
 
   'chat.input': '입력',
@@ -122,5 +125,28 @@ export const ko: Record<TKey, string> = {
   'pipeline.goalPlaceholder': '엔드포인트 탐색, 200/403으로 분기',
 
   'template.goalPlaceholder': '이 사이트 인증 흐름 분석',
-  'template.bodyPlaceholder': 'Use 클릭 시 에이전트 채팅 입력에 삽입되는 텍스트.'
+  'template.bodyPlaceholder': 'Use 클릭 시 에이전트 채팅 입력에 삽입되는 텍스트.',
+
+  // 첫 실행 에이전트 온보딩
+  'onboard.title': 'AI 제공자 연결',
+  'onboard.desc': 'Rever는 AI 에이전트로 브라우저를 조작합니다. 이미 쓰고 있는 구독을 그대로 쓰거나, API 키를 붙여넣으세요.',
+  'onboard.scanning': '이 컴퓨터를 확인하는 중…',
+  'onboard.ready': '{n}개 사용 가능',
+  'onboard.use': '사용',
+  'onboard.skip': '나중에 하기',
+  'onboard.recheck': '다시 확인',
+  'onboard.save': '저장',
+  'onboard.keyPlaceholder': 'API 키 붙여넣기…',
+  'onboard.installWith': '설치 명령',
+  'onboard.signInWith': '로그인 명령',
+  'onboard.copy': '복사',
+  'onboard.copied': '복사됨 \u2713',
+  'onboard.plan': '{plan} 플랜',
+  'onboard.status.ready': '사용 가능',
+  'onboard.status.auto': '자동으로 연결됨',
+  'onboard.status.not-installed': '설치되지 않음',
+  'onboard.status.needs-key': 'API 키 필요',
+  'onboard.status.needs-login': '로그인 필요',
+  'onboard.status.auth-failed': '키가 거부됨',
+  'onboard.status.failed': '실행 실패',
 }

@@ -11,6 +11,7 @@ import { ChatHistoryMenu } from './ChatHistoryMenu'
 import { formatOutput } from '@/lib/format-json'
 import { useChatDraft } from '@/stores/chat-draft'
 import { newConversationId, useChatHistory } from '@/stores/chat-history'
+import { readAgentChoice, useAgentChoice } from '@/stores/agent-choice'
 
 import type { UIMessage } from 'ai'
 
@@ -292,11 +293,17 @@ export function ChatPanel() {
   // localStorage, so getState() already has the saved conversations here.
   const restored = useChatHistory.getState().conversations[0] ?? null
 
-  const [agentId, setAgentId] = useState<ACPAgentID>(restored?.agentId ?? 'claude-code')
+  // Falls back to the agent picked during first-run onboarding before the
+  // hardcoded default, so a machine without claude-agent-acp doesn't land on a
+  // dead selection.
+  const onboarded = readAgentChoice()
+  const [agentId, setAgentId] = useState<ACPAgentID>(
+    restored?.agentId ?? onboarded?.id ?? 'claude-code'
+  )
   // Absolute path returned by detectAgents(). When set, we pass it to the
   // transport instead of the bare bin name so spawn doesn't depend on the
   // Electron child process's PATH (notably broken on Windows for .cmd shims).
-  const [agentBinPath, setAgentBinPath] = useState<string | null>(null)
+  const [agentBinPath, setAgentBinPath] = useState<string | null>(onboarded?.path ?? null)
   const [input, setInput] = useState('')
   const [autoScroll, setAutoScroll] = useState(true)
   const [models, setModels] = useState<ModelEntry[]>([])
@@ -327,6 +334,19 @@ export function ChatPanel() {
   useEffect(() => {
     if (agentBinPath) transport.setCommand(agentBinPath)
   }, [transport, agentBinPath])
+
+  // A pick made in the first-run onboarding modal switches the live chat, so
+  // the user doesn't have to reopen the agent picker right after choosing.
+  const onboardChoice = useAgentChoice((s) => s.choice)
+  useEffect(() => {
+    if (!onboardChoice) return
+    setAgentBinPath(onboardChoice.path)
+    if (onboardChoice.id === agentId) return
+    currentIdRef.current = null
+    setCurrentId(null)
+    setSeedMessages([])
+    setAgentId(onboardChoice.id)
+  }, [onboardChoice, agentId])
 
   // @ai-sdk/react's useChat only recreates its internal Chat when `id`
   // changes — a fresh `transport` prop alone is ignored. Keying on agentId

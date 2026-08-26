@@ -43,6 +43,9 @@ export const en = {
   'toolbar.grab': 'Grab an element (screenshot + context → chat & markup)',
   'toolbar.addressPlaceholder': 'https://...',
   'toolbar.theme': 'Theme: {mode} — click to cycle System → Light → Dark',
+  'toolbar.theme.dark': 'Dark',
+  'toolbar.theme.light': 'White',
+  'toolbar.theme.system': 'Com',
   'toolbar.openChat': 'Open chat',
   'toolbar.collapseChat': 'Collapse chat',
 
@@ -104,7 +107,7 @@ export const en = {
   'drawer.responseBody': 'Response body',
 
   // Repeater
-  'repeater.empty': 'Right-click a row in Traffic and choose "Send to Repeater" to start.',
+  'repeater.empty': 'In Traffic, click the "↻R" (Send to Repeater) button on a request row to load it here.',
   'repeater.removeHeader': 'Remove header',
 
   // Chat
@@ -137,7 +140,30 @@ export const en = {
 
   // Template editor
   'template.goalPlaceholder': "Analyze this site's auth flow",
-  'template.bodyPlaceholder': 'Text inserted into the agent chat input when you click Use.'
+  'template.bodyPlaceholder': 'Text inserted into the agent chat input when you click Use.',
+
+  // First-run agent onboarding
+  'onboard.title': 'Connect your AI provider',
+  'onboard.desc': 'Rever drives the browser through an AI agent. Use a subscription you already have, or paste an API key.',
+  'onboard.scanning': 'Checking your machine…',
+  'onboard.ready': '{n} ready',
+  'onboard.use': 'Use',
+  'onboard.skip': 'Skip for now',
+  'onboard.recheck': 'Re-check',
+  'onboard.save': 'Save',
+  'onboard.keyPlaceholder': 'Paste API key…',
+  'onboard.installWith': 'Install with',
+  'onboard.signInWith': 'Sign in with',
+  'onboard.copy': 'Copy',
+  'onboard.copied': 'Copied \u2713',
+  'onboard.plan': '{plan} plan',
+  'onboard.status.ready': 'Ready',
+  'onboard.status.auto': 'Connected automatically',
+  'onboard.status.not-installed': 'Not installed',
+  'onboard.status.needs-key': 'Needs API key',
+  'onboard.status.needs-login': 'Sign-in required',
+  'onboard.status.auth-failed': 'Key rejected',
+  'onboard.status.failed': 'Failed to start',
 }
 
 export type TKey = keyof typeof en

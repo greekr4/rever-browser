@@ -51,7 +51,7 @@ const sessions = new Map<string, SessionEntry>()
 // 보고 "nested session"으로 판단해 기동을 거부한다 (rever-browser 자체를 Claude
 // Code 세션 안에서 실행한 경우). 에이전트 자식 프로세스는 독립 세션이어야 하므로
 // 해당 변수들을 제거한 env를 만들어 넘긴다.
-function agentEnv(command: string): NodeJS.ProcessEnv {
+export function agentEnv(command: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env }
   const isClaudeSessionVar = (name: string): boolean =>
     name === 'CLAUDECODE' || name.startsWith('CLAUDE_CODE_')

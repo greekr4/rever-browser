@@ -19,6 +19,8 @@ export interface ACPAgentDef {
   provider?: 'acp' | 'anthropic' | 'openai'
   /** Short hint shown in the picker when the binary isn't found. */
   installHint: string
+  /** Command that signs the user in, shown when the binary is installed but unauthenticated. */
+  loginHint?: string
   /** Single character used in the picker tile. */
   icon: string
 }
@@ -53,6 +55,7 @@ export const ACP_AGENTS: ACPAgentDef[] = [
     acpSupported: true,
     provider: 'acp',
     installHint: 'npm i -g @agentclientprotocol/claude-agent-acp',
+    loginHint: 'claude login',
     icon: 'C'
   },
   {
@@ -62,6 +65,7 @@ export const ACP_AGENTS: ACPAgentDef[] = [
     args: [],
     acpSupported: true,
     installHint: 'npm i -g @agentclientprotocol/codex-acp',
+    loginHint: 'codex login',
     icon: 'X'
   }
 ]

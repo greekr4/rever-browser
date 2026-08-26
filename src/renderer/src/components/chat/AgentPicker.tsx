@@ -1,71 +1,42 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { ACP_AGENTS, type ACPAgentDef, type ACPAgentID } from '@/constants'
-
+import type { TKey } from '@/locales/en'
 import { useT } from '@/stores/i18n'
-export interface AgentDetection {
-  /** Map keyed by the catalog `command`. */
-  resolved: Record<string, string | null>
-}
 
-interface AgentTileInfo {
-  def: ACPAgentDef
-  resolvedPath: string | null
-  detected: boolean
-  selectable: boolean
-  status: 'ready' | 'not-installed' | 'needs-key' | 'unsupported'
-}
+import type { AgentHealth, AgentHealthStatus } from '../../../../preload'
 
-// Providers gated on an API key rather than a PATH binary.
+// provider list. The compact trigger shows the selected agent
+// inline; opening reveals a vertical list of every catalog entry with a live
+// health badge (real ACP handshake / authenticated API check via acp.probe),
+// an "connected automatically" row when an existing CLI login covers it, plus
+// install/sign-in hints and API-key inputs. Only `ready` rows are selectable.
+
 type KeyProvider = 'anthropic' | 'openai'
-const KEY_PROVIDERS: { id: KeyProvider; label: string }[] = [
-  { id: 'anthropic', label: 'Anthropic API key' },
-  { id: 'openai', label: 'OpenAI API key' }
-]
 
-// Sentinel passed to onChange for API providers, which have no PATH binary —
-// the router dispatches on the agent id, so the value is unused.
+function isKeyProvider(def: ACPAgentDef): def is ACPAgentDef & { provider: KeyProvider } {
+  return def.provider === 'anthropic' || def.provider === 'openai'
+}
+
+// Sentinel path handed to onChange for API providers (no PATH binary). The
+// router dispatches on the agent id, so the value itself is unused — it only
+// needs to be non-null so the parent treats the pick as resolved.
 const API_SENTINEL = 'api'
 
-function buildTiles(
-  detection: AgentDetection,
-  apiKeys: Record<KeyProvider, boolean>
-): AgentTileInfo[] {
-  return ACP_AGENTS.map((def) => {
-    if (def.provider === 'anthropic' || def.provider === 'openai') {
-      const hasKey = apiKeys[def.provider]
-      return {
-        def,
-        resolvedPath: hasKey ? API_SENTINEL : null,
-        detected: hasKey,
-        selectable: hasKey,
-        status: hasKey ? 'ready' : 'needs-key'
-      }
-    }
-    const resolvedPath = detection.resolved[def.command] ?? null
-    const detected = resolvedPath !== null
-    const selectable = def.acpSupported && detected
-    const status: AgentTileInfo['status'] = !def.acpSupported
-      ? 'unsupported'
-      : detected
-        ? 'ready'
-        : 'not-installed'
-    return { def, resolvedPath, detected, selectable, status }
-  })
-}
+const PROBE_DEFS = ACP_AGENTS.map((a) => ({
+  id: a.id,
+  provider: a.provider,
+  command: a.command,
+  fallbackBins: a.fallbackBins
+}))
 
-const STATUS_LABEL: Record<AgentTileInfo['status'], string> = {
-  ready: 'Ready',
-  'not-installed': 'Not installed',
-  'needs-key': 'Needs API key',
-  unsupported: 'Not yet ACP-compatible'
-}
-
-const STATUS_COLOR: Record<AgentTileInfo['status'], string> = {
+const STATUS_COLOR: Record<AgentHealthStatus, string> = {
   ready: 'var(--status-ok)',
   'not-installed': 'var(--http-none)',
   'needs-key': 'var(--status-warn)',
-  unsupported: 'var(--status-warn)'
+  'needs-login': 'var(--status-warn)',
+  'auth-failed': 'var(--status-error)',
+  failed: 'var(--status-error)'
 }
 
 interface AgentPickerProps {
@@ -74,43 +45,29 @@ interface AgentPickerProps {
   disabled?: boolean
 }
 
-/**
- * Compact open-design-style agent picker. Renders the selected tile inline;
- * clicking opens a 4-column grid of all catalog entries with detection
- * badges. Only ACP-supported & detected tiles are selectable.
- */
 export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
   const tr = useT()
   const [open, setOpen] = useState(false)
-  const [detection, setDetection] = useState<AgentDetection>({ resolved: {} })
+  const [health, setHealth] = useState<Record<string, AgentHealth>>({})
   const [loading, setLoading] = useState(true)
-  const [apiKeys, setApiKeys] = useState<Record<KeyProvider, boolean>>({
-    anthropic: false,
-    openai: false
-  })
-  const [keyInput, setKeyInput] = useState<Record<KeyProvider, string>>({
-    anthropic: '',
-    openai: ''
-  })
-  const [savingKey, setSavingKey] = useState<KeyProvider | null>(null)
+  const [keyInput, setKeyInput] = useState<Record<string, string>>({})
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
+  const scan = async () => {
+    setLoading(true)
+    const results = await window.rev.acp.probe(PROBE_DEFS)
+    setHealth(Object.fromEntries(results.map((r) => [r.id, r])))
+    setLoading(false)
+  }
+
   useEffect(() => {
     let cancelled = false
-    const probes = ACP_AGENTS.filter(
-      (a) => a.provider !== 'anthropic' && a.provider !== 'openai' && a.command
-    ).map((a) => ({ command: a.command, fallbackBins: a.fallbackBins }))
-    void Promise.all([
-      window.rev.acp.listAvailable(probes),
-      window.rev.settings.hasApiKey('anthropic'),
-      window.rev.settings.hasApiKey('openai')
-    ]).then(([results, anthropicKey, openaiKey]) => {
+    void window.rev.acp.probe(PROBE_DEFS).then((results) => {
       if (cancelled) return
-      const resolved: Record<string, string | null> = {}
-      for (const r of results) resolved[r.command] = r.resolvedPath
-      setDetection({ resolved })
-      setApiKeys({ anthropic: anthropicKey, openai: openaiKey })
+      setHealth(Object.fromEntries(results.map((r) => [r.id, r])))
       setLoading(false)
     })
     return () => {
@@ -118,39 +75,28 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
     }
   }, [])
 
-  const saveApiKey = async (provider: KeyProvider) => {
-    const key = keyInput[provider].trim()
-    if (!key) return
-    setSavingKey(provider)
-    try {
-      const ok = await window.rev.settings.setApiKey(provider, key)
-      setApiKeys((prev) => ({ ...prev, [provider]: ok }))
-      if (ok) setKeyInput((prev) => ({ ...prev, [provider]: '' }))
-    } finally {
-      setSavingKey(null)
-    }
-  }
+  const selectedDef = ACP_AGENTS.find((a) => a.id === agentId) ?? ACP_AGENTS[0]
+  const selectedStatus = health[selectedDef.id]?.status ?? 'failed'
 
-  const tiles = useMemo(() => buildTiles(detection, apiKeys), [detection, apiKeys])
-  const selected = tiles.find((t) => t.def.id === agentId) ?? tiles[0]
+  const readyCount = useMemo(
+    () => Object.values(health).filter((h) => h.status === 'ready').length,
+    [health]
+  )
 
-  // Push the resolved absolute path to the parent once detection finishes.
-  // Two cases:
-  //   1. Currently selected agent is ready → seed agentBinPath so the spawn
-  //      call doesn't fall back to the bare command name (ENOENT on Windows
-  //      .cmd shims, fragile on macOS shells that don't propagate PATH).
-  //   2. Currently selected agent is unselectable → switch to first ready.
+  // Resolve the current pick's path (or auto-switch to the first ready agent)
+  // once probing finishes, mirroring the pre-rewrite behaviour so a machine
+  // without the default binary lands on a working selection.
   useEffect(() => {
     if (loading) return
-    if (selected.selectable && selected.resolvedPath) {
-      onChange(selected.def.id, selected.resolvedPath)
+    const cur = health[selectedDef.id]
+    if (cur?.status === 'ready') {
+      onChange(selectedDef.id, resolvedPathFor(selectedDef, cur))
       return
     }
-    const firstReady = tiles.find((t) => t.selectable)
-    if (firstReady && firstReady.resolvedPath) {
-      onChange(firstReady.def.id, firstReady.resolvedPath)
-    }
-  }, [loading, selected, tiles, onChange])
+    const firstReady = ACP_AGENTS.find((d) => health[d.id]?.status === 'ready')
+    if (firstReady) onChange(firstReady.id, resolvedPathFor(firstReady, health[firstReady.id]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, health])
 
   useEffect(() => {
     if (!open) return
@@ -163,10 +109,30 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [open])
 
-  const pickTile = (tile: AgentTileInfo) => {
-    if (!tile.selectable || !tile.resolvedPath) return
-    onChange(tile.def.id, tile.resolvedPath)
+  const pick = (def: ACPAgentDef) => {
+    const h = health[def.id]
+    if (h?.status !== 'ready') return
+    onChange(def.id, resolvedPathFor(def, h))
     setOpen(false)
+  }
+
+  const saveKey = async (provider: KeyProvider) => {
+    const key = (keyInput[provider] ?? '').trim()
+    if (!key) return
+    setSavingKey(provider)
+    try {
+      await window.rev.settings.setApiKey(provider, key)
+      setKeyInput((prev) => ({ ...prev, [provider]: '' }))
+      await scan()
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  const copy = (text: string) => {
+    void navigator.clipboard.writeText(text)
+    setCopied(text)
+    setTimeout(() => setCopied(null), 1500)
   }
 
   return (
@@ -179,9 +145,9 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
         style={triggerStyle}
         title={tr('chat.chooseAgent')}
       >
-        <span style={iconChip}>{selected.def.icon}</span>
-        <span style={{ fontWeight: 500 }}>{selected.def.name}</span>
-        <span style={{ ...statusDot, background: STATUS_COLOR[selected.status] }} />
+        <span style={iconChip}>{selectedDef.icon}</span>
+        <span style={{ fontWeight: 500 }}>{selectedDef.name}</span>
+        <span style={{ ...statusDot, background: STATUS_COLOR[selectedStatus] }} />
         <span style={{ opacity: 0.6, fontSize: 10 }}>▾</span>
       </button>
 
@@ -190,87 +156,111 @@ export function AgentPicker({ agentId, onChange, disabled }: AgentPickerProps) {
           <header style={popoverHeader}>
             <strong style={{ fontSize: 12 }}>{tr('chat.chooseAgentShort')}</strong>
             <span style={{ fontSize: 11, opacity: 0.6 }}>
-              {loading ? 'Scanning PATH…' : `${tiles.filter((t) => t.selectable).length} ready`}
+              {loading ? tr('onboard.scanning') : tr('onboard.ready', { n: readyCount })}
             </span>
           </header>
-          <div style={gridStyle}>
-            {tiles.map((tile) => (
-              <button
-                key={tile.def.id}
-                type="button"
-                onClick={() => pickTile(tile)}
-                disabled={!tile.selectable}
-                title={
-                  tile.selectable
-                    ? `${tile.def.name}\n${tile.resolvedPath}`
-                    : `${STATUS_LABEL[tile.status]} — ${tile.def.installHint}`
-                }
-                style={{
-                  ...tileStyle,
-                  opacity: tile.selectable ? 1 : 0.45,
-                  cursor: tile.selectable ? 'pointer' : 'not-allowed',
-                  borderColor: tile.def.id === agentId ? 'var(--accent)' : 'var(--border)'
-                }}
-              >
-                <div style={tileIconChip}>{tile.def.icon}</div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {ACP_AGENTS.map((def) => {
+              const h = health[def.id]
+              const status = h?.status ?? 'failed'
+              const ready = status === 'ready'
+              const active = def.id === agentId
+              const label = h?.auto
+                ? tr('onboard.status.auto')
+                : tr(`onboard.status.${status}` as TKey)
+              const hint =
+                status === 'not-installed'
+                  ? { title: tr('onboard.installWith'), cmd: def.installHint }
+                  : status === 'needs-login' && def.loginHint
+                    ? { title: tr('onboard.signInWith'), cmd: def.loginHint }
+                    : null
+
+              return (
                 <div
+                  key={def.id}
                   style={{
-                    fontSize: 11,
-                    fontWeight: 500,
-                    textAlign: 'center',
-                    wordBreak: 'break-word',
-                    lineHeight: 1.2
+                    ...row,
+                    opacity: loading && !h ? 0.5 : 1,
+                    borderColor: active ? 'var(--accent-border)' : 'var(--border)'
                   }}
                 >
-                  {tile.def.name}
+                  <div style={rowTop}>
+                    <span style={rowIcon}>{def.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{def.name}</div>
+                      <div style={{ fontSize: 11, color: STATUS_COLOR[status] }}>
+                        {label}
+                        {h?.plan && h.plan !== 'api-key'
+                          ? ` · ${tr('onboard.plan', { plan: h.plan })}`
+                          : ''}
+                        {h?.detail ? ` · ${h.detail}` : ''}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => pick(def)}
+                      disabled={!ready}
+                      style={{
+                        ...useBtn,
+                        opacity: ready ? 1 : 0.35,
+                        cursor: ready ? 'pointer' : 'not-allowed',
+                        ...(active ? { background: 'var(--accent)', color: 'var(--accent-text)' } : null)
+                      }}
+                    >
+                      {active ? '✓' : tr('onboard.use')}
+                    </button>
+                  </div>
+
+                  {hint && (
+                    <div style={hintRow}>
+                      <span style={{ fontSize: 10, color: 'var(--text-2)' }}>{hint.title}</span>
+                      <code style={codeChip}>{hint.cmd}</code>
+                      <button type="button" onClick={() => copy(hint.cmd)} style={linkBtn}>
+                        {copied === hint.cmd ? tr('onboard.copied') : tr('onboard.copy')}
+                      </button>
+                    </div>
+                  )}
+
+                  {isKeyProvider(def) && status !== 'ready' && (
+                    <div style={hintRow}>
+                      <input
+                        type="password"
+                        value={keyInput[def.provider] ?? ''}
+                        onChange={(e) =>
+                          setKeyInput((prev) => ({ ...prev, [def.provider]: e.target.value }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void saveKey(def.provider)
+                        }}
+                        placeholder={tr('onboard.keyPlaceholder')}
+                        style={keyInputStyle}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void saveKey(def.provider)}
+                        disabled={
+                          savingKey === def.provider || !(keyInput[def.provider] ?? '').trim()
+                        }
+                        style={saveBtn}
+                      >
+                        {savingKey === def.provider ? '…' : tr('onboard.save')}
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div
-                  style={{
-                    fontSize: 9,
-                    color: STATUS_COLOR[tile.status],
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.3,
-                    wordBreak: 'break-word',
-                    lineHeight: 1.2
-                  }}
-                >
-                  {STATUS_LABEL[tile.status]}
-                </div>
-              </button>
-            ))}
+              )
+            })}
           </div>
-          {KEY_PROVIDERS.map((kp) => (
-            <div key={kp.id} style={keyRowStyle}>
-              <label style={{ fontSize: 11, opacity: 0.7 }}>
-                {kp.label} {apiKeys[kp.id] ? '· saved' : '· not set'}
-              </label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input
-                  type="password"
-                  value={keyInput[kp.id]}
-                  onChange={(e) =>
-                    setKeyInput((prev) => ({ ...prev, [kp.id]: e.target.value }))
-                  }
-                  placeholder={
-                    apiKeys[kp.id] ? 'Replace key…' : kp.id === 'openai' ? 'sk-…' : 'sk-ant-…'
-                  }
-                  style={keyInputStyle}
-                />
-                <button
-                  type="button"
-                  onClick={() => void saveApiKey(kp.id)}
-                  disabled={savingKey === kp.id || !keyInput[kp.id].trim()}
-                  style={keySaveStyle}
-                >
-                  {savingKey === kp.id ? '…' : 'Save'}
-                </button>
-              </div>
-            </div>
-          ))}
         </div>
       )}
     </div>
   )
+}
+
+function resolvedPathFor(def: ACPAgentDef, h: AgentHealth | undefined): string {
+  if (isKeyProvider(def)) return API_SENTINEL
+  return h?.resolvedPath ?? def.command
 }
 
 const triggerStyle: React.CSSProperties = {
@@ -309,9 +299,6 @@ const popoverStyle: React.CSSProperties = {
   top: 'calc(100% + 6px)',
   left: 0,
   zIndex: 50,
-  // Shrink to fit the chat panel (--chat-w is set on .agent-panel in App.tsx)
-  // so we don't overflow past the panel's right edge when the user makes the
-  // chat panel narrow. Fallback to 100vw when --chat-w isn't available.
   width: 'min(340px, calc(var(--chat-w, 100vw) - 24px))',
   maxHeight: '70vh',
   overflowY: 'auto',
@@ -326,41 +313,66 @@ const popoverHeader: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: '2px 4px 8px'
+  padding: '2px 4px 10px'
 }
 
-const gridStyle: React.CSSProperties = {
-  display: 'grid',
-  // Reflow columns based on available width: ~3 columns at 340px, 2 columns
-  // when the chat panel is narrow (~220px), so tiles never get clipped.
-  gridTemplateColumns: 'repeat(auto-fill, minmax(86px, 1fr))',
-  gap: 6
-}
-
-const tileStyle: React.CSSProperties = {
+const row: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'flex-start',
-  gap: 4,
-  padding: '10px 4px',
-  minHeight: 100,
-  background: 'var(--bg-bar)',
+  gap: 8,
+  padding: 10,
+  background: 'var(--surface-2)',
   border: '1px solid var(--border)',
-  borderRadius: 6,
-  color: 'var(--text)',
-  textAlign: 'center',
-  minWidth: 0,
-  overflow: 'hidden'
+  borderRadius: 8
 }
 
-const keyRowStyle: React.CSSProperties = {
+const rowTop: React.CSSProperties = {
   display: 'flex',
-  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 10
+}
+
+const rowIcon: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 28,
+  height: 28,
+  borderRadius: 8,
+  background: 'var(--surface-3)',
+  fontSize: 13,
+  fontWeight: 700,
+  flexShrink: 0
+}
+
+const hintRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
   gap: 6,
-  marginTop: 10,
-  paddingTop: 10,
-  borderTop: '1px solid var(--border)'
+  flexWrap: 'wrap'
+}
+
+const codeChip: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  padding: '3px 6px',
+  background: 'var(--bg-bar)',
+  border: '1px solid var(--border-2)',
+  borderRadius: 4,
+  fontSize: 10,
+  fontFamily: 'ui-monospace, monospace',
+  overflowX: 'auto',
+  whiteSpace: 'nowrap'
+}
+
+const useBtn: React.CSSProperties = {
+  padding: '5px 12px',
+  background: 'var(--accent-soft)',
+  border: '1px solid var(--accent-border)',
+  borderRadius: 6,
+  color: 'var(--accent)',
+  fontSize: 12,
+  flexShrink: 0
 }
 
 const keyInputStyle: React.CSSProperties = {
@@ -374,9 +386,9 @@ const keyInputStyle: React.CSSProperties = {
   fontSize: 12
 }
 
-const keySaveStyle: React.CSSProperties = {
+const saveBtn: React.CSSProperties = {
   padding: '5px 12px',
-  background: 'var(--surface-2)',
+  background: 'var(--surface-3)',
   border: '1px solid var(--border-2)',
   borderRadius: 6,
   color: 'var(--text)',
@@ -384,14 +396,12 @@ const keySaveStyle: React.CSSProperties = {
   cursor: 'pointer'
 }
 
-const tileIconChip: React.CSSProperties = {
-  width: 32,
-  height: 32,
-  borderRadius: 8,
-  background: 'var(--surface-2)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: 16,
-  fontWeight: 700
+const linkBtn: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  color: 'var(--text-2)',
+  fontSize: 11,
+  cursor: 'pointer',
+  textDecoration: 'underline',
+  padding: 0
 }

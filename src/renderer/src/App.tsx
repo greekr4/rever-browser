@@ -13,6 +13,7 @@ import { TabBar } from '@/components/TabBar'
 import { WebviewTab, type WebviewTabHandle } from '@/components/WebviewTab'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { CopyToast } from '@/components/CopyToast'
+import { OnboardingModal } from '@/components/OnboardingModal'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { TerminalPanel } from '@/components/chat/TerminalPanel'
 import { requestPermissionFromUser } from '@/ai/acp-permission'
@@ -400,6 +401,7 @@ function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <OnboardingModal />
       <PermissionPrompt />
       <CopyToast />
       {markupImage && (
@@ -442,7 +444,7 @@ function App() {
             } as React.CSSProperties
           }
         >
-          {themeMode === 'system' ? '🖥️' : themeMode === 'light' ? '☀️' : '🌙'}
+          <span style={{ fontSize: 11, fontWeight: 500 }}>{t(`toolbar.theme.${themeMode}`)}</span>
         </button>
         <button
           className="toolbar-btn"
