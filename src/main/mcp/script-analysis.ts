@@ -126,7 +126,9 @@ export function runWebcrack(body: string): Promise<string> {
   return new Promise((resolve, reject) => {
     let proc: ReturnType<typeof spawn>
     try {
-      proc = spawn('webcrack', ['-'], { stdio: ['pipe', 'pipe', 'pipe'] })
+      // No file argument → webcrack reads from stdin (webcrack >=2 treats "-"
+      // as a literal filename and errors out). Deobfuscated code goes to stdout.
+      proc = spawn('webcrack', [], { stdio: ['pipe', 'pipe', 'pipe'] })
     } catch (e) {
       reject(e)
       return
