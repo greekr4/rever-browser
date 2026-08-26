@@ -88,15 +88,18 @@ export interface CatalogModel {
 }
 
 export const MODEL_CATALOG: CatalogModel[] = [
-  // Claude Code (existing subscription) — reconciled against the live ACP list.
-  { agentId: 'claude-code', modelId: 'claude-fable-5', name: 'Claude Fable 5' },
-  { agentId: 'claude-code', modelId: 'claude-opus-5', name: 'Claude Opus 5' },
-  { agentId: 'claude-code', modelId: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
-  { agentId: 'claude-code', modelId: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
-  { agentId: 'claude-code', modelId: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
-  // Codex (existing subscription) — reconciled against the live ACP list.
-  { agentId: 'codex', modelId: 'gpt-5.6', name: 'GPT-5.6' },
-  { agentId: 'codex', modelId: 'gpt-5.6-mini', name: 'GPT-5.6 Mini' },
+  // Claude Code — the ids claude-agent-acp actually exposes (default/sonnet/
+  // haiku), not model-version strings. These match the live session list, so
+  // the switch really applies. Versions in the labels track what the ACP agent
+  // maps them to and may drift.
+  { agentId: 'claude-code', modelId: 'default', name: 'Default (Opus, 1M)' },
+  { agentId: 'claude-code', modelId: 'sonnet', name: 'Sonnet' },
+  { agentId: 'claude-code', modelId: 'sonnet[1m]', name: 'Sonnet (1M context)' },
+  { agentId: 'claude-code', modelId: 'haiku', name: 'Haiku' },
+  // Codex — ids are reconciled against the live ACP list by name; exact ids
+  // are confirmed on first spawn (see [acp:newSession] in the dev log).
+  { agentId: 'codex', modelId: 'gpt-5-codex', name: 'GPT-5 Codex' },
+  { agentId: 'codex', modelId: 'gpt-5', name: 'GPT-5' },
   // Claude API — exact ids (mirror of ANTHROPIC_MODELS in the main process).
   { agentId: 'anthropic', modelId: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
   { agentId: 'anthropic', modelId: 'claude-sonnet-5', name: 'Claude Sonnet 5' },

@@ -311,4 +311,5 @@ export async function setSessionModel(sessionId: string, modelId: string): Promi
   }
   await conn.unstable_setSessionModel({ sessionId: entry.sessionId, modelId })
   entry.currentModelId = modelId
+  console.log(`[acp] model set → ${modelId} (session ${entry.sessionId})`)
 }
