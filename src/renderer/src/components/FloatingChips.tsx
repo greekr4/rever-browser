@@ -97,6 +97,13 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
       if (chipStackRef.current?.contains(target)) return
       if (target.closest?.('.detail-drawer')) return
       if (target.closest?.('.agent-panel')) return
+      // The <webview> is a native compositing layer that can steal the
+      // mousedown target even where the panel visually covers it — so a click
+      // on an "empty" spot inside the panel would otherwise report the webview
+      // as the target and close the panel. Fall back to a geometric hit-test:
+      // if the pointer is within the open panel's (or chip bar's) rect, it's
+      // an inside click regardless of what element the event resolved to.
+      if (pointInRect(e, panelRef.current) || pointInRect(e, chipStackRef.current)) return
       setOpenPanel(null)
     }
     document.addEventListener('mousedown', handler)
@@ -255,6 +262,13 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
       </AnimatePresence>
     </>
   )
+}
+
+/** True when the event's pointer coordinates fall within the element's rect. */
+function pointInRect(e: MouseEvent, el: HTMLElement | null): boolean {
+  if (!el) return false
+  const r = el.getBoundingClientRect()
+  return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
 }
 
 interface ChipButtonProps {
