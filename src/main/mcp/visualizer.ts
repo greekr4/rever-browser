@@ -520,12 +520,12 @@ export const VISUALIZER_INIT_SCRIPT = `
   // Code HUD for browser_evaluate. Two-phase: evalHudStart while the
   // expression runs (shimmer), evalHudDone once it returns.
   let hudEl = null
-  function evalHudStart(expr) {
+  function evalHudStart(expr, tagText) {
     if (hudEl) hudEl.remove()
     transient(div('ctx-ring'), 1550)
     const hud = div('hud')
     const row = div('hud-row')
-    const tag = div('hud-tag'); tag.textContent = 'EVAL'
+    const tag = div('hud-tag'); tag.textContent = tagText || 'EVAL'
     const code = div('hud-code'); code.textContent = expr
     row.appendChild(tag); row.appendChild(code); row.appendChild(div('hud-scan'))
     hud.appendChild(row)

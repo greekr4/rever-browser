@@ -49,6 +49,7 @@ import { registerGraphqlTools } from './tools/graphql'
 import { registerProtobufTools } from './tools/protobuf'
 import { registerWasmTools } from './tools/wasm'
 import { emitAiAction } from '../ai-events'
+import { visualize } from './cdp-eval'
 
 function summarizeToolArgs(input: unknown): string | undefined {
   if (!input || typeof input !== 'object') return undefined
@@ -77,11 +78,24 @@ function withActivity(mcp: McpServer): void {
   ) => {
     const toolName = String(name)
     const fn = handler as (...a: unknown[]) => unknown
-    const wrapped = (...a: unknown[]): unknown => {
-      if (!toolName.startsWith('browser_')) {
-        emitAiAction({ kind: 'analyze', label: toolName.replace(/_/g, ' '), detail: summarizeToolArgs(a[0]) })
+    const wrapped = async (...a: unknown[]): Promise<unknown> => {
+      const nonBrowser = !toolName.startsWith('browser_')
+      if (nonBrowser) {
+        const detail = summarizeToolArgs(a[0])
+        const pretty = toolName.replace(/_/g, ' ')
+        // Renderer activity log + an on-page "analyzing…" HUD so backend/static
+        // analysis (scripts, crypto, wasm, probes) isn't invisible.
+        emitAiAction({ kind: 'analyze', label: pretty, detail })
+        visualize('evalHudStart', detail ? `${pretty} · ${detail}` : pretty, 'ANALYZE')
       }
-      return fn(...a)
+      try {
+        const res = await fn(...a)
+        if (nonBrowser) visualize('evalHudDone', 'done')
+        return res
+      } catch (e) {
+        if (nonBrowser) visualize('evalHudDone', 'error', true)
+        throw e
+      }
     }
     return orig(toolName, config, wrapped)
   }
