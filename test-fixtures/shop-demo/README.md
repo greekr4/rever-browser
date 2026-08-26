@@ -1,7 +1,7 @@
-# shop-demo — "amajon" storefront (security self-audit demo target)
+# shop-demo — "reverzon" storefront (security self-audit demo target)
 
 An **Amazon-style** storefront used as a relatable demo target for rever-browser.
-`amajon` is a **fictional brand** (an Amazon parody), not a real company — safe to
+`reverzon` is a **fictional brand** (an Amazon parody), not a real company — safe to
 show in a public demo. It is **deliberately vulnerable** (see below).
 
 **Why it exists:** a shopper's product/price feed is loaded through a *private,
@@ -23,8 +23,8 @@ cd test-fixtures/shop-demo && bun build src/app.ts --outdir public --sourcemap=l
 
 | | |
 |---|---|
-| HMAC key | `amajon-price-signing-key-2026` |
-| JWT secret | `amajon-hs256-secret` |
+| HMAC key | `reverzon-price-signing-key-2026` |
+| JWT secret | `reverzon-hs256-secret` |
 | Signature input | `` `${method}\n${path}\n${body}\n${ts}` `` → headers `x-timestamp`, `x-signature` |
 | Product feed (signed) | `GET /api/products` |
 | Product detail (signed) | `GET /api/product/:id` — carries the hidden `dealPrice` |
@@ -51,7 +51,7 @@ not guessed. None of this is how a real store should be built.
 
 | # | Vulnerability | Class (OWASP) | How to demonstrate |
 |---|---|---|---|
-| V1 | **Signing key shipped in the client** — `amajon-price-signing-key-2026` is in the JS bundle (`src/signing.ts` → `app.js`), so the HMAC "signature" gate is theater: anyone can forge valid requests. | Cryptographic failure / hardcoded secret | White-box: grep the bundle / `crypto_trace`. Black-box: forge a signed request → `200`. |
+| V1 | **Signing key shipped in the client** — `reverzon-price-signing-key-2026` is in the JS bundle (`src/signing.ts` → `app.js`), so the HMAC "signature" gate is theater: anyone can forge valid requests. | Cryptographic failure / hardcoded secret | White-box: grep the bundle / `crypto_trace`. Black-box: forge a signed request → `200`. |
 | V2 | **IDOR on orders** — `GET /api/order/:id` verifies the token but never checks ownership; ids are sequential (`ord_1000`, `ord_1001`, …). | Broken object-level auth (BOLA) | Request `ord_1000` / `ord_1001` → other customers' orders + emails (PII). |
 | V3 | **Unauthenticated admin report** — `GET /api/admin/report` has no role check and is linked from nowhere. | Broken function-level auth | Guess the path → revenue, all orders, customer emails. |
 | V4 | **Excessive data exposure** — `GET /api/product/:id` leaks internal `dealPrice`, `cost`, `margin` the UI never shows. | Excessive data exposure | Compare the detail JSON to what the page renders. |

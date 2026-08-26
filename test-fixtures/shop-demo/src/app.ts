@@ -95,7 +95,7 @@ function productCard(p: Product): string {
         <span class="list">${usd(p.list)}</span>
         <span class="off">-${off}%</span>
       </div>
-      ${p.prime ? '<div class="prime">✔ amajon Prime · FREE next-day</div>' : '<div class="ship">$3.99 shipping</div>'}
+      ${p.prime ? '<div class="prime">✔ reverzon Prime · FREE next-day</div>' : '<div class="ship">$3.99 shipping</div>'}
       <button class="cart-btn" data-add="${p.id}">Add to Cart</button>
     </article>`
 }
@@ -133,7 +133,7 @@ async function renderProduct(id: number): Promise<void> {
     const p = (await r.json()) as Product
     const off = Math.round((1 - p.price / p.list) * 100)
     view().innerHTML = `
-      <nav class="crumbs"><a href="/" data-link>amajon</a> › <span>${p.brand}</span> › ${p.title}</nav>
+      <nav class="crumbs"><a href="/" data-link>reverzon</a> › <span>${p.brand}</span> › ${p.title}</nav>
       <div class="pdp">
         <div class="pdp-media">
           <img src="/img/${p.id}.jpg?v=7" alt="${p.title}"
@@ -150,8 +150,8 @@ async function renderProduct(id: number): Promise<void> {
             <span class="price">${usd(p.price)}</span>
             <span class="list">List: ${usd(p.list)}</span>
           </div>
-          ${p.prime ? '<div class="prime">✔ amajon Prime · FREE next-day delivery</div>' : '<div class="ship">$3.99 shipping</div>'}
-          <p class="pdp-desc">Ships from and sold by amajon.com. This is a demo product on a
+          ${p.prime ? '<div class="prime">✔ reverzon Prime · FREE next-day delivery</div>' : '<div class="ship">$3.99 shipping</div>'}
+          <p class="pdp-desc">Ships from and sold by reverzon.com. This is a demo product on a
             fictional storefront used to reverse-engineer a signed price API.</p>
         </div>
         <aside class="buybox">
@@ -187,7 +187,7 @@ async function renderCart(): Promise<void> {
       </div>`
         )
         .join('')
-    : `<p class="empty">Your amajon Cart is empty. <a href="/" data-link>Shop deals</a></p>`
+    : `<p class="empty">Your reverzon Cart is empty. <a href="/" data-link>Shop deals</a></p>`
   view().innerHTML = `
     <div class="cartpage">
       <div class="cart-main">
@@ -204,20 +204,20 @@ async function renderCart(): Promise<void> {
 async function renderLogin(): Promise<void> {
   view().innerHTML = `
     <div class="authwrap">
-      <a class="auth-logo" href="/" data-link><span class="logo-word">amajon</span><span class="logo-tld">.com</span></a>
+      <a class="auth-logo" href="/" data-link><span class="logo-word">reverzon</span><span class="logo-tld">.com</span></a>
       <form class="authbox" id="loginform">
         <h1>Sign in</h1>
         <label>Email or mobile phone number
-          <input type="text" id="email" value="demo@amajon.com" />
+          <input type="text" id="email" value="demo@reverzon.com" />
         </label>
         <label>Password
           <input type="password" id="pass" value="demo1234" />
         </label>
         <button class="cart-btn" type="submit">Sign in</button>
-        <p class="auth-fine">By signing in you agree to amajon's (demo) Conditions of Use.</p>
+        <p class="auth-fine">By signing in you agree to reverzon's (demo) Conditions of Use.</p>
       </form>
-      <div class="auth-new"><span>New to amajon?</span>
-        <button class="ghost-btn" id="createacct">Create your amajon account</button></div>
+      <div class="auth-new"><span>New to reverzon?</span>
+        <button class="ghost-btn" id="createacct">Create your reverzon account</button></div>
     </div>`
 }
 

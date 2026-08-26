@@ -1,5 +1,5 @@
 /**
- * "amajon" — an Amazon-style storefront used as a reverse-engineering demo target.
+ * "reverzon" — an Amazon-style storefront used as a reverse-engineering demo target.
  *
  * It is a FICTIONAL brand (an Amazon parody), not a real company. Everything is
  * local and every secret is printed here so a tool's answer is checkable.
@@ -11,8 +11,8 @@
  * Run:  bun test-fixtures/shop-demo/server.ts        (listens on 8780)
  *
  * Ground truth
- *   HMAC key           amajon-price-signing-key-2026
- *   JWT secret         amajon-hs256-secret
+ *   HMAC key           reverzon-price-signing-key-2026
+ *   JWT secret         reverzon-hs256-secret
  *   Signature input    `${method}\n${path}\n${body}\n${ts}`   (x-timestamp, x-signature)
  *   API base           /api
  *   Product feed       GET /api/products         (SIGNED — the demo target)
@@ -22,8 +22,8 @@
  */
 
 const PORT = 8780
-const HMAC_KEY = 'amajon-price-signing-key-2026'
-const JWT_SECRET = 'amajon-hs256-secret'
+const HMAC_KEY = 'reverzon-price-signing-key-2026'
+const JWT_SECRET = 'reverzon-hs256-secret'
 
 const enc = new TextEncoder()
 
@@ -52,7 +52,7 @@ async function makeJwt(): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
   const payload = b64url(
-    JSON.stringify({ sub: 'u_42', name: 'Demo Shopper', iss: 'amajon', iat: now, exp: now + 3600 })
+    JSON.stringify({ sub: 'u_42', name: 'Demo Shopper', iss: 'reverzon', iat: now, exp: now + 3600 })
   )
   const sig = b64url(await hmac(JWT_SECRET, `${header}.${payload}`))
   return `${header}.${payload}.${sig}`
@@ -131,7 +131,7 @@ interface Order {
   createdAt: string
 }
 const cart = new Map<number, number>() // productId -> qty
-const DEMO_EMAIL = 'demo@amajon.com'
+const DEMO_EMAIL = 'demo@reverzon.com'
 // Pre-existing orders from OTHER customers. Order ids are sequential/guessable
 // and /api/order/:id performs no ownership check -> IDOR leaks their PII.
 const orders: Order[] = [
@@ -325,4 +325,4 @@ Bun.serve({
   }
 })
 
-console.log(`amajon shop-demo listening on http://127.0.0.1:${PORT}`)
+console.log(`reverzon shop-demo listening on http://127.0.0.1:${PORT}`)
