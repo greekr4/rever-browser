@@ -21,6 +21,23 @@ let user: { id: string; name: string } | null = JSON.parse(localStorage.getItem(
 
 const view = (): HTMLElement => document.getElementById('view') as HTMLElement
 const usd = (n: number): string => '$' + n.toLocaleString('en-US')
+
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+function toast(msg: string, linkHref?: string, linkText?: string): void {
+  let el = document.getElementById('toast')
+  if (!el) {
+    el = document.createElement('div')
+    el.id = 'toast'
+    el.className = 'toast'
+    document.body.appendChild(el)
+  }
+  el.innerHTML =
+    `<span class="tcheck">✔</span><span>${msg}</span>` +
+    (linkHref ? ` <a href="${linkHref}" data-link>${linkText}</a>` : '')
+  el.classList.add('show')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => el && el.classList.remove('show'), 2800)
+}
 const stars = (r: number): string => '★★★★★☆☆☆☆☆'.slice(5 - Math.round(r), 10 - Math.round(r))
 
 // ── signed API helper (auto-logs-in a guest token for browsing) ───────────────
@@ -270,17 +287,25 @@ document.addEventListener('click', (e) => {
   const add = t.closest('[data-add]') as HTMLElement | null
   if (add) {
     e.preventDefault()
-    void api('POST', `${API_BASE}/cart`, { productId: Number(add.dataset.add), qty: 1 }).then(() =>
-      refreshBadge()
-    )
+    const pid = Number(add.dataset.add)
+    void api('POST', `${API_BASE}/cart`, { productId: pid, qty: 1 }).then(async (r) => {
+      if (!r.ok) return
+      const d = await r.json()
+      const badge = document.getElementById('cart-count')
+      if (badge) badge.textContent = String(d.count ?? 0)
+      const item = (d.items ?? []).find((x: CartLine) => x.id === pid)
+      toast(`Added to Cart${item ? ` · ${item.title}` : ''}`, '/cart', 'View cart')
+    })
     return
   }
   // buy now -> add then go to cart
   const buy = t.closest('[data-buy]') as HTMLElement | null
   if (buy) {
     e.preventDefault()
-    void api('POST', `${API_BASE}/cart`, { productId: Number(buy.dataset.buy), qty: 1 }).then(() => {
-      void refreshBadge()
+    void api('POST', `${API_BASE}/cart`, { productId: Number(buy.dataset.buy), qty: 1 }).then(async (r) => {
+      if (!r.ok) return
+      await refreshBadge()
+      toast('Added to Cart — proceeding to checkout')
       navigate('/cart')
     })
     return
@@ -291,6 +316,7 @@ document.addEventListener('click', (e) => {
     e.preventDefault()
     void api('POST', `${API_BASE}/cart/remove`, { productId: Number(rm.dataset.remove) }).then(() => {
       void refreshBadge()
+      toast('Removed from cart')
       void renderCart()
     })
     return
@@ -299,10 +325,11 @@ document.addEventListener('click', (e) => {
   if (t.closest('#checkout')) {
     e.preventDefault()
     void api('POST', `${API_BASE}/orders`, {}).then(async (r) => {
-      if (r.ok) {
-        await refreshBadge()
-        navigate('/orders')
-      }
+      if (!r.ok) return
+      const o = await r.json()
+      await refreshBadge()
+      toast(`Order placed · ${o.id}`, '/orders', 'View orders')
+      navigate('/orders')
     })
     return
   }
@@ -310,7 +337,13 @@ document.addEventListener('click', (e) => {
   const cancel = t.closest('[data-cancel]') as HTMLElement | null
   if (cancel) {
     e.preventDefault()
-    void api('POST', `${API_BASE}/order/${cancel.dataset.cancel}/cancel`, {}).then(() => renderOrders())
+    void api('POST', `${API_BASE}/order/${cancel.dataset.cancel}/cancel`, {}).then(async (r) => {
+      if (r.ok) {
+        const o = await r.json()
+        toast(`Order cancelled · ${o.id}`)
+      }
+      void renderOrders()
+    })
     return
   }
 })

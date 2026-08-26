@@ -32,6 +32,20 @@ var token = localStorage.getItem("auth.token") ?? "";
 var user = JSON.parse(localStorage.getItem("auth.user") ?? "null");
 var view = () => document.getElementById("view");
 var usd = (n) => "$" + n.toLocaleString("en-US");
+var toastTimer;
+function toast(msg, linkHref, linkText) {
+  let el = document.getElementById("toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
+    el.className = "toast";
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<span class="tcheck">✔</span><span>${msg}</span>` + (linkHref ? ` <a href="${linkHref}" data-link>${linkText}</a>` : "");
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el && el.classList.remove("show"), 2800);
+}
 var stars = (r) => "★★★★★☆☆☆☆☆".slice(5 - Math.round(r), 10 - Math.round(r));
 async function login() {
   const r = await fetch(`${API_BASE}/login`, {
@@ -255,14 +269,27 @@ document.addEventListener("click", (e) => {
   const add = t.closest("[data-add]");
   if (add) {
     e.preventDefault();
-    api("POST", `${API_BASE}/cart`, { productId: Number(add.dataset.add), qty: 1 }).then(() => refreshBadge());
+    const pid = Number(add.dataset.add);
+    api("POST", `${API_BASE}/cart`, { productId: pid, qty: 1 }).then(async (r) => {
+      if (!r.ok)
+        return;
+      const d = await r.json();
+      const badge = document.getElementById("cart-count");
+      if (badge)
+        badge.textContent = String(d.count ?? 0);
+      const item = (d.items ?? []).find((x) => x.id === pid);
+      toast(`Added to Cart${item ? ` · ${item.title}` : ""}`, "/cart", "View cart");
+    });
     return;
   }
   const buy = t.closest("[data-buy]");
   if (buy) {
     e.preventDefault();
-    api("POST", `${API_BASE}/cart`, { productId: Number(buy.dataset.buy), qty: 1 }).then(() => {
-      refreshBadge();
+    api("POST", `${API_BASE}/cart`, { productId: Number(buy.dataset.buy), qty: 1 }).then(async (r) => {
+      if (!r.ok)
+        return;
+      await refreshBadge();
+      toast("Added to Cart — proceeding to checkout");
       navigate("/cart");
     });
     return;
@@ -272,6 +299,7 @@ document.addEventListener("click", (e) => {
     e.preventDefault();
     api("POST", `${API_BASE}/cart/remove`, { productId: Number(rm.dataset.remove) }).then(() => {
       refreshBadge();
+      toast("Removed from cart");
       renderCart();
     });
     return;
@@ -279,17 +307,25 @@ document.addEventListener("click", (e) => {
   if (t.closest("#checkout")) {
     e.preventDefault();
     api("POST", `${API_BASE}/orders`, {}).then(async (r) => {
-      if (r.ok) {
-        await refreshBadge();
-        navigate("/orders");
-      }
+      if (!r.ok)
+        return;
+      const o = await r.json();
+      await refreshBadge();
+      toast(`Order placed · ${o.id}`, "/orders", "View orders");
+      navigate("/orders");
     });
     return;
   }
   const cancel = t.closest("[data-cancel]");
   if (cancel) {
     e.preventDefault();
-    api("POST", `${API_BASE}/order/${cancel.dataset.cancel}/cancel`, {}).then(() => renderOrders());
+    api("POST", `${API_BASE}/order/${cancel.dataset.cancel}/cancel`, {}).then(async (r) => {
+      if (r.ok) {
+        const o = await r.json();
+        toast(`Order cancelled · ${o.id}`);
+      }
+      renderOrders();
+    });
     return;
   }
 });
@@ -305,5 +341,5 @@ window.addEventListener("popstate", () => void route());
   refreshBadge();
 })();
 
-//# debugId=E52AB74A317D560C64756E2164756E21
+//# debugId=617B37227A18EA6064756E2164756E21
 //# sourceMappingURL=app.js.map

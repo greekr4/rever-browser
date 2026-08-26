@@ -135,10 +135,14 @@ main { max-width: 1500px; margin: 0 auto; padding: 0 12px 40px; }
 .prime { color: #007185; font-size: 12px; margin: 8px 0; }
 .ship { color: #565959; font-size: 12px; margin: 8px 0; }
 .cart-btn {
-  margin-top: auto; background: var(--orange); border: 1px solid var(--orange-hi);
-  border-radius: 999px; padding: 9px 0; font-size: 14px; cursor: pointer; font-weight: 500;
+  margin-top: auto; width: 100%; background: #ffd814; border: 1px solid #fcd200;
+  color: #0f1111; border-radius: 999px; padding: 10px 14px; font-size: 14px;
+  cursor: pointer; font-weight: 600; text-align: center; line-height: 1.2;
+  font-family: inherit; transition: background .12s;
 }
-.cart-btn:hover { background: var(--orange-hi); }
+.cart-btn:hover { background: #f7ca00; }
+.cart-btn:active { background: #f0b800; }
+.cart-btn:disabled { opacity: .5; cursor: default; }
 
 /* ── to-top + footer ─────────────────────────────────── */
 .to-top {
@@ -193,9 +197,25 @@ main { max-width: 1500px; margin: 0 auto; padding: 0 12px 40px; }
 .instock { color: #007600; margin: 12px 0; font-size: 15px; }
 .buy-btn {
   width: 100%; margin-top: 8px; background: #ffa41c; border: 1px solid #ff8f00;
-  border-radius: 999px; padding: 9px 0; font-size: 14px; cursor: pointer;
+  color: #0f1111; border-radius: 999px; padding: 10px 14px; font-size: 14px;
+  cursor: pointer; font-weight: 600; text-align: center; font-family: inherit;
+  transition: background .12s;
 }
 .buy-btn:hover { background: #fa8900; }
+
+/* ── snackbar / toast ────────────────────────────────── */
+.toast {
+  position: fixed; left: 50%; bottom: 26px;
+  transform: translateX(-50%) translateY(16px);
+  background: #1f2a37; color: #fff; padding: 12px 18px; border-radius: 10px;
+  font-size: 14px; font-weight: 500; box-shadow: 0 10px 34px rgba(0,0,0,.30);
+  opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease;
+  z-index: 100; max-width: 90vw; display: flex; align-items: center; gap: 9px;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast .tcheck { color: #6fdc8c; font-weight: 700; font-size: 15px; }
+.toast a { color: #ffd814; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: opacity .18s ease; } }
 
 /* ── generic page + orders ───────────────────────────── */
 .page { background: #fff; border-radius: 8px; padding: 24px; margin-top: 14px; }
