@@ -14,6 +14,10 @@ interface RepeaterState {
   active: RepeaterRequestSpec | null
   sourceRequestId: string | null
   sourceLabel: string | null
+  // Bumped on every loadFromTraffic so the UI can reliably switch to the
+  // Repeater panel even when the SAME request is re-sent (sourceRequestId
+  // would be unchanged and would not trigger a reaction on its own).
+  loadNonce: number
   history: HistoryEntry[]
   loading: boolean
   error: string | null
@@ -30,6 +34,7 @@ export const useRepeaterStore = create<RepeaterState>((set, get) => ({
   active: null,
   sourceRequestId: null,
   sourceLabel: null,
+  loadNonce: 0,
   history: [],
   loading: false,
   error: null,
@@ -49,6 +54,7 @@ export const useRepeaterStore = create<RepeaterState>((set, get) => ({
       },
       sourceRequestId: requestId,
       sourceLabel: `${stored.method} ${stored.url}`,
+      loadNonce: get().loadNonce + 1,
       history: [],
       error: null
     })

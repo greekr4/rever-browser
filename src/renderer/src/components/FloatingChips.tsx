@@ -36,15 +36,18 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
   const trafficCount = useTrafficStore((s) => s.order.length)
   const apiCount = useTrafficStore((s) => Object.keys(s.endpoints).length)
   const repeaterSourceId = useRepeaterStore((s) => s.sourceRequestId)
+  const repeaterLoadNonce = useRepeaterStore((s) => s.loadNonce)
   const repeaterHistoryLen = useRepeaterStore((s) => s.history.length)
   const historyCount = useHistoryStore((s) => s.entries.length)
   const workflowCount = useWorkflowsStore((s) => s.workflows.length)
 
   // Auto-open the Repeater panel whenever a request gets sent into it from
-  // somewhere else in the app (TrafficList "Send to Repeater" button).
+  // somewhere else in the app (TrafficList "↻R" button). Keyed on loadNonce —
+  // which bumps on EVERY send — so re-sending the SAME request still switches
+  // to the panel (sourceRequestId alone would be unchanged and do nothing).
   useEffect(() => {
-    if (repeaterSourceId) setOpenPanel('repeater')
-  }, [repeaterSourceId, setOpenPanel])
+    if (repeaterLoadNonce > 0) setOpenPanel('repeater')
+  }, [repeaterLoadNonce, setOpenPanel])
 
   const [consoleCount, setConsoleCount] = useState(0)
   const [exceptionCount, setExceptionCount] = useState(0)
