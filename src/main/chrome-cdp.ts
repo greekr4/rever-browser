@@ -13,7 +13,7 @@ import {
   type StoredRequest
 } from './traffic-store'
 import { STEALTH_INIT_SCRIPT, SPOOFED_CHROME_VERSION, SPOOFED_CHROME_MAJOR } from './stealth-init'
-import { encodeRefetchedBody } from './mcp/wasm-analysis'
+import { charsetFromContentType, encodeRefetchedBody } from './mcp/wasm-analysis'
 
 interface AttachedTarget {
   dbg: Debugger
@@ -449,7 +449,12 @@ async function refetchBody(
     if (!res.ok) return null
     const buf = Buffer.from(await res.arrayBuffer())
     if (buf.length > REFETCH_MAX_BYTES) return null
-    return encodeRefetchedBody(buf, res.headers.get('content-type')?.split(';')[0]?.trim())
+    const contentType = res.headers.get('content-type') ?? undefined
+    return encodeRefetchedBody(
+      buf,
+      contentType?.split(';')[0]?.trim(),
+      charsetFromContentType(contentType)
+    )
   } catch {
     return null
   }
@@ -595,6 +600,8 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
 
   // `sessionId` is set for events coming from an auto-attached out-of-process
   // frame. Reads about such an event (getResponseBody) must carry it back.
+  // The root page session arrives as an empty string, which sendCommand will
+  // not accept — every read must send `sessionId || undefined`.
   dbg.on('message', (_event, method, params, sessionId) => {
     if (method === 'Network.requestWillBeSent') {
       const p = params as RequestWillBeSentParams
@@ -684,7 +691,9 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
           const res = (await dbg.sendCommand(
             'Network.getResponseBody',
             { requestId: p.requestId },
-            sessionId
+            // Electron reports the root (page) session as an empty string,
+            // which sendCommand rejects — normalise it to undefined.
+            sessionId || undefined
           )) as { body: string; base64Encoded: boolean }
           upsertRequest({
             requestId: p.requestId,

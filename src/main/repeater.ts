@@ -168,12 +168,20 @@ function buildEvalExpression(spec: RepeaterRequestSpec, maxBytes: number): strin
     const bytes = new Uint8Array(buf)
     const total = bytes.length
     const slice = total > ${maxBytes} ? bytes.slice(0, ${maxBytes}) : bytes
+    // Decode with the charset the response declared — euc-kr/cp949 responses
+    // read as mojibake when forced through utf-8. An unknown label makes the
+    // TextDecoder constructor throw, so fall back to utf-8.
+    const ctm = /charset\\s*=\\s*["']?([^;"'\\s]+)/i.exec(res.headers.get('content-type') || '')
     let body
     try {
-      body = new TextDecoder('utf-8', { fatal: false }).decode(slice)
+      body = new TextDecoder(ctm ? ctm[1].toLowerCase() : 'utf-8', { fatal: false }).decode(slice)
     } catch (_e) {
-      body = '[binary; ' + total + ' bytes]'
+      body = new TextDecoder('utf-8', { fatal: false }).decode(slice)
     }
+    if (body.charCodeAt(0) === 0xfeff) body = body.slice(1)
+    // Slicing at a byte cap can cut a multi-byte character in half; drop the
+    // replacement chars it decodes to so the tail is not visibly corrupt.
+    if (total > ${maxBytes}) body = body.replace(/\\uFFFD+$/, '')
     const headers = {}
     res.headers.forEach((v, k) => { headers[k] = v })
     return {

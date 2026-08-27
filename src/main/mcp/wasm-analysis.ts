@@ -25,19 +25,44 @@ const BINARY_MIME_PREFIXES = [
   'font/'
 ]
 
+/** The charset from a Content-Type header (`text/html; charset=euc-kr`). */
+export function charsetFromContentType(contentType: string | undefined): string | undefined {
+  const m = /charset\s*=\s*["']?([^;"'\s]+)/i.exec(contentType ?? '')
+  return m ? m[1].toLowerCase() : undefined
+}
+
+/**
+ * Decode bytes with the charset the response declared. Korean sites still
+ * serve euc-kr/cp949, and decoding those as utf8 yields mojibake — the whole
+ * body reads as `\uFFFD`. TextDecoder covers every label Chrome does (Electron
+ * ships full ICU); an unknown label throws, so fall back to utf8.
+ */
+function decodeText(buf: Buffer, charset: string | undefined): string {
+  let text: string
+  try {
+    text = new TextDecoder(charset ?? 'utf-8', { fatal: false }).decode(buf)
+  } catch {
+    text = buf.toString('utf8')
+  }
+  // A utf8 BOM survives decoding as a zero-width U+FEFF that breaks JSON.parse
+  // and shows up as a stray glyph in the body panes.
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
+}
+
 /**
  * Decide how to store a re-fetched response body. Binary MIME types are
- * base64-encoded (lossless); everything else stays utf8 text. Pure and
- * electron-free so it is unit-testable under vitest.
+ * base64-encoded (lossless); everything else is decoded as text using the
+ * declared charset. Pure and electron-free so it is unit-testable under vitest.
  */
 export function encodeRefetchedBody(
   buf: Buffer,
-  mime: string | undefined
+  mime: string | undefined,
+  charset?: string
 ): { responseBody: string; responseBodyBase64: boolean } {
   const isBinary = !!mime && BINARY_MIME_PREFIXES.some((p) => mime.startsWith(p))
   return isBinary
     ? { responseBody: buf.toString('base64'), responseBodyBase64: true }
-    : { responseBody: buf.toString('utf8'), responseBodyBase64: false }
+    : { responseBody: decodeText(buf, charset), responseBodyBase64: false }
 }
 
 // ── captured-body access + listing ───────────────────────────────────────────

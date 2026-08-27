@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 
 import {
+  charsetFromContentType,
   encodeRefetchedBody,
   getWasmBuffer,
   listWasm,
@@ -32,6 +33,37 @@ describe('encodeRefetchedBody', () => {
     const out = encodeRefetchedBody(Buffer.from('{"ok":true}', 'utf8'), 'application/json')
     expect(out.responseBodyBase64).toBe(false)
     expect(out.responseBody).toBe('{"ok":true}')
+  })
+
+  it('decodes a euc-kr body with the declared charset', () => {
+    // 4 bytes of euc-kr: "한글". Decoding these as utf8 yields replacement chars.
+    const buf = Buffer.from([0xc7, 0xd1, 0xb1, 0xdb])
+    expect(encodeRefetchedBody(buf, 'text/html', 'euc-kr').responseBody).toBe('한글')
+    expect(encodeRefetchedBody(buf, 'text/html').responseBody).not.toBe('한글')
+  })
+
+  it('falls back to utf8 for an unknown charset label', () => {
+    const buf = Buffer.from('한글', 'utf8')
+    expect(encodeRefetchedBody(buf, 'text/html', 'x-not-a-charset').responseBody).toBe('한글')
+  })
+
+  it('strips a utf8 BOM so the body parses as JSON', () => {
+    const buf = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{"ok":true}', 'utf8')])
+    const out = encodeRefetchedBody(buf, 'application/json', 'utf-8')
+    expect(out.responseBody).toBe('{"ok":true}')
+    expect(() => JSON.parse(out.responseBody)).not.toThrow()
+  })
+})
+
+describe('charsetFromContentType', () => {
+  it('reads the charset parameter', () => {
+    expect(charsetFromContentType('application/json; charset=EUC-KR')).toBe('euc-kr')
+    expect(charsetFromContentType('text/html;charset="utf-8"')).toBe('utf-8')
+  })
+
+  it('returns undefined when none is declared', () => {
+    expect(charsetFromContentType('application/json')).toBeUndefined()
+    expect(charsetFromContentType(undefined)).toBeUndefined()
   })
 })
 
