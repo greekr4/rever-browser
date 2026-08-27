@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
+import { JsonView } from '@/components/JsonView'
 import { useT } from '@/stores/i18n'
 import { useRepeaterStore, type RepeaterRequestSpec } from '@/stores/repeater'
 
@@ -344,20 +345,17 @@ function ResponseViewer({ history, loading, error }: ResponseProps) {
                   .join('\n')}
               </pre>
             </details>
-            <pre
-              style={{
-                margin: 0,
-                padding: 8,
-                background: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 4,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all'
-              }}
-            >
-              {tryPretty(latest.response.body, latest.response.headers['content-type'])}
-              {latest.response.bodyTruncated && '\n\n[truncated…]'}
-            </pre>
+            {latest.response.body ? (
+              <JsonView
+                text={latest.response.body}
+                contentType={latest.response.headers['content-type']}
+              />
+            ) : (
+              <div style={{ opacity: 0.5 }}>(empty)</div>
+            )}
+            {latest.response.bodyTruncated && (
+              <div style={{ opacity: 0.6, marginTop: 4 }}>[truncated…]</div>
+            )}
           </div>
         )}
       </div>
@@ -434,16 +432,4 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n}B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`
   return `${(n / 1024 / 1024).toFixed(1)}MB`
-}
-
-function tryPretty(body: string, contentType?: string): string {
-  if (!body) return '(empty)'
-  if (contentType && contentType.includes('json')) {
-    try {
-      return JSON.stringify(JSON.parse(body), null, 2)
-    } catch {
-      return body
-    }
-  }
-  return body
 }

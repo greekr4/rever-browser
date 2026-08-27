@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { useChatDraft } from '@/stores/chat-draft'
-import { tryPretty } from '@/lib/format-json'
+import { JsonView } from '@/components/JsonView'
 
 import type { StoredRequestSummary } from '../../../../preload'
 
@@ -231,27 +231,27 @@ function Headers({ data }: { data: StoredRequestSummary }) {
   )
 }
 
-function BodyBlock({ label, body }: { label: string; body?: string }) {
+// CDP reports header names with whatever casing the wire used.
+function headerValue(headers: Record<string, string> | undefined, name: string): string | undefined {
+  if (!headers) return undefined
+  const hit = Object.keys(headers).find((k) => k.toLowerCase() === name)
+  return hit ? headers[hit] : undefined
+}
+
+function BodyBlock({
+  label,
+  body,
+  contentType
+}: {
+  label: string
+  body?: string
+  contentType?: string
+}) {
   return (
     <div style={{ marginBottom: 14 }}>
       <h4 style={{ margin: '0 0 6px', fontSize: 12 }}>{label}</h4>
       {body ? (
-        <pre
-          style={{
-            margin: 0,
-            padding: 10,
-            background: 'var(--bg)',
-            border: '1px solid var(--border)',
-            borderRadius: 4,
-            maxHeight: 360,
-            overflow: 'auto',
-            fontSize: 11,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word'
-          }}
-        >
-          {tryPretty(body)}
-        </pre>
+        <JsonView text={body} contentType={contentType} />
       ) : (
         <p style={{ opacity: 0.5, margin: 0 }}>—</p>
       )}
@@ -263,7 +263,11 @@ function Body({ data }: { data: StoredRequestSummary }) {
   const tr = useT()
   return (
     <div>
-      <BodyBlock label="Request body" body={data.requestPostData} />
+      <BodyBlock
+        label="Request body"
+        body={data.requestPostData}
+        contentType={headerValue(data.requestHeaders, 'content-type')}
+      />
       {data.responseBodyError ? (
         <div>
           <h4 style={{ margin: '0 0 6px', fontSize: 12 }}>{tr('drawer.responseBody')}</h4>
@@ -277,7 +281,11 @@ function Body({ data }: { data: StoredRequestSummary }) {
           </p>
         </div>
       ) : (
-        <BodyBlock label="Response body" body={data.responseBody} />
+        <BodyBlock
+          label="Response body"
+          body={data.responseBody}
+          contentType={headerValue(data.responseHeaders, 'content-type')}
+        />
       )}
     </div>
   )

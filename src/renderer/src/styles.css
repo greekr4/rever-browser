@@ -76,6 +76,14 @@
   /* Traffic row states. */
   --row-active: #1d2a3a;
   --row-selected: #1a1f1a;
+
+  /* JSON body viewer tokens. */
+  --json-key: #79c0ff;
+  --json-string: #a5d6a7;
+  --json-number: #ffb86c;
+  --json-bool: #d8a0ff;
+  --json-null: #909090;
+  --json-punct: #808080;
 }
 
 :root[data-theme='light'] {
@@ -136,6 +144,14 @@
   --http-5xx: #c62828;
   --row-active: #e3edfa;
   --row-selected: #eaf4ec;
+  /* Same 4.5:1-on-white rule as the status colours above; the dark-theme
+     pastels wash out completely on --bg. */
+  --json-key: #0a58ca;
+  --json-string: #1f7a34;
+  --json-number: #a45c00;
+  --json-bool: #7b3fb5;
+  --json-null: #61676e;
+  --json-punct: #61676e;
 }
 
 html, body, #root {

@@ -106,6 +106,15 @@ export const en = {
   'drawer.queryParams': 'Query params',
   'drawer.responseBody': 'Response body',
 
+  // JSON body viewer
+  'json.pretty': 'Pretty',
+  'json.raw': 'Raw',
+  'json.copy': 'Copy',
+  'json.copied': 'Copied',
+  'json.items': '{n} items',
+  'json.keys': '{n} keys',
+  'json.more': '… {n} more',
+
   // Repeater
   'repeater.empty': 'In Traffic, click the "↻R" (Send to Repeater) button on a request row to load it here.',
   'repeater.removeHeader': 'Remove header',

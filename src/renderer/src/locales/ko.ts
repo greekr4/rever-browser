@@ -96,6 +96,14 @@ export const ko: Record<TKey, string> = {
   'drawer.queryParams': '쿼리 파라미터',
   'drawer.responseBody': '응답 본문',
 
+  'json.pretty': '보기 좋게',
+  'json.raw': '원본',
+  'json.copy': '복사',
+  'json.copied': '복사됨',
+  'json.items': '항목 {n}개',
+  'json.keys': '키 {n}개',
+  'json.more': '… 외 {n}개',
+
   'repeater.empty': 'Traffic에서 요청 행의 "↻R"(리피터로 보내기) 버튼을 눌러 여기로 불러오세요.',
   'repeater.removeHeader': '헤더 제거',
 
