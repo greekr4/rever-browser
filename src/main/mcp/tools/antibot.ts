@@ -92,13 +92,14 @@ export function registerAntibotTools(mcp: McpServer) {
         score >= 5 ? 'likely-vm' : score >= 3 ? 'possibly-obfuscated' : 'ordinary'
       const recommendation =
         verdict === 'likely-vm'
-          ? 'Do NOT sink time into static deobfuscation. Treat it as a VM: hook the runtime (crypto_trace for signing, inject_add to wrap the token builder) and capture the generated value in-browser.'
+          ? 'Do NOT sink time into static deobfuscation. Treat it as a VM: hook the runtime (crypto_trace for signing, inject_add to wrap the token builder) and capture the generated value in-browser. Step-by-step procedure: docs/jsvmp-recovery.md.'
           : verdict === 'possibly-obfuscated'
-            ? 'Some obfuscation present; try deobfuscate_script, but be ready to fall back to a runtime hook.'
+            ? 'Some obfuscation present; try deobfuscate_script, but be ready to fall back to a runtime hook (see docs/jsvmp-recovery.md).'
             : 'Reads as ordinary/minified code — static analysis (grep_scripts, sourcemap, deobfuscate_script) is fine.'
+      const playbook = verdict === 'ordinary' ? undefined : 'docs/jsvmp-recovery.md'
       return ok(
         JSON.stringify(
-          { requestId, url: entry.url, score, verdict, recommendation, signals },
+          { requestId, url: entry.url, score, verdict, recommendation, playbook, signals },
           null,
           2
         )
