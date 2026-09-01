@@ -10,6 +10,9 @@ import { ok, err } from '../utils'
 
 type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical'
 type Category = 'endpoint' | 'auth' | 'vuln' | 'secret' | 'other'
+// Evidence → Finding → Path: a finding is a claim; it stays `candidate` until it
+// carries enough independent evidence to be `validated`.
+type FindingStatus = 'candidate' | 'validated' | 'false_positive' | 'accepted_risk'
 
 interface Finding {
   id: string
@@ -18,6 +21,11 @@ interface Finding {
   category: Category
   body: string
   requestId?: string
+  // Evidence chain: requestIds and/or other finding ids that back this claim.
+  evidenceIds: string[]
+  // Exact command/script that reproduces the claim (e.g. an export_python_client path).
+  reproCommand?: string
+  status: FindingStatus
   tags: string[]
   createdAt: number
 }
@@ -54,8 +62,14 @@ function load(): void {
     if (!existsSync(storePath())) return
     const arr: Finding[] = JSON.parse(readFileSync(storePath(), 'utf8'))
     for (const f of arr) {
-      // Tolerate findings written before `category` existed.
-      findings.set(f.id, { ...f, category: f.category ?? 'other', tags: f.tags ?? [] })
+      // Tolerate findings written before `category` / the evidence chain existed.
+      findings.set(f.id, {
+        ...f,
+        category: f.category ?? 'other',
+        tags: f.tags ?? [],
+        evidenceIds: f.evidenceIds ?? [],
+        status: f.status ?? 'candidate'
+      })
     }
   } catch (e) {
     console.error('[findings] load failed:', e)
@@ -87,11 +101,13 @@ function renderMarkdown(list: Finding[]): string {
     lines.push(`## ${CATEGORY_LABEL[cat]} (${inCat.length})`, '')
     for (const f of inCat) {
       lines.push(`### ${f.title}`)
-      const meta = [SEVERITY_LABEL[f.severity]]
+      const meta = [SEVERITY_LABEL[f.severity], `status: ${f.status}`]
       if (f.tags.length) meta.push(`tags: ${f.tags.join(', ')}`)
       if (f.requestId) meta.push(`request: \`${f.requestId}\``)
       lines.push(`_${meta.join(' · ')}_`, '')
       lines.push(f.body.trim(), '')
+      if (f.evidenceIds.length) lines.push(`**Evidence:** ${f.evidenceIds.map((e) => `\`${e}\``).join(', ')}`, '')
+      if (f.reproCommand) lines.push('**Repro:**', '```', f.reproCommand.trim(), '```', '')
     }
   }
   return lines.join('\n')
@@ -104,7 +120,7 @@ export function registerFindingTools(mcp: McpServer) {
     'finding_add',
     {
       description:
-        'Save a finding/evidence note as a durable session artifact (persisted to disk). Use during reversing to bookmark endpoints, auth flows, secrets, or vulnerabilities. Markdown body supported.',
+        'Save a finding/evidence note as a durable session artifact (persisted to disk). Use during reversing to bookmark endpoints, auth flows, secrets, or vulnerabilities. Markdown body supported. Back the claim with `evidenceIds` (requestIds and/or other finding ids) and a `reproCommand`; a finding stays `candidate` until it carries ≥2 independent evidence items (best: 1 static + 1 dynamic), at which point you may mark it `validated`.',
       inputSchema: {
         title: z.string().describe('Short title'),
         body: z.string().describe('Markdown body — observations, payload, repro, etc.'),
@@ -114,10 +130,40 @@ export function registerFindingTools(mcp: McpServer) {
           .describe('What kind of finding this is (groups the export report)'),
         severity: z.enum(['info', 'low', 'medium', 'high', 'critical']).optional(),
         requestId: z.string().optional().describe('Optional traffic-store requestId reference'),
+        evidenceIds: z
+          .array(z.string())
+          .optional()
+          .describe('requestIds and/or other finding ids that back this claim (the evidence chain)'),
+        reproCommand: z
+          .string()
+          .optional()
+          .describe('Exact command/script that reproduces the claim (e.g. an export_python_client path)'),
+        status: z
+          .enum(['candidate', 'validated', 'false_positive', 'accepted_risk'])
+          .optional()
+          .describe('Defaults to candidate. `validated` requires ≥2 independent evidence items.'),
         tags: z.array(z.string()).optional()
       }
     },
-    async ({ title, body, category = 'other', severity = 'info', requestId, tags = [] }) => {
+    async ({
+      title,
+      body,
+      category = 'other',
+      severity = 'info',
+      requestId,
+      evidenceIds = [],
+      reproCommand,
+      status = 'candidate',
+      tags = []
+    }) => {
+      // Validated gate: never silently promote a thinly-evidenced claim.
+      let effectiveStatus = status
+      let warning: string | undefined
+      const evidence = evidenceIds.length + (requestId ? 1 : 0)
+      if (status === 'validated' && evidence < 2) {
+        effectiveStatus = 'candidate'
+        warning = `status downgraded to 'candidate': 'validated' needs ≥2 independent evidence items, got ${evidence}. Add more evidenceIds (best: 1 static + 1 dynamic) or record it as residual risk.`
+      }
       const f: Finding = {
         id: randomUUID(),
         title,
@@ -125,12 +171,21 @@ export function registerFindingTools(mcp: McpServer) {
         category,
         body,
         requestId,
+        evidenceIds,
+        reproCommand,
+        status: effectiveStatus,
         tags,
         createdAt: Date.now()
       }
       findings.set(f.id, f)
       save()
-      return ok(JSON.stringify({ id: f.id, title, category, severity }, null, 2))
+      return ok(
+        JSON.stringify(
+          { id: f.id, title, category, severity, status: effectiveStatus, evidenceCount: evidence, ...(warning ? { warning } : {}) },
+          null,
+          2
+        )
+      )
     }
   )
 
