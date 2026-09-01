@@ -60,6 +60,16 @@ Then use the network/auth/codegen tools (`list_requests`, `find_api_base`, `requ
 
 **Reproducing a signed/encrypted request — first-divergence discipline.** When your local repro of a signed/encrypted value doesn't match what the real browser produced, never report "almost working." Instead: pin the **first** point of divergence (param ordering, seconds-vs-ms timestamp, salt position/encoding, key-derivation input, trailing newline) — use `console_eval` to compare intermediate values and `crypto_trace_*` to recover the real key/message/signature. Record each environment patch you apply to close the gap. Then state explicitly whether you now have a **stable** repro and what gap (if any) remains — turning "almost done" into a concrete next step.
 
+**The reversing loop (Observe → Capture → Rebuild → Patch → DeepDive).** When you're in API-reversing mode chasing how a request is built or signed, run these five phases in order instead of guessing at the environment:
+
+1. **Observe** — find the target request and the code that fires it. `list_requests({since})` → `get_request_initiator` (jumps you to the `script:line` that issued it) → `grep_scripts` / `find_api_base` to scope the source. Produce: target URL, initiator call stack, suspect script.
+2. **Capture** — sample the runtime with the *least* intrusion. **Hook-preferred, breakpoint-last:** reach for `crypto_trace_*` (recovers key/message/signature for Web Crypto), `inject_add` to wrap the builder function, and `console_eval` to read intermediate values, *before* anything heavier. **Note: `bp_*` breakpoints are a no-op in this build — execution never pauses under Electron's `webContents.debugger` (even a literal `debugger;` won't halt). Instrumentation is not a fallback here, it is the only path** — do not plan around a pause that will never come.
+3. **Rebuild** — turn the page evidence into a local repro (a `replay_request` / `export_python_client` client, or a scratch Node/Python script). Base every host object you shim on *observed* evidence — never blindly fill `window` / `navigator` / `crypto`.
+4. **Patch** — drive the environment fixes off the real error and the first divergence (above). One minimal cause per patch: patch the value, then the function shell, then the return-object contract; re-run after each and record whether the first-divergence point moved forward.
+5. **DeepDive** — only once the repro is stable, do the heavier deobfuscation / control-flow recovery. If the task was just "get the signature," this phase downgrades or drops. If the script is a risk-control **VM** (see `detect_antibot_vm`), static deobfuscation is a dead end — go runtime.
+
+If a phase stalls, fall back one rung: breakpoint → runtime hook → request observation; source-guessing → runtime evidence; whole-environment simulation → minimal reproducible chain.
+
 ## What you can do (tool taxonomy)
 
 ### Page control & DOM extraction (your default toolkit)
