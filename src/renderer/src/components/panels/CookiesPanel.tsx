@@ -17,6 +17,7 @@ interface CookieRow {
 type Section = 'cookies' | 'local' | 'session'
 
 export function CookiesPanel() {
+  const t = useT()
   const [section, setSection] = useState<Section>('cookies')
   const [cookies, setCookies] = useState<CookieRow[]>([])
   const [origin, setOrigin] = useState<string | null>(null)
@@ -64,12 +65,12 @@ export function CookiesPanel() {
   return (
     <div style={{ padding: 10, fontSize: 12, color: 'var(--text-2)', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}>
-        <SectionTab label="Cookies" count={cookies.length} active={section === 'cookies'} onClick={() => setSection('cookies')} />
-        <SectionTab label="localStorage" count={Object.keys(local).length} active={section === 'local'} onClick={() => setSection('local')} />
-        <SectionTab label="sessionStorage" count={Object.keys(session).length} active={section === 'session'} onClick={() => setSection('session')} />
+        <SectionTab label={t('cookies.tab.cookies')} count={cookies.length} active={section === 'cookies'} onClick={() => setSection('cookies')} />
+        <SectionTab label={t('cookies.tab.local')} count={Object.keys(local).length} active={section === 'local'} onClick={() => setSection('local')} />
+        <SectionTab label={t('cookies.tab.session')} count={Object.keys(session).length} active={section === 'session'} onClick={() => setSection('session')} />
         <div style={{ flex: 1 }} />
         <span style={{ opacity: 0.55, marginRight: 6 }}>{origin}</span>
-        <button onClick={() => void refresh()} title="Refresh">↻</button>
+        <button onClick={() => void refresh()} title={t('cookies.refresh')}>↻</button>
       </div>
 
       {section === 'cookies' && (

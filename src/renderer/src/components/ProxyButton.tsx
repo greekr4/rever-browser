@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { useT } from '@/stores/i18n'
 import { useNavigationRequestStore } from '@/stores/navigation-request'
 import type { ProxyConfig, Tab } from '@/stores/tabs'
 import { useTabsStore } from '@/stores/tabs'
@@ -34,6 +35,7 @@ function draftFrom(proxy: ProxyConfig | undefined): Draft {
 }
 
 export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
+  const t = useT()
   const setTabProxy = useTabsStore((s) => s.setTabProxy)
   const requestNav = useNavigationRequestStore((s) => s.request)
   const [open, setOpen] = useState(false)
@@ -68,11 +70,11 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
     const host = draft.host.trim()
     const port = Number(draft.port)
     if (!host) {
-      setError('Host is required')
+      setError(t('proxy.errHost'))
       return
     }
     if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-      setError('Port must be 1–65535')
+      setError(t('proxy.errPort'))
       return
     }
     const config: ProxyConfig = {
@@ -91,7 +93,7 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
         await window.rev.proxy.set(tab.id, config)
       } catch (e) {
         console.error('[proxy] set failed', e)
-        setError('Failed to apply proxy')
+        setError(t('proxy.errApply'))
         return
       }
       setOpen(false)
@@ -111,7 +113,7 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
     } catch (e) {
       console.error('[proxy] set failed', e)
       useTabsStore.getState().closeTab(newId)
-      setError('Failed to apply proxy')
+      setError(t('proxy.errApply'))
       return
     }
     requestNav(target)
@@ -130,7 +132,10 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
     onApplied()
   }
 
-  const label = on && proxy ? `Proxy: ${proxy.host}:${proxy.port}` : 'Proxy'
+  const label =
+    on && proxy
+      ? t('proxy.labelActive', { host: proxy.host, port: proxy.port })
+      : t('proxy.label')
 
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -141,8 +146,12 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
         disabled={!tab}
         title={
           on && proxy
-            ? `Proxy: ${proxy.scheme}://${proxy.host}:${proxy.port} — click to edit`
-            : 'Set a proxy for the browser'
+            ? t('proxy.editTitle', {
+                scheme: proxy.scheme,
+                host: proxy.host,
+                port: proxy.port
+              })
+            : t('proxy.setTitle')
         }
         style={{
           maxWidth: 180,
@@ -182,10 +191,10 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
               fontSize: 12
             }}
           >
-            <div style={{ fontWeight: 600, color: 'var(--text)' }}>Tab proxy</div>
+            <div style={{ fontWeight: 600, color: 'var(--text)' }}>{t('proxy.tabProxy')}</div>
 
             <label style={{ display: 'flex', flexDirection: 'column', gap: 3, color: 'var(--text-dim)' }}>
-              Scheme
+              {t('proxy.scheme')}
               <select
                 ref={firstFieldRef}
                 value={draft.scheme}
@@ -200,7 +209,7 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
 
             <div style={{ display: 'flex', gap: 6 }}>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 3, color: 'var(--text-dim)', flex: 1, minWidth: 0 }}>
-                Host
+                {t('proxy.host')}
                 <input
                   value={draft.host}
                   onChange={(e) => setDraft((d) => ({ ...d, host: e.target.value }))}
@@ -209,7 +218,7 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
                 />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 3, color: 'var(--text-dim)', flex: 1, minWidth: 0 }}>
-                Port
+                {t('proxy.port')}
                 <input
                   value={draft.port}
                   onChange={(e) => setDraft((d) => ({ ...d, port: e.target.value.replace(/[^0-9]/g, '') }))}
@@ -223,7 +232,7 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
             <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 3, color: 'var(--text-dim)', flex: 1, minWidth: 0 }}>
                 <span style={{ whiteSpace: 'nowrap' }}>
-                  User <span style={{ opacity: 0.6 }}>(optional)</span>
+                  {t('proxy.user')} <span style={{ opacity: 0.6 }}>{t('proxy.optional')}</span>
                 </span>
                 <input
                   value={draft.username}
@@ -232,7 +241,7 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
                 />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 3, color: 'var(--text-dim)', flex: 1, minWidth: 0 }}>
-                Password
+                {t('proxy.password')}
                 <input
                   type="password"
                   value={draft.password}
@@ -247,25 +256,23 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 2 }}>
               {on && (
                 <button type="button" onClick={disable} style={{ marginRight: 'auto' }}>
-                  Disable
+                  {t('proxy.disable')}
                 </button>
               )}
               <button type="button" onClick={() => setOpen(false)}>
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
                 onClick={apply}
                 style={{ background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }}
               >
-                {tab?.partition ? 'Apply' : 'Open proxy tab'}
+                {tab?.partition ? t('proxy.apply') : t('proxy.openTab')}
               </button>
             </div>
 
             <div style={{ color: 'var(--text-dim)', opacity: 0.8, lineHeight: 1.4 }}>
-              {tab?.partition
-                ? 'This tab runs in its own session (separate cookies, incognito-style). Changes apply to this tab only and reload the page.'
-                : 'Opens the current page in a new tab with its own cookies and storage (like incognito), routed through this proxy. Other tabs are unaffected.'}
+              {tab?.partition ? t('proxy.noteEdit') : t('proxy.noteNew')}
             </div>
           </div>
         </>

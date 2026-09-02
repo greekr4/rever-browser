@@ -160,4 +160,51 @@ export const ko: Record<TKey, string> = {
   'onboard.status.needs-login': '로그인 필요',
   'onboard.status.auth-failed': '키가 거부됨',
   'onboard.status.failed': '실행 실패',
+
+  // 주소창 툴바 (App)
+  'toolbar.back': '뒤로',
+  'toolbar.forward': '앞으로',
+  'toolbar.reload': '새로고침',
+  'toolbar.hardReload': '강력 새로고침 (캐시 지우기)',
+  'toolbar.go': '이동',
+  'toolbar.findInPage': '페이지에서 찾기',
+
+  // 프록시 버튼
+  'proxy.label': '프록시',
+  'proxy.labelActive': '프록시: {host}:{port}',
+  'proxy.setTitle': '브라우저에 프록시 설정',
+  'proxy.editTitle': '프록시: {scheme}://{host}:{port} — 클릭해 편집',
+  'proxy.tabProxy': '탭 프록시',
+  'proxy.scheme': '스킴',
+  'proxy.host': '호스트',
+  'proxy.port': '포트',
+  'proxy.user': '사용자',
+  'proxy.optional': '(선택)',
+  'proxy.password': '비밀번호',
+  'proxy.disable': '해제',
+  'proxy.apply': '적용',
+  'proxy.openTab': '프록시 탭 열기',
+  'proxy.errHost': '호스트를 입력하세요',
+  'proxy.errPort': '포트는 1–65535 범위여야 합니다',
+  'proxy.errApply': '프록시 적용 실패',
+  'proxy.noteEdit':
+    '이 탭은 자체 세션(별도 쿠키, 시크릿 모드 방식)에서 실행됩니다. 변경은 이 탭에만 적용되고 페이지를 새로고침합니다.',
+  'proxy.noteNew':
+    '현재 페이지를 자체 쿠키·스토리지를 가진 새 탭(시크릿 모드처럼)에서 이 프록시로 라우팅해 엽니다. 다른 탭은 영향받지 않습니다.',
+
+  // 봇 탐지 프로브
+  'botcheck.trigger': '봇 체크',
+  'botcheck.triggerTitle': '봇 탐지 테스트 사이트 열기',
+  'botcheck.menuTitle': '봇 탐지 프로브',
+  'botcheck.sannysoft.desc': '기본 스텔스 (webdriver / plugins / UA)',
+  'botcheck.creepjs.desc': '풀스택 핑거프린트 (canvas / audio / font / WebGL)',
+  'botcheck.browserleaks.desc': '개별 누수 (Canvas / WebGL / WebRTC)',
+  'botcheck.amiunique.desc': '고유성 점수',
+  'botcheck.pixelscan.desc': '일관성 교차검증 (UA / OS / WebGL)',
+
+  // 쿠키 패널 섹션 탭
+  'cookies.tab.cookies': '쿠키',
+  'cookies.tab.local': 'localStorage',
+  'cookies.tab.session': 'sessionStorage',
+  'cookies.refresh': '새로고침',
 }

@@ -176,6 +176,53 @@ export const en = {
   'onboard.status.needs-login': 'Sign-in required',
   'onboard.status.auth-failed': 'Key rejected',
   'onboard.status.failed': 'Failed to start',
+
+  // Address-bar toolbar (App)
+  'toolbar.back': 'Back',
+  'toolbar.forward': 'Forward',
+  'toolbar.reload': 'Reload',
+  'toolbar.hardReload': 'Hard Reload (clear cache)',
+  'toolbar.go': 'Go',
+  'toolbar.findInPage': 'Find in page',
+
+  // Proxy button
+  'proxy.label': 'Proxy',
+  'proxy.labelActive': 'Proxy: {host}:{port}',
+  'proxy.setTitle': 'Set a proxy for the browser',
+  'proxy.editTitle': 'Proxy: {scheme}://{host}:{port} — click to edit',
+  'proxy.tabProxy': 'Tab proxy',
+  'proxy.scheme': 'Scheme',
+  'proxy.host': 'Host',
+  'proxy.port': 'Port',
+  'proxy.user': 'User',
+  'proxy.optional': '(optional)',
+  'proxy.password': 'Password',
+  'proxy.disable': 'Disable',
+  'proxy.apply': 'Apply',
+  'proxy.openTab': 'Open proxy tab',
+  'proxy.errHost': 'Host is required',
+  'proxy.errPort': 'Port must be 1–65535',
+  'proxy.errApply': 'Failed to apply proxy',
+  'proxy.noteEdit':
+    'This tab runs in its own session (separate cookies, incognito-style). Changes apply to this tab only and reload the page.',
+  'proxy.noteNew':
+    'Opens the current page in a new tab with its own cookies and storage (like incognito), routed through this proxy. Other tabs are unaffected.',
+
+  // Bot-detection probes
+  'botcheck.trigger': 'Bot check',
+  'botcheck.triggerTitle': 'Open bot detection test sites',
+  'botcheck.menuTitle': 'Bot detection probes',
+  'botcheck.sannysoft.desc': 'Baseline stealth (webdriver / plugins / UA)',
+  'botcheck.creepjs.desc': 'Full-stack fingerprint (canvas / audio / font / WebGL)',
+  'botcheck.browserleaks.desc': 'Individual leaks (Canvas / WebGL / WebRTC)',
+  'botcheck.amiunique.desc': 'Uniqueness score',
+  'botcheck.pixelscan.desc': 'Consistency cross-check (UA / OS / WebGL)',
+
+  // Cookies panel section tabs
+  'cookies.tab.cookies': 'Cookies',
+  'cookies.tab.local': 'localStorage',
+  'cookies.tab.session': 'sessionStorage',
+  'cookies.refresh': 'Refresh',
 }
 
 export type TKey = keyof typeof en

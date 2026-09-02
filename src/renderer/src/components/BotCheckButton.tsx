@@ -1,38 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 
+import { useT } from '@/stores/i18n'
+import type { TKey } from '@/locales/en'
+
 interface Site {
   url: string
   name: string
-  desc: string
+  descKey: TKey
 }
 
 const SITES: Site[] = [
-  {
-    url: 'https://bot.sannysoft.com',
-    name: 'Sannysoft',
-    desc: 'Baseline stealth (webdriver / plugins / UA)'
-  },
+  { url: 'https://bot.sannysoft.com', name: 'Sannysoft', descKey: 'botcheck.sannysoft.desc' },
   {
     url: 'https://abrahamjuliot.github.io/creepjs/',
     name: 'CreepJS',
-    desc: 'Full-stack fingerprint (canvas / audio / font / WebGL)'
+    descKey: 'botcheck.creepjs.desc'
   },
   {
     url: 'https://browserleaks.com/',
     name: 'BrowserLeaks',
-    desc: 'Individual leaks (Canvas / WebGL / WebRTC)'
+    descKey: 'botcheck.browserleaks.desc'
   },
-  {
-    url: 'https://amiunique.org/fingerprint',
-    name: 'amiunique',
-    desc: 'Uniqueness score'
-  },
-  {
-    url: 'https://pixelscan.net/',
-    name: 'pixelscan',
-    desc: 'Consistency cross-check (UA / OS / WebGL)'
-  }
+  { url: 'https://amiunique.org/fingerprint', name: 'amiunique', descKey: 'botcheck.amiunique.desc' },
+  { url: 'https://pixelscan.net/', name: 'pixelscan', descKey: 'botcheck.pixelscan.desc' }
 ]
 
 const SPRING = { type: 'spring' as const, stiffness: 320, damping: 32 }
@@ -42,6 +33,7 @@ interface Props {
 }
 
 export function BotCheckButton({ onNavigate }: Props) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -79,7 +71,7 @@ export function BotCheckButton({ onNavigate }: Props) {
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={SPRING}
           >
-            <div className="botcheck-menu-title">Bot detection probes</div>
+            <div className="botcheck-menu-title">{t('botcheck.menuTitle')}</div>
             {SITES.map((s) => (
               <button
                 key={s.url}
@@ -88,7 +80,7 @@ export function BotCheckButton({ onNavigate }: Props) {
                 onClick={() => go(s.url)}
               >
                 <span className="botcheck-item-name">{s.name}</span>
-                <span className="botcheck-item-desc">{s.desc}</span>
+                <span className="botcheck-item-desc">{t(s.descKey)}</span>
               </button>
             ))}
           </motion.div>
@@ -99,9 +91,9 @@ export function BotCheckButton({ onNavigate }: Props) {
         type="button"
         className={`chip botcheck-trigger${open ? ' active' : ''}`}
         onClick={() => setOpen((v) => !v)}
-        title="Open bot detection test sites"
+        title={t('botcheck.triggerTitle')}
       >
-        Bot check
+        {t('botcheck.trigger')}
       </button>
     </div>
   )

@@ -491,7 +491,7 @@ function App() {
                   className="toolbar-btn"
                   type="button"
                   onClick={() => activeRef()?.goBack()}
-                  title="Back"
+                  title={t('toolbar.back')}
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M15 18l-6-6 6-6" />
@@ -501,7 +501,7 @@ function App() {
                   className="toolbar-btn"
                   type="button"
                   onClick={() => activeRef()?.goForward()}
-                  title="Forward"
+                  title={t('toolbar.forward')}
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M9 18l6-6-6-6" />
@@ -511,7 +511,7 @@ function App() {
                   className="toolbar-btn"
                   type="button"
                   onClick={() => activeRef()?.reload(true)}
-                  title="Hard Reload (clear cache)"
+                  title={t('toolbar.hardReload')}
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <polyline points="23 4 23 10 17 10" />
@@ -616,7 +616,7 @@ function App() {
                 </svg>
               </button>
             )}
-            <button className="toolbar-btn" type="submit">Go</button>
+            <button className="toolbar-btn" type="submit">{t('toolbar.go')}</button>
             <button
               className="toolbar-btn"
               type="button"
@@ -766,7 +766,7 @@ function App() {
                       closeFind()
                     }
                   }}
-                  placeholder="Find in page"
+                  placeholder={t('toolbar.findInPage')}
                   style={{ width: 180, height: 24, padding: '0 8px', boxSizing: 'border-box' }}
                 />
                 <span
