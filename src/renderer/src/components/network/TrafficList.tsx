@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 
 import { useT } from '@/stores/i18n'
 import { useShallow } from 'zustand/react/shallow'
@@ -51,7 +51,12 @@ export function TrafficList() {
   const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set())
   const [hideStatic, setHideStatic] = useState(true)
 
-  const fullList = order.map((id) => entries[id]).filter(Boolean)
+  // Memoized on the actual inputs — order/entries — so the filter below doesn't
+  // rebuild fullList (a fresh array) on every unrelated render/store tick.
+  const fullList = useMemo(
+    () => order.map((id) => entries[id]).filter(Boolean),
+    [order, entries]
+  )
   const list = useMemo(() => {
     const q = search.trim().toLowerCase()
     return fullList.filter((e) => {
@@ -71,16 +76,24 @@ export function TrafficList() {
     })
   }
 
-  const onCheckbox = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (e.shiftKey) selectRange(id)
-    else toggleSelect(id)
-  }
+  const onCheckbox = useCallback(
+    (id: string, e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (e.shiftKey) selectRange(id)
+      else toggleSelect(id)
+    },
+    [selectRange, toggleSelect]
+  )
 
-  const onRowClick = (id: string) => {
-    if (detailId === id) closeDetail()
-    else openDetail(id)
-  }
+  const onRowClick = useCallback(
+    (id: string) => {
+      if (detailId === id) closeDetail()
+      else openDetail(id)
+    },
+    [detailId, closeDetail, openDetail]
+  )
+
+  const sendTitle = tr('traffic.sendToRepeater')
 
   const onAskAbout = () => {
     const rows = Array.from(selected)
@@ -189,60 +202,18 @@ export function TrafficList() {
             </tr>
           </thead>
           <tbody>
-            {list.map((e) => {
-              const isSelected = selected.has(e.requestId)
-              const isActive = detailId === e.requestId
-              return (
-                <tr
-                  key={e.requestId}
-                  onClick={() => onRowClick(e.requestId)}
-                  style={{
-                    borderBottom: '1px solid var(--border)',
-                    background: isActive ? 'var(--row-active)' : isSelected ? 'var(--row-selected)' : undefined,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <td style={{ ...td, padding: '4px 4px' }} onClick={(ev) => ev.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => {
-                        /* handled by onClick */
-                      }}
-                      onClick={(ev) => onCheckbox(e.requestId, ev)}
-                      style={{ cursor: 'pointer' }}
-                    />
-                  </td>
-                  <td style={td}>{e.method}</td>
-                  <td style={{ ...td, color: statusColor(e.status) }}>{e.status ?? '·'}</td>
-                  <td style={{ ...td, opacity: 0.7 }}>{e.resourceType}</td>
-                  <td
-                    style={{
-                      ...td,
-                      maxWidth: 0,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
-                    }}
-                    title={e.url}
-                  >
-                    {e.url}
-                  </td>
-                  <td style={{ ...td, textAlign: 'right' }}>
-                    {e.encodedDataLength !== undefined ? formatBytes(e.encodedDataLength) : '·'}
-                  </td>
-                  <td style={{ ...td, padding: '2px 4px' }} onClick={(ev) => ev.stopPropagation()}>
-                    <button
-                      onClick={() => void sendToRepeater(e.requestId)}
-                      title={tr('traffic.sendToRepeater')}
-                      style={{ fontSize: 10, padding: '1px 6px', lineHeight: 1.2 }}
-                    >
-                      ↻R
-                    </button>
-                  </td>
-                </tr>
-              )
-            })}
+            {list.map((e) => (
+              <TrafficRow
+                key={e.requestId}
+                entry={e}
+                isSelected={selected.has(e.requestId)}
+                isActive={detailId === e.requestId}
+                onRowClick={onRowClick}
+                onCheckbox={onCheckbox}
+                sendToRepeater={sendToRepeater}
+                sendTitle={sendTitle}
+              />
+            ))}
           </tbody>
         </table>
       </div>
@@ -275,6 +246,78 @@ export function TrafficList() {
     </div>
   )
 }
+
+interface TrafficRowProps {
+  entry: TrafficEntry
+  isSelected: boolean
+  isActive: boolean
+  onRowClick: (id: string) => void
+  onCheckbox: (id: string, e: React.MouseEvent) => void
+  sendToRepeater: (id: string) => void | Promise<void>
+  sendTitle: string
+}
+
+// Memoized so a selection or detail change re-renders only the affected rows,
+// not all up-to-500 of them.
+const TrafficRow = memo(function TrafficRow({
+  entry: e,
+  isSelected,
+  isActive,
+  onRowClick,
+  onCheckbox,
+  sendToRepeater,
+  sendTitle
+}: TrafficRowProps) {
+  return (
+    <tr
+      onClick={() => onRowClick(e.requestId)}
+      style={{
+        borderBottom: '1px solid var(--border)',
+        background: isActive ? 'var(--row-active)' : isSelected ? 'var(--row-selected)' : undefined,
+        cursor: 'pointer'
+      }}
+    >
+      <td style={{ ...td, padding: '4px 4px' }} onClick={(ev) => ev.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => {
+            /* handled by onClick */
+          }}
+          onClick={(ev) => onCheckbox(e.requestId, ev)}
+          style={{ cursor: 'pointer' }}
+        />
+      </td>
+      <td style={td}>{e.method}</td>
+      <td style={{ ...td, color: statusColor(e.status) }}>{e.status ?? '·'}</td>
+      <td style={{ ...td, opacity: 0.7 }}>{e.resourceType}</td>
+      <td
+        style={{
+          ...td,
+          maxWidth: 0,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
+        }}
+        title={e.url}
+      >
+        {e.url}
+      </td>
+      <td style={{ ...td, textAlign: 'right' }}>
+        {e.encodedDataLength !== undefined ? formatBytes(e.encodedDataLength) : '·'}
+      </td>
+      <td style={{ ...td, padding: '2px 4px' }} onClick={(ev) => ev.stopPropagation()}>
+        <button
+          onClick={() => void sendToRepeater(e.requestId)}
+          title={sendTitle}
+          style={{ fontSize: 10, padding: '1px 6px', lineHeight: 1.2 }}
+        >
+          ↻R
+        </button>
+      </td>
+    </tr>
+  )
+})
 
 const th: React.CSSProperties = {
   textAlign: 'left',
