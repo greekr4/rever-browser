@@ -28,7 +28,9 @@ export function WebSocketPanel() {
     const poll = async () => {
       const list = await window.rev.ws.list()
       setConnections((prev) => {
-        if (list.length === prev.length) return prev
+        const same =
+          list.length === prev.length && list.every((r, i) => r.requestId === prev[i].requestId)
+        if (same) return prev
         return list.map((r) => ({ requestId: r.requestId, url: r.url, startedAt: r.startedAt }))
       })
     }
@@ -39,9 +41,8 @@ export function WebSocketPanel() {
 
   // Auto-select first connection
   useEffect(() => {
-    if (connections.length > 0 && !selectedId) {
-      setSelectedId(connections[0].requestId)
-    }
+    const stillOpen = selectedId && connections.some((c) => c.requestId === selectedId)
+    if (!stillOpen) setSelectedId(connections[0]?.requestId ?? null)
   }, [connections, selectedId])
 
   // Poll frames for selected connection
