@@ -222,5 +222,6 @@ export function getRequest(requestId: string): StoredRequest | undefined {
 export function clearTraffic() {
   order.length = 0
   entries.clear()
+  wsFrames.clear()
   totalBodyBytes = 0
 }

@@ -131,6 +131,13 @@ describe('websocket frames', () => {
     expect(getRequest('wsEvict')).toBeUndefined() // evicted
     expect(getWsFrames('wsEvict')).toEqual([]) // frames freed, no leak
   })
+
+  it('drops all frames when traffic is cleared', () => {
+    upsertRequest({ requestId: 'wsClear', url: 'wss://x', host: 'x', resourceType: 'WebSocket' })
+    appendWsFrame('wsClear', { direction: 'sent', opcode: 1, payloadData: 'p', timestamp: 1 })
+    clearTraffic()
+    expect(getWsFrames('wsClear')).toEqual([])
+  })
 })
 
 describe('console logs', () => {
