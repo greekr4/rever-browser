@@ -1,3 +1,4 @@
+import { useT } from '@/stores/i18n'
 import { useBookmarksStore } from '@/stores/bookmarks'
 import { useNavigationRequestStore } from '@/stores/navigation-request'
 
@@ -39,6 +40,7 @@ function Favicon({ url }: { url: string }): React.JSX.Element {
 }
 
 export function BookmarkBar(): React.JSX.Element | null {
+  const t = useT()
   const bookmarks = useBookmarksStore((s) => s.bookmarks)
   const remove = useBookmarksStore((s) => s.remove)
   const requestNav = useNavigationRequestStore((s) => s.request)
@@ -79,7 +81,7 @@ export function BookmarkBar(): React.JSX.Element | null {
           <span
             className="bookmark-chip-x"
             role="button"
-            title="Remove bookmark"
+            title={t('bookmark.remove')}
             onClick={(e) => {
               e.stopPropagation()
               remove(b.id)

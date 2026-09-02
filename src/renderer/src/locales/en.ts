@@ -223,6 +223,33 @@ export const en = {
   'cookies.tab.local': 'localStorage',
   'cookies.tab.session': 'sessionStorage',
   'cookies.refresh': 'Refresh',
+
+  // Egress IP badge
+  'ip.hiddenTitle':
+    'Egress IP is hidden — click "Show" to reveal, or click here to refresh in the background',
+  'ip.errorTitle': 'Failed to fetch egress IP: {error} — click to retry',
+  'ip.title': 'Egress IP of the active tab (through its proxy, if set) — click to refresh',
+  'ip.masked': 'IP: •••••••',
+  'ip.none': 'IP: —',
+  'ip.show': 'Show',
+  'ip.hide': 'Hide',
+  'ip.showTitle': 'Show the egress IP',
+  'ip.hideTitle': 'Hide the egress IP (e.g. before recording)',
+  'ip.unknownError': 'Unknown error',
+
+  // Copy confirmation
+  'copy.copied': 'Copied!',
+  'copy.toClipboard': '✓ Copied to clipboard',
+
+  // Bookmark bar
+  'bookmark.remove': 'Remove bookmark',
+
+  // Agent permission prompt
+  'perm.default': 'The agent requested permission',
+  'perm.required': 'Permission required',
+  'perm.moreQueued': '· {n} more queued',
+  'perm.keys': 'Enter = allow · Esc = reject',
+  'perm.dialogLabel': 'Agent permission request',
 }
 
 export type TKey = keyof typeof en

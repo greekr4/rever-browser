@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { useT } from '@/stores/i18n'
+
 interface CopiedBox {
   left: number
   top: number
@@ -29,6 +31,7 @@ function activeWebviewRect(): DOMRect | null {
 // clipboard write. Fires from the main-process copy paths via IPC; self-clears
 // when the (longest) toast animation ends.
 export function CopyToast(): React.ReactElement | null {
+  const t = useT()
   const [copied, setCopied] = useState<Copied | null>(null)
 
   useEffect(() => {
@@ -65,7 +68,7 @@ export function CopyToast(): React.ReactElement | null {
           }}
           aria-hidden
         >
-          <span className="copy-box-label">Copied!</span>
+          <span className="copy-box-label">{t('copy.copied')}</span>
         </div>
       )}
       <div
@@ -76,7 +79,7 @@ export function CopyToast(): React.ReactElement | null {
           if (e.animationName === 'copy-clip-toast') setCopied(null)
         }}
       >
-        ✓ Copied to clipboard
+        {t('copy.toClipboard')}
       </div>
     </>
   )

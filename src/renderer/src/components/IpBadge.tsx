@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { useT } from '@/stores/i18n'
 import { useIpVisibilityStore } from '@/stores/ip-visibility'
 import { useTabsStore } from '@/stores/tabs'
 
@@ -15,6 +16,7 @@ interface Props {
 // bumps, and on click. A separate toggle masks the display (e.g. before
 // screen recording) without pausing the underlying refresh.
 export function IpBadge({ refreshSignal }: Props): React.ReactElement {
+  const t = useT()
   const activeId = useTabsStore((s) => s.activeId)
   const hidden = useIpVisibilityStore((s) => s.hidden)
   const toggleHidden = useIpVisibilityStore((s) => s.toggle)
@@ -34,9 +36,9 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
         if (id !== seq.current) return
         setLoading(false)
         setIp(res.ip ?? null)
-        setError(res.ip ? null : res.error ?? 'Unknown error')
+        setError(res.ip ? null : res.error ?? t('ip.unknownError'))
       })
-  }, [])
+  }, [t])
 
   useEffect(() => {
     refresh()
@@ -59,10 +61,10 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
         onClick={refresh}
         title={
           hidden
-            ? 'Egress IP is hidden — click "Show" to reveal, or click here to refresh in the background'
+            ? t('ip.hiddenTitle')
             : error
-              ? `Failed to fetch egress IP: ${error} — click to retry`
-              : 'Egress IP of the active tab (through its proxy, if set) — click to refresh'
+              ? t('ip.errorTitle', { error })
+              : t('ip.title')
         }
         style={
           {
@@ -73,13 +75,13 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
           } as React.CSSProperties
         }
       >
-        {hidden ? 'IP: •••••••' : loading ? '…' : (ip ?? 'IP: —')}
+        {hidden ? t('ip.masked') : loading ? '…' : (ip ?? t('ip.none'))}
       </button>
       <button
         className="toolbar-btn"
         type="button"
         onClick={toggleHidden}
-        title={hidden ? 'Show the egress IP' : 'Hide the egress IP (e.g. before recording)'}
+        title={hidden ? t('ip.showTitle') : t('ip.hideTitle')}
         style={
           {
             fontSize: 11,
@@ -88,7 +90,7 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
           } as React.CSSProperties
         }
       >
-        {hidden ? 'Show' : 'Hide'}
+        {hidden ? t('ip.show') : t('ip.hide')}
       </button>
     </div>
   )

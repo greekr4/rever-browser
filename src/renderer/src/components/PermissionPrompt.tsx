@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 
+import { useT } from '@/stores/i18n'
 import {
   useCurrentPermission,
   usePermissionQueue,
@@ -39,6 +40,7 @@ function inputPreview(rawInput: unknown): string | null {
 }
 
 export function PermissionPrompt() {
+  const t = useT()
   const current = useCurrentPermission()
   const queue = usePermissionQueue()
 
@@ -62,17 +64,17 @@ export function PermissionPrompt() {
   if (!current) return null
 
   const { request } = current
-  const title = request.toolCall?.title || 'The agent requested permission'
+  const title = request.toolCall?.title || t('perm.default')
   const preview = inputPreview(request.toolCall?.rawInput)
   const firstAllowIdx = request.options.findIndex((o) => o.kind.startsWith('allow'))
 
   return (
     <div style={overlay}>
-      <div style={card} role="dialog" aria-modal="true" aria-label="Agent permission request">
+      <div style={card} role="dialog" aria-modal="true" aria-label={t('perm.dialogLabel')}>
         <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.55, marginBottom: 8 }}>
-          Permission required
+          {t('perm.required')}
           {queue.length > 1 && (
-            <span style={{ marginLeft: 8, opacity: 0.7 }}>· {queue.length - 1} more queued</span>
+            <span style={{ marginLeft: 8, opacity: 0.7 }}>{t('perm.moreQueued', { n: queue.length - 1 })}</span>
           )}
         </div>
 
@@ -122,7 +124,7 @@ export function PermissionPrompt() {
           })}
         </div>
 
-        <div style={{ marginTop: 12, fontSize: 11, opacity: 0.45 }}>Enter = allow · Esc = reject</div>
+        <div style={{ marginTop: 12, fontSize: 11, opacity: 0.45 }}>{t('perm.keys')}</div>
       </div>
     </div>
   )

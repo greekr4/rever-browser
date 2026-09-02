@@ -207,4 +207,30 @@ export const ko: Record<TKey, string> = {
   'cookies.tab.local': 'localStorage',
   'cookies.tab.session': 'sessionStorage',
   'cookies.refresh': '새로고침',
+
+  // 이그레스 IP 배지
+  'ip.hiddenTitle': '이그레스 IP가 숨겨져 있습니다 — "표시"를 눌러 보이거나, 여기를 눌러 백그라운드로 새로고침',
+  'ip.errorTitle': '이그레스 IP 조회 실패: {error} — 클릭해 재시도',
+  'ip.title': '활성 탭의 이그레스 IP (프록시 설정 시 반영) — 클릭해 새로고침',
+  'ip.masked': 'IP: •••••••',
+  'ip.none': 'IP: —',
+  'ip.show': '표시',
+  'ip.hide': '숨김',
+  'ip.showTitle': '이그레스 IP 표시',
+  'ip.hideTitle': '이그레스 IP 숨기기 (예: 녹화 전)',
+  'ip.unknownError': '알 수 없는 오류',
+
+  // 복사 확인
+  'copy.copied': '복사됨!',
+  'copy.toClipboard': '✓ 클립보드에 복사됨',
+
+  // 북마크 바
+  'bookmark.remove': '북마크 삭제',
+
+  // 에이전트 권한 요청
+  'perm.default': '에이전트가 권한을 요청했습니다',
+  'perm.required': '권한 필요',
+  'perm.moreQueued': '· {n}개 대기 중',
+  'perm.keys': 'Enter = 허용 · Esc = 거부',
+  'perm.dialogLabel': '에이전트 권한 요청',
 }
