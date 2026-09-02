@@ -49,9 +49,13 @@ let mcpBridge: Promise<{ client: Client; tools: ChatCompletionTool[] }> | null =
 async function getMcpBridge(): Promise<{ client: Client; tools: ChatCompletionTool[] }> {
   if (mcpBridge) return mcpBridge
   mcpBridge = (async () => {
-    const { url } = await startMcpServer()
+    const { url, authHeader } = await startMcpServer()
     const client = new Client({ name: 'rever-openai', version: '0.1.0' })
-    await client.connect(new StreamableHTTPClientTransport(new URL(url)))
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(url), {
+        requestInit: { headers: { Authorization: authHeader } }
+      })
+    )
     const listed = await client.listTools()
     const mapped: ChatCompletionFunctionTool[] = listed.tools.map((t) => ({
       type: 'function',

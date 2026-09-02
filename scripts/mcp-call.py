@@ -30,11 +30,16 @@ ENDPOINT = os.path.expanduser(
 )
 
 
-def find_url() -> str:
-    """Published endpoint first; fall back to sniffing the listening port."""
+def find_endpoint() -> tuple[str, str | None]:
+    """Published (url, token) first; fall back to sniffing the listening port.
+
+    The sniffed fallback has no token, so it only works against an app build
+    that predates bearer auth — kept for that case, otherwise expect a 401.
+    """
     try:
         with open(ENDPOINT) as f:
-            return json.load(f)["url"]
+            data = json.load(f)
+            return data["url"], data.get("token")
     except (OSError, KeyError, json.JSONDecodeError):
         pass
 
@@ -45,7 +50,7 @@ def find_url() -> str:
         if line.startswith("Electron") and "127.0.0.1:" in line:
             m = re.search(r"127\.0\.0\.1:(\d+)", line)
             if m:
-                return f"http://127.0.0.1:{m.group(1)}/mcp"
+                return f"http://127.0.0.1:{m.group(1)}/mcp", None
 
     raise SystemExit(
         "No MCP endpoint found. Start the app with `bun run dev` and try again."
@@ -53,8 +58,9 @@ def find_url() -> str:
 
 
 class Client:
-    def __init__(self, url: str):
+    def __init__(self, url: str, token: str | None = None):
         self.url = url
+        self.token = token
         self.sid = None
         self._rpc(1, "initialize", {
             "protocolVersion": "2024-11-05",
@@ -70,6 +76,7 @@ class Client:
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json, text/event-stream",
+                **({"Authorization": f"Bearer {self.token}"} if self.token else {}),
                 **({"mcp-session-id": self.sid} if self.sid else {}),
             },
             method="POST",
@@ -123,7 +130,7 @@ def main() -> None:
         print(__doc__.strip())
         raise SystemExit(1)
 
-    client = Client(find_url())
+    client = Client(*find_endpoint())
 
     if sys.argv[1] in ("--list", "-l"):
         print("\n".join(sorted(client.tools())))

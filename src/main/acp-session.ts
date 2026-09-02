@@ -178,7 +178,7 @@ export async function spawnAcpSession(
           type: 'http',
           name: 'rever-traffic',
           url: mcp.url,
-          headers: []
+          headers: [{ name: 'Authorization', value: mcp.authHeader }]
         }
       ],
       // settingSources를 빈 배열로 두지 않으면 claude-agent-acp가 사용자의

@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { randomUUID } from 'node:crypto'
-import { writeFileSync, rmSync } from 'node:fs'
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
+import { writeFileSync, rmSync, chmodSync } from 'node:fs'
 import path from 'node:path'
 
 import { app } from 'electron'
@@ -149,6 +149,10 @@ function buildMcpServer(): McpServer {
 
 interface RunningServer {
   url: string
+  /** Bearer token every request must carry — see `authHeader`. */
+  token: string
+  /** Ready-made `Authorization` header value for in-process and child clients. */
+  authHeader: string
   close: () => Promise<void>
 }
 
@@ -195,21 +199,40 @@ export function endpointFilePath(): string {
   return path.join(app.getPath('userData'), 'mcp-endpoint.json')
 }
 
-function writeEndpointFile(url: string): void {
+function writeEndpointFile(url: string, token: string): void {
   try {
+    const file = endpointFilePath()
     writeFileSync(
-      endpointFilePath(),
-      JSON.stringify({ url, pid: process.pid, startedAt: new Date().toISOString() }, null, 2)
+      file,
+      JSON.stringify({ url, token, pid: process.pid, startedAt: new Date().toISOString() }, null, 2),
+      { mode: 0o600 }
     )
+    // `mode` only applies when the file is created; an existing file keeps its
+    // old bits, so tighten it explicitly.
+    chmodSync(file, 0o600)
   } catch (e) {
     console.warn('[mcp] could not publish endpoint file:', e)
   }
+}
+
+/** Constant-time check of `Authorization: Bearer <token>`. */
+function isAuthorized(header: string | undefined, token: string): boolean {
+  if (!header) return false
+  const expected = `Bearer ${token}`
+  const a = Buffer.from(header)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
 }
 
 export function startMcpServer(): Promise<RunningServer> {
   if (cached) return cached
   cached = (async () => {
     const transports = new Map<string, StreamableHTTPServerTransport>()
+
+    // Any local process can reach 127.0.0.1, and the Origin check below only
+    // stops browsers. The token (published with the URL, mode 0600) is what
+    // keeps a stray local process out of the user's authenticated sessions.
+    const token = randomBytes(24).toString('hex')
 
     // 바인딩 포트 — listen 후 설정, Origin 검증에 사용
     let boundPort = 0
@@ -235,6 +258,13 @@ export function startMcpServer(): Promise<RunningServer> {
         if (req.url !== '/mcp') {
           res.statusCode = 404
           res.end('not found')
+          return
+        }
+
+        if (!isAuthorized(req.headers['authorization'], token)) {
+          res.statusCode = 401
+          res.setHeader('WWW-Authenticate', 'Bearer')
+          res.end('unauthorized: missing or invalid bearer token')
           return
         }
 
@@ -322,10 +352,12 @@ export function startMcpServer(): Promise<RunningServer> {
     boundPort = addr.port
     const url = `http://127.0.0.1:${addr.port}/mcp`
     console.log('[mcp] listening on', url)
-    writeEndpointFile(url)
+    writeEndpointFile(url, token)
 
     return {
       url,
+      token,
+      authHeader: `Bearer ${token}`,
       async close() {
         rmSync(endpointFilePath(), { force: true })
         await new Promise<void>((resolve) => server.close(() => resolve()))

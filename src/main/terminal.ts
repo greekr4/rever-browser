@@ -17,9 +17,10 @@ const terminals = new Map<string, IPty>()
 let seq = 0
 
 // Write an MCP config the Claude Code CLI can consume (`claude --mcp-config`).
-function writeMcpConfig(url: string): string {
+function writeMcpConfig(url: string, authHeader: string): string {
   const file = join(app.getPath('userData'), 'rever-cli-mcp.json')
-  writeFileSync(file, JSON.stringify({ mcpServers: { rever: { type: 'http', url } } }, null, 2))
+  const cfg = { mcpServers: { rever: { type: 'http', url, headers: { Authorization: authHeader } } } }
+  writeFileSync(file, JSON.stringify(cfg, null, 2), { mode: 0o600 })
   return file
 }
 
@@ -45,7 +46,7 @@ export async function spawnTerminal(
 
   if (opts.agent === 'claude') {
     const mcp = await startMcpServer()
-    const cfg = writeMcpConfig(mcp.url)
+    const cfg = writeMcpConfig(mcp.url, mcp.authHeader)
     // -c runs the command in the login shell (PATH resolved), exec so the PTY
     // dies with the CLI. `--strict-mcp-config` keeps only our server so the
     // browser tools are always present regardless of the user's global config.

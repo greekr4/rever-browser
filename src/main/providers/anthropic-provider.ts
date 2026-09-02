@@ -47,9 +47,13 @@ let mcpBridge: Promise<{ client: Client; tools: Anthropic.Tool[] }> | null = nul
 async function getMcpBridge(): Promise<{ client: Client; tools: Anthropic.Tool[] }> {
   if (mcpBridge) return mcpBridge
   mcpBridge = (async () => {
-    const { url } = await startMcpServer()
+    const { url, authHeader } = await startMcpServer()
     const client = new Client({ name: 'rever-anthropic', version: '0.1.0' })
-    await client.connect(new StreamableHTTPClientTransport(new URL(url)))
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(url), {
+        requestInit: { headers: { Authorization: authHeader } }
+      })
+    )
     const listed = await client.listTools()
     const tools: Anthropic.Tool[] = listed.tools.map((t) => ({
       name: t.name,

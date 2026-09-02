@@ -19,9 +19,13 @@ let connection: Promise<{ client: Client; tools: McpToolInfo[] }> | null = null
 
 function connect(): Promise<{ client: Client; tools: McpToolInfo[] }> {
   return (async () => {
-    const { url } = await startMcpServer()
+    const { url, authHeader } = await startMcpServer()
     const client = new Client({ name: 'rever-workflow', version: '0.1.0' })
-    await client.connect(new StreamableHTTPClientTransport(new URL(url)))
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(url), {
+        requestInit: { headers: { Authorization: authHeader } }
+      })
+    )
     const listed = await client.listTools()
     const tools: McpToolInfo[] = listed.tools.map((t) => ({
       name: t.name,
