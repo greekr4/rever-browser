@@ -503,17 +503,12 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
     return { action: 'deny' }
   })
 
-  // Cmd/Ctrl+R inside the focused webview never bubbles to the host window's
-  // before-input-event, so the menu accelerator doesn't fire either. Intercept
-  // here and forward to the renderer to reload the webview.
-  target.on('before-input-event', (event, input) => {
-    if (input.type !== 'keyDown') return
-    if (input.alt) return
-    if (!(input.meta || input.control)) return
-    if (input.key.toLowerCase() !== 'r') return
-    event.preventDefault()
-    sink.send('reload-webview', { ignoreCache: input.shift })
-  })
+  // Cmd/Ctrl+R (and the other browser shortcuts) inside the focused webview are
+  // handled by the single `before-input-event` listener attached in
+  // `app.on('web-contents-created')` (main/index.ts → handleBrowserShortcut).
+  // A second listener used to live here too; it duplicated the reload and, since
+  // detachCdpCapture never removed it, leaked one more handler on every
+  // attach/detach cycle.
 
   void dbg.sendCommand('Network.enable').catch((e) => console.error('[cdp] Network.enable:', e))
   // Accept-Language is set via Network.setUserAgentOverride.acceptLanguage below.
