@@ -3,26 +3,21 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import type {
-  RequestPermissionRequest,
-  RequestPermissionResponse
-} from '@agentclientprotocol/sdk'
-
 import { startMcpServer } from './mcp/server'
 import { refForBackendNodeId } from './mcp/snapshot'
 import {
   attachCdpCapture,
-  clearDialogHistory,
   detachCdpCapture,
   getActiveTarget,
-  getDialogAutoDismiss,
-  getDialogHistory,
   setActiveTarget,
-  setDialogAutoDismiss,
   setEmulatedColorScheme,
   setInspectNodeHandler
 } from './chrome-cdp'
 import { registerStorageIpc } from './ipc/storage-ipc'
+import { registerAcpIpc } from './ipc/acp-ipc'
+import { registerTerminalIpc } from './ipc/terminal-ipc'
+import { registerDialogIpc } from './ipc/dialog-ipc'
+import { registerExternalIpc } from './ipc/external-ipc'
 import {
   getSnapshotCount,
   getStickyEnabled,
@@ -35,30 +30,9 @@ import {
   listBrowsers,
   type ImportOptions
 } from './browser-cookie-import'
-import { detectAgents, type AgentProbe } from './acp-detect'
-import { probeAgents } from './agent-probe'
-import { AGENT_CATALOG, catalogAgent } from './agent-catalog'
 import { skillInstalled } from './skill-install'
-import {
-  spawnTerminal,
-  writeTerminal,
-  resizeTerminal,
-  killTerminal,
-  killAllTerminals
-} from './terminal'
+import { killAllTerminals } from './terminal'
 import { initRendererBridge } from './renderer-bridge'
-import { launchExternalChrome, killExternalChrome } from './external-chrome'
-import { attachExternalCdp, detachExternalCdp, getExternalTarget } from './external-cdp'
-import {
-  cancelSession,
-  killSession,
-  promptSession,
-  sessionModelState,
-  setSessionModelRouted,
-  spawnSession,
-  type AgentDef
-} from './agent-router'
-import { getApiKey, hasApiKey, setApiKey, type ApiProvider } from './settings'
 import {
   getRequest,
   getConsoleSince,
@@ -151,20 +125,6 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 
 let mainWindow: BrowserWindow | null = null
-
-// ── Agent permission round-trip ───────────────────────────────────────────
-// The agent's requestPermission flows main → renderer → main over a
-// correlation id. The renderer answers via 'acp:permission-respond'; a guard
-// timeout (slightly longer than the renderer's own 60s decision window) rejects
-// if the renderer is gone, so the agent loop can't deadlock on a missing UI.
-interface PendingPermission {
-  resolve: (response: RequestPermissionResponse) => void
-  reject: (err: Error) => void
-  timer: ReturnType<typeof setTimeout>
-}
-const pendingPermissions = new Map<string, PendingPermission>()
-const PERMISSION_GUARD_MS = 65_000
-let permissionSeq = 0
 
 // Window Controls Overlay colors per theme (Windows/Linux). Kept in sync with
 // the renderer's app theme via the 'theme:set-titlebar' IPC handler.
@@ -1023,124 +983,14 @@ app.whenReady().then(() => {
       setEmulatedColorScheme(webContentsId, scheme)
   )
 
-  ipcMain.handle('acp:list-available', async (_event, probes: AgentProbe[]) => {
-    return detectAgents(probes)
-  })
-
-  // The renderer never supplies a command line: probe and spawn both resolve
-  // the agent from the main-process catalog by id.
-  ipcMain.handle('agent:probe', async () => {
-    return probeAgents(AGENT_CATALOG.map((a) => ({ ...a })))
-  })
-
-  ipcMain.handle('acp:spawn', async (_event, agentId: string, _cwd: string) => {
-    const agent = catalogAgent(agentId)
-    if (!agent) throw new Error(`unknown agent id: ${agentId}`)
-    let command = agent.command
-    if (agent.provider === 'acp') {
-      const [found] = await detectAgents([{ command: agent.command, fallbackBins: agent.fallbackBins }])
-      if (!found?.resolvedPath) throw new Error(`agent "${agentId}" is not installed (${agent.command})`)
-      command = found.resolvedPath
-    }
-    const agentDef: AgentDef = { id: agent.id, command, args: agent.args }
-    // Always sandbox the agent in a scratch directory under userData so
-    // Edit/Write/Bash tools cannot accidentally mutate the rever-browser
-    // source tree. The renderer's cwd hint is intentionally ignored.
-    const scratch = path.join(app.getPath('userData'), 'agent-scratch')
-    try {
-      mkdirSync(scratch, { recursive: true })
-    } catch (e) {
-      console.warn('[acp:spawn] failed to ensure scratch dir', e)
-    }
-    return spawnSession(agentDef, scratch)
-  })
-
-  ipcMain.handle('settings:get-api-key', (_event, provider: ApiProvider) => getApiKey(provider))
-  ipcMain.handle('settings:has-api-key', (_event, provider: ApiProvider) => hasApiKey(provider))
-  ipcMain.handle('settings:set-api-key', (_event, provider: ApiProvider, key: string) => {
-    setApiKey(provider, key)
-    return hasApiKey(provider)
-  })
-
-  ipcMain.handle(
-    'acp:prompt',
-    async (event, sessionId: string, text: string, channel: string) => {
-      const sender = event.sender
-      const requestPermission = (
-        req: RequestPermissionRequest
-      ): Promise<RequestPermissionResponse> =>
-        new Promise((resolve, reject) => {
-          if (sender.isDestroyed()) {
-            reject(new Error('renderer destroyed'))
-            return
-          }
-          const id = `perm:${permissionSeq++}`
-          const timer = setTimeout(() => {
-            pendingPermissions.delete(id)
-            reject(new Error('permission request timed out (renderer not responding)'))
-          }, PERMISSION_GUARD_MS)
-          pendingPermissions.set(id, { resolve, reject, timer })
-          sender.send('acp:permission-request', { id, request: req })
-        })
-      return promptSession(
-        sessionId,
-        text,
-        (notification) => {
-          if (sender.isDestroyed()) return
-          sender.send(channel, notification)
-        },
-        requestPermission
-      )
-    }
-  )
-
-  ipcMain.on(
-    'acp:permission-respond',
-    (_event, id: string, response: RequestPermissionResponse) => {
-      const pending = pendingPermissions.get(id)
-      if (!pending) return
-      clearTimeout(pending.timer)
-      pendingPermissions.delete(id)
-      pending.resolve(response)
-    }
-  )
-
-  ipcMain.handle('acp:cancel', async (_event, sessionId: string) => {
-    return cancelSession(sessionId)
-  })
-
-  ipcMain.handle('acp:kill', async (_event, sessionId: string) => {
-    return killSession(sessionId)
-  })
-
-  ipcMain.handle('acp:model-state', (_event, sessionId: string) => {
-    return sessionModelState(sessionId)
-  })
-
-  ipcMain.handle('acp:set-model', async (_event, sessionId: string, modelId: string) => {
-    return setSessionModelRouted(sessionId, modelId)
-  })
+  registerAcpIpc()
 
   ipcMain.handle('picker:start', () => startPicker())
   ipcMain.handle('picker:stop', () => stopPicker())
   ipcMain.handle('grab:start', () => startGrab())
   ipcMain.handle('grab:stop', () => stopGrab())
 
-  // ── Terminal (local CLI agent) ────────────────────────────────────────────
-  ipcMain.handle(
-    'terminal:spawn',
-    (event, opts: { cols: number; rows: number; agent: 'claude' | 'shell' }) =>
-      spawnTerminal(
-        opts,
-        (id, data) => event.sender.send(`terminal:data:${id}`, data),
-        (id, code) => event.sender.send(`terminal:exit:${id}`, code)
-      )
-  )
-  ipcMain.on('terminal:input', (_e, id: string, data: string) => writeTerminal(id, data))
-  ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) =>
-    resizeTerminal(id, cols, rows)
-  )
-  ipcMain.on('terminal:kill', (_e, id: string) => killTerminal(id))
+  registerTerminalIpc()
 
   // ── /rever skill status ───────────────────────────────────────────────────
   ipcMain.handle('skill:status', () => ({ installed: skillInstalled() }))
@@ -1215,88 +1065,9 @@ app.whenReady().then(() => {
     importBrowserCookies(opts)
   )
 
-  // ── JS dialog auto-dismiss IPC ────────────────────────────────────────────
-  ipcMain.handle('dialog:get-settings', () => ({
-    autoDismiss: getDialogAutoDismiss(),
-    history: getDialogHistory(50)
-  }))
-  ipcMain.handle('dialog:set-auto-dismiss', (_event, enabled: boolean) => {
-    setDialogAutoDismiss(enabled)
-    return { autoDismiss: enabled }
-  })
-  ipcMain.handle('dialog:history', (_event, limit?: number) => getDialogHistory(limit ?? 50))
-  ipcMain.handle('dialog:clear-history', () => {
-    clearDialogHistory()
-    return true
-  })
+  registerDialogIpc()
 
-  // ── External Chrome (Version B) IPC ────────────────────────────────────────
-
-  ipcMain.handle('external:start', async () => {
-    if (!mainWindow) throw new Error('main window not ready')
-    console.log('[external] start: launching Chrome…')
-    try {
-      const { port, pid } = await launchExternalChrome()
-      console.log('[external] Chrome launched on port', port, 'pid', pid)
-      await attachExternalCdp(port, mainWindow.webContents)
-      console.log('[external] CDP attached')
-      return { port, pid }
-    } catch (e) {
-      console.error('[external] start failed:', e)
-      throw e
-    }
-  })
-
-  ipcMain.handle('external:stop', async () => {
-    await detachExternalCdp()
-    await killExternalChrome()
-  })
-
-  ipcMain.handle('external:navigate', async (_event, url: string) => {
-    const target = getExternalTarget()
-    if (!target) throw new Error('External Chrome not connected')
-    await target.navigate(url)
-  })
-
-  ipcMain.handle('external:start-screencast', async (_event, opts: {
-    quality?: number
-    everyNthFrame?: number
-    maxWidth?: number
-    maxHeight?: number
-  }) => {
-    // Wait up to 10s for external Chrome to be ready (handles race where
-    // ScreencastView mounts before external:start completes).
-    const deadline = Date.now() + 10_000
-    let target = getExternalTarget()
-    while (!target && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 200))
-      target = getExternalTarget()
-    }
-    if (!target) throw new Error('External Chrome not connected (timed out after 10s)')
-    await target.startScreencast(opts)
-  })
-
-  ipcMain.handle('external:stop-screencast', async () => {
-    const target = getExternalTarget()
-    if (target) await target.stopScreencast()
-  })
-
-  ipcMain.handle('external:ack-frame', async (_event, sessionId: number) => {
-    const target = getExternalTarget()
-    if (target) await target.ackScreencast(sessionId)
-  })
-
-  ipcMain.handle('external:input-mouse', async (_event, params: unknown) => {
-    const target = getExternalTarget()
-    if (!target) throw new Error('External Chrome not connected')
-    await target.dispatchMouseEvent(params)
-  })
-
-  ipcMain.handle('external:input-key', async (_event, params: unknown) => {
-    const target = getExternalTarget()
-    if (!target) throw new Error('External Chrome not connected')
-    await target.dispatchKeyEvent(params)
-  })
+  registerExternalIpc(() => mainWindow)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
