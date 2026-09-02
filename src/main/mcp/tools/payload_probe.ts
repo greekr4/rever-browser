@@ -46,7 +46,7 @@ export function registerPayloadProbeTools(mcp: McpServer) {
         'Fire reflection / stored-XSS probes at a request slot (marker §) and inspect the response body for raw, HTML-escaped, and URL-encoded reflections. Reports the lexical context where the payload landed.',
       inputSchema: {
         requestId: z.string(),
-        payloads: z.array(z.string()).optional().describe('Override default XSS payloads')
+        payloads: z.array(z.string()).max(500).optional().describe('Override default XSS payloads (max 500)')
       }
     },
     async ({ requestId, payloads }) => {

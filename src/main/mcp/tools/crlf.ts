@@ -22,7 +22,7 @@ export function registerCrlfTools(mcp: McpServer) {
         'Inject CRLF payloads into a request URL/body/header (marker `§`) and report whether injected headers appear in the response (header injection / log forgery / open redirect chains).',
       inputSchema: {
         requestId: z.string().describe('Base requestId with § marker'),
-        payloads: z.array(z.string()).optional().describe('Override default CRLF payloads')
+        payloads: z.array(z.string()).max(500).optional().describe('Override default CRLF payloads (max 500)')
       }
     },
     async ({ requestId, payloads }) => {

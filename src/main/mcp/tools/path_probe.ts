@@ -76,7 +76,7 @@ export function registerPathProbeTools(mcp: McpServer) {
         'Probe common backup/disclosure paths (.git/HEAD, .env, *.swp, server-status, sourcemaps, wp-config). Reports any path returning 200 / non-default response. Provide baseUrl OR use the active page origin.',
       inputSchema: {
         baseUrl: z.string().optional().describe('e.g. https://target.com/. Defaults to active origin.'),
-        wordlist: z.array(z.string()).optional().describe('Override the default path list'),
+        wordlist: z.array(z.string()).max(2000).optional().describe('Override the default path list (max 2000)'),
         concurrency: z.number().int().positive().max(20).optional().describe('Default 6'),
         useDefault: z
           .boolean()
@@ -110,8 +110,10 @@ export function registerPathProbeTools(mcp: McpServer) {
           interesting: boolean
         }> = []
 
+        const deadline = Date.now() + 120_000
         async function worker() {
           while (queue.length > 0) {
+            if (Date.now() > deadline) break
             const u = queue.shift()
             if (!u) break
             try {
@@ -172,7 +174,7 @@ export function registerPathProbeTools(mcp: McpServer) {
         'Try common LFI payloads (php://filter source disclosure, ../etc/passwd traversal) against a vulnerable URL parameter. The marker `§` is replaced with each payload.',
       inputSchema: {
         requestId: z.string().describe('Base requestId (must contain § marker in URL/body)'),
-        payloads: z.array(z.string()).optional().describe('Override default LFI payloads')
+        payloads: z.array(z.string()).max(500).optional().describe('Override default LFI payloads (max 500)')
       }
     },
     async ({ requestId, payloads }) => {

@@ -7,6 +7,9 @@ import { repeaterSendRaw, buildRequestSpec, type RepeaterRequestSpec } from '../
 import { ok, err, errorMessage } from '../utils'
 
 const DEFAULT_MARKER = '§§'
+// Overall wall-clock budget for one fuzz run, so a huge payload list can't turn
+// into an unstoppable multi-minute flood at the target.
+const FUZZ_BUDGET_MS = 120_000
 
 function sha1Short(s: string): string {
   return createHash('sha1').update(s).digest('hex').slice(0, 12)
@@ -31,7 +34,7 @@ export function registerIntruderTools(mcp: McpServer) {
         `Burp-Intruder-style fuzzer. Insert a marker (default "${DEFAULT_MARKER}") in the URL/headers/body of a base request, supply a list of payloads, and this tool fires one request per payload via the active browser context. Returns a table of {payload, status, length, durationMs, bodyHash} ideal for boolean/timing-oracle blind SQLi or auth-bypass enumeration.`,
       inputSchema: {
         requestId: z.string().describe('Base requestId (from list_requests)'),
-        payloads: z.array(z.string()).describe('Payloads to substitute at the marker'),
+        payloads: z.array(z.string()).max(500).describe('Payloads to substitute at the marker (max 500)'),
         marker: z.string().optional().describe(`Marker token (default "${DEFAULT_MARKER}")`),
         concurrency: z
           .number()
@@ -83,8 +86,10 @@ export function registerIntruderTools(mcp: McpServer) {
         }
 
         const queue = [...payloads]
+        const deadline = Date.now() + FUZZ_BUDGET_MS
         async function worker() {
           while (queue.length > 0) {
+            if (Date.now() > deadline) break
             const payload = queue.shift()
             if (payload === undefined) break
             try {
@@ -122,6 +127,7 @@ export function registerIntruderTools(mcp: McpServer) {
               baseRequestId: requestId,
               baseline,
               count: results.length,
+              skipped: payloads.length - results.length,
               results
             },
             null,

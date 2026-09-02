@@ -89,7 +89,7 @@ export function registerStorageTools(mcp: McpServer) {
     {
       description: 'List cookies for given URLs (or the active origin).',
       inputSchema: {
-        urls: z.array(z.string()).optional()
+        urls: z.array(z.string()).max(500).optional()
       }
     },
     async ({ urls }) => {
