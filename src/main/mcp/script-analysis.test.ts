@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 
-import { grepBody, detectBundler, patternForCategory, listScripts } from './script-analysis'
+import {
+  grepBody,
+  grepBodySafe,
+  GrepTimeoutError,
+  detectBundler,
+  patternForCategory,
+  listScripts
+} from './script-analysis'
 import { upsertRequest, clearTraffic } from '../traffic-store'
 
 describe('grepBody', () => {
@@ -42,6 +49,23 @@ describe('grepBody', () => {
     expect(matched.some((m) => m.includes('api.example.com'))).toBe(true)
     expect(matched.some((m) => m.includes('w3.org'))).toBe(false)
   })
+})
+
+describe('grepBodySafe', () => {
+  it('returns the same matches as grepBody for a normal pattern', async () => {
+    const body = 'abcTOKENdefTOKENghi'
+    const opts = { max: 10, before: 2, after: 2 }
+    const safe = await grepBodySafe(body, /TOKEN/g, opts)
+    expect(safe).toEqual(grepBody(body, /TOKEN/g, opts))
+  })
+
+  it('rejects with GrepTimeoutError on catastrophic backtracking', async () => {
+    // Classic evil regex against a non-matching tail; a plain exec would hang.
+    const body = 'a'.repeat(40) + '!'
+    await expect(
+      grepBodySafe(body, /(a+)+$/g, { max: 5, before: 0, after: 0 })
+    ).rejects.toBeInstanceOf(GrepTimeoutError)
+  }, 15_000)
 })
 
 describe('patternForCategory', () => {

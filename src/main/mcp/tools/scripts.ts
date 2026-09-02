@@ -6,6 +6,7 @@ import { getRequest } from '../../traffic-store'
 import {
   detectBundler,
   grepBody,
+  grepBodySafe,
   listScripts,
   patternForCategory,
   runWebcrack,
@@ -121,7 +122,7 @@ export function registerScriptTools(mcp: McpServer) {
       const re = buildPattern(category as Category | undefined, pattern)
       if (re instanceof RegExp === false && 'error' in re) return err(re.error)
       try {
-        const matches = grepBody(got.body, re as RegExp, {
+        const matches = await grepBodySafe(got.body, re as RegExp, {
           max: maxMatches ?? 20,
           before: contextBefore ?? 200,
           after: contextAfter ?? 400
@@ -163,7 +164,7 @@ export function registerScriptTools(mcp: McpServer) {
           matches: ReturnType<typeof grepBody>
         }> = []
         for (const s of scripts) {
-          const matches = grepBody(s.responseBody!, re as RegExp, {
+          const matches = await grepBodySafe(s.responseBody!, re as RegExp, {
             max: maxMatchesPerScript ?? 5,
             before: 120,
             after: 200

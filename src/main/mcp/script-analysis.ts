@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process'
 
 import { listRequests, type StoredRequest } from '../traffic-store'
+import { execRegexWithTimeout, type RawMatch } from './grep-worker'
+export { GrepTimeoutError } from './grep-worker'
 
 export interface ScriptFilter {
   host?: string
@@ -101,6 +103,44 @@ export function grepBody(body: string, regex: RegExp, opts: GrepOptions): GrepMa
     out.push({ offset: m.index, match: m[0], snippet: body.slice(start, end) })
   }
   return out
+}
+
+// Dedup + snippet slicing shared with grepBodySafe (cheap; runs on the caller).
+function assembleMatches(
+  body: string,
+  regex: RegExp,
+  raw: RawMatch[],
+  opts: GrepOptions
+): GrepMatch[] {
+  const out: GrepMatch[] = []
+  const seen = new Set<string>()
+  for (const r of raw) {
+    if (out.length >= opts.max) break
+    if (regex === CATEGORY_PATTERNS.urls && URL_NOISE.test(r.match)) continue
+    const key = `${r.match}@${Math.floor(r.index / 200)}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const start = Math.max(0, r.index - opts.before)
+    const end = Math.min(body.length, r.index + r.match.length + opts.after)
+    out.push({ offset: r.index, match: r.match, snippet: body.slice(start, end) })
+  }
+  return out
+}
+
+/**
+ * Like grepBody, but runs the exec loop in a worker with a wall-clock timeout so
+ * an agent-supplied catastrophic-backtracking pattern can't freeze the main
+ * process. Rejects with GrepTimeoutError on overrun.
+ */
+export async function grepBodySafe(
+  body: string,
+  regex: RegExp,
+  opts: GrepOptions
+): Promise<GrepMatch[]> {
+  if (body.length > GREP_BODY_MAX_BYTES) return []
+  // Collect a generous multiple of the caller's limit so dedup still fills it.
+  const raw = await execRegexWithTimeout(body, regex, opts.max * 20 + 100)
+  return assembleMatches(body, regex, raw, opts)
 }
 
 export function detectBundler(body: string): { name: string; signature: string } {
