@@ -14,6 +14,7 @@ import {
 } from './traffic-store'
 import { STEALTH_INIT_SCRIPT, SPOOFED_CHROME_VERSION, SPOOFED_CHROME_MAJOR } from './stealth-init'
 import { charsetFromContentType, encodeRefetchedBody } from './mcp/wasm-analysis'
+import { compileRules, findMatchingRule, type CompiledRule } from './intercept-match'
 
 interface AttachedTarget {
   dbg: Debugger
@@ -204,6 +205,10 @@ export interface InterceptRule {
 }
 
 const interceptRules: InterceptRule[] = []
+// Compiled once per setInterceptRules so the hot Fetch.requestPaused path never
+// builds a RegExp from agent input (a bad pattern used to throw there and leave
+// every later request paused forever).
+let compiledInterceptRules: CompiledRule<InterceptRule>[] = []
 const pendingFetchRequests = new Map<string, FetchRequestPausedParams>()
 
 export function getInterceptRules(): InterceptRule[] {
@@ -217,6 +222,7 @@ export function getPendingFetchRequests(): Map<string, FetchRequestPausedParams>
 export function setInterceptRules(rules: InterceptRule[]): void {
   interceptRules.length = 0
   interceptRules.push(...rules)
+  compiledInterceptRules = compileRules(interceptRules)
 }
 
 // Re-apply Fetch.enable with current rules to the active target
@@ -871,10 +877,7 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
     } else if (method === 'Fetch.requestPaused') {
       const p = params as FetchRequestPausedParams
       // Find matching rule
-      const rule = interceptRules.find((r) => {
-        const re = new RegExp(r.urlPattern.replace(/\*/g, '.*'))
-        return re.test(p.request.url)
-      })
+      const rule = findMatchingRule(compiledInterceptRules, p.request.url)
       if (!rule) {
         // Auto-continue anything not matched
         void dbg.sendCommand('Fetch.continueRequest', { requestId: p.requestId }).catch(() => {})
