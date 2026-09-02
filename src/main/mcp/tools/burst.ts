@@ -3,13 +3,8 @@ import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { repeaterSend, type RepeaterModifications } from '../../repeater'
+import { percentile } from '../stats'
 import { ok, err, errorMessage } from '../utils'
-
-function percentile(sorted: number[], p: number): number {
-  if (sorted.length === 0) return 0
-  const idx = Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p))
-  return sorted[idx]
-}
 
 export function registerBurstTools(mcp: McpServer) {
   mcp.registerTool(

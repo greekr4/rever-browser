@@ -3,21 +3,12 @@ import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { listRequests, getRequest } from '../../traffic-store'
+import { toHeaders } from '../har-build'
 import { ok, err, errorMessage } from '../utils'
 
 // per-entry 본문 최대 256KB, 전체 JSON 응답 최대 50MB
 const BODY_TRUNCATE_BYTES = 256 * 1024
 const HAR_RESPONSE_SIZE_LIMIT = 50 * 1024 * 1024
-
-interface HarHeader {
-  name: string
-  value: string
-}
-
-function toHeaders(h: Record<string, string> | undefined): HarHeader[] {
-  if (!h) return []
-  return Object.entries(h).map(([name, value]) => ({ name, value }))
-}
 
 export function registerHarTools(mcp: McpServer) {
   mcp.registerTool(
