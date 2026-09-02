@@ -21,6 +21,7 @@
     "@anthropic-ai/sdk": "^0.110.0",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@tanstack/react-virtual": "^3.14.10",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "ai": "^6",

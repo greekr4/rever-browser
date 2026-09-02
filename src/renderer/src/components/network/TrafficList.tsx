@@ -1,4 +1,5 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 
 import { useT } from '@/stores/i18n'
 import { useShallow } from 'zustand/react/shallow'
@@ -95,6 +96,21 @@ export function TrafficList() {
 
   const sendTitle = tr('traffic.sendToRepeater')
 
+  // Virtualize the row list: only the visible window (plus overscan) mounts, so
+  // a full 500-entry buffer costs a couple dozen <tr> instead of 500.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const rowVirtualizer = useVirtualizer({
+    count: list.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 27,
+    overscan: 12
+  })
+  const virtualItems = rowVirtualizer.getVirtualItems()
+  const paddingTop = virtualItems.length ? virtualItems[0].start : 0
+  const paddingBottom = virtualItems.length
+    ? rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end
+    : 0
+
   const onAskAbout = () => {
     const rows = Array.from(selected)
       .map((id) => entries[id])
@@ -179,6 +195,7 @@ export function TrafficList() {
         </div>
       </header>
       <div
+        ref={scrollRef}
         style={{
           flex: 1,
           overflowY: 'auto',
@@ -189,31 +206,45 @@ export function TrafficList() {
         {list.length === 0 && (
           <div className="panel-empty">Open a page — traffic will appear here.</div>
         )}
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        {/* Fixed layout keeps columns stable while only a window of rows is mounted. */}
+        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
             <tr>
               <th style={{ ...th, width: 24, padding: '6px 4px' }}></th>
-              <th style={th}>{tr('traffic.method')}</th>
-              <th style={th}>{tr('traffic.status')}</th>
-              <th style={th}>{tr('traffic.type')}</th>
-              <th style={{ ...th, width: '100%' }}>{tr('traffic.url')}</th>
-              <th style={th}>{tr('traffic.size')}</th>
-              <th style={{ ...th, width: 28 }}></th>
+              <th style={{ ...th, width: 58 }}>{tr('traffic.method')}</th>
+              <th style={{ ...th, width: 46 }}>{tr('traffic.status')}</th>
+              <th style={{ ...th, width: 74 }}>{tr('traffic.type')}</th>
+              <th style={th}>{tr('traffic.url')}</th>
+              <th style={{ ...th, width: 66 }}>{tr('traffic.size')}</th>
+              <th style={{ ...th, width: 30 }}></th>
             </tr>
           </thead>
           <tbody>
-            {list.map((e) => (
-              <TrafficRow
-                key={e.requestId}
-                entry={e}
-                isSelected={selected.has(e.requestId)}
-                isActive={detailId === e.requestId}
-                onRowClick={onRowClick}
-                onCheckbox={onCheckbox}
-                sendToRepeater={sendToRepeater}
-                sendTitle={sendTitle}
-              />
-            ))}
+            {paddingTop > 0 && (
+              <tr>
+                <td colSpan={7} style={{ height: paddingTop, padding: 0, border: 0 }} />
+              </tr>
+            )}
+            {virtualItems.map((vi) => {
+              const e = list[vi.index]
+              return (
+                <TrafficRow
+                  key={e.requestId}
+                  entry={e}
+                  isSelected={selected.has(e.requestId)}
+                  isActive={detailId === e.requestId}
+                  onRowClick={onRowClick}
+                  onCheckbox={onCheckbox}
+                  sendToRepeater={sendToRepeater}
+                  sendTitle={sendTitle}
+                />
+              )
+            })}
+            {paddingBottom > 0 && (
+              <tr>
+                <td colSpan={7} style={{ height: paddingBottom, padding: 0, border: 0 }} />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
