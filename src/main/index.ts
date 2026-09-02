@@ -35,7 +35,8 @@ import {
   type ImportOptions
 } from './browser-cookie-import'
 import { detectAgents, type AgentProbe } from './acp-detect'
-import { probeAgents, type AgentProbeDef } from './agent-probe'
+import { probeAgents } from './agent-probe'
+import { AGENT_CATALOG, catalogAgent } from './agent-catalog'
 import { skillInstalled } from './skill-install'
 import {
   spawnTerminal,
@@ -1022,11 +1023,22 @@ app.whenReady().then(() => {
     return detectAgents(probes)
   })
 
-  ipcMain.handle('agent:probe', async (_event, defs: AgentProbeDef[]) => {
-    return probeAgents(defs)
+  // The renderer never supplies a command line: probe and spawn both resolve
+  // the agent from the main-process catalog by id.
+  ipcMain.handle('agent:probe', async () => {
+    return probeAgents(AGENT_CATALOG.map((a) => ({ ...a })))
   })
 
-  ipcMain.handle('acp:spawn', async (_event, agentDef: AgentDef, _cwd: string) => {
+  ipcMain.handle('acp:spawn', async (_event, agentId: string, _cwd: string) => {
+    const agent = catalogAgent(agentId)
+    if (!agent) throw new Error(`unknown agent id: ${agentId}`)
+    let command = agent.command
+    if (agent.provider === 'acp') {
+      const [found] = await detectAgents([{ command: agent.command, fallbackBins: agent.fallbackBins }])
+      if (!found?.resolvedPath) throw new Error(`agent "${agentId}" is not installed (${agent.command})`)
+      command = found.resolvedPath
+    }
+    const agentDef: AgentDef = { id: agent.id, command, args: agent.args }
     // Always sandbox the agent in a scratch directory under userData so
     // Edit/Write/Bash tools cannot accidentally mutate the rever-browser
     // source tree. The renderer's cwd hint is intentionally ignored.

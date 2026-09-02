@@ -5,12 +5,6 @@ import type {
   RequestPermissionResponse
 } from '@agentclientprotocol/sdk'
 
-export interface AcpAgentDef {
-  id: string
-  command: string
-  args: string[]
-}
-
 export interface AcpAgentProbe {
   command: string
   fallbackBins?: string[]
@@ -29,13 +23,6 @@ export type AgentHealthStatus =
   | 'needs-login'
   | 'auth-failed'
   | 'failed'
-
-export interface AgentProbeDef {
-  id: string
-  provider?: 'acp' | 'anthropic' | 'openai'
-  command: string
-  fallbackBins?: string[]
-}
 
 export interface AgentHealth {
   id: string
@@ -328,11 +315,12 @@ const api = {
 
     // Live health check: runs the ACP handshake / an authenticated API call so
     // a broken install or an expired key doesn't show up as "ready".
-    probe: (defs: AgentProbeDef[]): Promise<AgentHealth[]> =>
-      ipcRenderer.invoke('agent:probe', defs),
+    // Probes every agent in the main-process catalog (src/main/agent-catalog.ts).
+    probe: (): Promise<AgentHealth[]> => ipcRenderer.invoke('agent:probe'),
 
-    spawn: (agentDef: AcpAgentDef, cwd: string): Promise<{ sessionId: string }> =>
-      ipcRenderer.invoke('acp:spawn', agentDef, cwd),
+    // The agent is referenced by catalog id only; main resolves the binary.
+    spawn: (agentId: string, cwd: string): Promise<{ sessionId: string }> =>
+      ipcRenderer.invoke('acp:spawn', agentId, cwd),
 
     prompt: (
       sessionId: string,

@@ -27,13 +27,6 @@ function isKeyProvider(def: ACPAgentDef): def is ACPAgentDef & { provider: KeyPr
   return def.provider === 'anthropic' || def.provider === 'openai'
 }
 
-const PROBE_DEFS = ACP_AGENTS.map((a) => ({
-  id: a.id,
-  provider: a.provider,
-  command: a.command,
-  fallbackBins: a.fallbackBins
-}))
-
 export function OnboardingModal() {
   const tr = useT()
   const pick = useAgentChoice((s) => s.pick)
@@ -47,7 +40,7 @@ export function OnboardingModal() {
 
   const scan = useCallback(async () => {
     setScanning(true)
-    const results = await window.rev.acp.probe(PROBE_DEFS)
+    const results = await window.rev.acp.probe()
     setHealth(Object.fromEntries(results.map((r) => [r.id, r])))
     setScanning(false)
   }, [])

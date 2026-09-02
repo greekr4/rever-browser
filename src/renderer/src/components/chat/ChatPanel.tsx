@@ -303,7 +303,6 @@ export function ChatPanel() {
   // Absolute path returned by detectAgents(). When set, we pass it to the
   // transport instead of the bare bin name so spawn doesn't depend on the
   // Electron child process's PATH (notably broken on Windows for .cmd shims).
-  const [agentBinPath, setAgentBinPath] = useState<string | null>(onboarded?.path ?? null)
   const [input, setInput] = useState('')
   const [autoScroll, setAutoScroll] = useState(true)
   const [models, setModels] = useState<ModelEntry[]>([])
@@ -325,26 +324,18 @@ export function ChatPanel() {
   const currentIdRef = useRef<string | null>(restored?.id ?? null)
   const saveConversation = useChatHistory((s) => s.save)
 
-  // One transport per agent identity. The resolved binary path is applied in
-  // place (see effect below) rather than baked into the memo deps — otherwise
-  // async PATH detection would swap the transport and wipe the conversation.
+  // One transport per agent identity. The binary path is resolved in the main
+  // process at spawn time, so nothing here depends on async PATH detection.
   const transport = useMemo(() => {
     const base = ACP_AGENTS.find((a) => a.id === agentId)!
     return new ACPChatTransport({ agentDef: base })
   }, [agentId])
-
-  // PATH detection resolves after mount; push the absolute path into the live
-  // transport so the next spawn uses it, without recreating the transport.
-  useEffect(() => {
-    if (agentBinPath) transport.setCommand(agentBinPath)
-  }, [transport, agentBinPath])
 
   // A pick made in the first-run onboarding modal switches the live chat, so
   // the user doesn't have to reopen the agent picker right after choosing.
   const onboardChoice = useAgentChoice((s) => s.choice)
   useEffect(() => {
     if (!onboardChoice) return
-    setAgentBinPath(onboardChoice.path)
     if (onboardChoice.id === agentId) return
     currentIdRef.current = null
     setCurrentId(null)
@@ -550,8 +541,7 @@ export function ChatPanel() {
           agentId={agentId}
           modelName={selectedModelName}
           disabled={busy}
-          onSelect={(id, resolvedPath, modelId, name) => {
-            setAgentBinPath(resolvedPath)
+          onSelect={(id, _resolvedPath, modelId, name) => {
             setSelectedModelName(name)
             setPendingModel({ agentId: id, modelId, name })
             // A real agent switch starts a fresh draft (a conversation is bound

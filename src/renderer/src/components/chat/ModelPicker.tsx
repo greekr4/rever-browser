@@ -26,13 +26,6 @@ function isKeyProvider(def: ACPAgentDef): def is ACPAgentDef & { provider: KeyPr
 
 const API_SENTINEL = 'api'
 
-const PROBE_DEFS = ACP_AGENTS.map((a) => ({
-  id: a.id,
-  provider: a.provider,
-  command: a.command,
-  fallbackBins: a.fallbackBins
-}))
-
 const STATUS_COLOR: Record<AgentHealthStatus, string> = {
   ready: 'var(--status-ok)',
   'not-installed': 'var(--http-none)',
@@ -69,14 +62,14 @@ export function ModelPicker({ agentId, modelName, onSelect, disabled }: ModelPic
 
   const scan = async () => {
     setLoading(true)
-    const results = await window.rev.acp.probe(PROBE_DEFS)
+    const results = await window.rev.acp.probe()
     setHealth(Object.fromEntries(results.map((r) => [r.id, r])))
     setLoading(false)
   }
 
   useEffect(() => {
     let cancelled = false
-    void window.rev.acp.probe(PROBE_DEFS).then((results) => {
+    void window.rev.acp.probe().then((results) => {
       if (cancelled) return
       setHealth(Object.fromEntries(results.map((r) => [r.id, r])))
       setLoading(false)
