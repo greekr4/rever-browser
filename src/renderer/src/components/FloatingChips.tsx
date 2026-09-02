@@ -58,17 +58,13 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const chipStackRef = useRef<HTMLDivElement>(null)
 
-  // Poll counts for badges
+  // Poll counts for badges — three integers, not the full payloads.
   useEffect(() => {
     const poll = async () => {
-      const [logs, exceptions, wsList] = await Promise.all([
-        window.rev.console.list(0),
-        window.rev.console.exceptions(),
-        window.rev.ws.list()
-      ])
-      setConsoleCount(logs.length)
-      setExceptionCount(exceptions.length)
-      setWsCount(wsList.length)
+      const c = await window.rev.counts()
+      setConsoleCount(c.logs)
+      setExceptionCount(c.exceptions)
+      setWsCount(c.ws)
     }
     void poll()
     const id = setInterval(() => void poll(), 2000)

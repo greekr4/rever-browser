@@ -62,6 +62,9 @@ import {
   getRequest,
   getConsoleSince,
   getExceptions,
+  getConsoleCount,
+  getExceptionCount,
+  getWebSocketCount,
   clearConsole,
   clearTraffic,
   listRequests,
@@ -1176,6 +1179,11 @@ app.whenReady().then(() => {
     getExceptions().slice(-(limit ?? 100))
   )
   ipcMain.handle('console:clear', () => clearConsole())
+  ipcMain.handle('chips:counts', () => ({
+    logs: getConsoleCount(),
+    exceptions: getExceptionCount(),
+    ws: getWebSocketCount()
+  }))
   ipcMain.handle('ws:list', () =>
     listRequests({ limit: 200 }).filter((r) => r.resourceType === 'WebSocket')
   )

@@ -37,25 +37,24 @@ export function CookiesPanel() {
 
   useEffect(() => {
     void window.rev.storage.persistenceGet().then(setSticky)
-    void window.rev.dialog.getSettings().then(setDialog)
-    const id = setInterval(() => {
-      void window.rev.dialog.getSettings().then(setDialog)
-    }, 3000)
-    return () => clearInterval(id)
   }, [])
 
   const refresh = useCallback(async () => {
-    const [c, l, s] = await Promise.all([
+    const [c, l, s, d] = await Promise.all([
       window.rev.storage.cookies(),
       window.rev.storage.localGet(),
-      window.rev.storage.sessionGet()
+      window.rev.storage.sessionGet(),
+      window.rev.dialog.getSettings()
     ])
     setCookies(c.cookies as CookieRow[])
     setOrigin(c.origin)
     setLocal(l)
     setSession(s)
+    setDialog(d)
   }, [])
 
+  // One timer for the whole panel. It only runs while the panel is mounted
+  // (it's mounted only when open), so nothing polls in the background.
   useEffect(() => {
     void refresh()
     const id = setInterval(() => void refresh(), 3000)

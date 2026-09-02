@@ -504,6 +504,10 @@ const api = {
       ipcRenderer.invoke('console:exceptions', limit),
     clear: (): Promise<void> => ipcRenderer.invoke('console:clear')
   },
+  // Lightweight badge counts — three integers, so the toolbar chips don't have
+  // to pull the full console/exception/ws payloads over IPC on a timer.
+  counts: (): Promise<{ logs: number; exceptions: number; ws: number }> =>
+    ipcRenderer.invoke('chips:counts'),
   dialog: {
     getSettings: (): Promise<{
       autoDismiss: boolean

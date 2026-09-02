@@ -81,6 +81,10 @@ export function getConsoleSince(since?: number): ConsoleEntry[] {
   return consoleLogs.filter((e) => e.ts >= since)
 }
 
+export function getConsoleCount(): number {
+  return consoleLogs.length
+}
+
 export function clearConsole(): void {
   consoleLogs.length = 0
 }
@@ -104,6 +108,18 @@ export function appendException(entry: RuntimeException): void {
 
 export function getExceptions(): RuntimeException[] {
   return [...runtimeExceptions]
+}
+
+export function getExceptionCount(): number {
+  return runtimeExceptions.length
+}
+
+export function getWebSocketCount(): number {
+  let n = 0
+  for (const id of order) {
+    if (entries.get(id)?.resourceType === 'WebSocket') n++
+  }
+  return n
 }
 
 const MAX_ENTRIES = 500
