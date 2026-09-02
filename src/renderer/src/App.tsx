@@ -18,12 +18,13 @@ import { ChatPanel } from '@/components/chat/ChatPanel'
 import { TerminalPanel } from '@/components/chat/TerminalPanel'
 import { requestPermissionFromUser } from '@/ai/acp-permission'
 import { useCdpEvents } from '@/hooks/use-cdp-events'
+import { useFindInPage } from '@/hooks/use-find-in-page'
 import { useResizable } from '@/hooks/use-resizable'
 import { useBrowserModeStore } from '@/stores/browser-mode'
 import { useNavigationRequestStore } from '@/stores/navigation-request'
 import { useBookmarksStore } from '@/stores/bookmarks'
 import { useTabsStore } from '@/stores/tabs'
-import { useAppThemeStore, resolveTheme } from '@/stores/app-theme'
+import { useAppTheme } from '@/hooks/use-app-theme'
 import { useAgentModeStore } from '@/stores/agent-mode'
 import { useChatCollapsedStore } from '@/stores/chat-collapsed'
 import { useChatDraft } from '@/stores/chat-draft'
@@ -57,27 +58,7 @@ function App() {
   const removeBookmarkByUrl = useBookmarksStore((s) => s.removeByUrl)
   const isBookmarked = !!activeTab && bookmarks.some((b) => b.url === activeTab.url)
 
-  const themeMode = useAppThemeStore((s) => s.mode)
-  const cycleAppTheme = useAppThemeStore((s) => s.cycle)
-
-  // Apply the resolved app theme to <html data-theme> and sync the native
-  // titlebar overlay. Re-runs on manual mode change; also listens for OS
-  // scheme changes while in 'system' mode.
-  useEffect(() => {
-    const apply = (): void => {
-      const resolved = resolveTheme(themeMode)
-      document.documentElement.setAttribute('data-theme', resolved)
-      document.documentElement.style.background = resolved === 'dark' ? '#0e0e0e' : '#fbfbfc'
-      void window.rev.theme.setTitlebar(resolved)
-    }
-    apply()
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = (): void => {
-      if (useAppThemeStore.getState().mode === 'system') apply()
-    }
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [themeMode])
+  const { themeMode, cycleAppTheme } = useAppTheme()
 
   // Serve main-process requests for renderer-owned state (saved macros).
   useEffect(() => window.rev.bridge.onRequest(handleAgentRequest), [])
@@ -107,13 +88,6 @@ function App() {
   const [urlDraft, setUrlDraft] = useState(activeTab?.url ?? '')
   const addressInputRef = useRef<HTMLInputElement>(null)
 
-  // Find-in-page bar (Cmd/Ctrl+F). Acts on the active tab's webview; closes
-  // when the user switches tabs.
-  const [findOpen, setFindOpen] = useState(false)
-  const [findQuery, setFindQuery] = useState('')
-  const [findResult, setFindResult] = useState<{ active: number; total: number } | null>(null)
-  const findInputRef = useRef<HTMLInputElement>(null)
-  const findTabRef = useRef<string | null>(null)
   const viewportMode = useViewportStore((s) => s.mode)
   const setViewportMode = useViewportStore((s) => s.setMode)
 
@@ -158,6 +132,19 @@ function App() {
   }, [])
   const activeRef = (): WebviewTabHandle | undefined =>
     activeId ? tabRefs.current.get(activeId) : undefined
+
+  // Find-in-page bar (Cmd/Ctrl+F) — state, refs and effects live in the hook.
+  const {
+    findOpen,
+    setFindOpen,
+    findQuery,
+    setFindQuery,
+    findResult,
+    findInputRef,
+    findTabRef,
+    doFind,
+    closeFind
+  } = useFindInPage(tabRefs, activeId)
 
   // Sync the address bar to whichever tab is active.
   useEffect(() => {
@@ -235,44 +222,6 @@ function App() {
     })
     return off
   }, [])
-
-  // ── Find in page ──────────────────────────────────────────────────────────
-  const doFind = useCallback(
-    (query: string, opts?: { forward?: boolean; findNext?: boolean }) => {
-      const id = useTabsStore.getState().activeId
-      const handle = tabRefs.current.get(id)
-      if (!handle) return
-      if (!query) {
-        handle.stopFindInPage('clearSelection')
-        setFindResult(null)
-        return
-      }
-      handle.findInPage(query, opts)
-    },
-    []
-  )
-
-  const closeFind = useCallback(() => {
-    const id = findTabRef.current ?? useTabsStore.getState().activeId
-    tabRefs.current.get(id)?.stopFindInPage('clearSelection')
-    findTabRef.current = null
-    setFindOpen(false)
-    setFindResult(null)
-  }, [])
-
-  // Live match count from the active tab while the bar is open.
-  useEffect(() => {
-    if (!findOpen) return
-    const handle = activeId ? tabRefs.current.get(activeId) : undefined
-    return handle?.onFoundInPage((r) =>
-      setFindResult({ active: r.activeMatchOrdinal, total: r.matches })
-    )
-  }, [findOpen, activeId])
-
-  // Switching tabs closes the bar (and clears highlights on the old tab).
-  useEffect(() => {
-    if (findOpen && findTabRef.current && activeId !== findTabRef.current) closeFind()
-  }, [activeId, findOpen, closeFind])
 
   // Browser shortcuts forwarded from main (menu accelerators + key
   // interceptors): tab management, tab switching, back/forward, address bar.
