@@ -76,7 +76,18 @@
 
 **바로 사용해보고 싶다면?** [최신 릴리스](https://github.com/greekr4/rever-browser/releases/latest)를 내려받고 에이전트 바이너리를 설치하세요 — [요구 사항](#요구-사항) 참고:
 
-- **macOS** (Apple Silicon 또는 Intel `.dmg`) — Applications 폴더로 드래그하세요. 서명되지 않은 앱이므로, 처음 실행할 때는 앱을 우클릭 → **열기**를 선택하세요.
+- **macOS** — 칩에 맞는 `.dmg`를 받으세요: Apple Silicon(M1 이상)은 `arm64`, Intel은 `x64`. 열어서 **Rever Browser**를 **Applications** 폴더로 드래그합니다.
+
+  서명·공증이 되어 있지 않아 Gatekeeper가 첫 실행을 막습니다 — *"앱이 손상되었기 때문에 열 수 없습니다"* 라는 메시지가 뜰 수 있는데, 이건 다운로드가 깨진 게 아니라 격리(quarantine) 속성 때문입니다. 둘 중 하나로 해제하세요:
+
+  - **터미널 (모든 macOS 버전에서 동작):**
+    ```bash
+    xattr -dr com.apple.quarantine "/Applications/Rever Browser.app"
+    ```
+  - **또는 설정에서:** 한 번 실행해서 차단되게 둔 다음, **시스템 설정 → 개인정보 보호 및 보안**으로 가서 Rever Browser 관련 메시지까지 스크롤하고 **그래도 열기**를 클릭합니다. (macOS 15부터는 우클릭 → *열기* 만으로는 열리지 않습니다.)
+
+  이후에는 정상적으로 실행됩니다 — 설치당 한 번만 하면 됩니다.
+
 - **Windows** (`-setup.exe`) — 설치 프로그램을 실행하세요. 서명되지 않은 앱이므로, SmartScreen 경고가 뜨면 **추가 정보 → 실행**을 클릭하세요.
 
 **소스에서 빌드하기:**

@@ -76,7 +76,18 @@
 
 **Just want to use it?** Grab a build from the [latest release](https://github.com/greekr4/rever-browser/releases/latest) and install an agent binary — see [Requirements](#requirements):
 
-- **macOS** (Apple Silicon or Intel `.dmg`) — drag it to Applications. Unsigned, so on first launch right-click the app → **Open**.
+- **macOS** — pick the `.dmg` for your chip: `arm64` for Apple Silicon (M1 and later), `x64` for Intel. Open it and drag **Rever Browser** onto **Applications**.
+
+  The build is unsigned and un-notarized, so Gatekeeper blocks the first launch — macOS may say the app *"is damaged and can't be opened"*. That message is the quarantine flag, not a corrupt download. Clear it either way:
+
+  - **Terminal (works on every macOS version):**
+    ```bash
+    xattr -dr com.apple.quarantine "/Applications/Rever Browser.app"
+    ```
+  - **Or through the UI:** launch it once, let it be blocked, then go to **System Settings → Privacy & Security**, scroll to the message about Rever Browser, and click **Open Anyway**. (On macOS 15 and later, right-click → *Open* alone is no longer enough.)
+
+  After that it launches normally — you only need to do this once per install.
+
 - **Windows** (`-setup.exe`) — run the installer. Unsigned, so click **More info → Run anyway** if SmartScreen warns.
 
 **Building from source:**

@@ -374,6 +374,9 @@
         <div class="bar"><span>zsh</span><button class="copy" data-copy>copy</button></div>
 <pre id="code"><span class="c"># 0 — or skip the build: download the packaged macOS app</span>
 <span class="c">#     https://github.com/greekr4/rever-browser/releases/latest</span>
+<span class="c">#     arm64 = Apple Silicon, x64 = Intel. Drag it to Applications,</span>
+<span class="c">#     then clear the quarantine flag (the build is unsigned):</span>
+<span class="p">$</span> xattr -dr com.apple.quarantine "/Applications/Rever Browser.app"
 
 <span class="c"># 1 — the agent binary, on your PATH</span>
 <span class="p">$</span> npm i -g @agentclientprotocol/claude-agent-acp

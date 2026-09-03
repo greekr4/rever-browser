@@ -351,6 +351,9 @@
         <div class="bar"><span>zsh</span><button class="copy" data-copy>복사</button></div>
 <pre id="code"><span class="c"># 0 — 빌드 없이 바로 쓰려면: 패키징된 macOS 앱 다운로드</span>
 <span class="c">#     https://github.com/greekr4/rever-browser/releases/latest</span>
+<span class="c">#     arm64 = Apple Silicon, x64 = Intel. Applications로 드래그한 뒤</span>
+<span class="c">#     서명이 없어 걸리는 격리 속성을 해제하세요:</span>
+<span class="p">$</span> xattr -dr com.apple.quarantine "/Applications/Rever Browser.app"
 
 <span class="c"># 1 — PATH에 올라가야 하는 에이전트 실행 파일</span>
 <span class="p">$</span> npm i -g @agentclientprotocol/claude-agent-acp
