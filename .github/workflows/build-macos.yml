@@ -1,0 +1,46 @@
+name: Build macOS dmg
+
+# Builds the unsigned macOS disk images (arm64 + x64) on a macOS runner.
+# Runs automatically when a v* tag is pushed, or manually via "Run workflow"
+# against an existing tag.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to attach the dmgs to (e.g. v0.1.1)'
+        required: true
+        default: v0.1.1
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      # Default checkout: a tag push builds that tag; a manual run builds the
+      # branch it's dispatched from (main), which is what you want for v0.1.1
+      # since the tag predates the macOS build config.
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install
+
+      - run: bun run build
+
+      # The runner is arm64; electron-builder downloads the x64 Electron for the
+      # second arch. identity: null in the config keeps this unsigned/unnotarized.
+      # --publish never: electron-builder auto-publishes when it detects CI and
+      # then fails without GH_TOKEN. We upload the artifacts ourselves below.
+      - name: Package macOS dmgs
+        run: bunx electron-builder --mac --publish never --config electron-builder.yml
+
+      - name: Attach dmgs to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: release/Rever-Browser-*.dmg
