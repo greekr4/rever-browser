@@ -40,11 +40,27 @@ export function extraDirs(): string[] {
   const home = homedir()
   if (isWindows) {
     const appData = process.env.APPDATA
+    const programFiles = process.env.ProgramW6432 || process.env.ProgramFiles
+    const programFilesX86 = process.env['ProgramFiles(x86)']
+    const localAppData = process.env.LOCALAPPDATA
     return [
       appData ? join(appData, 'npm') : '',
       join(home, 'AppData', 'Roaming', 'npm'),
       join(home, 'scoop', 'shims'),
-      join(home, '.bun', 'bin')
+      join(home, '.bun', 'bin'),
+      // npm's Windows CLI shims (claude-code-acp.cmd) run `node <adapter>` and
+      // fall back to `node` on PATH when there's no node.exe beside the shim.
+      // A GUI/packaged launch can hand Electron a PATH without Node's install
+      // dir, so the shim exits with "'node' is not recognized" the instant it
+      // starts — the agent's stdout closes before the handshake and the SDK
+      // reports the opaque "ACP connection closed". Add the common Node install
+      // dirs so the shim can always resolve `node`.
+      programFiles ? join(programFiles, 'nodejs') : '',
+      programFilesX86 ? join(programFilesX86, 'nodejs') : '',
+      localAppData ? join(localAppData, 'Volta', 'bin') : '',
+      // nvm-windows points this at its active version's dir (usually the
+      // C:\Program Files\nodejs symlink, but honour an explicit override).
+      process.env.NVM_SYMLINK || ''
     ].filter(Boolean)
   }
   return [

@@ -80,8 +80,20 @@ async function handshake(command: string): Promise<{ ok: true } | { ok: false; d
   child.on('error', (e) => {
     spawnError = e.message
   })
-  // Drain stderr so a chatty agent can't fill the pipe buffer and stall.
-  child.stderr.resume()
+  // Capture (and thereby drain) stderr: a 'data' listener puts the stream in
+  // flowing mode so a chatty agent can't fill the pipe buffer and stall, and
+  // the tail explains why a broken launch died — e.g. a Windows npm shim that
+  // can't find `node` prints "'node' is not recognized" and exits, which the
+  // SDK would otherwise surface only as the opaque "ACP connection closed".
+  let stderr = ''
+  child.stderr.on('data', (buf: Buffer) => {
+    if (stderr.length < 4_000) stderr += buf.toString()
+  })
+  let exitInfo: string | null = null
+  child.on('close', (code, signal) => {
+    if (typeof code === 'number' && code !== 0) exitInfo = `exit ${code}`
+    else if (signal && signal !== 'SIGKILL') exitInfo = `signal ${signal}`
+  })
 
   const noopClient: Client = {
     async requestPermission() {
@@ -107,10 +119,30 @@ async function handshake(command: string): Promise<{ ok: true } | { ok: false; d
     ])
     return { ok: true }
   } catch (e) {
-    return { ok: false, detail: spawnError ?? message(e) }
+    // Give a last tick for the child's stderr/exit to flush — the SDK rejects
+    // the moment the stream ends, often a hair before the 'close' event.
+    await new Promise((r) => setTimeout(r, 50))
+    return { ok: false, detail: failureDetail(spawnError ?? message(e), exitInfo, stderr) }
   } finally {
     child.kill('SIGKILL')
   }
+}
+
+/**
+ * Fold the raw failure reason, exit code and a short stderr tail into one
+ * renderable line. Keeps only the last couple of stderr lines so a stack trace
+ * can't blow up the modal, and never emits a token (initialize doesn't return
+ * one, and a failed launch only prints its own diagnostics).
+ */
+export function failureDetail(base: string, exitInfo: string | null, stderr: string): string {
+  const tail = stderr
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(-2)
+    .join(' ')
+    .slice(0, 200)
+  return [base, exitInfo, tail].filter(Boolean).join(' — ')
 }
 
 async function probeAnthropic(): Promise<AgentHealth> {
