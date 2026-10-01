@@ -71,6 +71,61 @@ describe('listRequests', () => {
   it('filters by since timestamp', () => {
     expect(listRequests({ since: 250 }).map((r) => r.requestId)).toEqual(['r3'])
   })
+
+  // `before`/`beforeId` are the pagination cursor pair: entries strictly
+  // older than the boundary entry. `before` alone stays inclusive on the
+  // boundary ms — HAR entries carry no requestId, so a caller paging by
+  // timestamp alone can't name the boundary and would lose same-ms
+  // siblings. The emitted _nextBefore/_nextBeforeId pair is what makes
+  // each page advance.
+  it('before alone keeps the boundary-ms entries (inclusive fallback)', () => {
+    expect(listRequests({ before: 300 }).map((r) => r.requestId)).toEqual(['r3', 'r2', 'r1'])
+  })
+
+  it('before+beforeId excludes the boundary entry so the page advances', () => {
+    expect(listRequests({ before: 300, beforeId: 'r3' }).map((r) => r.requestId)).toEqual([
+      'r2',
+      'r1'
+    ])
+  })
+
+  it('before+beforeId keeps same-ms siblings older than the boundary', () => {
+    upsertRequest({ requestId: 'r4', url: 'https://c.com/4', host: 'c.com', method: 'GET', resourceType: 'XHR', startedAt: 300 })
+    // r3 and r4 share ms 300; r4 was inserted later (newer). Boundary=r4
+    // keeps the older sibling r3…
+    expect(listRequests({ before: 300, beforeId: 'r4' }).map((r) => r.requestId).sort()).toEqual([
+      'r1',
+      'r2',
+      'r3'
+    ])
+    // …and boundary=r3 excludes the newer same-ms sibling r4.
+    expect(listRequests({ before: 300, beforeId: 'r3' }).map((r) => r.requestId)).toEqual([
+      'r2',
+      'r1'
+    ])
+  })
+
+  it('before+beforeId at the oldest entry returns empty — pagination done', () => {
+    expect(listRequests({ before: 100, beforeId: 'r1' }).map((r) => r.requestId)).toEqual([])
+  })
+
+  it('before and since together select a window', () => {
+    expect(listRequests({ since: 150, before: 299 }).map((r) => r.requestId)).toEqual(['r2'])
+  })
+
+  it('before older than every entry returns empty', () => {
+    expect(listRequests({ before: 50 }).map((r) => r.requestId)).toEqual([])
+  })
+
+  it('evicted beforeId falls back to excluding only the exact id', () => {
+    // The boundary entry is gone from the store — same-ms siblings can't be
+    // ordered against it, so they're kept and the caller dedupes.
+    expect(listRequests({ before: 300, beforeId: 'gone' }).map((r) => r.requestId)).toEqual([
+      'r3',
+      'r2',
+      'r1'
+    ])
+  })
 })
 
 describe('response body cap', () => {

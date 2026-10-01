@@ -206,11 +206,31 @@ export interface ListFilter {
   host?: string
   methodOrType?: string
   since?: number
+  // har_export ships its whole response as one SSE event, and widely used
+  // MCP clients enforce a per-event size cap (httpx2: 1MB) — over that, the
+  // stream is cut with no response. Paging large traffic sets in safe-sized
+  // chunks needs an upper bound, which `since` alone can't express.
+  //
+  // The cursor pair is exclusive: `before` is the boundary entry's
+  // startedAt and `beforeId` its requestId — the boundary entry itself is
+  // never re-included, so every page is guaranteed to make progress (an
+  // inclusive cursor loops forever once a single entry fills a page on its
+  // own). Entries sharing the boundary ms that are older than the boundary
+  // are still kept — `order` position disambiguates them.
+  // `before` without `beforeId` stays inclusive on the boundary ms: HAR
+  // entries don't carry requestIds, so a caller paging by timestamp alone
+  // can't name the boundary and would lose same-ms siblings.
+  before?: number
+  beforeId?: string
   limit?: number
 }
 
 export function listRequests(filter: ListFilter = {}): StoredRequest[] {
   const limit = filter.limit ?? 50
+  // Position of the boundary entry in `order` — only needed when entries
+  // share the `before` millisecond and we must tell older siblings from the
+  // boundary entry itself.
+  const beforeIdx = filter.beforeId !== undefined ? order.indexOf(filter.beforeId) : -1
   const result: StoredRequest[] = []
   for (let i = order.length - 1; i >= 0 && result.length < limit; i--) {
     const e = entries.get(order[i])
@@ -226,6 +246,18 @@ export function listRequests(filter: ListFilter = {}): StoredRequest[] {
       }
     }
     if (filter.since && e.startedAt < filter.since) continue
+    if (filter.before !== undefined) {
+      if (e.startedAt > filter.before) continue
+      if (e.startedAt === filter.before) {
+        // Keep only entries strictly older than the boundary — earlier in
+        // `order` means inserted earlier. If the boundary was evicted,
+        // beforeId alone can't order the siblings, so exclude the boundary
+        // entry itself and keep the rest (callers dedupe by requestId).
+        const isBoundaryOrNewer =
+          beforeIdx >= 0 ? i >= beforeIdx : e.requestId === filter.beforeId
+        if (isBoundaryOrNewer) continue
+      }
+    }
     result.push(e)
   }
   return result
