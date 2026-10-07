@@ -37,7 +37,14 @@ export function hostnameOf(input: string): string | null {
   return host
 }
 
+// IP literals have no registrable domain — folding "10.0.0.1" to its last two
+// labels ("0.1") would put every x.x.0.1 address in scope.
+function isIpLiteral(hostname: string): boolean {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':')
+}
+
 export function registrableDomain(hostname: string): string {
+  if (isIpLiteral(hostname)) return hostname
   const parts = hostname.split('.').filter(Boolean)
   if (parts.length <= 2) return hostname
   const last2 = parts.slice(-2).join('.')

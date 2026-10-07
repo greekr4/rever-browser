@@ -24,6 +24,20 @@ describe('scope', () => {
     })
   })
 
+  describe('IP 주소', () => {
+    it('IP 리터럴은 접지 않고 그대로 둔다', () => {
+      expect(registrableDomain('10.0.0.1')).toBe('10.0.0.1')
+      expect(registrableDomain('[::1]')).toBe('[::1]')
+    })
+    it('다른 IP는 scope 밖이다', () => {
+      setScope(['10.0.0.1'])
+      expect(getScope().domains).toEqual(['10.0.0.1'])
+      expect(scopeBlockForUrl('http://127.0.0.1:8777/x')).toMatch(/Out of scope/)
+      expect(scopeBlockForUrl('http://192.168.0.1/')).toMatch(/Out of scope/)
+      expect(scopeBlockForUrl('http://10.0.0.1:8080/a')).toBeNull()
+    })
+  })
+
   describe('registrableDomain', () => {
     it('서브도메인을 등록가능도메인(eTLD+1)으로 접는다', () => {
       expect(registrableDomain('api.example.com')).toBe('example.com')

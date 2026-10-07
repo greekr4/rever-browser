@@ -4,6 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { getActiveTarget } from '../../chrome-cdp'
 import { repeaterSendRaw, buildRequestSpec, restoreMarker } from '../../repeater'
+import { scopeBlockForUrl } from '../scope'
 import { ok, err, errorMessage } from '../utils'
 
 const DEFAULT_WORDLIST = [
@@ -101,6 +102,11 @@ export function registerPathProbeTools(mcp: McpServer) {
         const base = origin.endsWith('/') ? origin : origin + '/'
         const paths = [...(wordlist ?? []), ...(useDefault ? DEFAULT_WORDLIST : [])]
         const queue = paths.map((p) => (p.startsWith('http') ? p : base + p.replace(/^\//, '')))
+        // In-page fetch bypasses repeaterSendRaw, so check scope up front.
+        for (const u of queue) {
+          const scopeBlock = scopeBlockForUrl(u)
+          if (scopeBlock) return err(scopeBlock)
+        }
 
         const results: Array<{
           url: string

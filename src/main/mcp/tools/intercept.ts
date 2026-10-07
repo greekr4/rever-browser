@@ -198,6 +198,10 @@ export function registerInterceptTools(mcp: McpServer) {
     async ({ requestId, overrides }) => {
       const entry = getRequest(requestId)
       if (!entry) return err(`unknown requestId: ${requestId}`)
+      // Node fetch bypasses repeaterSendRaw, so enforce scope here too — the
+      // override URL would otherwise also receive the page's cookies.
+      const scopeBlock = scopeBlockForUrl(overrides?.url ?? entry.url)
+      if (scopeBlock) return err(scopeBlock)
       const target = getActiveTarget()
 
       // Collect cookies for the target URL
