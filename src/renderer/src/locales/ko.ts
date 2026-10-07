@@ -110,6 +110,8 @@ export const ko: Record<TKey, string> = {
   'chat.input': '입력',
   'chat.output': '출력',
   'chat.switchModel': '이 세션의 모델 변경',
+  'chat.turnFailed': '턴 실패',
+  'chat.modelSwitchFailed': '이 에이전트가 모델 전환을 받아들이지 않았습니다',
   'chat.newConversation': '새 대화 시작 (현재 에이전트 세션 종료)',
   'chat.placeholder': '메시지를 입력하세요…',
   'chat.historyTitle': '대화 기록',

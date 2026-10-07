@@ -15,6 +15,8 @@ import type { WebContents } from 'electron'
 
 import { startMcpServer } from './mcp/server'
 import { extraDirs } from './acp-detect'
+import { isStaleEmptyTurn } from './acp-turn'
+import { findClaudeCli } from './claude-cli'
 
 export interface AgentDef {
   id: string
@@ -43,9 +45,18 @@ interface SessionEntry {
   // Settle-tracking promise for the in-flight prompt (null when idle). Used to
   // avoid issuing concurrent prompts on one ACP session after a Stop.
   activePrompt: Promise<void> | null
+  // True when the last prompt rejected (API error etc.). claude-agent-acp then
+  // leaves a stale "idle" message queued, so the next prompt returns an empty
+  // end_turn instantly — promptAcpSession re-issues it once in that case.
+  lastPromptFailed: boolean
 }
 
 const sessions = new Map<string, SessionEntry>()
+
+// Sent instead of the user's text when re-driving a stale empty turn (see
+// SessionEntry.lastPromptFailed). The pending user messages are still in the
+// agent's input queue; this just makes the model process them.
+const STALE_TURN_NUDGE = '(continue — answer the previous message)'
 
 // Claude Code CLI가 부모 프로세스에서 물려받은 CLAUDECODE / CLAUDE_CODE_* 변수를
 // 보고 "nested session"으로 판단해 기동을 거부한다 (rever-browser 자체를 Claude
@@ -53,8 +64,10 @@ const sessions = new Map<string, SessionEntry>()
 // 해당 변수들을 제거한 env를 만들어 넘긴다.
 export function agentEnv(command: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env }
+  // CLAUDE_CODE_EXECUTABLE is not a session marker — it tells claude-agent-acp
+  // which Claude Code binary to spawn, and must survive the scrub below.
   const isClaudeSessionVar = (name: string): boolean =>
-    name === 'CLAUDECODE' || name.startsWith('CLAUDE_CODE_')
+    name !== 'CLAUDE_CODE_EXECUTABLE' && (name === 'CLAUDECODE' || name.startsWith('CLAUDE_CODE_'))
   if (process.platform === 'win32') {
     // Windows는 환경변수 이름이 대소문자를 구분하지 않아 'ClaudeCode' 같은
     // 변형 표기로도 상속될 수 있다. 대문자로 정규화해 비교한다.
@@ -72,6 +85,16 @@ export function agentEnv(command: string): NodeJS.ProcessEnv {
   // `#!/usr/bin/env node` shebang이 node를 못 찾아 spawn이 즉시 죽는다.
   // node는 보통 에이전트 바이너리와 같은 bin/에 있으므로(nvm/volta) 그 디렉터리와
   // 흔한 설치 위치들을 PATH 앞에 붙여 shebang이 항상 해석되게 한다.
+  // Without this, claude-agent-acp runs the Claude Code CLI bundled in its SDK
+  // dependency (2.1.83 as of acp 0.23.x), which the API refuses for Claude 5
+  // models ("version 2.1.280 or newer is required") and whose `default`
+  // alias is still Opus 4.6. Prefer the user's installed CLI; an explicit
+  // CLAUDE_CODE_EXECUTABLE in the environment always wins.
+  if (!env.CLAUDE_CODE_EXECUTABLE) {
+    const cli = findClaudeCli()
+    if (cli) env.CLAUDE_CODE_EXECUTABLE = cli
+  }
+
   const prepend: string[] = []
   if (command && isAbsolute(command)) prepend.push(dirname(command))
   prepend.push(...extraDirs())
@@ -216,7 +239,8 @@ export async function spawnAcpSession(
     dead: false,
     availableModels: modelState?.availableModels ?? [],
     currentModelId: modelState?.currentModelId ?? null,
-    activePrompt: null
+    activePrompt: null,
+    lastPromptFailed: false
   }
   entryRef = entry
   sessions.set(result.sessionId, entry)
@@ -254,19 +278,44 @@ export async function promptAcpSession(
     ])
   }
 
-  entry.onUpdate = onUpdate
   entry.requestPermission = requestPermission ?? null
-  const p = entry.connection.prompt({
-    sessionId: entry.sessionId,
-    prompt: [{ type: 'text', text }]
-  })
-  entry.activePrompt = p.then(
-    () => undefined,
-    () => undefined
-  )
-  try {
+  const previousPromptFailed = entry.lastPromptFailed
+
+  const runOnce = async (
+    promptText: string
+  ): Promise<{ stopReason: string; updateCount: number; elapsedMs: number }> => {
+    let updateCount = 0
+    entry.onUpdate = (n) => {
+      updateCount++
+      onUpdate(n)
+    }
+    const t0 = Date.now()
+    const p = entry.connection.prompt({
+      sessionId: entry.sessionId,
+      prompt: [{ type: 'text', text: promptText }]
+    })
+    entry.activePrompt = p.then(
+      () => undefined,
+      () => undefined
+    )
     const res = await p
+    return { stopReason: res.stopReason, updateCount, elapsedMs: Date.now() - t0 }
+  }
+
+  try {
+    let res = await runOnce(text)
+    if (isStaleEmptyTurn({ previousPromptFailed, ...res })) {
+      // The user's text is already queued in the agent's conversation (it was
+      // pushed before the stale idle was consumed), so nudge rather than
+      // re-send it — re-sending makes the model answer the same message twice.
+      console.warn(`[ACP ${entry.agentDef.id}] stale empty turn after failed prompt — nudging once`)
+      res = await runOnce(STALE_TURN_NUDGE)
+    }
+    entry.lastPromptFailed = false
     return { stopReason: res.stopReason }
+  } catch (e) {
+    entry.lastPromptFailed = true
+    throw e
   } finally {
     entry.activePrompt = null
     entry.onUpdate = null

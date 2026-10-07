@@ -311,6 +311,10 @@ export function ChatPanel() {
   // list; reconciled against that list (by id or name) once it loads.
   const [pendingModel, setPendingModel] = useState<CatalogModel | null>(null)
   const [selectedModelName, setSelectedModelName] = useState<string | null>(null)
+  // Set when a model switch is rejected (e.g. an ACP agent that doesn't
+  // implement the unstable model-selection extension), so the choice doesn't
+  // silently no-op in the UI.
+  const [modelError, setModelError] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // --- Conversation history wiring ---------------------------------------
@@ -358,7 +362,7 @@ export function ChatPanel() {
     }
   }, [transport])
 
-  const { messages, sendMessage, status, stop } = useChat({
+  const { messages, sendMessage, status, stop, error: chatError } = useChat({
     id: chatKey,
     transport,
     messages: seedMessages
@@ -404,29 +408,45 @@ export function ChatPanel() {
     const sid = transport.getSessionId()
     if (!sid) return
     setCurrentModel(modelId)
+    setModelError(false)
     try {
       await window.rev.acp.setModel(sid, modelId)
     } catch (e) {
       console.error('[acp] setModel failed', e)
+      setModelError(true)
     }
   }
 
-  // Apply a picker choice once the agent's live model list is available. The
-  // catalog id is best-effort for subscription agents, so match by id OR name
-  // and fall back silently if neither is offered.
+  // Apply a picker choice once the session is live. Subscription ACP agents
+  // (e.g. Claude Code) sometimes don't advertise a model list at all; in that
+  // case trust the catalog id directly instead of dropping the choice — that
+  // empty-list no-op was why switching "didn't work". When a live list IS
+  // offered, reconcile by id or name (the catalog id is best-effort there).
   useEffect(() => {
-    if (!pendingModel || pendingModel.agentId !== agentId || models.length === 0) return
-    const wanted = pendingModel.name.toLowerCase()
-    const live =
-      models.find((m) => m.modelId === pendingModel.modelId) ??
-      models.find((m) => m.name.toLowerCase() === wanted)
-    if (live) {
-      if (live.modelId !== currentModel) void onChangeModel(live.modelId)
-      setSelectedModelName(live.name)
+    if (!pendingModel || pendingModel.agentId !== agentId) return
+    if (status !== 'ready' || !transport.getSessionId()) return
+    if (models.length > 0) {
+      const wanted = pendingModel.name.toLowerCase()
+      const live =
+        models.find((m) => m.modelId === pendingModel.modelId) ??
+        models.find((m) => m.name.toLowerCase() === wanted)
+      if (live) {
+        if (live.modelId !== currentModel) void onChangeModel(live.modelId)
+        setSelectedModelName(live.name)
+      }
+      setPendingModel(null)
+    } else if (agentId === 'claude-code' || agentId === 'codex') {
+      // Subscription ACP agent advertised no model list: send the catalog id
+      // straight through instead of dropping the choice. If the agent rejects
+      // it, onChangeModel surfaces modelError rather than failing silently.
+      if (pendingModel.modelId !== currentModel) void onChangeModel(pendingModel.modelId)
+      setSelectedModelName(pendingModel.name)
+      setPendingModel(null)
     }
-    setPendingModel(null)
+    // else: a key-provider list is still loading — keep pendingModel and
+    // reconcile when `models` populates on the next run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingModel, models, agentId, currentModel])
+  }, [pendingModel, models, agentId, currentModel, status, transport])
   const waiting = status === 'submitted'
   const autoApprove = useAcpAutoApprove()
   const draftPending = useChatDraft((s) => s.pending)
@@ -553,6 +573,14 @@ export function ChatPanel() {
             setAgentId(id)
           }}
         />
+        {modelError && (
+          <span
+            title={tr('chat.modelSwitchFailed')}
+            style={{ color: 'var(--status-error)', fontSize: 12, whiteSpace: 'nowrap' }}
+          >
+            ⚠ {tr('chat.modelSwitchFailed')}
+          </span>
+        )}
         <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: 12 }}>{status}</span>
         <button
           type="button"
@@ -610,6 +638,18 @@ export function ChatPanel() {
             <MessageItem key={m.id} message={m as unknown as ChatMessageLike} />
           ))}
           {waiting && <Thinking />}
+          {chatError && (
+            <pre
+              style={{
+                color: 'var(--status-error)',
+                whiteSpace: 'pre-wrap',
+                fontSize: 12,
+                margin: '4px 0'
+              }}
+            >
+              ⚠ {tr('chat.turnFailed')}: {chatError.message}
+            </pre>
+          )}
         </div>
 
         {!autoScroll && (

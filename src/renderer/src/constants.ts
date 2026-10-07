@@ -88,13 +88,15 @@ export interface CatalogModel {
 }
 
 export const MODEL_CATALOG: CatalogModel[] = [
-  // Claude Code — the ids claude-agent-acp actually exposes (default/sonnet/
-  // haiku), not model-version strings. These match the live session list, so
-  // the switch really applies. Versions in the labels track what the ACP agent
-  // maps them to and may drift.
-  { agentId: 'claude-code', modelId: 'default', name: 'Default (Opus, 1M)' },
+  // Claude Code — aliases the Claude Code CLI exposes (confirmed live via
+  // [acp:newSession] with CLI 2.1.292: default/opus/fable/sonnet/haiku plus
+  // version ids). `default` follows the user's own `claude` model setting.
+  // Aliases are used instead of version ids so the labels don't drift; the
+  // picker reconciles against the live list when the session offers one.
+  { agentId: 'claude-code', modelId: 'default', name: 'Default (your Claude Code setting)' },
+  { agentId: 'claude-code', modelId: 'fable', name: 'Fable' },
+  { agentId: 'claude-code', modelId: 'opus', name: 'Opus' },
   { agentId: 'claude-code', modelId: 'sonnet', name: 'Sonnet' },
-  { agentId: 'claude-code', modelId: 'sonnet[1m]', name: 'Sonnet (1M context)' },
   { agentId: 'claude-code', modelId: 'haiku', name: 'Haiku' },
   // Codex — ids are reconciled against the live ACP list by name; exact ids
   // are confirmed on first spawn (see [acp:newSession] in the dev log).
