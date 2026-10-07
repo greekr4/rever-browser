@@ -39,6 +39,7 @@ import { registerDomEditTools } from './tools/dom_edit'
 import { registerServiceWorkerTools } from './tools/sw_inspect'
 import { registerDialogTools } from './tools/dialog'
 import { registerVisionTools } from './tools/vision'
+import { registerScopeTools } from './tools/scope'
 import { registerMacroTools } from './tools/macros'
 import { registerSecretTools } from './tools/secrets'
 import { registerWaitTools } from './tools/wait'
@@ -135,6 +136,7 @@ function buildMcpServer(): McpServer {
   registerServiceWorkerTools(mcp)
   registerDialogTools(mcp)
   registerVisionTools(mcp)
+  registerScopeTools(mcp)
   registerMacroTools(mcp)
   registerSecretTools(mcp)
   registerWaitTools(mcp)

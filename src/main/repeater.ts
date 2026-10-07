@@ -1,4 +1,5 @@
 import { getActiveTarget } from './chrome-cdp'
+import { scopeBlockForUrl } from './mcp/scope'
 import { getRequest } from './traffic-store'
 
 export interface RepeaterModifications {
@@ -114,6 +115,11 @@ export function buildRequestSpec(
 }
 
 export async function repeaterSendRaw(spec: RepeaterRequestSpec): Promise<RepeaterResponse> {
+  // Scope guardrail: refuse replay/intruder/burst targets outside the session
+  // scope (no-op until a scope is set). Covers repeater_send, burst_send and
+  // intruder_run, which all funnel through here.
+  const blocked = scopeBlockForUrl(spec.url)
+  if (blocked) throw new Error(blocked)
   const target = getActiveTarget()
   if (!target) throw new Error('no active webview attached')
 

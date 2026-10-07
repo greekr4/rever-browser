@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { emitAiAction } from '../../ai-events'
+import { scopeBlockForUrl } from '../scope'
 import {
   armDialogAnswer,
   getActiveTarget,
@@ -132,6 +133,8 @@ export function registerBrowserTools(mcp: McpServer) {
       }
     },
     async ({ url }) => {
+      const scopeBlock = scopeBlockForUrl(url)
+      if (scopeBlock) return err(scopeBlock)
       const target = getActiveTarget()
       if (!target) return err('no active browser target — open a page first')
       try {
