@@ -33,7 +33,7 @@ import {
   typeRef,
   typeSelector
 } from '../snapshot'
-import { ok, err, errorMessage } from '../utils'
+import { ok, okBudgeted, err, errorMessage } from '../utils'
 
 // One-line preview of an eval result / error for the in-page code HUD.
 function preview(text: string): string {
@@ -170,7 +170,7 @@ export function registerBrowserTools(mcp: McpServer) {
     async ({ full }) => {
       try {
         const snap = await takeSnapshot({ full })
-        return ok(
+        return okBudgeted(
           `url: ${snap.url}\ntitle: ${snap.title}\n\n${snap.tree}${filterNote(snap.stats)}`
         )
       } catch (e) {

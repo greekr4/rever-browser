@@ -3,7 +3,22 @@ import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { getRequest, listRequests, type StoredRequest } from '../../traffic-store'
-import { ok, err } from '../utils'
+import { ok, okBudgeted, err } from '../utils'
+
+// Top-level keys of a JSON response body, for the summary view. Returns null
+// when the body isn't present/decodable JSON.
+function topLevelJsonKeys(entry: StoredRequest): string[] | null {
+  if (entry.responseBodyBase64 || !entry.responseBody) return null
+  try {
+    const parsed = JSON.parse(entry.responseBody)
+    if (parsed && typeof parsed === 'object') {
+      return Array.isArray(parsed) ? [`(array, length ${parsed.length})`] : Object.keys(parsed)
+    }
+  } catch {
+    return null
+  }
+  return null
+}
 
 function toSummary(e: StoredRequest) {
   return {
@@ -47,15 +62,33 @@ export function registerTrafficTools(mcp: McpServer) {
     'get_request',
     {
       description:
-        'Return the full request and response for a given requestId, including headers and body. If the body is base64-encoded, responseBodyBase64=true.',
+        'Return a captured request/response. By default returns a compact SUMMARY (method, url, status, content-type, body size, top-level JSON keys). Pass full=true for the complete entry incl. headers and body (paged via tool_result_more when large). If the body is base64-encoded, responseBodyBase64=true.',
       inputSchema: {
-        requestId: z.string().describe('requestId returned by list_requests')
+        requestId: z.string().describe('requestId returned by list_requests'),
+        full: z
+          .boolean()
+          .optional()
+          .describe('true = full entry (headers + body), default false = summary only')
       }
     },
-    async ({ requestId }) => {
+    async ({ requestId, full }) => {
       const entry = getRequest(requestId)
       if (!entry) return err(`unknown requestId: ${requestId}`)
-      return ok(JSON.stringify(entry, null, 2))
+      if (full) return okBudgeted(JSON.stringify(entry, null, 2))
+      const summary = {
+        requestId: entry.requestId,
+        method: entry.method,
+        url: entry.url,
+        host: entry.host,
+        status: entry.status,
+        mimeType: entry.mimeType,
+        encodedDataLength: entry.encodedDataLength,
+        responseBodyBase64: entry.responseBodyBase64 ?? false,
+        bodyChars: entry.responseBody?.length ?? 0,
+        responseBodyTopKeys: topLevelJsonKeys(entry),
+        hint: 'call get_request with full=true for headers and body'
+      }
+      return ok(JSON.stringify(summary, null, 2))
     }
   )
 

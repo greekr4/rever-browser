@@ -12,6 +12,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { registerBrowserTools } from './tools/browser'
 import { registerScriptTools } from './tools/scripts'
 import { registerTrafficTools } from './tools/traffic'
+import { registerPagingTools } from './tools/paging'
 import { registerAuthTools } from './tools/auth'
 import { registerDecodeTools } from './tools/decode'
 import { registerDiffTools } from './tools/diff'
@@ -106,6 +107,7 @@ function buildMcpServer(): McpServer {
   const mcp = new McpServer({ name: 'rever-traffic', version: '0.1.0' })
   withActivity(mcp)
   registerTrafficTools(mcp)
+  registerPagingTools(mcp)
   registerBrowserTools(mcp)
   registerScriptTools(mcp)
   registerAuthTools(mcp)
