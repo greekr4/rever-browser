@@ -20,6 +20,9 @@ export function errorMessage(e: unknown): string {
 
 const DEFAULT_MAX_CHARS = 12_000
 const MAX_STORED_RESULTS = 50
+// Count alone doesn't bound memory — 50 multi-MB bodies would pin hundreds of
+// MB in the main process — so the total size is capped too.
+export const MAX_STORED_CHARS = 20_000_000
 
 interface StoredResult {
   full: string
@@ -27,13 +30,20 @@ interface StoredResult {
 
 const resultStore = new Map<string, StoredResult>()
 let resultSeq = 0
+let storedChars = 0
 
 function putResult(full: string): string {
   const id = `res_${++resultSeq}`
   resultStore.set(id, { full })
-  while (resultStore.size > MAX_STORED_RESULTS) {
+  storedChars += full.length
+  // Evict oldest first, but always keep the result just stored.
+  while (
+    resultStore.size > 1 &&
+    (resultStore.size > MAX_STORED_RESULTS || storedChars > MAX_STORED_CHARS)
+  ) {
     const oldest = resultStore.keys().next().value
     if (oldest === undefined) break
+    storedChars -= resultStore.get(oldest)?.full.length ?? 0
     resultStore.delete(oldest)
   }
   return id
@@ -61,6 +71,15 @@ export function okBudgeted(text: string, opts: { maxChars?: number } = {}) {
     `\n\n[truncated: showing ${shownChars} of ${text.length} chars. ` +
     `Call tool_result_more with resultId="${id}", offset=${shownChars} for the rest.]`
   return ok(head + footer)
+}
+
+// For views that have a cheap summary form (e.g. get_request): full=true pages
+// the full text, full=false forces the summary, and unset returns the full text
+// when it fits the budget — so small entries still cost one call.
+export function okFullOrSummary(fullText: string, summarize: () => object, full?: boolean) {
+  if (full) return okBudgeted(fullText)
+  if (full === undefined && !budgetText(fullText).truncated) return ok(fullText)
+  return ok(JSON.stringify(summarize(), null, 2))
 }
 
 export interface ResultSlice {
@@ -93,4 +112,5 @@ export function getResultSlice(
 export function __resetResultStoreForTests() {
   resultStore.clear()
   resultSeq = 0
+  storedChars = 0
 }

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { getRequest, listRequests, type StoredRequest } from '../../traffic-store'
-import { ok, okBudgeted, err } from '../utils'
+import { ok, okFullOrSummary, err } from '../utils'
 
 // Top-level keys of a JSON response body, for the summary view. Returns null
 // when the body isn't present/decodable JSON.
@@ -62,20 +62,19 @@ export function registerTrafficTools(mcp: McpServer) {
     'get_request',
     {
       description:
-        'Return a captured request/response. By default returns a compact SUMMARY (method, url, status, content-type, body size, top-level JSON keys). Pass full=true for the complete entry incl. headers and body (paged via tool_result_more when large). If the body is base64-encoded, responseBodyBase64=true.',
+        'Return a captured request/response incl. headers and body. Small entries come back in full; large ones come back as a compact SUMMARY (method, url, status, content-type, body size, top-level JSON keys) — then pass full=true to page the complete entry via tool_result_more. full=false always returns the summary. If the body is base64-encoded, responseBodyBase64=true.',
       inputSchema: {
         requestId: z.string().describe('requestId returned by list_requests'),
         full: z
           .boolean()
           .optional()
-          .describe('true = full entry (headers + body), default false = summary only')
+          .describe('true = full entry (paged when large), false = summary only, omit = full when small')
       }
     },
     async ({ requestId, full }) => {
       const entry = getRequest(requestId)
       if (!entry) return err(`unknown requestId: ${requestId}`)
-      if (full) return okBudgeted(JSON.stringify(entry, null, 2))
-      const summary = {
+      return okFullOrSummary(JSON.stringify(entry, null, 2), () => ({
         requestId: entry.requestId,
         method: entry.method,
         url: entry.url,
@@ -86,9 +85,8 @@ export function registerTrafficTools(mcp: McpServer) {
         responseBodyBase64: entry.responseBodyBase64 ?? false,
         bodyChars: entry.responseBody?.length ?? 0,
         responseBodyTopKeys: topLevelJsonKeys(entry),
-        hint: 'call get_request with full=true for headers and body'
-      }
-      return ok(JSON.stringify(summary, null, 2))
+        hint: 'entry too large for one response — call get_request with full=true to page headers and body'
+      }), full)
     }
   )
 
