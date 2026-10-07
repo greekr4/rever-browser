@@ -71,12 +71,31 @@ export function restoreMarker(spec: RepeaterRequestSpec): RepeaterRequestSpec {
   }
 }
 
+type BaseRequest = {
+  url: string
+  method?: string
+  requestHeaders?: Record<string, string>
+  requestPostData?: string
+}
+
+// The request to start from: a captured one, or — with no requestId — a blank
+// GET to modifications.url, so the agent can send to a URL it hasn't captured
+// yet without falling back to curl from the shell.
+function baseRequest(requestId: string | undefined, mods: RepeaterModifications | undefined): BaseRequest {
+  if (requestId) {
+    const stored = getRequest(requestId)
+    if (!stored) throw new Error(`unknown requestId: ${requestId}`)
+    return stored
+  }
+  if (mods?.url) return { url: mods.url, method: 'GET' }
+  throw new Error('pass a requestId or modifications.url')
+}
+
 export function buildRequestSpec(
-  requestId: string,
+  requestId: string | undefined,
   mods: RepeaterModifications | undefined
 ): RepeaterRequestSpec {
-  const stored = getRequest(requestId)
-  if (!stored) throw new Error(`unknown requestId: ${requestId}`)
+  const stored = baseRequest(requestId, mods)
 
   const url = mods?.url ?? stored.url
   const method = (mods?.method ?? stored.method ?? 'GET').toUpperCase()
@@ -158,7 +177,7 @@ export async function repeaterSendRaw(spec: RepeaterRequestSpec): Promise<Repeat
 }
 
 export async function repeaterSend(
-  requestId: string,
+  requestId: string | undefined,
   mods: RepeaterModifications | undefined
 ): Promise<RepeaterResponse> {
   return repeaterSendRaw(buildRequestSpec(requestId, mods))

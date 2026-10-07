@@ -10,9 +10,12 @@ export function registerRepeaterTools(mcp: McpServer) {
     'repeater_send',
     {
       description:
-        'Replay a captured request with optional modifications. Uses the active webview context (cookies, TLS, HTTP/2) so it behaves like the real browser. Returns response status, headers, and body (first 64KB). Note: forbidden fetch headers (Cookie, Host, User-Agent, Origin, Referer, sec-*) are stripped — Cookie is auto-attached from the browser jar via credentials=include.',
+        'Send an HTTP request from the active tab (cookies, TLS, HTTP/2 — behaves like the real browser): replay a captured request (requestId) with optional modifications, OR omit requestId and give modifications.url (+ method/setHeaders/body) to send to a URL that was never captured. Use this instead of curl. The fetch runs in the active tab, so navigate to the target origin first to avoid CORS. Returns status, headers, and body (first 64KB). Forbidden fetch headers (Cookie, Host, User-Agent, Origin, Referer, sec-*) are stripped — Cookie is auto-attached from the browser jar.',
       inputSchema: {
-        requestId: z.string().describe('requestId returned by list_requests'),
+        requestId: z
+          .string()
+          .optional()
+          .describe('requestId from list_requests. Omit to send a fresh request to modifications.url'),
         modifications: z
           .object({
             url: z.string().optional(),
