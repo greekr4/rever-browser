@@ -254,6 +254,7 @@ export const en = {
   'perm.dialogLabel': 'Agent permission request',
   'perm.riskyTool': 'Risky action · {tool}',
   'perm.target': 'Target',
+  'perm.allowSession': 'Allow all {tool} calls this session',
 }
 
 export type TKey = keyof typeof en

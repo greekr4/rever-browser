@@ -17,6 +17,7 @@ import { startMcpServer } from './mcp/server'
 import { extraDirs } from './acp-detect'
 import { isStaleEmptyTurn } from './acp-turn'
 import { findClaudeCli } from './claude-cli'
+import { fallbackOption } from '../shared/risky-tools'
 
 export interface AgentDef {
   id: string
@@ -104,13 +105,6 @@ export function agentEnv(command: string): NodeJS.ProcessEnv {
   return env
 }
 
-function pickAutoApproveOption(req: RequestPermissionRequest): string {
-  const allowAlways = req.options.find((o) => o.kind === 'allow_always')
-  if (allowAlways) return allowAlways.optionId
-  const allow = req.options.find((o) => o.kind.startsWith('allow'))
-  return allow?.optionId ?? req.options[0]?.optionId ?? ''
-}
-
 export async function spawnAcpSession(
   agentDef: AgentDef,
   cwd: string
@@ -152,6 +146,7 @@ export async function spawnAcpSession(
       // Route to the renderer's permission UI when a prompt is in flight.
       // Falls back to auto-approve if no handler is attached or the round-trip
       // fails/times out — so the agent loop can never deadlock on a missing UI.
+      // Risky tools are rejected instead: they must never run unseen.
       const handler = entryRef?.requestPermission
       if (handler) {
         try {
@@ -161,7 +156,7 @@ export async function spawnAcpSession(
         }
       }
       return {
-        outcome: { outcome: 'selected', optionId: pickAutoApproveOption(params) }
+        outcome: { outcome: 'selected', optionId: fallbackOption(params) }
       }
     },
     async sessionUpdate(params: SessionNotification): Promise<void> {

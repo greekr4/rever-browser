@@ -5,10 +5,14 @@ import { ACP_PERMISSION_TIMEOUT_MS } from '@/constants'
 import { recordApprovalAudit } from '@/stores/approval-audit'
 
 import {
+  chooseAllowOption,
   extractTargetHost,
+  findRejectOption,
   isRiskyToolRequest,
-  matchedRiskyTool
+  matchedRiskyTool,
+  sanitizeSelection
 } from './risky-tools'
+import { grantSession, hasSessionGrant } from './session-grants'
 
 import type {
   PermissionOption,
@@ -58,18 +62,6 @@ export const useAcpAutoApprove = () => useAutoApproveStore((s) => s.autoApprove)
 export const setAcpAutoApprove = (v: boolean) =>
   useAutoApproveStore.getState().setAutoApprove(v)
 
-function findRejectOption(request: RequestPermissionRequest): string {
-  const reject = request.options.find((o) => o.kind.startsWith('reject'))
-  return reject?.optionId ?? request.options.at(0)?.optionId ?? ''
-}
-
-function findBestAllowOption(request: RequestPermissionRequest): string {
-  const allowAlways = request.options.find((o) => o.kind === 'allow_always')
-  if (allowAlways) return allowAlways.optionId
-  const allow = request.options.find((o) => o.kind.startsWith('allow'))
-  return allow?.optionId ?? request.options.at(0)?.optionId ?? ''
-}
-
 function removeEntry(entry: PendingPermission) {
   clearTimeout(entry.timer)
   usePermissionStore.getState().remove(entry)
@@ -112,8 +104,16 @@ export function requestPermissionFromUser(
   // Auto-approve never applies to risky tools: a side-effecting action on the
   // user's live session always surfaces the prompt, regardless of the setting.
   if (!risky && useAutoApproveStore.getState().autoApprove) {
-    const optionId = findBestAllowOption(params)
+    const optionId = chooseAllowOption(params)
     audit(params, optionId, { auto: true, risky: false })
+    return Promise.resolve({ outcome: { outcome: 'selected', optionId } })
+  }
+
+  // The user already chose "allow all this session" for this gated tool.
+  // allow_once still — the grant lives here, so every call is audited.
+  if (hasSessionGrant(params)) {
+    const optionId = chooseAllowOption(params)
+    audit(params, optionId, { auto: true, risky })
     return Promise.resolve({ outcome: { outcome: 'selected', optionId } })
   }
 
@@ -130,28 +130,68 @@ export function requestPermissionFromUser(
   })
 }
 
-export function respondToPermission(optionId: string) {
-  const entry = usePermissionStore.getState().queue.at(0)
-  if (!entry) return
+export interface ApproveOptions {
+  /** Also allow every later call of this gated tool in the same session. */
+  grantSession?: boolean
+}
+
+function decide(entry: PendingPermission, optionId: string) {
   removeEntry(entry)
   audit(entry.request, optionId, { auto: false, risky: isRiskyToolRequest(entry.request) })
   entry.resolve({ outcome: { outcome: 'selected', optionId } })
 }
 
-export function approveCurrentPermission() {
+// After a session grant, calls of that tool already waiting in the queue are
+// covered by it too — resolve them instead of prompting one by one.
+function applySessionGrant(request: RequestPermissionRequest) {
+  grantSession(request)
+  for (const queued of [...usePermissionStore.getState().queue]) {
+    if (!hasSessionGrant(queued.request)) continue
+    const optionId = chooseAllowOption(queued.request)
+    removeEntry(queued)
+    audit(queued.request, optionId, { auto: true, risky: isRiskyToolRequest(queued.request) })
+    queued.resolve({ outcome: { outcome: 'selected', optionId } })
+  }
+}
+
+export function respondToPermission(picked: string, opts: ApproveOptions = {}) {
   const entry = usePermissionStore.getState().queue.at(0)
   if (!entry) return
-  removeEntry(entry)
-  const optionId = findBestAllowOption(entry.request)
-  audit(entry.request, optionId, { auto: false, risky: isRiskyToolRequest(entry.request) })
-  entry.resolve({ outcome: { outcome: 'selected', optionId } })
+  const optionId = sanitizeSelection(entry.request, picked)
+  decide(entry, optionId)
+  if (opts.grantSession && decisionFor(entry.request, optionId) === 'allow') {
+    applySessionGrant(entry.request)
+  }
+}
+
+export function approveCurrentPermission(opts: ApproveOptions = {}) {
+  const entry = usePermissionStore.getState().queue.at(0)
+  if (!entry) return
+  decide(entry, chooseAllowOption(entry.request))
+  if (opts.grantSession) applySessionGrant(entry.request)
 }
 
 export function rejectCurrentPermission() {
   const entry = usePermissionStore.getState().queue.at(0)
   if (!entry) return
-  removeEntry(entry)
-  const optionId = findRejectOption(entry.request)
-  audit(entry.request, optionId, { auto: false, risky: isRiskyToolRequest(entry.request) })
-  entry.resolve({ outcome: { outcome: 'selected', optionId } })
+  decide(entry, findRejectOption(entry.request))
+}
+
+export function hasPendingPermission(sessionId: string): boolean {
+  return usePermissionStore.getState().queue.some((e) => e.request.sessionId === sessionId)
+}
+
+// Stop: ACP requires the client to answer every pending permission request of
+// a cancelled turn with the `cancelled` outcome. Without this the stale prompt
+// stays queued and pops up again in front of the next turn's prompt.
+export function cancelPendingPermissions(sessionId: string) {
+  for (const entry of [...usePermissionStore.getState().queue]) {
+    if (entry.request.sessionId !== sessionId) continue
+    removeEntry(entry)
+    audit(entry.request, findRejectOption(entry.request), {
+      auto: true,
+      risky: isRiskyToolRequest(entry.request)
+    })
+    entry.resolve({ outcome: { outcome: 'cancelled' } })
+  }
 }

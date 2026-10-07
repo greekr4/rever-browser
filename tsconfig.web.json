@@ -22,5 +22,5 @@
       "@/*": ["src/renderer/src/*"]
     }
   },
-  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.tsx"]
+  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.tsx", "src/shared/**/*"]
 }

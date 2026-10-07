@@ -237,4 +237,5 @@ export const ko: Record<TKey, string> = {
   'perm.dialogLabel': '에이전트 권한 요청',
   'perm.riskyTool': '위험 동작 · {tool}',
   'perm.target': '대상',
+  'perm.allowSession': '이번 세션 동안 {tool} 모두 허용',
 }
