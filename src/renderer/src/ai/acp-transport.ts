@@ -1,4 +1,5 @@
 import SYSTEM_PROMPT from '@/ai/system-prompt.md?raw'
+import { cancelPendingPermissions, hasPendingPermission } from './acp-permission'
 
 import { mapUpdate } from './acp-map-update'
 import { formatConnectionError } from './format-error'
@@ -73,6 +74,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         let textStarted = false
         let closed = false
         let anyContent = false
+        let userStopped = false
         const seenToolCallIds = new Set<string>()
 
         // Watchdog: if 60s pass with NO notification at all, surface as error
@@ -82,6 +84,12 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           if (watchdog) clearTimeout(watchdog)
           watchdog = setTimeout(() => {
             if (closed) return
+            // Waiting on the user's approval is not the agent going silent.
+            if (hasPendingPermission(sessionId)) {
+              armWatchdog()
+              return
+            }
+            cancelPendingPermissions(sessionId)
             void window.rev.acp.cancel(sessionId).catch(() => null)
             finish('error', 'Agent went silent for 60s — cancelled. Try /reset if it persists.')
           }, 60_000)
@@ -103,7 +111,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           if (errorText) controller.enqueue({ type: 'error', errorText })
           if (textStarted) controller.enqueue({ type: 'text-end', id: textId })
           // Surface empty-turn case so users don't think the agent ignored them.
-          if (!errorText && !anyContent) {
+          // A user Stop isn't an empty answer — don't blame the agent for it.
+          if (!errorText && !anyContent && !userStopped) {
             const note = `text-${Date.now()}-empty`
             controller.enqueue({ type: 'text-start', id: note })
             controller.enqueue({
@@ -119,6 +128,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         }
 
         abortSignal?.addEventListener('abort', () => {
+          userStopped = true
+          cancelPendingPermissions(sessionId)
           void window.rev.acp.cancel(sessionId)
           finish('stop')
           // session/cancel is only a notification — some agents keep running
