@@ -1,20 +1,12 @@
 import SYSTEM_PROMPT from '@/ai/system-prompt.md?raw'
 
 import { mapUpdate } from './acp-map-update'
+import { formatConnectionError } from './format-error'
 
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 import type { ACPAgentDef } from '@/constants'
 
-export function formatConnectionError(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e)
-  if (msg.includes('ENOENT') || msg.includes('spawn')) {
-    return `Agent binary not found. Check your PATH. (${msg})`
-  }
-  if (msg.includes('timeout') || msg.includes('Timeout')) {
-    return 'ACP server did not respond in time.'
-  }
-  return msg
-}
+export { formatConnectionError }
 
 export class ACPChatTransport implements ChatTransport<UIMessage> {
   private sessionId: string | null = null

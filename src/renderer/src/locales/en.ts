@@ -123,6 +123,8 @@ export const en = {
   'chat.input': 'input',
   'chat.output': 'output',
   'chat.switchModel': 'Switch model for this session',
+  'chat.turnFailed': 'Turn failed',
+  'chat.modelSwitchFailed': 'This agent did not accept the model switch',
   'chat.newConversation': 'Start a new conversation (kills the current agent session)',
   'chat.placeholder': 'Type a message…',
   'chat.historyTitle': 'Conversation history',
