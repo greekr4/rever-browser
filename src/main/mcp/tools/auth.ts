@@ -114,7 +114,7 @@ export function registerAuthTools(mcp: McpServer) {
     'export_client',
     {
       description:
-        'Generate runnable code to reproduce a captured request in curl, Python (requests/httpx) or TypeScript (fetch). Credentials (Authorization, Cookie, API keys, session cookies) are MASKED by default so the output is safe to share — pass maskSecrets=false for a runnable copy. Fixes JSON-body handling that export_python_client got wrong.',
+        'Generate code to reproduce a captured request in curl, Python (requests/httpx) or TypeScript (fetch). By default credential values are MASKED: auth headers, session-like cookies, token-like URL query params and JSON/form body fields (password, token, secret, …). Plain-text bodies are not inspected, so review before sharing. Pass maskSecrets=false for a runnable copy.',
       inputSchema: {
         requestId: z.string().describe('requestId to reproduce'),
         lang: z.enum(['curl', 'python', 'typescript']).describe('Output language'),
