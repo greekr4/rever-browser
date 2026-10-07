@@ -2,8 +2,19 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 import { ACP_PERMISSION_TIMEOUT_MS } from '@/constants'
+import { recordApprovalAudit } from '@/stores/approval-audit'
 
-import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
+import {
+  extractTargetHost,
+  isRiskyToolRequest,
+  matchedRiskyTool
+} from './risky-tools'
+
+import type {
+  PermissionOption,
+  RequestPermissionRequest,
+  RequestPermissionResponse
+} from '@agentclientprotocol/sdk'
 
 export interface PendingPermission {
   request: RequestPermissionRequest
@@ -64,19 +75,54 @@ function removeEntry(entry: PendingPermission) {
   usePermissionStore.getState().remove(entry)
 }
 
+function toolCallOf(
+  request: RequestPermissionRequest
+): { title?: string; rawInput?: unknown } | undefined {
+  return (request as unknown as { toolCall?: { title?: string; rawInput?: unknown } }).toolCall
+}
+
+function auditLabel(request: RequestPermissionRequest): string {
+  return matchedRiskyTool(request) ?? toolCallOf(request)?.title ?? 'tool'
+}
+
+function decisionFor(request: RequestPermissionRequest, optionId: string): 'allow' | 'reject' {
+  const opt = request.options.find((o: PermissionOption) => o.optionId === optionId)
+  return opt && opt.kind.startsWith('reject') ? 'reject' : 'allow'
+}
+
+function audit(
+  request: RequestPermissionRequest,
+  optionId: string,
+  opts: { auto: boolean; risky: boolean }
+) {
+  recordApprovalAudit({
+    tool: auditLabel(request),
+    target: extractTargetHost(toolCallOf(request)?.rawInput),
+    decision: decisionFor(request, optionId),
+    auto: opts.auto,
+    risky: opts.risky
+  })
+}
+
 export function requestPermissionFromUser(
   params: RequestPermissionRequest
 ): Promise<RequestPermissionResponse> {
-  if (useAutoApproveStore.getState().autoApprove) {
-    return Promise.resolve({
-      outcome: { outcome: 'selected', optionId: findBestAllowOption(params) }
-    })
+  const risky = isRiskyToolRequest(params)
+
+  // Auto-approve never applies to risky tools: a side-effecting action on the
+  // user's live session always surfaces the prompt, regardless of the setting.
+  if (!risky && useAutoApproveStore.getState().autoApprove) {
+    const optionId = findBestAllowOption(params)
+    audit(params, optionId, { auto: true, risky: false })
+    return Promise.resolve({ outcome: { outcome: 'selected', optionId } })
   }
 
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       removeEntry(entry)
-      resolve({ outcome: { outcome: 'selected', optionId: findRejectOption(params) } })
+      const optionId = findRejectOption(params)
+      audit(params, optionId, { auto: false, risky })
+      resolve({ outcome: { outcome: 'selected', optionId } })
     }, ACP_PERMISSION_TIMEOUT_MS)
 
     const entry: PendingPermission = { request: params, resolve, timer }
@@ -88,6 +134,7 @@ export function respondToPermission(optionId: string) {
   const entry = usePermissionStore.getState().queue.at(0)
   if (!entry) return
   removeEntry(entry)
+  audit(entry.request, optionId, { auto: false, risky: isRiskyToolRequest(entry.request) })
   entry.resolve({ outcome: { outcome: 'selected', optionId } })
 }
 
@@ -95,16 +142,16 @@ export function approveCurrentPermission() {
   const entry = usePermissionStore.getState().queue.at(0)
   if (!entry) return
   removeEntry(entry)
-  entry.resolve({
-    outcome: { outcome: 'selected', optionId: findBestAllowOption(entry.request) }
-  })
+  const optionId = findBestAllowOption(entry.request)
+  audit(entry.request, optionId, { auto: false, risky: isRiskyToolRequest(entry.request) })
+  entry.resolve({ outcome: { outcome: 'selected', optionId } })
 }
 
 export function rejectCurrentPermission() {
   const entry = usePermissionStore.getState().queue.at(0)
   if (!entry) return
   removeEntry(entry)
-  entry.resolve({
-    outcome: { outcome: 'selected', optionId: findRejectOption(entry.request) }
-  })
+  const optionId = findRejectOption(entry.request)
+  audit(entry.request, optionId, { auto: false, risky: isRiskyToolRequest(entry.request) })
+  entry.resolve({ outcome: { outcome: 'selected', optionId } })
 }

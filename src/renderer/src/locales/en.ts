@@ -252,6 +252,8 @@ export const en = {
   'perm.moreQueued': '· {n} more queued',
   'perm.keys': 'Enter = allow · Esc = reject',
   'perm.dialogLabel': 'Agent permission request',
+  'perm.riskyTool': 'Risky action · {tool}',
+  'perm.target': 'Target',
 }
 
 export type TKey = keyof typeof en

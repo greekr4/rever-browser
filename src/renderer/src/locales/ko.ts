@@ -235,4 +235,6 @@ export const ko: Record<TKey, string> = {
   'perm.moreQueued': '· {n}개 대기 중',
   'perm.keys': 'Enter = 허용 · Esc = 거부',
   'perm.dialogLabel': '에이전트 권한 요청',
+  'perm.riskyTool': '위험 동작 · {tool}',
+  'perm.target': '대상',
 }

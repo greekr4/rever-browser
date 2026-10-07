@@ -8,6 +8,7 @@ import {
   approveCurrentPermission,
   rejectCurrentPermission
 } from '@/ai/acp-permission'
+import { extractTargetHost, matchedRiskyTool } from '@/ai/risky-tools'
 
 const overlay: React.CSSProperties = {
   position: 'fixed',
@@ -67,6 +68,8 @@ export function PermissionPrompt() {
   const title = request.toolCall?.title || t('perm.default')
   const preview = inputPreview(request.toolCall?.rawInput)
   const firstAllowIdx = request.options.findIndex((o) => o.kind.startsWith('allow'))
+  const riskyTool = matchedRiskyTool(request)
+  const targetHost = extractTargetHost(request.toolCall?.rawInput)
 
   return (
     <div style={overlay}>
@@ -78,7 +81,40 @@ export function PermissionPrompt() {
           )}
         </div>
 
-        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: preview ? 10 : 14 }}>{title}</div>
+        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8 }}>{title}</div>
+
+        {(riskyTool || targetHost) && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 8,
+              alignItems: 'center',
+              fontSize: 11,
+              marginBottom: preview ? 10 : 14
+            }}
+          >
+            {riskyTool && (
+              <span
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: 5,
+                  fontWeight: 600,
+                  border: '1px solid var(--chip-danger-border)',
+                  background: 'var(--chip-danger-bg)',
+                  color: 'var(--chip-danger-text)'
+                }}
+              >
+                ⚠ {t('perm.riskyTool', { tool: riskyTool })}
+              </span>
+            )}
+            {targetHost && (
+              <span style={{ opacity: 0.7 }}>
+                {t('perm.target')}: <code>{targetHost}</code>
+              </span>
+            )}
+          </div>
+        )}
 
         {preview && (
           <pre
