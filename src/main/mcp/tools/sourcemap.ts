@@ -77,12 +77,19 @@ async function loadSourceMap(scriptRequestId: string): Promise<TraceMap | { erro
   }
 }
 
+// trace-mapping takes a 1-based line and a 0-based column; this tool's input
+// (and CDP locations, and offsetToLineCol) are 0-based on both. Passing the
+// line through unconverted resolved one generated line too early.
+export function originalAt(tm: TraceMap, line0: number, column0: number) {
+  return originalPositionFor(tm, { line: line0 + 1, column: column0 })
+}
+
 export function registerSourceMapTools(mcp: McpServer) {
   mcp.registerTool(
     'resolve_source',
     {
       description:
-        'Resolve a byte offset or line/column in a captured script to its original source file and position using the embedded source map.',
+        'Resolve a byte offset or 0-indexed line/column in a captured script to its original source file and position using the embedded source map. The returned line is 1-based, column 0-based.',
       inputSchema: {
         requestId: z.string().describe('requestId of the captured script'),
         byteOffset: z.number().int().nonnegative().optional().describe('Byte offset in the bundle (takes precedence over line/column)'),
@@ -107,7 +114,7 @@ export function registerSourceMapTools(mcp: McpServer) {
           }
         }
 
-        const orig = originalPositionFor(tm, { line: resolvedLine, column: resolvedCol })
+        const orig = originalAt(tm, resolvedLine, resolvedCol)
 
         // Get snippet from sourcesContent if available
         let snippet: string | undefined
