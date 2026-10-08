@@ -42,6 +42,7 @@ import { registerDialogTools } from './tools/dialog'
 import { registerVisionTools } from './tools/vision'
 import { registerScopeTools } from './tools/scope'
 import { registerListenerTools } from './tools/listeners'
+import { registerExecTraceTools } from './tools/exec_trace'
 import { registerMacroTools } from './tools/macros'
 import { registerSecretTools } from './tools/secrets'
 import { registerWaitTools } from './tools/wait'
@@ -141,6 +142,7 @@ function buildMcpServer(): McpServer {
   registerVisionTools(mcp)
   registerScopeTools(mcp)
   registerListenerTools(mcp)
+  registerExecTraceTools(mcp)
   registerMacroTools(mcp)
   registerSecretTools(mcp)
   registerWaitTools(mcp)
