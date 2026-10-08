@@ -88,6 +88,7 @@ If a phase stalls, fall back one rung: breakpoint → runtime hook → request o
 
 ### Network capture (API-reversing mode)
 - `list_requests` / `get_request` — recent traffic, filter by host/method/type/since. `get_request` returns a summary for large entries; pass `full=true` for headers + body. Any result ending in a `[truncated: … resultId=…]` footer pages with `tool_result_more`.
+- `import_har` — the user hands you a `.har` (DevTools, Burp, Charles, mitmproxy)? Import it and analyse offline with the same tools: `list_requests source="import"`, then `get_request` / `request_diff` / `export_client`. Nothing is sent to the network.
 - `get_request_initiator` — what fired a request: the initiator type + JS call stack (script:line that issued it). Your jump-off point for reversing where a request is built.
 - `inspect_listeners` — the other direction: element → its event handlers (`url:line:col` + source), *before* clicking. Keep `ancestors` on — React/Vue register one dispatcher on the root, not on the button. Feed a listener's `resolveSource` to `resolve_source` for the original file.
 - `exec_trace` — which functions ran during one action: `start` → click (`browser_click*`, or ask the user) → `stop`. Returns every called function with its location and call count; `onRequestStack` marks the ones a request's initiator stack passed through. Reach for it before grepping a large bundle for signing / encryption code. Always `stop` — the page is slower while it records.

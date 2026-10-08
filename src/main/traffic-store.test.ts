@@ -14,7 +14,9 @@ import {
   getExceptions,
   mergeExtraResponseHeaders,
   takePendingExtraResponseHeaders,
-  discardPendingExtraResponseHeaders
+  discardPendingExtraResponseHeaders,
+  importRequests,
+  clearImports
 } from './traffic-store'
 
 beforeEach(() => {
@@ -344,5 +346,45 @@ describe('responseReceivedExtraInfo merge (Set-Cookie capture)', () => {
       }
     })
     expect(getRequest('r6')?.responseHeaders?.['Set-Cookie']).toBe('hop=FINAL')
+  })
+})
+
+describe('가져온 캡처 (import)', () => {
+  const imp = (id: string, startedAt = 1) => ({
+    requestId: id,
+    url: `https://x.io/${id}`,
+    host: 'x.io',
+    method: 'GET',
+    resourceType: 'Fetch',
+    startedAt
+  })
+
+  beforeEach(() => clearImports())
+
+  it('가져온 항목은 getRequest로 찾을 수 있다', () => {
+    importRequests([imp('har:a:0')])
+    expect(getRequest('har:a:0')?.url).toBe('https://x.io/har:a:0')
+  })
+
+  it('listRequests는 기본으로 실시간 캡처만, source로 가져온 것·전체를 고른다', () => {
+    upsertRequest({ requestId: 'live-1', url: 'https://x.io/live', host: 'x.io', method: 'GET', resourceType: 'Fetch', startedAt: 5 })
+    importRequests([imp('har:a:0')])
+    expect(listRequests().map((r) => r.requestId)).not.toContain('har:a:0')
+    expect(listRequests({ source: 'import' }).map((r) => r.requestId)).toEqual(['har:a:0'])
+    expect(listRequests({ source: 'all' }).map((r) => r.requestId).sort()).toEqual(['har:a:0', 'live-1'])
+  })
+
+  it('가져온 항목은 5,000건을 넘으면 오래된 것부터 지운다', () => {
+    importRequests(Array.from({ length: 5_001 }, (_, i) => imp(`har:b:${i}`)))
+    expect(getRequest('har:b:0')).toBeUndefined()
+    expect(getRequest('har:b:5000')).toBeDefined()
+  })
+
+  it('clearImports는 가져온 항목만 지운다', () => {
+    upsertRequest({ requestId: 'live-2', url: 'u', host: 'x.io', method: 'GET', resourceType: 'Fetch', startedAt: 1 })
+    importRequests([imp('har:c:0')])
+    clearImports()
+    expect(getRequest('har:c:0')).toBeUndefined()
+    expect(getRequest('live-2')).toBeDefined()
   })
 })
