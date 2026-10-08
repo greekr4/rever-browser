@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useT } from '@/stores/i18n'
 import {
@@ -8,6 +8,7 @@ import {
   approveCurrentPermission,
   rejectCurrentPermission
 } from '@/ai/acp-permission'
+import { extractTargetHost, gatedToolName, matchedRiskyTool } from '@/ai/risky-tools'
 
 const overlay: React.CSSProperties = {
   position: 'fixed',
@@ -44,6 +45,13 @@ export function PermissionPrompt() {
   const current = useCurrentPermission()
   const queue = usePermissionQueue()
 
+  // "Allow all this session" checkbox — reset for every new prompt. The ref
+  // lets the global Enter handler read the current value.
+  const [grantAll, setGrantAll] = useState(false)
+  const grantAllRef = useRef(false)
+  grantAllRef.current = grantAll
+  useEffect(() => setGrantAll(false), [current])
+
   // Enter approves (best allow option), Escape rejects — global while a prompt
   // is showing. Covers keyboard-driven approval per the UI edge-case rules.
   useEffect(() => {
@@ -51,7 +59,7 @@ export function PermissionPrompt() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.preventDefault()
-        approveCurrentPermission()
+        approveCurrentPermission({ grantSession: grantAllRef.current })
       } else if (e.key === 'Escape') {
         e.preventDefault()
         rejectCurrentPermission()
@@ -66,7 +74,15 @@ export function PermissionPrompt() {
   const { request } = current
   const title = request.toolCall?.title || t('perm.default')
   const preview = inputPreview(request.toolCall?.rawInput)
-  const firstAllowIdx = request.options.findIndex((o) => o.kind.startsWith('allow'))
+  // Gated tools can't be "always allowed" (it would disable the prompt for the
+  // rest of the session), so that button is not offered for them.
+  const gatedTool = gatedToolName(request)
+  const options = gatedTool
+    ? request.options.filter((o) => o.kind !== 'allow_always')
+    : request.options
+  const firstAllowIdx = options.findIndex((o) => o.kind.startsWith('allow'))
+  const riskyTool = matchedRiskyTool(request)
+  const targetHost = extractTargetHost(request.toolCall?.rawInput)
 
   return (
     <div style={overlay}>
@@ -78,7 +94,40 @@ export function PermissionPrompt() {
           )}
         </div>
 
-        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: preview ? 10 : 14 }}>{title}</div>
+        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8 }}>{title}</div>
+
+        {(riskyTool || targetHost) && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 8,
+              alignItems: 'center',
+              fontSize: 11,
+              marginBottom: preview ? 10 : 14
+            }}
+          >
+            {riskyTool && (
+              <span
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: 5,
+                  fontWeight: 600,
+                  border: '1px solid var(--chip-danger-border)',
+                  background: 'var(--chip-danger-bg)',
+                  color: 'var(--chip-danger-text)'
+                }}
+              >
+                ⚠ {t('perm.riskyTool', { tool: riskyTool })}
+              </span>
+            )}
+            {targetHost && (
+              <span style={{ opacity: 0.7 }}>
+                {t('perm.target')}: <code>{targetHost}</code>
+              </span>
+            )}
+          </div>
+        )}
 
         {preview && (
           <pre
@@ -99,15 +148,36 @@ export function PermissionPrompt() {
           </pre>
         )}
 
+        {gatedTool && (
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 12,
+              marginBottom: 12,
+              cursor: 'pointer',
+              userSelect: 'none'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={grantAll}
+              onChange={(e) => setGrantAll(e.target.checked)}
+            />
+            {t('perm.allowSession', { tool: gatedTool })}
+          </label>
+        )}
+
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {request.options.map((opt, i) => {
+          {options.map((opt, i) => {
             const isAllow = opt.kind.startsWith('allow')
             return (
               <button
                 key={opt.optionId}
                 type="button"
                 autoFocus={i === (firstAllowIdx === -1 ? 0 : firstAllowIdx)}
-                onClick={() => respondToPermission(opt.optionId)}
+                onClick={() => respondToPermission(opt.optionId, { grantSession: grantAll })}
                 style={{
                   padding: '6px 14px',
                   fontSize: 12,

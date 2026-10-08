@@ -12,6 +12,7 @@ import {
   type InterceptRule
 } from '../../chrome-cdp'
 import { getRequest } from '../../traffic-store'
+import { scopeBlockForUrl } from '../scope'
 import { ok, err, errorMessage } from '../utils'
 
 export function registerInterceptTools(mcp: McpServer) {
@@ -103,6 +104,10 @@ export function registerInterceptTools(mcp: McpServer) {
       }
     },
     async ({ requestId, headers, postData, url, method }) => {
+      // A URL override can redirect the continued request to another host —
+      // enforce scope on it (no-op until a scope is set).
+      const scopeBlock = scopeBlockForUrl(url)
+      if (scopeBlock) return err(scopeBlock)
       const target = getActiveTarget()
       if (!target) return err('no active target')
       try {
@@ -193,6 +198,10 @@ export function registerInterceptTools(mcp: McpServer) {
     async ({ requestId, overrides }) => {
       const entry = getRequest(requestId)
       if (!entry) return err(`unknown requestId: ${requestId}`)
+      // Node fetch bypasses repeaterSendRaw, so enforce scope here too — the
+      // override URL would otherwise also receive the page's cookies.
+      const scopeBlock = scopeBlockForUrl(overrides?.url ?? entry.url)
+      if (scopeBlock) return err(scopeBlock)
       const target = getActiveTarget()
 
       // Collect cookies for the target URL

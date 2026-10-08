@@ -4,6 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { getActiveTarget } from '../../chrome-cdp'
 import { listRequests, getRequest } from '../../traffic-store'
+import { generateCode } from '../codegen'
 import { ok, err, errorMessage } from '../utils'
 
 const AUTH_HEADERS = ['authorization', 'cookie', 'x-csrf-token', 'x-api-key']
@@ -101,48 +102,33 @@ export function registerAuthTools(mcp: McpServer) {
     async ({ requestId, library = 'requests' }) => {
       const entry = getRequest(requestId)
       if (!entry) return err(`unknown requestId: ${requestId}`)
+      // Delegate to the shared generator. Keep secrets visible here (runnable)
+      // for back-compat; use export_client with maskSecrets for a shareable one.
+      return ok(
+        generateCode(entry, { lang: 'python', pythonLibrary: library, maskSecrets: false })
+      )
+    }
+  )
 
-      const lib = library === 'httpx' ? 'httpx' : 'requests'
-      const clientClass = lib === 'httpx' ? 'httpx.Client' : 'requests.Session'
-
-      // Extract cookies from headers
-      const headers = { ...(entry.requestHeaders ?? {}) }
-      const cookieHeader = headers['cookie'] ?? headers['Cookie'] ?? ''
-      delete headers['cookie']
-      delete headers['Cookie']
-
-      const cookiesObj: Record<string, string> = {}
-      if (cookieHeader) {
-        for (const part of cookieHeader.split(';')) {
-          const idx = part.indexOf('=')
-          if (idx === -1) continue
-          cookiesObj[part.slice(0, idx).trim()] = part.slice(idx + 1).trim()
-        }
+  mcp.registerTool(
+    'export_client',
+    {
+      description:
+        'Generate code to reproduce a captured request in curl, Python (requests/httpx) or TypeScript (fetch). By default credential values are MASKED: auth headers, session-like cookies, token-like URL query params and JSON/form body fields (password, token, secret, …). Plain-text bodies are not inspected, so review before sharing. Pass maskSecrets=false for a runnable copy.',
+      inputSchema: {
+        requestId: z.string().describe('requestId to reproduce'),
+        lang: z.enum(['curl', 'python', 'typescript']).describe('Output language'),
+        maskSecrets: z
+          .boolean()
+          .optional()
+          .describe('Mask credential values (default true — safe to share)'),
+        pythonLibrary: z.enum(['requests', 'httpx']).optional().describe('Python only (default requests)')
       }
-
-      const lines: string[] = [
-        `import ${lib}`,
-        '',
-        `s = ${clientClass}()`,
-        `s.headers.update(${JSON.stringify(headers, null, 4)})`
-      ]
-
-      if (Object.keys(cookiesObj).length > 0) {
-        lines.push(`s.cookies.update(${JSON.stringify(cookiesObj, null, 4)})`)
-      }
-
-      const method = entry.method.toLowerCase()
-      const hasBody = entry.requestPostData != null
-      if (hasBody) {
-        lines.push(`data = ${JSON.stringify(entry.requestPostData)}`)
-        lines.push(`resp = s.${method}(${JSON.stringify(entry.url)}, data=data)`)
-      } else {
-        lines.push(`resp = s.${method}(${JSON.stringify(entry.url)})`)
-      }
-
-      lines.push('print(resp.status_code, resp.text[:500])')
-
-      return ok(lines.join('\n'))
+    },
+    async ({ requestId, lang, maskSecrets, pythonLibrary }) => {
+      const entry = getRequest(requestId)
+      if (!entry) return err(`unknown requestId: ${requestId}`)
+      return ok(generateCode(entry, { lang, maskSecrets, pythonLibrary }))
     }
   )
 }

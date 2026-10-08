@@ -1,4 +1,5 @@
 import { getActiveTarget } from './chrome-cdp'
+import { scopeBlockForUrl } from './mcp/scope'
 import { getRequest } from './traffic-store'
 
 export interface RepeaterModifications {
@@ -70,12 +71,31 @@ export function restoreMarker(spec: RepeaterRequestSpec): RepeaterRequestSpec {
   }
 }
 
+type BaseRequest = {
+  url: string
+  method?: string
+  requestHeaders?: Record<string, string>
+  requestPostData?: string
+}
+
+// The request to start from: a captured one, or — with no requestId — a blank
+// GET to modifications.url, so the agent can send to a URL it hasn't captured
+// yet without falling back to curl from the shell.
+function baseRequest(requestId: string | undefined, mods: RepeaterModifications | undefined): BaseRequest {
+  if (requestId) {
+    const stored = getRequest(requestId)
+    if (!stored) throw new Error(`unknown requestId: ${requestId}`)
+    return stored
+  }
+  if (mods?.url) return { url: mods.url, method: 'GET' }
+  throw new Error('pass a requestId or modifications.url')
+}
+
 export function buildRequestSpec(
-  requestId: string,
+  requestId: string | undefined,
   mods: RepeaterModifications | undefined
 ): RepeaterRequestSpec {
-  const stored = getRequest(requestId)
-  if (!stored) throw new Error(`unknown requestId: ${requestId}`)
+  const stored = baseRequest(requestId, mods)
 
   const url = mods?.url ?? stored.url
   const method = (mods?.method ?? stored.method ?? 'GET').toUpperCase()
@@ -114,6 +134,11 @@ export function buildRequestSpec(
 }
 
 export async function repeaterSendRaw(spec: RepeaterRequestSpec): Promise<RepeaterResponse> {
+  // Scope guardrail: refuse replay/intruder/burst targets outside the session
+  // scope (no-op until a scope is set). Covers repeater_send, burst_send and
+  // intruder_run, which all funnel through here.
+  const blocked = scopeBlockForUrl(spec.url)
+  if (blocked) throw new Error(blocked)
   const target = getActiveTarget()
   if (!target) throw new Error('no active webview attached')
 
@@ -152,7 +177,7 @@ export async function repeaterSendRaw(spec: RepeaterRequestSpec): Promise<Repeat
 }
 
 export async function repeaterSend(
-  requestId: string,
+  requestId: string | undefined,
   mods: RepeaterModifications | undefined
 ): Promise<RepeaterResponse> {
   return repeaterSendRaw(buildRequestSpec(requestId, mods))

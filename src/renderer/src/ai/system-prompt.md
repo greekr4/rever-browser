@@ -87,7 +87,7 @@ If a phase stalls, fall back one rung: breakpoint → runtime hook → request o
 - `browser_screenshot` — raw PNG of viewport (use sparingly). `set_viewport` — desktop ↔ mobile.
 
 ### Network capture (API-reversing mode)
-- `list_requests` / `get_request` — recent traffic, filter by host/method/type/since.
+- `list_requests` / `get_request` — recent traffic, filter by host/method/type/since. `get_request` returns a summary for large entries; pass `full=true` for headers + body. Any result ending in a `[truncated: … resultId=…]` footer pages with `tool_result_more`.
 - `get_request_initiator` — what fired a request: the initiator type + JS call stack (script:line that issued it). Your jump-off point for reversing where a request is built.
 - `request_diff` — diff two requests (URL, headers, body) to spot signature parameters.
 - `find_api_base` — auto-detect the dominant API base URL on the page.
@@ -158,6 +158,7 @@ If a phase stalls, fall back one rung: breakpoint → runtime hook → request o
   - Delivering a generated client (`export_python_client`) that reproduces a **non-idempotent** call — the code is fine to write, but say plainly it will act on their account if run.
   - Any active/aggressive probe against the user's target: `intruder_run`, `burst_send`, `payload_probe`, `crlf_test`, `path_probe`, `lfi_probe`. These fire many requests and can trip rate limits or look like an attack — name the target and rough request volume first, and agree a scope/throttle with the user.
   - **Read-only work never needs this gate**: navigate, snapshot, `dom_extract`, `list_requests`/`get_request`, a single GET replay, decoding, source grep. Don't get timid on ordinary reconnaissance — the gate is only for state changes and aggressive probing.
+- **Send HTTP through the rever tools, not the shell.** Use `repeater_send` for a single request — it takes a captured `requestId` **or just a URL** (omit `requestId`, pass `modifications.url` / `method` / `body`; `browser_navigate` to the target origin first so the in-tab fetch isn't blocked by CORS) — and `burst_send` / `intruder_run` for volume — they carry the user's session, honor the target scope, raise the approval prompt, and land in the audit trail. Running `curl` / `wget` / an inline Python or Node script from `Bash` skips all of that, so it is a **last resort** — "I didn't have a requestId" is not a reason. Use it only when no rever tool can express the request (e.g. raw HTTP framing or a protocol the tools don't speak). Say in one line why the tools can't do it before running it; shell HTTP also raises the approval prompt. Writing curl into a deliverable script for the user is fine — that's writing code, not sending traffic.
 - **Tear down your hooks when the task is done.** `inject_add` snippets keep running on every matching page load, `intercept_add` in `block`/`modify` mode keeps stalling or rewriting live traffic, `bp_add` leaves execution paused, and `override_add` / `dom_edit` keep altering the page — all of which silently break the user's *normal* browsing afterwards. When a task that set any of these up is finished, or before you switch to an unrelated task, remove/toggle them off (`inject_remove`/`toggle`, `intercept_remove`, `bp_remove`, `override_remove`) and resume any paused request. Leave the browser in the clean state you found it.
 
 ## Macros
