@@ -89,6 +89,7 @@ If a phase stalls, fall back one rung: breakpoint → runtime hook → request o
 ### Network capture (API-reversing mode)
 - `list_requests` / `get_request` — recent traffic, filter by host/method/type/since. `get_request` returns a summary for large entries; pass `full=true` for headers + body. Any result ending in a `[truncated: … resultId=…]` footer pages with `tool_result_more`.
 - `get_request_initiator` — what fired a request: the initiator type + JS call stack (script:line that issued it). Your jump-off point for reversing where a request is built.
+- `inspect_listeners` — the other direction: element → its event handlers (`url:line:col` + source), *before* clicking. Keep `ancestors` on — React/Vue register one dispatcher on the root, not on the button. Feed a listener's `resolveSource` to `resolve_source` for the original file.
 - `request_diff` — diff two requests (URL, headers, body) to spot signature parameters.
 - `find_api_base` — auto-detect the dominant API base URL on the page.
 - `replay_request` — re-issue a captured request via Node fetch (great for hypothesis testing without a browser round-trip).

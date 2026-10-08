@@ -805,6 +805,17 @@ async function captureSnapshot(opts: { full?: boolean }): Promise<SnapshotResult
   }
 }
 
+/**
+ * A ref's live RemoteObject plus the CDP session it lives in — follow-up
+ * commands about the node (or objects derived from it) must carry the same
+ * session, see RefEntry.sessionId.
+ */
+export async function resolveRefObject(
+  ref: string
+): Promise<{ objectId: string; sessionId: string | undefined }> {
+  return { objectId: await resolveObjectId(ref), sessionId: refMap.get(ref)?.sessionId }
+}
+
 async function resolveObjectId(ref: string): Promise<string> {
   const entry = refMap.get(ref)
   if (!entry) throw new Error(`unknown ref "${ref}" — call browser_snapshot first`)
@@ -829,7 +840,7 @@ async function resolveObjectId(ref: string): Promise<string> {
  * is too big to be practical (the agent used to fall back to raw JS, which
  * skips the whole animation and fires no trusted events).
  */
-async function resolveSelectorObjectId(selector: string): Promise<string> {
+export async function resolveSelectorObjectId(selector: string): Promise<string> {
   const target = getActiveTarget()
   if (!target) throw new Error('no active browser target')
   const res = (await target.dbg.sendCommand('Runtime.evaluate', {
