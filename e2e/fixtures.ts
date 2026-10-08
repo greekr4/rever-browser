@@ -7,7 +7,7 @@ import { test as base, _electron as electron, type ElectronApplication, type Pag
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 export interface ChatTurn {
   /** Visible text of the assistant's reply (tool groups included as labels). */
