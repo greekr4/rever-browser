@@ -35,3 +35,6 @@ release/
 /browser-use-import-progress.html
 __pycache__/
 /workthrough
+
+# Playwright E2E output
+/test-results/

@@ -208,8 +208,16 @@ function WorkGroup({ parts }: { parts: AnyPart[] }) {
     .filter(Boolean)
     .join(' · ')
 
+  // data-tools: the tool names in this group, for E2E assertions (e2e/).
+  const toolNames = parts
+    .filter((p) => p.type.startsWith('tool-'))
+    .map((p) => {
+      const t = p as ToolPart
+      return t.title || t.toolName || p.type.replace(/^tool-/, '')
+    })
+
   return (
-    <div style={{ margin: '4px 0' }}>
+    <div style={{ margin: '4px 0' }} data-testid="chat-work" data-tools={JSON.stringify(toolNames)}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -255,7 +263,7 @@ interface ChatMessageLike {
 
 const MessageItem = memo(function MessageItem({ message }: { message: ChatMessageLike }) {
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div style={{ marginBottom: 16 }} data-testid="chat-message" data-role={message.role}>
       <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>{message.role}</div>
       {groupParts(message.parts).map((g) =>
         g.kind === 'text' ? (
@@ -607,6 +615,7 @@ export function ChatPanel() {
           type="button"
           onClick={onNewChat}
           title={tr('chat.newConversation')}
+          data-testid="chat-new"
           style={{
             fontSize: 11,
             padding: '3px 8px',
@@ -678,8 +687,14 @@ export function ChatPanel() {
         )}
       </div>
 
-      <form onSubmit={onSubmit} style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--border-2)', alignItems: 'center' }}>
+      <form
+        onSubmit={onSubmit}
+        data-testid="chat-form"
+        data-status={status}
+        style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--border-2)', alignItems: 'center' }}
+      >
         <textarea
+          data-testid="chat-input"
           ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
