@@ -223,17 +223,23 @@ export interface ListFilter {
   before?: number
   beforeId?: string
   limit?: number
+  /** live = captured in this app (default), import = loaded by import_har, all = both. */
+  source?: 'live' | 'import' | 'all'
 }
 
-export function listRequests(filter: ListFilter = {}): StoredRequest[] {
-  const limit = filter.limit ?? 50
+function scan(
+  ids: string[],
+  store: Map<string, StoredRequest>,
+  filter: ListFilter,
+  limit: number
+): StoredRequest[] {
   // Position of the boundary entry in `order` — only needed when entries
   // share the `before` millisecond and we must tell older siblings from the
   // boundary entry itself.
-  const beforeIdx = filter.beforeId !== undefined ? order.indexOf(filter.beforeId) : -1
+  const beforeIdx = filter.beforeId !== undefined ? ids.indexOf(filter.beforeId) : -1
   const result: StoredRequest[] = []
-  for (let i = order.length - 1; i >= 0 && result.length < limit; i--) {
-    const e = entries.get(order[i])
+  for (let i = ids.length - 1; i >= 0 && result.length < limit; i--) {
+    const e = store.get(ids[i])
     if (!e) continue
     if (filter.host && !e.host.includes(filter.host)) continue
     if (filter.methodOrType) {
@@ -263,8 +269,45 @@ export function listRequests(filter: ListFilter = {}): StoredRequest[] {
   return result
 }
 
+export function listRequests(filter: ListFilter = {}): StoredRequest[] {
+  const limit = filter.limit ?? 50
+  const source = filter.source ?? 'live'
+  if (source === 'live') return scan(order, entries, filter, limit)
+  if (source === 'import') return scan(importOrder, imported, filter, limit)
+  return [...scan(order, entries, filter, limit), ...scan(importOrder, imported, filter, limit)]
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, limit)
+}
+
 export function getRequest(requestId: string): StoredRequest | undefined {
-  return entries.get(requestId)
+  return entries.get(requestId) ?? imported.get(requestId)
+}
+
+// ── Imported captures (import_har) ──────────────────────────────────────────
+// Kept apart from the live ring buffer so loading a large HAR can't push out
+// what the user is capturing right now. Ids are `har:<importId>:<index>`.
+const MAX_IMPORTED = 5_000
+const importOrder: string[] = []
+const imported = new Map<string, StoredRequest>()
+
+export function importRequests(reqs: StoredRequest[]): void {
+  for (const r of reqs) {
+    if (!imported.has(r.requestId)) importOrder.push(r.requestId)
+    imported.set(r.requestId, capBody(r))
+  }
+  while (importOrder.length > MAX_IMPORTED) {
+    const oldest = importOrder.shift()
+    if (oldest) imported.delete(oldest)
+  }
+}
+
+export function clearImports(): void {
+  importOrder.length = 0
+  imported.clear()
+}
+
+export function getImportCount(): number {
+  return importOrder.length
 }
 
 // ── responseReceivedExtraInfo merge ─────────────────────────────────────────

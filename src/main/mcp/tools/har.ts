@@ -2,7 +2,11 @@ import { z } from 'zod'
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
-import { listRequests, getRequest } from '../../traffic-store'
+import fs from 'node:fs'
+import path from 'node:path'
+
+import { clearImports, getImportCount, importRequests, listRequests, getRequest } from '../../traffic-store'
+import { harToEntries } from '../../har-import'
 import { toHeaders } from '../har-build'
 import { ok, err, errorMessage } from '../utils'
 
@@ -16,6 +20,9 @@ const HAR_RESPONSE_SIZE_LIMIT = 50 * 1024 * 1024
 // the older remainder via the log._nextBefore/_nextBeforeId cursor, so a
 // misjudged `limit` yields a truncated result instead of a dead stream.
 const SSE_SAFE_RESPONSE_BYTES = 900 * 1024
+
+// HAR files over this are refused rather than parsed into memory.
+const MAX_HAR_BYTES = 300 * 1024 * 1024
 
 export function registerHarTools(mcp: McpServer) {
   mcp.registerTool(
@@ -203,6 +210,76 @@ export function registerHarTools(mcp: McpServer) {
           )
         }
         return ok(serialized)
+      } catch (e) {
+        return err(errorMessage(e))
+      }
+    }
+  )
+
+  mcp.registerTool(
+    'import_har',
+    {
+      description:
+        'Load a HAR file captured elsewhere (Chrome DevTools, Burp, Charles, mitmproxy hardump) so the traffic tools work on it offline — nothing is fetched. Entries get ids `har:<importId>:<n>`; find them with list_requests source="import", then get_request / request_diff / export_client as usual. Imports live apart from live capture (up to 5,000 entries). clear=true drops all imports.',
+      inputSchema: {
+        path: z.string().optional().describe('Absolute path to a .har file'),
+        label: z.string().optional().describe('Short id for this import (letters/digits); default is generated'),
+        clear: z.boolean().optional().describe('Remove every imported entry instead of loading')
+      }
+    },
+    async ({ path: file, label, clear }) => {
+      if (clear) {
+        const n = getImportCount()
+        clearImports()
+        return ok(JSON.stringify({ cleared: n }))
+      }
+      if (!file) return err('pass path (absolute .har file) or clear=true')
+      if (!path.isAbsolute(file)) return err('path must be absolute')
+      try {
+        const size = fs.statSync(file).size
+        if (size > MAX_HAR_BYTES) return err(`HAR is ${size} bytes — over the ${MAX_HAR_BYTES}-byte import limit`)
+        const importId = (label ?? Date.now().toString(36)).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24) || 'imp'
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
+        } catch (e) {
+          return err(`not valid JSON: ${errorMessage(e)}`)
+        }
+        const { entries, skipped, creator } = harToEntries(parsed, importId)
+        importRequests(entries)
+
+        const byType: Record<string, number> = {}
+        const byHost: Record<string, number> = {}
+        for (const e of entries) {
+          byType[e.resourceType] = (byType[e.resourceType] ?? 0) + 1
+          byHost[e.host] = (byHost[e.host] ?? 0) + 1
+        }
+        const times = entries.map((e) => e.startedAt).filter((t) => t > 0)
+        return ok(
+          JSON.stringify(
+            {
+              importId,
+              creator,
+              imported: entries.length,
+              skipped: skipped.length,
+              skippedExamples: skipped.slice(0, 5),
+              byType,
+              topHosts: Object.entries(byHost)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 8),
+              timeRange: times.length
+                ? [new Date(Math.min(...times)).toISOString(), new Date(Math.max(...times)).toISOString()]
+                : null,
+              next: 'list_requests source="import" (filter by host / methodOrType), then get_request etc.',
+              limitations: [
+                'Only what the HAR recorded: bodies the exporter dropped or truncated stay missing.',
+                'grep_scripts / list_scripts search live capture only; get_request-based tools (resolve_source, request_diff, export_client) work on imports.'
+              ]
+            },
+            null,
+            2
+          )
+        )
       } catch (e) {
         return err(errorMessage(e))
       }

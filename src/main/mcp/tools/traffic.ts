@@ -49,7 +49,11 @@ export function registerTrafficTools(mcp: McpServer) {
             'Substring match against HTTP method (GET/POST...) or ResourceType (XHR/Fetch/Document...)'
           ),
         since: z.number().optional().describe('Only include requests started after this epoch ms'),
-        limit: z.number().int().positive().max(200).optional().describe('Max items (default 50)')
+        limit: z.number().int().positive().max(200).optional().describe('Max items (default 50)'),
+        source: z
+          .enum(['live', 'import', 'all'])
+          .optional()
+          .describe('live = captured in this app (default), import = loaded with import_har, all = both')
       }
     },
     async (args) => {
