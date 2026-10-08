@@ -13,7 +13,8 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "electron-vite build && playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.20.0",
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
+    "@playwright/test": "^1.64.0",
     "@types/chrome-remote-interface": "^0.33.0",
     "@types/node": "^22.10.5",
     "@types/react": "^19.1.8",

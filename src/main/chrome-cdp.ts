@@ -18,6 +18,7 @@ import {
 import { STEALTH_INIT_SCRIPT, SPOOFED_CHROME_VERSION, SPOOFED_CHROME_MAJOR } from './stealth-init'
 import { charsetFromContentType, encodeRefetchedBody } from './mcp/wasm-analysis'
 import { compileRules, findMatchingRule, type CompiledRule } from './intercept-match'
+import { clearScriptsFor, recordScript } from './script-registry'
 
 interface AttachedTarget {
   dbg: Debugger
@@ -889,6 +890,9 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
       unregisterOopif(targetId, (params as { sessionId: string }).sessionId)
     } else if (method === 'Overlay.inspectNodeRequested') {
       inspectNodeHandler?.((params as { backendNodeId: number }).backendNodeId)
+    } else if (method === 'Debugger.scriptParsed') {
+      const p = params as { scriptId: string; url: string }
+      recordScript(targetId, sessionId, p.scriptId, p.url)
     } else if (method === 'Debugger.paused') {
       const p = params as DebuggerPausedParams
       debuggerPaused = { callFrames: p.callFrames, reason: p.reason }
@@ -927,6 +931,7 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
     dbg.removeAllListeners('message')
     dbg.removeAllListeners('detach')
     attached.delete(targetId)
+  clearScriptsFor(targetId)
     inFlight.delete(targetId)
     clearOopifs(targetId)
     debuggerPaused = null
@@ -947,6 +952,7 @@ export function detachCdpCapture(targetId: number): boolean {
     t.dbg.detach()
   } catch {}
   attached.delete(targetId)
+  clearScriptsFor(targetId)
   if (activeWebContentsId === targetId) activeWebContentsId = null
   return true
 }

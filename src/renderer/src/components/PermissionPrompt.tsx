@@ -85,7 +85,7 @@ export function PermissionPrompt() {
   const targetHost = extractTargetHost(request.toolCall?.rawInput)
 
   return (
-    <div style={overlay}>
+    <div style={overlay} data-testid="permission-prompt" data-tool={gatedTool ?? title}>
       <div style={card} role="dialog" aria-modal="true" aria-label={t('perm.dialogLabel')}>
         <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.55, marginBottom: 8 }}>
           {t('perm.required')}
@@ -161,6 +161,7 @@ export function PermissionPrompt() {
             }}
           >
             <input
+              data-testid="perm-session-grant"
               type="checkbox"
               checked={grantAll}
               onChange={(e) => setGrantAll(e.target.checked)}
@@ -175,6 +176,7 @@ export function PermissionPrompt() {
             return (
               <button
                 key={opt.optionId}
+                data-testid={`perm-${opt.kind}`}
                 type="button"
                 autoFocus={i === (firstAllowIdx === -1 ? 0 : firstAllowIdx)}
                 onClick={() => respondToPermission(opt.optionId, { grantSession: grantAll })}

@@ -91,7 +91,12 @@ app.userAgentFallback = app.userAgentFallback
 // original 'rever-browser' directory so mcp-endpoint.json, cookies and
 // localStorage keep their existing location.
 app.setName('Rever Browser')
-app.setPath('userData', path.join(app.getPath('appData'), 'rever-browser'))
+// REVER_USER_DATA_DIR isolates a run (E2E tests) from the real profile —
+// chat history, cookies, settings and mcp-endpoint.json all live under it.
+app.setPath(
+  'userData',
+  process.env.REVER_USER_DATA_DIR || path.join(app.getPath('appData'), 'rever-browser')
+)
 app.setAboutPanelOptions({
   applicationName: 'Rever Browser',
   applicationVersion: app.getVersion()
