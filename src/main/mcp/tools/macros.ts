@@ -6,6 +6,8 @@ import { askRenderer } from '../../renderer-bridge'
 import { runWorkflow, type RunStep } from '../../workflow-executor'
 import { listMcpTools } from '../bridge'
 import { ok, err, errorMessage } from '../utils'
+import type { CatalogKind } from '../tool-profile'
+import { macroRunNeedsGuard, screenMacroRun } from './macro-guard'
 
 const stepSchema = z.object({
   tool: z.string().describe('MCP tool name, e.g. "browser_click"'),
@@ -33,7 +35,12 @@ function json(v: unknown): string {
   return JSON.stringify(v, null, 2)
 }
 
-export function registerMacroTools(mcp: McpServer) {
+async function resolveMacroSteps(id: string): Promise<RunStep[]> {
+  const inner = (await bridge('macro:resolve', { id })) as { steps: RunStep[] }
+  return inner.steps
+}
+
+export function registerMacroTools(mcp: McpServer, catalog: CatalogKind = 'full') {
   mcp.registerTool(
     'list_macros',
     {
@@ -160,6 +167,14 @@ export function registerMacroTools(mcp: McpServer) {
         }
       } catch (e) {
         return err(errorMessage(e))
+      }
+      if (macroRunNeedsGuard(catalog)) {
+        try {
+          const screen = await screenMacroRun(resolved.steps, resolveMacroSteps, [id])
+          if (!screen.ok) return err(screen.error)
+        } catch (e) {
+          return err(errorMessage(e))
+        }
       }
       const results = await runWorkflow(resolved.steps, () => {})
       const failed = results.find((r) => r.status === 'error')

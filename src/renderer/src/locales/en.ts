@@ -255,6 +255,15 @@ export const en = {
   'perm.riskyTool': 'Risky action · {tool}',
   'perm.target': 'Target',
   'perm.allowSession': 'Allow all {tool} calls this session',
+
+  'tools.profile.label': 'Tools',
+  'tools.profile.browse': 'Browse',
+  'tools.profile.reverse': 'Reverse',
+  'tools.profile.probe': 'Probe',
+  'tools.profile.tip.browse': 'Page and DOM tools. API reversing tools are hidden.',
+  'tools.profile.tip.reverse': 'Scripts, crypto, replay, and client export.',
+  'tools.profile.tip.probe':
+    'Active probes. Hidden until you select Probe. ACP chat still prompts before each risky call. API models get no new confirm; they run the call the way they do today.',
 }
 
 export type TKey = keyof typeof en

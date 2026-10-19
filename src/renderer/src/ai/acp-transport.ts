@@ -1,4 +1,5 @@
 import SYSTEM_PROMPT from '@/ai/system-prompt.md?raw'
+import { toolProfileTurnLine, type ToolProfileId } from '../../../shared/tool-profile-line'
 import { cancelPendingPermissions, hasPendingPermission } from './acp-permission'
 
 import { mapUpdate } from './acp-map-update'
@@ -8,6 +9,16 @@ import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 import type { ACPAgentDef } from '@/constants'
 
 export { formatConnectionError }
+
+async function currentToolProfile(): Promise<ToolProfileId> {
+  try {
+    const profile = await window.rev.toolProfile.get()
+    if (profile === 'browse' || profile === 'reverse' || profile === 'probe') return profile
+  } catch (e) {
+    console.warn('[tool-profile] read failed:', e)
+  }
+  return 'browse'
+}
 
 export class ACPChatTransport implements ChatTransport<UIMessage> {
   private sessionId: string | null = null
@@ -62,7 +73,9 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     }
 
     const alreadySentContext = this.sentContext
-    const promptText = alreadySentContext ? text : `${this.systemPrompt}\n\n${text}`
+    const body = alreadySentContext ? text : `${this.systemPrompt}\n\n${text}`
+    // Every turn, including the first. The profile can change between messages.
+    const promptText = `${body}\n${toolProfileTurnLine(await currentToolProfile())}`
     // self 참조: ReadableStream start 콜백은 arrow function이 아니므로 this를 미리 캡처
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this

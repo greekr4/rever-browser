@@ -52,6 +52,15 @@ import { registerAntibotTools } from './tools/antibot'
 import { registerGraphqlTools } from './tools/graphql'
 import { registerProtobufTools } from './tools/protobuf'
 import { registerWasmTools } from './tools/wasm'
+import { registerToolProfileTools } from './tools/tool_profile'
+import {
+  applyFollowCatalog,
+  catalogDisablesTools,
+  catalogFromHeader,
+  type CatalogKind,
+  type ToolToggle
+} from './tool-profile'
+import { getToolProfile, registerFollowServer, unregisterFollowServer } from './tool-profile-state'
 import { emitAiAction } from '../ai-events'
 import { visualize } from './cdp-eval'
 
@@ -73,7 +82,7 @@ function summarizeToolArgs(input: unknown): string | undefined {
  * invisibly, which makes the UI look frozen. This surfaces them in the AI
  * activity overlay so the user always sees what the agent is doing.
  */
-function withActivity(mcp: McpServer): void {
+function withActivity(mcp: McpServer, handles: Map<string, ToolToggle>): void {
   const orig = mcp.registerTool.bind(mcp) as (...a: unknown[]) => unknown
   ;(mcp as unknown as { registerTool: (...a: unknown[]) => unknown }).registerTool = (
     name: unknown,
@@ -101,13 +110,17 @@ function withActivity(mcp: McpServer): void {
         throw e
       }
     }
-    return orig(toolName, config, wrapped)
+    const registered = orig(toolName, config, wrapped) as ToolToggle
+    handles.set(toolName, registered)
+    return registered
   }
 }
 
-function buildMcpServer(): McpServer {
+export function buildMcpServer(opts?: { catalog?: CatalogKind }): McpServer {
+  const catalog = opts?.catalog ?? 'full'
   const mcp = new McpServer({ name: 'rever-traffic', version: '0.1.0' })
-  withActivity(mcp)
+  const handles = new Map<string, ToolToggle>()
+  withActivity(mcp, handles)
   registerTrafficTools(mcp)
   registerPagingTools(mcp)
   registerBrowserTools(mcp)
@@ -143,7 +156,7 @@ function buildMcpServer(): McpServer {
   registerScopeTools(mcp)
   registerListenerTools(mcp)
   registerExecTraceTools(mcp)
-  registerMacroTools(mcp)
+  registerMacroTools(mcp, catalog)
   registerSecretTools(mcp)
   registerWaitTools(mcp)
   registerCryptoTraceTools(mcp)
@@ -152,6 +165,20 @@ function buildMcpServer(): McpServer {
   registerGraphqlTools(mcp)
   registerProtobufTools(mcp)
   registerWasmTools(mcp)
+  if (catalog !== 'full') registerToolProfileTools(mcp)
+  // Follow disables before connect, so the first tools/list is already filtered
+  // and sendToolListChanged is still a no-op. full and direct keep every tool
+  // enabled. The alias keeps this call out of the registration-order scanner.
+  if (catalogDisablesTools(catalog)) {
+    const attach = registerFollowServer
+    attach(mcp, handles)
+    try {
+      applyFollowCatalog(mcp, handles, getToolProfile())
+    } catch (e) {
+      unregisterFollowServer(mcp)
+      throw e
+    }
+  }
   return mcp
 }
 
@@ -316,11 +343,19 @@ export function startMcpServer(): Promise<RunningServer> {
               enableDnsRebindingProtection: true,
               allowedHosts: [`127.0.0.1:${boundPort}`, `localhost:${boundPort}`]
             })
+            const mcp = buildMcpServer({
+              catalog: catalogFromHeader(req.headers['x-rever-catalog'])
+            })
             transport.onclose = () => {
               if (transport!.sessionId) transports.delete(transport!.sessionId)
+              unregisterFollowServer(mcp)
             }
-            const mcp = buildMcpServer()
-            await mcp.connect(transport)
+            try {
+              await mcp.connect(transport)
+            } catch (e) {
+              unregisterFollowServer(mcp)
+              throw e
+            }
           }
 
           await transport.handleRequest(req, res, body)

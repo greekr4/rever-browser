@@ -277,6 +277,16 @@ const api = {
   skill: {
     status: (): Promise<{ installed: boolean }> => ipcRenderer.invoke('skill:status')
   },
+  toolProfile: {
+    get: (): Promise<'browse' | 'reverse' | 'probe'> => ipcRenderer.invoke('tool-profile:get'),
+    set: (profile: 'browse' | 'reverse' | 'probe'): Promise<void> =>
+      ipcRenderer.invoke('tool-profile:set', profile),
+    onChange: (handler: (profile: 'browse' | 'reverse' | 'probe') => void): (() => void) => {
+      const listener = (_e: unknown, profile: 'browse' | 'reverse' | 'probe') => handler(profile)
+      ipcRenderer.on('tool-profile:changed', listener)
+      return () => ipcRenderer.removeListener('tool-profile:changed', listener)
+    }
+  },
   // Local CLI agent running in a PTY (terminal mode), wired to rever's MCP.
   terminal: {
     spawn: (opts: { cols: number; rows: number; agent: 'claude' | 'shell' }): Promise<string> =>

@@ -4,7 +4,9 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { randomUUID } from 'node:crypto'
 
 import { startMcpServer } from '../mcp/server'
+import { getToolProfile } from '../mcp/tool-profile-state'
 import { getApiKey } from '../settings'
+import { beginDirectTurn, takeDirectTool } from './direct-tool-gate'
 
 import type { SessionNotification } from '@agentclientprotocol/sdk'
 
@@ -37,30 +39,32 @@ interface AnthropicSession {
   modelId: string
   abort: AbortController | null
   dead: boolean
+  /** Names actually passed to mcp.callTool. Refusals never enter this set. */
+  dispatched: Set<string>
 }
 
 const sessions = new Map<string, AnthropicSession>()
 
 // MCP 클라이언트/도구는 프로세스당 한 번만 연결한다.
-let mcpBridge: Promise<{ client: Client; tools: Anthropic.Tool[] }> | null = null
+let mcpBridge: Promise<{ client: Client; mapped: Anthropic.Tool[] }> | null = null
 
-async function getMcpBridge(): Promise<{ client: Client; tools: Anthropic.Tool[] }> {
+async function getMcpBridge(): Promise<{ client: Client; mapped: Anthropic.Tool[] }> {
   if (mcpBridge) return mcpBridge
   mcpBridge = (async () => {
     const { url, authHeader } = await startMcpServer()
     const client = new Client({ name: 'rever-anthropic', version: '0.1.0' })
     await client.connect(
       new StreamableHTTPClientTransport(new URL(url), {
-        requestInit: { headers: { Authorization: authHeader } }
+        requestInit: { headers: { Authorization: authHeader, 'X-Rever-Catalog': 'direct' } }
       })
     )
     const listed = await client.listTools()
-    const tools: Anthropic.Tool[] = listed.tools.map((t) => ({
+    const mapped: Anthropic.Tool[] = listed.tools.map((t) => ({
       name: t.name,
       description: t.description ?? undefined,
       input_schema: t.inputSchema as Anthropic.Tool.InputSchema
     }))
-    return { client, tools }
+    return { client, mapped }
   })()
   return mcpBridge
 }
@@ -71,7 +75,8 @@ export async function spawnAnthropicSession(): Promise<{ sessionId: string }> {
     messages: [],
     modelId: DEFAULT_MODEL,
     abort: null,
-    dead: false
+    dead: false,
+    dispatched: new Set()
   })
   return { sessionId }
 }
@@ -121,7 +126,7 @@ export async function promptAnthropicSession(
   }
 
   const anthropic = new Anthropic({ apiKey })
-  const { client: mcp, tools } = await getMcpBridge()
+  const { client: mcp, mapped } = await getMcpBridge()
 
   session.messages.push({ role: 'user', content: text })
   const abort = new AbortController()
@@ -137,6 +142,8 @@ export async function promptAnthropicSession(
     // 실행한 뒤 결과를 다음 턴에 넣어 다시 호출한다.
     // eslint-disable-next-line no-constant-condition
     while (true) {
+      const allowed = beginDirectTurn(getToolProfile(), session.dispatched)
+      const tools = mapped.filter((t) => allowed.has(t.name))
       const stream = anthropic.messages.stream(
         {
           model: session.modelId,
@@ -178,6 +185,26 @@ export async function promptAnthropicSession(
             rawInput: block.input
           }
         } as unknown as SessionNotification)
+
+        const decision = takeDirectTool(block.name, allowed, session.dispatched)
+        if (!decision.run) {
+          onUpdate({
+            sessionId,
+            update: {
+              sessionUpdate: 'tool_call_update',
+              toolCallId: block.id,
+              status: 'failed',
+              rawOutput: decision.content
+            }
+          } as unknown as SessionNotification)
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: decision.content,
+            is_error: true
+          })
+          continue
+        }
 
         try {
           const result = await mcp.callTool({
