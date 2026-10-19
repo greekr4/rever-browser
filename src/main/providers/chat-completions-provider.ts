@@ -8,6 +8,7 @@ import { getToolProfile } from '../mcp/tool-profile-state'
 import { getApiKey, type ApiProvider } from '../settings'
 import { beginDirectTurn, takeDirectTool } from './direct-tool-gate'
 import { capToolsForOpenAI, OPENAI_MAX_TOOLS } from './openai-tool-cap'
+import { startTurnPulse } from './turn-pulse'
 
 import type { SessionNotification } from '@agentclientprotocol/sdk'
 import type {
@@ -102,6 +103,21 @@ function emitText(onUpdate: (n: SessionNotification) => void, sessionId: string,
   } as unknown as SessionNotification)
 }
 
+function emitThought(onUpdate: (n: SessionNotification) => void, sessionId: string, text: string): void {
+  onUpdate({
+    sessionId,
+    update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text } }
+  } as unknown as SessionNotification)
+}
+
+function reasoningText(delta: object | undefined): string {
+  if (!delta) return ''
+  const extra = delta as { reasoning_content?: unknown; reasoning?: unknown }
+  if (typeof extra.reasoning_content === 'string') return extra.reasoning_content
+  if (typeof extra.reasoning === 'string') return extra.reasoning
+  return ''
+}
+
 function extractToolText(result: unknown): string {
   const content = (result as { content?: unknown }).content
   if (!Array.isArray(content)) return ''
@@ -159,6 +175,8 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Cha
       const session = requireSession(sessionId)
       if (session.dead) throw new Error(`${opts.label} session is dead: ${sessionId}`)
 
+      const stopPulse = startTurnPulse(onUpdate, sessionId)
+      try {
       const apiKey = opts.resolveApiKey ? await opts.resolveApiKey() : getApiKey(opts.keyProvider)
       if (!apiKey) throw new Error(opts.missingKeyError)
 
@@ -211,6 +229,8 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Cha
               assembledText += delta.content
               emitText(onUpdate, sessionId, delta.content)
             }
+            const thought = reasoningText(delta)
+            if (thought) emitThought(onUpdate, sessionId, thought)
             if (delta?.tool_calls) {
               for (const tc of delta.tool_calls) {
                 const existing = partials.get(tc.index) ?? { id: '', name: '', args: '' }
@@ -298,6 +318,9 @@ export function createChatCompletionsProvider(opts: ChatCompletionsOptions): Cha
         }
       } finally {
         session.abort = null
+      }
+      } finally {
+        stopPulse()
       }
     },
 

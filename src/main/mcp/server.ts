@@ -52,6 +52,7 @@ import { registerAntibotTools } from './tools/antibot'
 import { registerGraphqlTools } from './tools/graphql'
 import { registerProtobufTools } from './tools/protobuf'
 import { registerWasmTools } from './tools/wasm'
+import { registerCliTools } from './tools/cli'
 import { registerToolProfileTools } from './tools/tool_profile'
 import {
   applyFollowCatalog,
@@ -165,6 +166,7 @@ export function buildMcpServer(opts?: { catalog?: CatalogKind }): McpServer {
   registerGraphqlTools(mcp)
   registerProtobufTools(mcp)
   registerWasmTools(mcp)
+  registerCliTools(mcp)
   if (catalog !== 'full') registerToolProfileTools(mcp)
   // Follow disables before connect, so the first tools/list is already filtered
   // and sendToolListChanged is still a no-op. full and direct keep every tool

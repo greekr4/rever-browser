@@ -32,7 +32,14 @@ const BROWSE_REVERSE = [
   'update_macro',
   'remove_macro_steps',
   'run_macro',
-  'delete_macro'
+  'delete_macro',
+  'cli_arm',
+  'cli_compile',
+  'cli_list',
+  'cli_describe',
+  'cli_run',
+  'cli_writes',
+  'cli_export'
 ] as const
 
 const HIDDEN = [
@@ -84,16 +91,16 @@ describe('tool-profile', () => {
     it('소스 registerTool 이름과 레지스트리 키가 같다', () => {
       const source = sourceToolNames()
       expect(sorted(Object.keys(TOOL_BUCKETS))).toEqual(sorted(source))
-      expect(source.size).toBe(153)
+      expect(source.size).toBe(160)
       expect(source.has('tool_profile_set')).toBe(true)
     })
   })
 
   describe('광고 수', () => {
-    it('browse 71, reverse 102, probe 33이고 예산 120을 넘지 않는다', () => {
+    it('browse 78, reverse 109, probe 33이고 예산 120을 넘지 않는다', () => {
       expect(PROFILE_TOOL_BUDGET).toBe(120)
-      expect(advertisedNames('browse')).toHaveLength(71)
-      expect(advertisedNames('reverse')).toHaveLength(102)
+      expect(advertisedNames('browse')).toHaveLength(78)
+      expect(advertisedNames('reverse')).toHaveLength(109)
       expect(advertisedNames('probe')).toHaveLength(33)
       for (const profile of TOOL_PROFILES) {
         expect(() => assertProfileBudget(profile)).not.toThrow()
@@ -111,7 +118,7 @@ describe('tool-profile', () => {
   })
 
   describe('browse와 reverse의 겹침', () => {
-    it('코어를 뺀 겹침은 12개 이름으로 고정된다', () => {
+    it('코어를 뺀 겹침은 19개 이름으로 고정된다', () => {
       const overlap = Object.keys(TOOL_BUCKETS).filter(
         (name) =>
           TOOL_BUCKETS[name] !== 'core' &&
@@ -177,7 +184,7 @@ describe('tool-profile', () => {
       expect(names).not.toContain('not_a_tool')
       expect(names.filter((name) => name === 'browser_snapshot')).toHaveLength(1)
       expect(names.filter((name) => name === 'grep_scripts')).toHaveLength(1)
-      expect(names).toHaveLength(72)
+      expect(names).toHaveLength(79)
     })
   })
 
@@ -223,11 +230,11 @@ describe('tool-profile', () => {
     })
 
     it('읽기·전환·probe 거부 문자열이 고정이다', () => {
-      expect(toolProfileReadText('browse', 71)).toBe(
-        'profile=browse advertised=71. Switch with profile "browse" or "reverse". You cannot select probe; the user sets Tools → Probe. bp_* is not in any profile.'
+      expect(toolProfileReadText('browse', 77)).toBe(
+        'profile=browse advertised=77. Switch with profile "browse" or "reverse". You cannot select probe; the user sets Tools → Probe. bp_* is not in any profile.'
       )
-      expect(toolProfileSwitchedText('reverse', 102)).toBe(
-        'profile=reverse advertised=102. If grep_scripts is not in your tool list yet, ask the user to send one more message.'
+      expect(toolProfileSwitchedText('reverse', 109)).toBe(
+        'profile=reverse advertised=109. If grep_scripts is not in your tool list yet, ask the user to send one more message.'
       )
       expect(TOOL_PROFILE_PROBE_REJECTED).toBe(
         'probe is user-selected. Ask the user to set Tools → Probe. Profile was not changed.'

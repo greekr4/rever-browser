@@ -200,6 +200,7 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
         />
         <ChipButton
           label="Workflows"
+          testId="chip-workflows"
           active={openPanel === 'workflows'}
           badge={workflowCount > 0 ? String(workflowCount) : undefined}
           onClick={() => toggle('workflows')}
@@ -275,13 +276,15 @@ interface ChipButtonProps {
   label: string
   active: boolean
   badge?: string
+  testId?: string
   onClick: () => void
 }
 
-function ChipButton({ label, active, badge, onClick }: ChipButtonProps) {
+function ChipButton({ label, active, badge, testId, onClick }: ChipButtonProps) {
   return (
     <button
       className={`chip${active ? ' active' : ''}`}
+      data-testid={testId}
       onClick={onClick}
     >
       <span>{label}</span>

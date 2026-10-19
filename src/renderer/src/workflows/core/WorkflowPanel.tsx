@@ -78,9 +78,10 @@ export function WorkflowPanel(): React.ReactElement {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontWeight: 600 }}>{kind?.label ?? draft.kind}</span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-            <button type="button" onClick={() => setDraft(null)}>{tr('common.cancel')}</button>
+            <button type="button" data-testid="workflow-cancel" onClick={() => setDraft(null)}>{tr('common.cancel')}</button>
             <button
               type="button"
+              data-testid="workflow-save"
               onClick={save}
               disabled={!draft.name.trim()}
               style={{ background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }}
@@ -110,7 +111,13 @@ export function WorkflowPanel(): React.ReactElement {
           <span style={{ color: 'var(--text-dim)' }}>No workflow kinds installed.</span>
         )}
         {kinds.map((k) => (
-          <button key={k.id} type="button" onClick={() => startNew(k)} title={k.description}>
+          <button
+            key={k.id}
+            type="button"
+            data-testid={`workflow-new-${k.id}`}
+            onClick={() => startNew(k)}
+            title={k.description}
+          >
             + {k.label}
           </button>
         ))}
@@ -129,6 +136,8 @@ export function WorkflowPanel(): React.ReactElement {
             return (
               <div
                 key={w.id}
+                data-testid="workflow-row"
+                data-name={w.name}
                 style={{
                   display: 'flex',
                   flexWrap: 'wrap',
@@ -164,7 +173,7 @@ export function WorkflowPanel(): React.ReactElement {
                     {busy ? 'Running…' : kind.actionLabel ?? 'Run'}
                   </button>
                 )}
-                <button type="button" onClick={() => setDraft(w)} title={tr('common.edit')}>{tr('common.edit')}</button>
+                <button type="button" data-testid="workflow-edit" onClick={() => setDraft(w)} title={tr('common.edit')}>{tr('common.edit')}</button>
                 <button type="button" onClick={() => setConfirmId(w.id)} title={tr('common.delete')}>✕</button>
                 {error && (
                   <div style={{ flexBasis: '100%', color: '#e06c6c', fontSize: 11 }}>{error}</div>

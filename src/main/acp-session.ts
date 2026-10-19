@@ -19,6 +19,7 @@ import { modelStateFromSession, type ModelInfo } from './acp-models'
 import { isStaleEmptyTurn } from './acp-turn'
 import { findClaudeCli } from './claude-cli'
 import { fallbackOption } from '../shared/risky-tools'
+import { startTurnPulse } from './providers/turn-pulse'
 
 export interface AgentDef {
   id: string
@@ -289,6 +290,12 @@ export async function promptAcpSession(
 
   entry.requestPermission = requestPermission ?? null
   const previousPromptFailed = entry.lastPromptFailed
+  // The child can think or run one tool for longer than the renderer's 60s
+  // silence watchdog. A live process is not a hang; child exit still rejects.
+  const stopPulse = startTurnPulse((notification) => {
+    if (entry.dead || entry.child.exitCode != null) return
+    onUpdate(notification)
+  }, sessionId)
 
   const runOnce = async (
     promptText: string
@@ -326,6 +333,7 @@ export async function promptAcpSession(
     entry.lastPromptFailed = true
     throw e
   } finally {
+    stopPulse()
     entry.activePrompt = null
     entry.onUpdate = null
     entry.requestPermission = null

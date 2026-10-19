@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+import type { CliCommand, CliData } from '../shared/cli-spec'
+
 import type {
   RequestPermissionRequest,
   RequestPermissionResponse
@@ -455,7 +457,25 @@ const api = {
         .invoke('workflow:run-pipeline', nodes, channel)
         .finally(() => ipcRenderer.removeListener(channel, listener))
     },
-    cancel: (): Promise<boolean> => ipcRenderer.invoke('workflow:cancel')
+    cancel: (): Promise<boolean> => ipcRenderer.invoke('workflow:cancel'),
+    compileCli: (requestIds: string[]): Promise<CliData> =>
+      ipcRenderer.invoke('workflow:compile-cli', { requestIds }),
+    runCli: (payload: {
+      baseUrl: string
+      writes: boolean
+      command: CliCommand
+      inputs: Record<string, string>
+    }): Promise<{
+      ok: boolean
+      error?: string
+      status?: number
+      body?: string
+      bodyCut?: boolean
+      items?: Array<Record<string, string>>
+      matched?: number
+      note?: string
+    }> =>
+      ipcRenderer.invoke('workflow:run-cli', payload)
   },
   bridge: {
     // Answer main-process requests (MCP tools reaching renderer-owned state).

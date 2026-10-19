@@ -52,15 +52,15 @@ describe('capToolsForOpenAI', () => {
     expect(r.tools.map((t) => t.function.name)).toContain('browser_snapshot')
   })
 
-  it('reverse에 browse 전용 36개를 더한 138개에서 등록 순 꼬리 10개만 떨어진다', () => {
+  it('reverse에 browse 전용 36개를 더한 145개에서 등록 순 꼬리 17개만 떨어진다', () => {
     const order = registrationOrder()
-    expect(order).toHaveLength(153)
+    expect(order).toHaveLength(160)
     const browseOnly = advertisedNames('browse').filter((name) => !isAdvertised(name, 'reverse'))
     expect(browseOnly).toHaveLength(36)
     const allowed = new Set([...advertisedNames('reverse'), ...browseOnly])
-    expect(allowed.size).toBe(138)
+    expect(allowed.size).toBe(145)
     const filtered = order.filter((name) => allowed.has(name))
-    expect(filtered).toHaveLength(138)
+    expect(filtered).toHaveLength(145)
     expect(filtered.at(-1)).toBe('tool_profile_set')
     const r = capToolsForOpenAI(filtered.map(tool))
     expect(r.tools).toHaveLength(128)
@@ -74,7 +74,14 @@ describe('capToolsForOpenAI', () => {
       'wasm_decompile',
       'wasm_info',
       'grep_wasm',
-      'wasm_xref'
+      'wasm_xref',
+      'cli_arm',
+      'cli_compile',
+      'cli_list',
+      'cli_describe',
+      'cli_run',
+      'cli_writes',
+      'cli_export'
     ])
     const kept = r.tools.map((t) => t.function.name)
     expect(kept).toContain('browser_snapshot')

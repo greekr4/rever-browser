@@ -7,6 +7,7 @@ import { startMcpServer } from '../mcp/server'
 import { getToolProfile } from '../mcp/tool-profile-state'
 import { getApiKey } from '../settings'
 import { beginDirectTurn, takeDirectTool } from './direct-tool-gate'
+import { startTurnPulse } from './turn-pulse'
 
 import type { SessionNotification } from '@agentclientprotocol/sdk'
 
@@ -120,6 +121,8 @@ export async function promptAnthropicSession(
   if (!session) throw new Error(`unknown Anthropic session: ${sessionId}`)
   if (session.dead) throw new Error(`Anthropic session is dead: ${sessionId}`)
 
+  const stopPulse = startTurnPulse(onUpdate, sessionId)
+  try {
   const apiKey = getApiKey('anthropic')
   if (!apiKey) {
     throw new Error('No Anthropic API key set. Add one in settings (Anthropic API key).')
@@ -252,6 +255,9 @@ export async function promptAnthropicSession(
     }
   } finally {
     session.abort = null
+  }
+  } finally {
+    stopPulse()
   }
 }
 
