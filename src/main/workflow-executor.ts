@@ -157,7 +157,7 @@ interface AiStepInput {
   json?: boolean
   /** Shape hint appended to the prompt, e.g. '{ "title": string }'. */
   schema?: string
-  /** Override the agent: 'anthropic' | 'openai' | an ACP binary id. */
+  /** Override the agent: 'anthropic' | 'openai' | 'grok' | an ACP binary id. */
   agent?: string
 }
 
@@ -172,11 +172,12 @@ function pickAgentId(requested?: string): string {
   // to spawn, so the first AI step doesn't pay several seconds of startup.
   if (hasApiKey('anthropic')) return 'anthropic'
   if (hasApiKey('openai')) return 'openai'
+  if (hasApiKey('grok')) return 'grok'
   return 'claude-code'
 }
 
 function agentDefFor(agentId: string): { id: string; command: string; args: string[] } {
-  if (agentId === 'anthropic' || agentId === 'openai') {
+  if (agentId === 'anthropic' || agentId === 'openai' || agentId === 'grok') {
     return { id: agentId, command: '', args: [] }
   }
   if (agentId === 'codex') return { id: 'codex', command: 'codex-acp', args: [] }

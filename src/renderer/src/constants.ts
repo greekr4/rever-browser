@@ -1,4 +1,4 @@
-export type ACPAgentID = 'claude-code' | 'codex' | 'anthropic' | 'openai'
+export type ACPAgentID = 'claude-code' | 'codex' | 'anthropic' | 'openai' | 'grok'
 
 export interface ACPAgentDef {
   id: ACPAgentID
@@ -12,11 +12,11 @@ export interface ACPAgentDef {
   /** True if this binary speaks ACP and can drive our MCP tool loop. */
   acpSupported: boolean
   /**
-   * How the agent loop runs. 'acp' spawns an external ACP binary; 'anthropic'
-   * and 'openai' call their respective APIs directly in-process and are gated on
+   * How the agent loop runs. 'acp' spawns an external ACP binary; 'anthropic',
+   * 'openai', and 'grok' call their APIs directly in-process and are gated on
    * an API key instead of a PATH binary.
    */
-  provider?: 'acp' | 'anthropic' | 'openai'
+  provider?: 'acp' | 'anthropic' | 'openai' | 'grok'
   /** Short hint shown in the picker when the binary isn't found. */
   installHint: string
   /** Command that signs the user in, shown when the binary is installed but unauthenticated. */
@@ -45,6 +45,16 @@ export const ACP_AGENTS: ACPAgentDef[] = [
     provider: 'openai',
     installHint: 'Add an OpenAI API key in settings',
     icon: 'O'
+  },
+  {
+    id: 'grok',
+    name: 'Grok (API)',
+    command: '',
+    args: [],
+    acpSupported: true,
+    provider: 'grok',
+    installHint: 'Add an xAI API key in settings',
+    icon: 'G'
   },
   {
     id: 'claude-code',
@@ -76,8 +86,8 @@ export const ACP_PERMISSION_TIMEOUT_MS = 60_000
  * One selectable model in the unified picker. Each row carries
  * the agent it routes to, so choosing a model implicitly selects the provider.
  *
- * For API providers (`anthropic`/`openai`) the `modelId` is exact and applied
- * directly. For subscription ACP agents (`claude-code`/`codex`) the real model
+ * For API providers (`anthropic`/`openai`/`grok`) the `modelId` is exact and
+ * applied directly. For subscription ACP agents (`claude-code`/`codex`) the real model
  * ids are only known once a session spawns, so `modelId` here is a best-effort
  * default the picker reconciles against the live list by id-or-name match.
  */
@@ -111,5 +121,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
   { agentId: 'openai', modelId: 'gpt-4o', name: 'GPT-4o' },
   { agentId: 'openai', modelId: 'gpt-4o-mini', name: 'GPT-4o mini' },
   { agentId: 'openai', modelId: 'o3', name: 'o3' },
-  { agentId: 'openai', modelId: 'o4-mini', name: 'o4-mini' }
+  { agentId: 'openai', modelId: 'o4-mini', name: 'o4-mini' },
+  // Grok — exact ids (mirror of GROK_MODELS in the main process).
+  { agentId: 'grok', modelId: 'grok-4.7', name: 'Grok 4.7' },
+  { agentId: 'grok', modelId: 'grok-4.6', name: 'Grok 4.6' },
+  { agentId: 'grok', modelId: 'grok-4.5', name: 'Grok 4.5' },
+  { agentId: 'grok', modelId: 'grok-4.3', name: 'Grok 4.3' }
 ]

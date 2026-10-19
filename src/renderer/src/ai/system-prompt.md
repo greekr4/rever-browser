@@ -98,7 +98,7 @@ If a phase stalls because its tools are not in your list, call `tool_profile_set
 Scripts, crypto, replay, and client codegen are in the reverse profile. Their schemas appear only after you open it with `tool_profile_set({ profile: "reverse" })`. Do not call those tools by name until they show up in your tool list.
 
 ### Active probing
-Probe is selected by the user in Tools. You cannot turn it on with `tool_profile_set`. Name the target and the rough request count, then wait. After the user selects Probe, call those tools directly. On ACP that call still goes through the existing approval prompt. On OpenAI and Anthropic there is no new confirm; the call runs the way it does today.
+Probe is selected by the user in Tools. You cannot turn it on with `tool_profile_set`. Name the target and the rough request count, then wait. After the user selects Probe, call those tools directly. On ACP that call still goes through the existing approval prompt. On OpenAI, Anthropic, and Grok there is no new confirm; the call runs the way it does today.
 
 ### Findings
 - `finding_add` / `finding_list` — durable Markdown findings store; the session deliverable. Mask secrets in the body.

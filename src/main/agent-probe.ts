@@ -13,6 +13,7 @@ import {
 import { agentEnv } from './acp-session'
 import { detectAgents } from './acp-detect'
 import { detectAgentLogins, type LoginAgentId, type LoginInfo } from './agent-login'
+import { XAI_BASE_URL } from './providers/grok-models'
 import { getApiKey } from './settings'
 
 // Verifies an agent actually works, rather than only checking that a binary
@@ -30,7 +31,7 @@ export type AgentStatus =
 
 export interface AgentProbeDef {
   id: string
-  provider?: 'acp' | 'anthropic' | 'openai'
+  provider?: 'acp' | 'anthropic' | 'openai' | 'grok'
   command: string
   fallbackBins?: string[]
 }
@@ -171,6 +172,19 @@ async function probeOpenAi(): Promise<AgentHealth> {
   }
 }
 
+async function probeGrok(): Promise<AgentHealth> {
+  const base = { id: 'grok', resolvedPath: null, auto: false, plan: null }
+  const apiKey = getApiKey('grok')
+  if (!apiKey) return { ...base, status: 'needs-key', detail: null }
+  try {
+    await new OpenAI({ apiKey, baseURL: XAI_BASE_URL, timeout: API_TIMEOUT_MS }).models.list()
+    return { ...base, status: 'ready', detail: null, plan: 'api-key' }
+  } catch (e) {
+    if (isAuthError(e)) return { ...base, status: 'auth-failed', detail: 'Key rejected' }
+    return { ...base, status: 'failed', detail: message(e) }
+  }
+}
+
 async function probeAcp(
   def: AgentProbeDef,
   resolvedPath: string | null,
@@ -203,6 +217,7 @@ export async function probeAgents(defs: AgentProbeDef[]): Promise<AgentHealth[]>
     defs.map((def) => {
       if (def.provider === 'anthropic') return probeAnthropic()
       if (def.provider === 'openai') return probeOpenAi()
+      if (def.provider === 'grok') return probeGrok()
       const login = logins[def.id as LoginAgentId] ?? noLogin
       return probeAcp(def, paths.get(def.command) ?? null, login)
     })
