@@ -15,6 +15,7 @@ import type { WebContents } from 'electron'
 
 import { startMcpServer } from './mcp/server'
 import { extraDirs } from './acp-detect'
+import { modelStateFromSession, type ModelInfo } from './acp-models'
 import { isStaleEmptyTurn } from './acp-turn'
 import { findClaudeCli } from './claude-cli'
 import { fallbackOption } from '../shared/risky-tools'
@@ -23,12 +24,6 @@ export interface AgentDef {
   id: string
   command: string
   args: string[]
-}
-
-interface ModelInfo {
-  modelId: string
-  name: string
-  description?: string | null
 }
 
 interface SessionEntry {
@@ -43,6 +38,7 @@ interface SessionEntry {
   dead: boolean
   availableModels: ModelInfo[]
   currentModelId: string | null
+  modelConfigId: string | null
   // Settle-tracking promise for the in-flight prompt (null when idle). Used to
   // avoid issuing concurrent prompts on one ACP session after a Stop.
   activePrompt: Promise<void> | null
@@ -53,6 +49,15 @@ interface SessionEntry {
 }
 
 const sessions = new Map<string, SessionEntry>()
+
+// Updates that arrive with no prompt in flight: Claude Code runs a turn on its
+// own when a background task finishes, and newer claude-agent-acp streams it
+// between prompts. Without a sink they would be dropped.
+let idleUpdateSink: ((sessionId: string, n: SessionNotification) => void) | null = null
+
+export function onIdleAcpUpdate(sink: (sessionId: string, n: SessionNotification) => void): void {
+  idleUpdateSink = sink
+}
 
 // Sent instead of the user's text when re-driving a stale empty turn (see
 // SessionEntry.lastPromptFailed). The pending user messages are still in the
@@ -160,8 +165,13 @@ export async function spawnAcpSession(
       }
     },
     async sessionUpdate(params: SessionNotification): Promise<void> {
-      entryRef?.onUpdate?.(params)
-    }
+      if (!entryRef || entryRef.dead) return
+      if (entryRef.onUpdate) entryRef.onUpdate(params)
+      else idleUpdateSink?.(entryRef.sessionId, params)
+    },
+    // Agent-specific extensions (claude-agent-acp sends `_auth/status_update`).
+    // Nothing here uses them; without a handler each one logs "Method not found".
+    async extNotification(): Promise<void> {}
   }
 
   const connection = new ClientSideConnection((_agent: Agent) => clientImpl, stream)
@@ -225,8 +235,8 @@ export async function spawnAcpSession(
       .catch((e) => console.error('[acp] setSessionMode failed:', e))
   }
 
-  console.log('[acp:newSession] result keys:', Object.keys(result), 'models:', JSON.stringify((result as { models?: unknown }).models))
-  const modelState = (result as { models?: { availableModels?: ModelInfo[]; currentModelId?: string } | null }).models
+  const modelState = modelStateFromSession(result as Parameters<typeof modelStateFromSession>[0])
+  console.log('[acp:newSession] result keys:', Object.keys(result), 'models:', modelState.availableModels.length, 'current:', modelState.currentModelId)
   const entry: SessionEntry = {
     agentDef,
     child,
@@ -235,8 +245,9 @@ export async function spawnAcpSession(
     onUpdate: null,
     requestPermission: null,
     dead: false,
-    availableModels: modelState?.availableModels ?? [],
-    currentModelId: modelState?.currentModelId ?? null,
+    availableModels: modelState.availableModels,
+    currentModelId: modelState.currentModelId,
+    modelConfigId: modelState.modelConfigId,
     activePrompt: null,
     lastPromptFailed: false
   }
@@ -350,6 +361,16 @@ export async function setSessionModel(sessionId: string, modelId: string): Promi
   const entry = sessions.get(sessionId)
   if (!entry) throw new Error(`unknown ACP session: ${sessionId}`)
   if (entry.dead) throw new Error(`ACP session is dead: ${sessionId}`)
+  if (entry.modelConfigId) {
+    await entry.connection.setSessionConfigOption({
+      sessionId: entry.sessionId,
+      configId: entry.modelConfigId,
+      value: modelId
+    })
+    entry.currentModelId = modelId
+    console.log(`[acp] model set → ${modelId} (session ${entry.sessionId})`)
+    return
+  }
   const conn = entry.connection as unknown as {
     unstable_setSessionModel?: (params: { sessionId: string; modelId: string }) => Promise<unknown>
   }

@@ -434,12 +434,22 @@ export function ChatPanel() {
     }
   }, [transport])
 
-  const { messages, sendMessage, status, stop, error: chatError } = useChat({
+  const { messages, sendMessage, status, stop, resumeStream, error: chatError } = useChat({
     id: chatKey,
     transport,
     messages: seedMessages
   })
   const busy = status === 'streaming' || status === 'submitted'
+
+  // A turn the agent starts on its own (a background task it said it would
+  // wait for just finished) streams into the chat without a new user message.
+  // It is attached once the chat is idle, so it never races a live turn.
+  const [backgroundSeq, setBackgroundSeq] = useState(0)
+  useEffect(() => transport.watchBackground(() => setBackgroundSeq((n) => n + 1)), [transport])
+  useEffect(() => {
+    if (backgroundSeq === 0 || busy || !transport.hasPendingBackground()) return
+    void resumeStream()
+  }, [backgroundSeq, busy, transport, resumeStream])
 
   // Persist the conversation whenever a turn settles. Streaming updates are
   // skipped (status !== 'ready'), so this writes once per completed turn.

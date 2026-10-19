@@ -2,6 +2,7 @@ import SYSTEM_PROMPT from '@/ai/system-prompt.md?raw'
 import { toolProfileTurnLine, type ToolProfileId } from '../../../shared/tool-profile-line'
 import { cancelPendingPermissions, hasPendingPermission } from './acp-permission'
 
+import { endsBackgroundTurn, startsBackgroundTurn } from './acp-background'
 import { mapUpdate } from './acp-map-update'
 import { formatConnectionError } from './format-error'
 
@@ -26,6 +27,11 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   private cwd: string
   private systemPrompt: string
   private sentContext = false
+  // A turn the agent started on its own between prompts: updates queue here
+  // until the chat attaches via reconnectToStream, then flow to bgSink.
+  private bgQueue: Array<Parameters<typeof mapUpdate>[0]> = []
+  private bgSink: ((update: Parameters<typeof mapUpdate>[0]) => void) | null = null
+  private bgListener: (() => void) | null = null
 
   constructor(options: { agentDef: ACPAgentDef; cwd?: string; systemPrompt?: string }) {
     this.agentDef = options.agentDef
@@ -41,6 +47,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     const id = this.sessionId
     this.sessionId = null
     this.sentContext = false
+    this.bgQueue = []
     if (id) {
       try {
         await window.rev.acp.kill(id)
@@ -189,8 +196,103 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     })
   }
 
+  /**
+   * Subscribe to turns the agent runs on its own (e.g. once a background task
+   * finishes). `onActivity` fires when one starts; the chat should then call
+   * useChat's resumeStream(), which attaches through reconnectToStream.
+   */
+  watchBackground(onActivity: () => void): () => void {
+    // A renderer hot-reloaded over a preload built before this API existed.
+    if (typeof window.rev.acp.onIdleUpdate !== 'function') return () => {}
+    this.bgListener = onActivity
+    const off = window.rev.acp.onIdleUpdate((sessionId, notification) => {
+      if (sessionId !== this.sessionId) return
+      const update = (notification as unknown as { update: Parameters<typeof mapUpdate>[0] }).update
+      if (this.bgSink) {
+        this.bgSink(update)
+        return
+      }
+      if (this.bgQueue.length === 0 && !startsBackgroundTurn(update)) return
+      this.bgQueue.push(update)
+      if (this.bgQueue.length === 1) this.bgListener?.()
+    })
+    return () => {
+      off()
+      if (this.bgListener === onActivity) this.bgListener = null
+    }
+  }
+
+  hasPendingBackground(): boolean {
+    return this.bgQueue.length > 0 && !this.bgSink
+  }
+
   async reconnectToStream(): Promise<ReadableStream<UIMessageChunk> | null> {
-    return null
+    const sessionId = this.sessionId
+    if (!sessionId || this.bgQueue.length === 0 || this.bgSink) return null
+    const queued = this.bgQueue
+    this.bgQueue = []
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this
+    let closeStream: (() => void) | null = null
+
+    return new ReadableStream<UIMessageChunk>({
+      start: (controller) => {
+        const textId = `text-${Date.now()}-bg`
+        let textStarted = false
+        let closed = false
+        // Only this turn's tool calls: a late status refresh of an earlier
+        // turn's call has no part in the message being continued.
+        const seenToolCallIds = new Set<string>()
+
+        // The result usage_update normally ends the turn; this only guards a
+        // turn whose result never arrives.
+        let quietTimer: ReturnType<typeof setTimeout> | null = null
+        const armQuietTimer = () => {
+          if (quietTimer) clearTimeout(quietTimer)
+          quietTimer = setTimeout(() => finish(), 120_000)
+        }
+
+        const finish = () => {
+          if (closed) return
+          closed = true
+          if (quietTimer) clearTimeout(quietTimer)
+          if (self.bgSink === push) self.bgSink = null
+          if (textStarted) controller.enqueue({ type: 'text-end', id: textId })
+          controller.enqueue({ type: 'finish-step' })
+          controller.enqueue({ type: 'finish', finishReason: 'stop' })
+          controller.close()
+        }
+        closeStream = () => {
+          closed = true
+          if (quietTimer) clearTimeout(quietTimer)
+          if (self.bgSink === push) self.bgSink = null
+        }
+
+        const push = (update: Parameters<typeof mapUpdate>[0]) => {
+          if (closed) return
+          armQuietTimer()
+          if (endsBackgroundTurn(update)) {
+            finish()
+            return
+          }
+          if (update.sessionUpdate === 'tool_call_update' && !seenToolCallIds.has(update.toolCallId)) return
+          const result = mapUpdate(update, textId, textStarted, { seenToolCallIds })
+          for (const chunk of result.chunks) controller.enqueue(chunk)
+          textStarted = result.textStarted
+        }
+
+        controller.enqueue({ type: 'start' })
+        controller.enqueue({ type: 'start-step' })
+        self.bgSink = push
+        armQuietTimer()
+        for (const update of queued) push(update)
+      },
+      cancel: () => {
+        // The user hit Stop on the background turn.
+        closeStream?.()
+        void window.rev.acp.cancel(sessionId).catch(() => null)
+      }
+    })
   }
 
   async destroy(): Promise<void> {

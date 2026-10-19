@@ -1,4 +1,4 @@
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, type WebContents } from 'electron'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 
@@ -19,6 +19,7 @@ import {
   spawnSession,
   type AgentDef
 } from '../agent-router'
+import { onIdleAcpUpdate } from '../acp-session'
 import { getApiKey, hasApiKey, setApiKey, type ApiProvider } from '../settings'
 import { isToolProfile } from '../mcp/tool-profile'
 import { getToolProfile, setToolProfile } from '../mcp/tool-profile-state'
@@ -32,12 +33,21 @@ interface PendingPermission {
 }
 
 const pendingPermissions = new Map<string, PendingPermission>()
+// The renderer that last prompted each session receives that session's
+// between-prompt updates (a turn the agent started on its own).
+const sessionSenders = new Map<string, WebContents>()
 const PERMISSION_GUARD_MS = 65_000
 let permissionSeq = 0
 
 // Agent lifecycle + API-key + permission IPC. Extracted from index.ts; the only
 // state it owns is the permission map above. Register once at startup.
 export function registerAcpIpc(): void {
+  onIdleAcpUpdate((sessionId, notification) => {
+    const sender = sessionSenders.get(sessionId)
+    if (!sender || sender.isDestroyed()) return
+    sender.send('acp:idle-update', sessionId, notification)
+  })
+
   ipcMain.handle('acp:list-available', async (_event, probes: AgentProbe[]) => {
     return detectAgents(probes)
   })
@@ -82,6 +92,7 @@ export function registerAcpIpc(): void {
 
   ipcMain.handle('acp:prompt', async (event, sessionId: string, text: string, channel: string) => {
     const sender = event.sender
+    sessionSenders.set(sessionId, sender)
     const requestPermission = (
       req: RequestPermissionRequest
     ): Promise<RequestPermissionResponse> =>
@@ -121,7 +132,10 @@ export function registerAcpIpc(): void {
   )
 
   ipcMain.handle('acp:cancel', async (_event, sessionId: string) => cancelSession(sessionId))
-  ipcMain.handle('acp:kill', async (_event, sessionId: string) => killSession(sessionId))
+  ipcMain.handle('acp:kill', async (_event, sessionId: string) => {
+    sessionSenders.delete(sessionId)
+    return killSession(sessionId)
+  })
   ipcMain.handle('acp:model-state', (_event, sessionId: string) => sessionModelState(sessionId))
   ipcMain.handle('acp:set-model', async (_event, sessionId: string, modelId: string) =>
     setSessionModelRouted(sessionId, modelId)
