@@ -20,6 +20,8 @@ import {
   type AgentDef
 } from '../agent-router'
 import { getApiKey, hasApiKey, setApiKey, type ApiProvider } from '../settings'
+import { isToolProfile } from '../mcp/tool-profile'
+import { getToolProfile, setToolProfile } from '../mcp/tool-profile-state'
 
 // A pending permission round-trip to the renderer. Kept module-local: nothing
 // outside these handlers touches it.
@@ -124,4 +126,11 @@ export function registerAcpIpc(): void {
   ipcMain.handle('acp:set-model', async (_event, sessionId: string, modelId: string) =>
     setSessionModelRouted(sessionId, modelId)
   )
+
+  ipcMain.handle('tool-profile:get', () => getToolProfile())
+  ipcMain.handle('tool-profile:set', (_event, profile: unknown) => {
+    if (!isToolProfile(profile)) throw new Error(`unknown tool profile: ${String(profile)}`)
+    const result = setToolProfile(profile, 'user')
+    if (!result.ok) throw new Error(result.error)
+  })
 }

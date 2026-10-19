@@ -16,6 +16,8 @@ import { readAgentChoice, useAgentChoice } from '@/stores/agent-choice'
 import type { UIMessage } from 'ai'
 
 import { useT } from '@/stores/i18n'
+import { useToolProfileStore, type ToolProfileId } from '@/stores/tool-profile'
+import type { TKey } from '@/locales/en'
 const SCROLL_BOTTOM_THRESHOLD = 32
 
 function Thinking() {
@@ -292,6 +294,68 @@ const preStyle: React.CSSProperties = {
 interface ModelEntry {
   modelId: string
   name: string
+}
+
+const TOOL_PROFILE_LABEL: Record<ToolProfileId, TKey> = {
+  browse: 'tools.profile.browse',
+  reverse: 'tools.profile.reverse',
+  probe: 'tools.profile.probe'
+}
+const TOOL_PROFILE_TIP: Record<ToolProfileId, TKey> = {
+  browse: 'tools.profile.tip.browse',
+  reverse: 'tools.profile.tip.reverse',
+  probe: 'tools.profile.tip.probe'
+}
+const TOOL_PROFILE_ORDER: readonly ToolProfileId[] = ['browse', 'reverse', 'probe']
+
+function ToolsProfileSegment() {
+  const tr = useT()
+  const profile = useToolProfileStore((s) => s.profile)
+  const setProfile = useToolProfileStore((s) => s.setProfile)
+  return (
+    <span
+      role="group"
+      aria-label={tr('tools.profile.label')}
+      data-testid="tool-profile"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+    >
+      <span style={{ fontSize: 11, opacity: 0.65 }}>{tr('tools.profile.label')}</span>
+      <span
+        style={{
+          display: 'inline-flex',
+          border: '1px solid var(--border-2)',
+          borderRadius: 4,
+          overflow: 'hidden'
+        }}
+      >
+        {TOOL_PROFILE_ORDER.map((id, index) => {
+          const on = profile === id
+          return (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={on}
+              title={tr(TOOL_PROFILE_TIP[id])}
+              data-testid={`tool-profile-${id}`}
+              onClick={() => void setProfile(id)}
+              style={{
+                fontSize: 11,
+                padding: '3px 8px',
+                cursor: 'pointer',
+                border: 'none',
+                borderRight:
+                  index === TOOL_PROFILE_ORDER.length - 1 ? 'none' : '1px solid var(--border-2)',
+                background: on ? 'var(--chip-info-bg)' : 'transparent',
+                color: on ? 'var(--chip-info-text)' : 'inherit'
+              }}
+            >
+              {tr(TOOL_PROFILE_LABEL[id])}
+            </button>
+          )
+        })}
+      </span>
+    </span>
+  )
 }
 
 export function ChatPanel() {
@@ -590,6 +654,7 @@ export function ChatPanel() {
           </span>
         )}
         <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: 12 }}>{status}</span>
+        <ToolsProfileSegment />
         <button
           type="button"
           onClick={() => setAcpAutoApprove(!autoApprove)}

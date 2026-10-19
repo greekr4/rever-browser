@@ -238,4 +238,13 @@ export const ko: Record<TKey, string> = {
   'perm.riskyTool': '위험 동작 · {tool}',
   'perm.target': '대상',
   'perm.allowSession': '이번 세션 동안 {tool} 모두 허용',
+
+  'tools.profile.label': '도구',
+  'tools.profile.browse': '탐색',
+  'tools.profile.reverse': '리버싱',
+  'tools.profile.probe': '프로브',
+  'tools.profile.tip.browse': '페이지와 DOM 도구. API 리버싱 도구는 숨겨져 있습니다.',
+  'tools.profile.tip.reverse': '스크립트, 암호, 재생, 클라이언트 추출.',
+  'tools.profile.tip.probe':
+    '능동 프로브. Probe를 고르기 전에는 숨깁니다. ACP 채팅은 위험한 호출 전에 여전히 확인을 받습니다. API 모델에는 새 확인 창이 없고, 지금과 같이 실행합니다.',
 }
