@@ -40,6 +40,16 @@ async function resolveMacroSteps(id: string): Promise<RunStep[]> {
   return inner.steps
 }
 
+async function cliEffect(id: string, command: string): Promise<'read' | 'write' | 'unknown'> {
+  try {
+    const effect = await bridge('cli:effect', { id, command })
+    if (effect === 'read' || effect === 'write' || effect === 'unknown') return effect
+  } catch {
+    // A missing CLI or a dead renderer must not let the nested call run.
+  }
+  return 'unknown'
+}
+
 export function registerMacroTools(mcp: McpServer, catalog: CatalogKind = 'full') {
   mcp.registerTool(
     'list_macros',
@@ -170,7 +180,7 @@ export function registerMacroTools(mcp: McpServer, catalog: CatalogKind = 'full'
       }
       if (macroRunNeedsGuard(catalog)) {
         try {
-          const screen = await screenMacroRun(resolved.steps, resolveMacroSteps, [id])
+          const screen = await screenMacroRun(resolved.steps, resolveMacroSteps, [id], cliEffect)
           if (!screen.ok) return err(screen.error)
         } catch (e) {
           return err(errorMessage(e))

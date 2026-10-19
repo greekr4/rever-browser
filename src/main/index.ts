@@ -63,7 +63,9 @@ import {
   type ProfileKind
 } from './tab-partition'
 import { applyTabProxy, proxyCredentialsForSession, type TabProxyConfig } from './tab-proxy'
+import { compileCaptured, executeCli } from './mcp/cli-exec'
 import { listMcpTools } from './mcp/bridge'
+import type { CliCommand } from '../shared/cli-spec'
 import {
   cancelWorkflow,
   runPipeline,
@@ -969,6 +971,36 @@ app.whenReady().then(() => {
     cancelWorkflow()
     return true
   })
+  ipcMain.handle('workflow:compile-cli', (_event, payload: { requestIds?: unknown }) => {
+    const ids = Array.isArray(payload?.requestIds)
+      ? payload.requestIds.filter((id): id is string => typeof id === 'string')
+      : []
+    return compileCaptured(ids)
+  })
+  ipcMain.handle(
+    'workflow:run-cli',
+    (
+      _event,
+      payload: {
+        baseUrl?: string
+        writes?: boolean
+        command?: CliCommand
+        inputs?: Record<string, unknown>
+      }
+    ) => {
+      if (!payload?.command || !payload.baseUrl) return { ok: false, error: 'missing command' }
+      const inputs: Record<string, string> = {}
+      for (const [key, value] of Object.entries(payload.inputs ?? {})) {
+        if (typeof value === 'string') inputs[key] = value
+      }
+      return executeCli({
+        baseUrl: payload.baseUrl,
+        writes: payload.writes === true,
+        command: payload.command,
+        inputs
+      })
+    }
+  )
 
   ipcMain.handle('theme:set-titlebar', (_event, resolved: 'light' | 'dark') => {
     // macOS has no recolorable overlay (traffic lights); no-op there.

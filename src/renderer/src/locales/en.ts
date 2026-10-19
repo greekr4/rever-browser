@@ -264,6 +264,33 @@ export const en = {
   'tools.profile.tip.reverse': 'Scripts, crypto, replay, and client export.',
   'tools.profile.tip.probe':
     'Active probes. Hidden until you select Probe. ACP chat still prompts before each risky call. API models get no new confirm; they run the call the way they do today.',
+
+  'workflow.cli.name': 'Name',
+  'workflow.cli.requests': 'API calls to compile',
+  'workflow.cli.empty': 'No XHR or Fetch calls yet. Use the page, then compile the ones you pick.',
+  'workflow.cli.compile': 'Compile',
+  'workflow.cli.compiling': 'Compiling…',
+  'workflow.cli.commands': 'Commands',
+  'workflow.cli.noCommands': 'Pick calls and compile.',
+  'workflow.cli.noMatch': 'None of the selected calls became a command.',
+  'workflow.cli.writes': 'Allow writes',
+  'workflow.cli.writesHint': 'Off by default. Turn this on only when you mean to send a change.',
+  'workflow.cli.sessionHint': 'Cookies stay in this tab. The export uses placeholders only.',
+  'workflow.cli.export': 'Export',
+  'workflow.cli.run': 'Run',
+  'workflow.cli.running': 'Running…',
+  'workflow.cli.runFailed': 'Run failed',
+  'workflow.cli.extract': 'Returns up to {limit} items: {selector}',
+  'workflow.cli.matched': 'Matched {count}',
+  'workflow.cli.noMatchExtract': 'The selector matched nothing.',
+  'workflow.cli.pageCapped': 'The page was longer than the read cap.',
+  'workflow.cli.bodyCut':
+    'This is only the start of the page. It is not the saved command. Add an extract selector to get the fields.',
+  'workflow.cli.exportHeading': 'Export',
+  'workflow.cli.resultHeading': 'Run result',
+  'workflow.cli.callExample': 'Call example',
+  'workflow.cli.callExampleHint':
+    'This is the cli_run call for this command. Export is curl with placeholders. Cookie values are not included.'
 }
 
 export type TKey = keyof typeof en

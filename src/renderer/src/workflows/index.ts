@@ -4,5 +4,6 @@
 import './template'
 import './macro'
 import './pipeline'
+import './cli'
 
 export { WorkflowPanel } from './core/WorkflowPanel'

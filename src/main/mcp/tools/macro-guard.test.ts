@@ -75,6 +75,72 @@ describe('macro guard', () => {
     ).toEqual({ index: 0, tool: 'run_macro' })
   })
 
+  it('cli_writes와 쓰거나 알 수 없는 cli_run은 거부하고 읽기만 통과한다', async () => {
+    const lookup = async (_id: string, command: string): Promise<'read' | 'write' | 'unknown'> => {
+      if (command === 'get-echo') return 'read'
+      if (command === 'post-login') return 'write'
+      return 'unknown'
+    }
+    expect(
+      await findForbiddenMacroStep([{ tool: 'cli_writes', input: { id: 'c1' } }], noopResolve, [])
+    ).toEqual({ index: 0, tool: 'cli_writes' })
+    expect(
+      await findForbiddenMacroStep(
+        [{ tool: 'cli_run', input: { id: 'c1', command: 'post-login' } }],
+        noopResolve,
+        [],
+        lookup
+      )
+    ).toEqual({ index: 0, tool: 'cli_run' })
+    expect(
+      await findForbiddenMacroStep(
+        [{ tool: 'cli_run', input: { id: 'c1', command: 'mystery' } }],
+        noopResolve,
+        [],
+        lookup
+      )
+    ).toEqual({ index: 0, tool: 'cli_run' })
+    expect(
+      await findForbiddenMacroStep(
+        [{ tool: 'cli_run', input: { id: 'c1', command: 'get-echo' } }],
+        noopResolve,
+        [],
+        lookup
+      )
+    ).toBeNull()
+    expect(
+      await findForbiddenMacroStep([{ tool: 'cli_run', input: { id: 'c1' } }], noopResolve, [], lookup)
+    ).toEqual({ index: 0, tool: 'cli_run' })
+    const throwing = async (): Promise<'read' | 'write' | 'unknown'> => {
+      throw new Error('down')
+    }
+    expect(
+      await findForbiddenMacroStep(
+        [{ tool: 'cli_run', input: { id: 'c1', command: 'get-echo' } }],
+        noopResolve,
+        [],
+        throwing
+      )
+    ).toEqual({ index: 0, tool: 'cli_run' })
+  })
+
+  it('lookup이 없으면 cli_run을 거부한다', async () => {
+    expect(
+      await findForbiddenMacroStep(
+        [{ tool: 'cli_run', input: { id: 'c1', command: 'get-echo' } }],
+        noopResolve,
+        []
+      )
+    ).toEqual({ index: 0, tool: 'cli_run' })
+  })
+
+  it('중첩 매크로 안의 cli_writes도 거부한다', async () => {
+    const resolve = async (): Promise<MacroStep[]> => [{ tool: 'cli_writes', input: { id: 'c1' } }]
+    expect(
+      await findForbiddenMacroStep([{ tool: 'run_macro', input: { id: 'A' } }], resolve, ['B'])
+    ).toEqual({ index: 0, tool: 'cli_writes' })
+  })
+
   it('resolve가 던지면 screenMacroRun도 던지고 실행으로 넘어가지 않는다', async () => {
     const resolve = async (): Promise<MacroStep[]> => {
       throw new Error('missing macro')

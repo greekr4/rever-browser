@@ -1,5 +1,6 @@
 // Serves the macro MCP tools (main/mcp/tools/macros.ts). Saved workflows live
 // in a renderer zustand store, so main asks us over the preload bridge.
+import { attachExtract, parseExtract, type CliData } from '../../../../shared/cli-spec'
 import { resolveSteps, type MacroData, type MacroStep } from '../macro/MacroEditor'
 
 import { useWorkflowsStore } from './store'
@@ -53,6 +54,47 @@ function findMacro(id: string): Workflow {
   const w = macros().find((m) => m.id === id)
   if (!w) throw new Error(`No macro with id "${id}"`)
   return w
+}
+
+function cliWorkflows(): Workflow[] {
+  return useWorkflowsStore.getState().workflows.filter((w) => w.kind === 'cli')
+}
+
+function findCli(id: string): Workflow {
+  const w = cliWorkflows().find((item) => item.id === id)
+  if (!w) throw new Error(`No CLI with id "${id}"`)
+  return w
+}
+
+function asCli(data: unknown): CliData {
+  const row = (data ?? {}) as Partial<CliData>
+  return {
+    site: typeof row.site === 'string' ? row.site : '',
+    title: typeof row.title === 'string' ? row.title : '',
+    baseUrl: typeof row.baseUrl === 'string' ? row.baseUrl : '',
+    commands: Array.isArray(row.commands) ? row.commands.map((command) => attachExtract(command)) : [],
+    writes: row.writes === true
+  }
+}
+
+function cliSummary(w: Workflow) {
+  const data = asCli(w.data)
+  return {
+    id: w.id,
+    name: w.name,
+    site: data.site,
+    baseUrl: data.baseUrl,
+    writes: data.writes,
+    commands: data.commands.map((command) => ({
+      name: command.name,
+      method: command.method,
+      path: command.path,
+      effect: command.effect,
+      ...(command.extract
+        ? { extract: command.extract.fields.map((field) => field.name).join(', ') }
+        : {})
+    }))
+  }
 }
 
 function summary(w: Workflow) {
@@ -141,6 +183,64 @@ export async function handleAgentRequest(op: string, payload: unknown): Promise<
       findMacro(String(p.id))
       store.remove(String(p.id))
       return { deleted: true }
+
+    case 'cli:list':
+      return cliWorkflows().map(cliSummary)
+
+    case 'cli:get': {
+      const w = findCli(String(p.id))
+      return { id: w.id, name: w.name, data: asCli(w.data) }
+    }
+
+    case 'cli:save': {
+      const incoming = asCli(p.data)
+      if (incoming.commands.length === 0) throw new Error('CLI has no commands')
+      const now = Date.now()
+      const id = typeof p.id === 'string' && p.id ? p.id : newWorkflowId()
+      const existing = cliWorkflows().find((item) => item.id === id)
+      const w: Workflow = {
+        id,
+        kind: 'cli',
+        name: String(p.name ?? existing?.name ?? incoming.site ?? 'CLI'),
+        data: { ...incoming, writes: false } satisfies CliData,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now
+      }
+      store.upsert(w)
+      return cliSummary(w)
+    }
+
+    case 'cli:set-writes': {
+      const w = findCli(String(p.id))
+      const next: Workflow = { ...w, data: { ...asCli(w.data), writes: p.writes === true } satisfies CliData }
+      store.upsert(next)
+      return cliSummary(next)
+    }
+
+    case 'cli:set-extract': {
+      const w = findCli(String(p.id))
+      const data = asCli(w.data)
+      const name = String(p.command ?? '')
+      const parsed = parseExtract(p.extract)
+      if (!parsed.ok || !parsed.extract) throw new Error(parsed.ok ? 'extract is required' : parsed.error)
+      if (!data.commands.some((item) => item.name === name)) throw new Error(`unknown command: ${name}`)
+      const commands = data.commands.map((item) =>
+        item.name === name ? { ...item, extract: parsed.extract } : item
+      )
+      const next: Workflow = { ...w, data: { ...data, commands } satisfies CliData }
+      store.upsert(next)
+      return cliSummary(next)
+    }
+
+    case 'cli:effect': {
+      const data = asCli(findCli(String(p.id)).data)
+      const command = data.commands.find((item) => item.name === String(p.command))
+      if (!command) return 'unknown'
+      if (command.effect === 'read' || command.effect === 'write' || command.effect === 'unknown') {
+        return command.effect
+      }
+      return 'unknown'
+    }
 
     default:
       throw new Error(`Unknown bridge op "${op}"`)

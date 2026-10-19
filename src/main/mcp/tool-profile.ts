@@ -73,7 +73,7 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   sw_caches: ['browse'],
   inspect_listeners: ['browse'],
 
-  // browse ∩ reverse (12)
+  // browse ∩ reverse (19)
   console_eval: ['browse', 'reverse'],
   console_get_props: ['browse', 'reverse'],
   cookie_list: ['browse', 'reverse'],
@@ -86,6 +86,13 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   remove_macro_steps: ['browse', 'reverse'],
   run_macro: ['browse', 'reverse'],
   delete_macro: ['browse', 'reverse'],
+  cli_arm: ['browse', 'reverse'],
+  cli_compile: ['browse', 'reverse'],
+  cli_list: ['browse', 'reverse'],
+  cli_describe: ['browse', 'reverse'],
+  cli_run: ['browse', 'reverse'],
+  cli_writes: ['browse', 'reverse'],
+  cli_export: ['browse', 'reverse'],
 
   // reverse, not browse (63). The four shared with probe are listed next.
   get_request_initiator: ['reverse'],
@@ -253,8 +260,8 @@ export function catalogFromHeader(value: string | string[] | undefined): Catalog
 }
 
 export const TOOL_PROFILE_SET_DESCRIPTION = `Switch the in-app tool profile, or omit profile to read it.
-browse (default): drive the page and read the DOM.
-reverse: scripts, source maps, deobfuscation, wasm, crypto_trace, intercept/replay, codegen (export_python_client / export_client), websockets.
+browse (default): drive the page, read the DOM, and use the site CLI (cli_compile / cli_run / cli_export).
+reverse: scripts, source maps, deobfuscation, wasm, crypto_trace, intercept/replay, codegen (export_python_client / export_client), site CLI, websockets.
 probe: intruder_run, burst_send, payload_probe, crlf_test, path_probe, lfi_probe. You cannot select probe; ask the user to set Tools → Probe.
 bp_* breakpoints are not available in any profile.`
 

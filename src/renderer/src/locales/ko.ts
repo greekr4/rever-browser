@@ -247,4 +247,31 @@ export const ko: Record<TKey, string> = {
   'tools.profile.tip.reverse': '스크립트, 암호, 재생, 클라이언트 추출.',
   'tools.profile.tip.probe':
     '능동 프로브. Probe를 고르기 전에는 숨깁니다. ACP 채팅은 위험한 호출 전에 여전히 확인을 받습니다. API 모델에는 새 확인 창이 없고, 지금과 같이 실행합니다.',
+
+  'workflow.cli.name': '이름',
+  'workflow.cli.requests': '컴파일할 API 호출',
+  'workflow.cli.empty': '아직 XHR이나 Fetch가 없습니다. 페이지를 사용한 뒤 고른 요청만 컴파일하세요.',
+  'workflow.cli.compile': '컴파일',
+  'workflow.cli.compiling': '컴파일 중…',
+  'workflow.cli.commands': '명령',
+  'workflow.cli.noCommands': '호출을 고르고 컴파일하세요.',
+  'workflow.cli.noMatch': '고른 호출에서 명령이 나오지 않았습니다.',
+  'workflow.cli.writes': '쓰기 허용',
+  'workflow.cli.writesHint': '기본은 꺼져 있습니다. 변경 요청을 보낼 때만 켜세요.',
+  'workflow.cli.sessionHint': '쿠키는 이 탭에 남고, 내보내기에는 자리표시자만 들어갑니다.',
+  'workflow.cli.export': '내보내기',
+  'workflow.cli.run': '실행',
+  'workflow.cli.running': '실행 중…',
+  'workflow.cli.runFailed': '실행 실패',
+  'workflow.cli.extract': '최대 {limit}개 항목: {selector}',
+  'workflow.cli.matched': '{count}개 일치',
+  'workflow.cli.noMatchExtract': '셀렉터가 아무것도 찾지 못했습니다.',
+  'workflow.cli.pageCapped': '페이지가 읽기 한도보다 길어 뒷부분이 빠졌습니다.',
+  'workflow.cli.bodyCut':
+    '페이지 앞부분만 보입니다. 저장된 명령이 아닙니다. 항목을 읽으려면 셀렉터를 붙이세요.',
+  'workflow.cli.exportHeading': '내보내기',
+  'workflow.cli.resultHeading': '실행 결과',
+  'workflow.cli.callExample': '호출 예시',
+  'workflow.cli.callExampleHint':
+    '이 명령의 cli_run 호출입니다. curl이 필요하면 내보내기를 누르세요. 쿠키 값은 들어가지 않고 자리표시자로 나옵니다.'
 }
