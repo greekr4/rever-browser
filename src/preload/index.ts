@@ -345,6 +345,17 @@ const api = {
         .finally(() => ipcRenderer.removeListener(channel, listener))
     },
 
+    // Updates for a turn the agent started on its own between prompts (e.g.
+    // after a background task finished). Returns an unsubscribe function.
+    onIdleUpdate: (
+      handler: (sessionId: string, notification: AcpSessionUpdate) => void
+    ): (() => void) => {
+      const listener = (_e: unknown, sessionId: string, notification: AcpSessionUpdate): void =>
+        handler(sessionId, notification)
+      ipcRenderer.on('acp:idle-update', listener)
+      return () => ipcRenderer.removeListener('acp:idle-update', listener)
+    },
+
     cancel: (sessionId: string): Promise<void> => ipcRenderer.invoke('acp:cancel', sessionId),
     kill: (sessionId: string): Promise<void> => ipcRenderer.invoke('acp:kill', sessionId),
 
