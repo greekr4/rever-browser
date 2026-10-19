@@ -54,6 +54,7 @@ export const ACP_AGENTS: ACPAgentDef[] = [
     acpSupported: true,
     provider: 'grok',
     installHint: 'Add an xAI API key in settings',
+    loginHint: 'grok login',
     icon: 'G'
   },
   {
@@ -122,7 +123,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
   { agentId: 'openai', modelId: 'gpt-4o-mini', name: 'GPT-4o mini' },
   { agentId: 'openai', modelId: 'o3', name: 'o3' },
   { agentId: 'openai', modelId: 'o4-mini', name: 'o4-mini' },
-  // Grok — exact ids (mirror of GROK_MODELS in the main process).
+  // Grok — exact ids (mirror of GROK_MODELS). Subscription login fills these in.
   { agentId: 'grok', modelId: 'grok-4.7', name: 'Grok 4.7' },
   { agentId: 'grok', modelId: 'grok-4.6', name: 'Grok 4.6' },
   { agentId: 'grok', modelId: 'grok-4.5', name: 'Grok 4.5' },

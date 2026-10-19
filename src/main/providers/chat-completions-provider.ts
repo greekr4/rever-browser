@@ -39,7 +39,7 @@ export interface ChatCompletionsOptions {
   logTag: string
   baseURL?: string
   timeoutMs?: number
-  /** When set, used instead of the stored API key. */
+  /** When set, used instead of the stored API key. Grok passes the subscription token. */
   resolveApiKey?: () => Promise<string | null>
 }
 
