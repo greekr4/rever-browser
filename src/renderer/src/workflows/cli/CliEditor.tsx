@@ -85,6 +85,16 @@ export function CliEditor({ workflow, onChange }: WorkflowEditorProps): React.Re
   const [runJson, setRunJson] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const seeded = useRef(new Set<string>())
+  // Bring a fresh run result or export into view: both render below the
+  // flags, often past the bottom of a short panel.
+  const exportRef = useRef<HTMLDivElement>(null)
+  const runRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (exported != null) exportRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [exported])
+  useEffect(() => {
+    if (runText != null) runRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [runText, runJson])
 
   const calls = useMemo(() => {
     const rows = []
@@ -330,21 +340,21 @@ export function CliEditor({ workflow, onChange }: WorkflowEditorProps): React.Re
       )}
 
       {exported != null && (
-        <>
+        <div ref={exportRef} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ color: 'var(--text-dim)' }}>{tr('workflow.cli.exportHeading')}</div>
           <pre data-testid="cli-export-text" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
             {exported}
           </pre>
-        </>
+        </div>
       )}
       {runText != null && (
-        <>
+        <div ref={runRef} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ color: 'var(--text-dim)' }}>{tr('workflow.cli.resultHeading')}</div>
           <div data-testid="cli-run-result">
             <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{runText}</pre>
             {runJson != null && <JsonView text={runJson} contentType="application/json" />}
           </div>
-        </>
+        </div>
       )}
       {error && <div style={{ color: '#e06c6c' }}>{error}</div>}
     </div>
