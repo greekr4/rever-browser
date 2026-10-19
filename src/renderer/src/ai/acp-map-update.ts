@@ -124,6 +124,9 @@ export function mapUpdate(
       }
       break
     }
+    default:
+      // rever_pulse and any other activity notice: keep the turn alive, show nothing.
+      break
   }
 
   return { chunks, textStarted }

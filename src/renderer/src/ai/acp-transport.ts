@@ -99,6 +99,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
         // Watchdog: if 60s pass with NO notification at all, surface as error
         // so the chat status doesn't get stuck on "streaming" forever.
+        // A live turn that is only quiet (model thinking, one long tool) emits
+        // rever_pulse every 15s from the main process, which rearms this timer.
         let watchdog: ReturnType<typeof setTimeout> | null = null
         const armWatchdog = () => {
           if (watchdog) clearTimeout(watchdog)
