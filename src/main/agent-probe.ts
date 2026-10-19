@@ -13,6 +13,7 @@ import {
 import { agentEnv } from './acp-session'
 import { detectAgents } from './acp-detect'
 import { detectAgentLogins, type LoginAgentId, type LoginInfo } from './agent-login'
+import { GROK_PLAN, resolveGrokCredential } from './grok-login'
 import { XAI_BASE_URL } from './providers/grok-models'
 import { getApiKey } from './settings'
 
@@ -174,13 +175,22 @@ async function probeOpenAi(): Promise<AgentHealth> {
 
 async function probeGrok(): Promise<AgentHealth> {
   const base = { id: 'grok', resolvedPath: null, auto: false, plan: null }
-  const apiKey = getApiKey('grok')
-  if (!apiKey) return { ...base, status: 'needs-key', detail: null }
+  const cred = await resolveGrokCredential(getApiKey('grok'))
+  if (!cred) return { ...base, status: 'needs-login', detail: null }
   try {
-    await new OpenAI({ apiKey, baseURL: XAI_BASE_URL, timeout: API_TIMEOUT_MS }).models.list()
+    await new OpenAI({ apiKey: cred.token, baseURL: XAI_BASE_URL, timeout: API_TIMEOUT_MS }).models.list()
+    if (cred.source === 'subscription') {
+      return { ...base, status: 'ready', detail: null, auto: true, plan: GROK_PLAN }
+    }
     return { ...base, status: 'ready', detail: null, plan: 'api-key' }
   } catch (e) {
-    if (isAuthError(e)) return { ...base, status: 'auth-failed', detail: 'Key rejected' }
+    if (isAuthError(e)) {
+      return {
+        ...base,
+        status: 'auth-failed',
+        detail: cred.source === 'subscription' ? 'Sign-in rejected' : 'Key rejected'
+      }
+    }
     return { ...base, status: 'failed', detail: message(e) }
   }
 }

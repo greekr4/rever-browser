@@ -2,6 +2,8 @@ import { app, safeStorage } from 'electron'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { readGrokLoginFile } from './grok-login'
+
 // LLM provider API 키를 userData 아래에 safeStorage로 암호화 저장한다.
 // safeStorage(OS 키체인)를 쓸 수 없는 환경에서는 평문 폴백을 사용하되,
 // 파일에 어떤 방식으로 저장됐는지 프리픽스로 구분한다.
@@ -55,5 +57,7 @@ export function getApiKey(provider: ApiProvider): string | null {
 }
 
 export function hasApiKey(provider: ApiProvider): boolean {
-  return !!getApiKey(provider)
+  if (getApiKey(provider)) return true
+  // A grok.com login is enough. The access token stays in the main process.
+  return provider === 'grok' && readGrokLoginFile().loggedIn
 }
