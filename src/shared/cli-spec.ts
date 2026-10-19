@@ -71,6 +71,8 @@ export interface CompileOptions {
   baseUrl?: string
   /** Default 20. Values below 1 or above 100 become 20. */
   limit?: number
+  /** Command name per requestId, e.g. { "123.4": "search" }. Slugged; empty falls back. */
+  names?: Record<string, string>
 }
 
 export const WRITES_DISABLED = 'writes disabled for this CLI'
@@ -259,6 +261,24 @@ function slugify(method: string, template: string): string {
   return `${method.toLowerCase()}-${body || 'root'}`
 }
 
+function commandSlug(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40)
+    .replace(/-$/, '')
+}
+
+function chosenName(ids: string[], names: Record<string, string> | undefined): string {
+  if (!names) return ''
+  for (const id of ids) {
+    const raw = names[id]
+    if (raw) return commandSlug(raw)
+  }
+  return ''
+}
+
 function paramKind(value: string): CliParam['kind'] {
   if (/^-?\d+$/.test(value)) return 'int'
   if (value === 'true' || value === 'false') return 'bool'
@@ -423,7 +443,10 @@ export function compileCli(calls: CapturedCall[], opts: CompileOptions = {}): Cl
   const commands: CliCommand[] = []
   for (const cluster of clusters) {
     if (cluster.ids.length === 0) continue
-    let name = slugify(cluster.method, cluster.template)
+    // The effect is judged on the derived name, so a friendly name chosen by
+    // the caller can never turn a write into a read.
+    const derived = slugify(cluster.method, cluster.template)
+    let name = chosenName(cluster.ids, opts.names) || derived
     while (used.has(name)) name += '-x'
     used.add(name)
     const toParams = (fields: Map<string, CliParam['kind']>, required: boolean): Record<string, CliParam> => {
@@ -445,7 +468,7 @@ export function compileCli(calls: CapturedCall[], opts: CompileOptions = {}): Cl
       desc: `Observed ${cluster.method} ${cluster.count} time(s), last status ${cluster.lastStatus}.`,
       method: cluster.method,
       path: cluster.template,
-      effect: effectFor(cluster.method, cluster.template, name, cluster.rawForEffect),
+      effect: effectFor(cluster.method, cluster.template, derived, cluster.rawForEffect),
       evidenceRequestIds: cluster.ids,
       params,
       query: toParams(cluster.query, false),
@@ -601,6 +624,7 @@ export function exportCurl(data: CliData): string {
     `# ${data.site} ${data.baseUrl}`,
     `# writes: ${data.writes ? 'on' : 'off'}`,
     '# BASE is the site origin. Flags are placeholders. Captured secrets are not included.',
+    '# UA is your client\'s User-Agent, e.g. "my-tool/1.0 (you@example.com)". Some APIs require one.',
     ''
   ]
   for (const command of data.commands) {
@@ -627,7 +651,7 @@ export function exportCurl(data: CliData): string {
       lines.push(`# reads ${command.extract.limit}: ${names}`)
       lines.push(`# selector: ${command.extract.selector}`)
     }
-    lines.push(`curl -sS -X ${command.method} "${url}"${extra}`)
+    lines.push(`curl -sS -A "$UA" -X ${command.method} "${url}"${extra}`)
     lines.push('')
   }
   return lines.join('\n')

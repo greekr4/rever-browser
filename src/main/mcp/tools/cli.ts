@@ -78,12 +78,16 @@ export function registerCliTools(mcp: McpServer): void {
         site: z.string().optional().describe('Site slug. Defaults to the host'),
         title: z.string().optional(),
         baseUrl: z.string().optional().describe('Origin to keep. Other origins are dropped'),
+        names: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe('Command name per requestId, named for what it does, e.g. { "123.4": "search" }. Omit for names derived from the path'),
         extract: extractSchema.optional()
       }
     },
-    async ({ requestIds, name, site, title, baseUrl, extract }) => {
+    async ({ requestIds, name, site, title, baseUrl, names, extract }) => {
       try {
-        const data = compileCaptured(requestIds, { site, title, baseUrl })
+        const data = compileCaptured(requestIds, { site, title, baseUrl, names })
         if (data.commands.length === 0) return err('no commands from those request ids')
         if (extract) {
           const parsed = takeExtract(extract)
