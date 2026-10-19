@@ -1,7 +1,7 @@
 import { createChatCompletionsProvider, type ModelInfo } from './chat-completions-provider'
 
 // OpenAI Chat Completions API를 직접 호출하는 provider. 루프는
-// chat-completions-provider에 있다.
+// chat-completions-provider에 있고, xAI Grok이 같은 와이어 형식을 재사용한다.
 
 export const OPENAI_MODELS: ModelInfo[] = [
   { modelId: 'gpt-4o', name: 'GPT-4o', description: 'Flagship multimodal' },

@@ -2,7 +2,7 @@ import type { ACPAgentID } from '@/constants'
 
 // Real brand marks for the providers, replacing the C/A/O/X letter avatars.
 // Claude surfaces (`claude-code`, `anthropic`) → the Claude sunburst; OpenAI
-// surfaces (`codex`, `openai`) → the OpenAI knot.
+// surfaces (`codex`, `openai`) → the OpenAI knot. Grok uses the letter fallback.
 
 const CLAUDE_CLAY = '#d97757'
 

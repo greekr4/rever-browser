@@ -16,9 +16,9 @@ import type {
   ChatCompletionMessageToolCall
 } from 'openai/resources/chat/completions'
 
-// Shared Chat Completions loop for providers that speak the OpenAI wire format.
-// Callers attach with the direct tool catalog and the 128-name cap. Each
-// provider keeps its own session map.
+// Shared Chat Completions loop for providers that speak the OpenAI wire format
+// (OpenAI itself, and xAI Grok at api.x.ai). Both attach with the direct tool
+// catalog and the 128-name cap. Each provider keeps its own session map.
 
 export interface ModelInfo {
   modelId: string
@@ -29,7 +29,7 @@ export interface ModelInfo {
 export interface ChatCompletionsOptions {
   /** Used in session error strings, e.g. "OpenAI" → "unknown OpenAI session". */
   label: string
-  /** Session ids start with this, including the colon. */
+  /** Session ids start with this, including the colon. "openai:" / "grok:". */
   sessionPrefix: string
   defaultModel: string
   models: readonly ModelInfo[]

@@ -5,11 +5,12 @@ import path from 'node:path'
 // LLM provider API 키를 userData 아래에 safeStorage로 암호화 저장한다.
 // safeStorage(OS 키체인)를 쓸 수 없는 환경에서는 평문 폴백을 사용하되,
 // 파일에 어떤 방식으로 저장됐는지 프리픽스로 구분한다.
-export type ApiProvider = 'anthropic' | 'openai'
+export type ApiProvider = 'anthropic' | 'openai' | 'grok'
 
 const ENV_VAR: Record<ApiProvider, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
-  openai: 'OPENAI_API_KEY'
+  openai: 'OPENAI_API_KEY',
+  grok: 'XAI_API_KEY'
 }
 
 function keyFile(provider: ApiProvider): string {

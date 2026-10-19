@@ -6,7 +6,7 @@
 
 export interface CatalogAgent {
   id: string
-  provider: 'acp' | 'anthropic' | 'openai'
+  provider: 'acp' | 'anthropic' | 'openai' | 'grok'
   /** Primary CLI binary to look for on PATH ('' for in-process API providers). */
   command: string
   /** Drop-in forks tried if `command` isn't on PATH. */
@@ -18,6 +18,7 @@ export interface CatalogAgent {
 export const AGENT_CATALOG: readonly CatalogAgent[] = [
   { id: 'anthropic', provider: 'anthropic', command: '', args: [] },
   { id: 'openai', provider: 'openai', command: '', args: [] },
+  { id: 'grok', provider: 'grok', command: '', args: [] },
   {
     id: 'claude-code',
     provider: 'acp',
