@@ -104,6 +104,42 @@ describe('cli-spec', () => {
     expect(data.commands[0]?.effect).toBe('write')
   })
 
+  it('names로 requestId별 명령 이름을 지정한다', () => {
+    const data = compileCli(
+      [call({ requestId: 's1', url: 'https://en.wikipedia.org/w/rest.php/v1/search/title?q=x&limit=10' })],
+      { names: { s1: 'Search Titles!' } }
+    )
+    expect(data.commands[0]?.name).toBe('search-titles')
+  })
+
+  it('지정한 이름은 effect 판정을 바꾸지 않는다', () => {
+    const data = compileCli(
+      [call({ requestId: 'del', method: 'GET', url: 'https://shop.example/users/delete', status: 200 })],
+      { names: { del: 'search' } }
+    )
+    expect(data.commands[0]?.name).toBe('search')
+    expect(data.commands[0]?.effect).toBe('write')
+  })
+
+  it('지정한 이름이 겹치거나 비면 자동 이름 규칙을 따른다', () => {
+    const data = compileCli(
+      [
+        call({ requestId: 'a', url: 'https://shop.example/api/items' }),
+        call({ requestId: 'b', url: 'https://shop.example/api/orders' }),
+        call({ requestId: 'c', url: 'https://shop.example/api/cart' })
+      ],
+      { names: { a: 'list', b: 'list', c: '!!!' } }
+    )
+    expect(data.commands.map((command) => command.name)).toEqual(['list', 'list-x', 'get-api-cart'])
+  })
+
+  it('curl 내보내기는 클라이언트를 밝히는 User-Agent 자리를 둔다', () => {
+    const data = compileCli([call({ requestId: 's1', url: 'https://en.wikipedia.org/w/rest.php/v1/search/title?q=x' })])
+    const exported = exportCurl(data)
+    expect(exported).toMatch(/^# UA .*User-Agent/m)
+    expect(exported).toContain('curl -sS -A "$UA" -X GET')
+  })
+
   it('빈 requestId는 증거가 되지 않는다', () => {
     const data = compileCli([
       call({ requestId: '', url: 'https://shop.example/api/health' }),
