@@ -13,6 +13,7 @@ import {
   exportCurl,
   parseExtract,
   presentRawBody,
+  runJsonBody,
   runGate,
   scrubExtractItems,
   type CapturedCall,
@@ -138,6 +139,21 @@ describe('cli-spec', () => {
     const exported = exportCurl(data)
     expect(exported).toMatch(/^# UA .*User-Agent/m)
     expect(exported).toContain('curl -sS -A "$UA" -X GET')
+  })
+
+  it('실행 결과가 온전한 JSON 본문이면 뷰어에 넘길 본문을 돌려준다', () => {
+    expect(runJsonBody({ status: 200, body: '{"pages":[{"title":"Web browser"}]}' })).toBe(
+      '{"pages":[{"title":"Web browser"}]}'
+    )
+    expect(runJsonBody({ status: 200, body: ' [1,2] ' })).toBe(' [1,2] ')
+  })
+
+  it('잘린 본문, HTML, 추출 결과는 JSON 뷰어로 보내지 않는다', () => {
+    expect(runJsonBody({ status: 200, body: '{"pages":[', bodyCut: true })).toBeNull()
+    expect(runJsonBody({ status: 200, body: '<html><body>hi</body></html>' })).toBeNull()
+    expect(runJsonBody({ status: 200, body: '{"a":1}', items: [{ title: 'x' }] })).toBeNull()
+    expect(runJsonBody({ status: 200, body: '{not json}' })).toBeNull()
+    expect(runJsonBody({ status: 200 })).toBeNull()
   })
 
   it('빈 requestId는 증거가 되지 않는다', () => {

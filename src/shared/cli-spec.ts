@@ -813,6 +813,24 @@ function looksLikeHtml(body: string): boolean {
 }
 
 /** HTML pages are previewed. JSON and other short bodies stay whole. */
+/** The run body to show in a JSON viewer, or null when it is cut, extracted, or not JSON. */
+export function runJsonBody(result: {
+  status?: number
+  body?: string
+  bodyCut?: boolean
+  items?: Array<Record<string, string>>
+}): string | null {
+  if (result.items || result.bodyCut || !result.body) return null
+  const trimmed = result.body.trim()
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return null
+  try {
+    JSON.parse(trimmed)
+    return result.body
+  } catch {
+    return null
+  }
+}
+
 export function presentRawBody(body: string, bodyTruncated: boolean): { body: string; bodyCut: boolean } {
   if (!looksLikeHtml(body)) return { body, bodyCut: false }
   if (!bodyTruncated && body.length <= RAW_PREVIEW_CHARS) return { body, bodyCut: false }
