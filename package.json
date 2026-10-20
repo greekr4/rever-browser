@@ -4,7 +4,7 @@
   "version": "0.1.4",
   "private": true,
   "description": "AI agent browser for web API reverse engineering",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {

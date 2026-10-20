@@ -19,7 +19,10 @@ release/
 .private-docs/
 
 # Local design/dev docs — not tracked in the public repo.
-/docs/
+# Exception: README media and the published benchmark are public.
+/docs/*
+!/docs/media/
+!/docs/benchmarks/
 /CLAUDE.md
 /PLAN.md
 /HANDOFF.md
