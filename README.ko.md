@@ -35,11 +35,11 @@ rever-browser에서 API를 리버싱하는 과정은 5단계 루프입니다. �
 
 | 단계 | 하는 일 | 예시 툴 |
 |---|---|---|
-| **1 · 캡처** | 실제 탭에서 대상을 브라우징. 모든 요청이 에이전트가 읽을 수 있는 실시간 트래픽 목록에 쌓임. | `list_requests`, `get_request`, `browser_navigate` |
-| **2 · 분석** | JS 번들 grep, 난독화 해제, 소스맵 복원, Web Crypto 실시간 후킹, 불투명 바디 디코딩. | `grep_scripts`, `deobfuscate_script`, `crypto_trace_start`, `crypto_chain` |
-| **3 · 재현** | 브라우저 자체 컨텍스트(쿠키·TLS·HTTP/2)로 요청을 재전송하고, 독립 실행될 때까지 변조. | `repeater_send`, `wasm_decompile`, `graphql_introspect` |
-| **4 · 검증** | 결함을 실제로 증명. 마커 퍼징, 시크릿 스윕, XSS·경로순회·CRLF 프로브, 발견 기록. | `intruder_run`, `scan_secrets`, `path_probe`, `finding_add` |
-| **5 · 자동화** | 동작하는 시퀀스를 결정적 매크로·CLI 명령·Python 클라이언트로 동결(루프에 LLM 없음). | `create_macro`, `cli_compile`, `export_python_client` |
+| **캡처** | 실제 탭에서 대상을 브라우징. 모든 요청이 에이전트가 읽을 수 있는 실시간 트래픽 목록에 쌓임. | `list_requests`, `get_request`, `browser_navigate` |
+| **분석** | JS 번들 grep, 난독화 해제, 소스맵 복원, Web Crypto 실시간 후킹, 불투명 바디 디코딩. | `grep_scripts`, `deobfuscate_script`, `crypto_trace_start`, `crypto_chain` |
+| **재현** | 브라우저 자체 컨텍스트(쿠키·TLS·HTTP/2)로 요청을 재전송하고, 독립 실행될 때까지 변조. | `repeater_send`, `wasm_decompile`, `graphql_introspect` |
+| **검증** | 결함을 실제로 증명. 마커 퍼징, 시크릿 스윕, XSS·경로순회·CRLF 프로브, 발견 기록. | `intruder_run`, `scan_secrets`, `path_probe`, `finding_add` |
+| **자동화** | 동작하는 시퀀스를 결정적 매크로·CLI 명령·Python 클라이언트로 동결(루프에 LLM 없음). | `create_macro`, `cli_compile`, `export_python_client` |
 
 <div align="center">
 

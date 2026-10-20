@@ -35,11 +35,11 @@ Reversing an API in rever-browser is a five-phase loop. The agent moves through 
 
 | Phase | What happens | Example tools |
 |---|---|---|
-| **1 · Capture** | Browse the target in the real tab. Every request lands in a live traffic list the agent can read. | `list_requests`, `get_request`, `browser_navigate` |
-| **2 · Analyze** | Grep the JS bundles, deobfuscate, read source maps, hook Web Crypto live, decode opaque bodies. | `grep_scripts`, `deobfuscate_script`, `crypto_trace_start`, `crypto_chain` |
-| **3 · Reproduce** | Replay a request through the browser's own context (its cookies, TLS, HTTP/2) and tamper with it until it works standalone. | `repeater_send`, `wasm_decompile`, `graphql_introspect` |
-| **4 · Verify** | Prove the flaw live: fuzz a marker, sweep for secrets, run XSS / path-traversal / CRLF probes, log findings. | `intruder_run`, `scan_secrets`, `path_probe`, `finding_add` |
-| **5 · Automate** | Freeze the working sequence into a deterministic macro, a CLI command, or a Python client, with no LLM in the loop. | `create_macro`, `cli_compile`, `export_python_client` |
+| **Capture** | Browse the target in the real tab. Every request lands in a live traffic list the agent can read. | `list_requests`, `get_request`, `browser_navigate` |
+| **Analyze** | Grep the JS bundles, deobfuscate, read source maps, hook Web Crypto live, decode opaque bodies. | `grep_scripts`, `deobfuscate_script`, `crypto_trace_start`, `crypto_chain` |
+| **Reproduce** | Replay a request through the browser's own context (its cookies, TLS, HTTP/2) and tamper with it until it works standalone. | `repeater_send`, `wasm_decompile`, `graphql_introspect` |
+| **Verify** | Prove the flaw live: fuzz a marker, sweep for secrets, run XSS / path-traversal / CRLF probes, log findings. | `intruder_run`, `scan_secrets`, `path_probe`, `finding_add` |
+| **Automate** | Freeze the working sequence into a deterministic macro, a CLI command, or a Python client, with no LLM in the loop. | `create_macro`, `cli_compile`, `export_python_client` |
 
 <div align="center">
 
