@@ -34,12 +34,20 @@ export const useI18nStore = create<I18nState>((set) => ({
 
 export type TFn = (key: TKey, vars?: Record<string, string | number>) => string
 
+function translate(lang: Lang, key: TKey, vars?: Record<string, string | number>): string {
+  let s = DICTS[lang][key] ?? en[key] ?? String(key)
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v))
+  return s
+}
+
 // Hook: returns a `t` bound to the current language (re-renders on change).
 export function useT(): TFn {
   const lang = useI18nStore((s) => s.lang)
-  return (key, vars) => {
-    let s = DICTS[lang][key] ?? en[key] ?? String(key)
-    if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v))
-    return s
-  }
+  return (key, vars) => translate(lang, key, vars)
+}
+
+// Non-hook `t` for code outside React (e.g. the ACP transport). Reads the
+// current language from the store; no reactivity, resolved at call time.
+export function t(key: TKey, vars?: Record<string, string | number>): string {
+  return translate(useI18nStore.getState().lang, key, vars)
 }
