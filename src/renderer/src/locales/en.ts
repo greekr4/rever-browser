@@ -84,6 +84,15 @@ export const en = {
 
   // Panels (empty states)
   'panel.noConsole': 'No console output',
+  'toast.downloaded': 'Downloaded {name}',
+  'toast.downloadFailed': 'Download {state}: {name}',
+  'toast.showInFolder': 'Show in folder',
+  'toast.dialogAnswered': 'Page {type} answered {answer} for the agent: {message}',
+  'settings.dialogAuto': 'Answer page dialogs while the agent works',
+  'settings.dialogAutoHint': 'Otherwise alert / confirm show up for you to answer. Contents are logged.',
+  'settings.downloadAsk': 'Ask where to save downloads',
+  'settings.downloadAskHint': 'Off: saved to Downloads/Rever without a dialog, so the agent never gets stuck.',
+  'panel.consoleInput': 'Run JavaScript in this tab (Enter to run, Shift+Enter for a new line)',
   'panel.noExceptions': 'No exceptions',
   'panel.noWs': 'No WS connections',
   'panel.noFrames': 'No frames',

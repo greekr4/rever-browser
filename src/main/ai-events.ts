@@ -25,3 +25,14 @@ export function emitAiAction(action: Omit<AiAction, 'ts'>): void {
     if (!w.isDestroyed()) w.webContents.send('ai:action', payload)
   }
 }
+
+/** Things a page did that the user should hear about (downloads, auto-answered dialogs). */
+export type PageEvent =
+  | { kind: 'download'; download: { id: number; filename: string; state: string; savePath: string } }
+  | { kind: 'dialog'; type: string; message: string; accept: boolean }
+
+export function emitPageEvent(event: PageEvent): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send('page-event', event)
+  }
+}

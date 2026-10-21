@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>download fixture</title>
+<h1>Download fixture</h1>
+<p>Expected: no save dialog. Each download lands in ~/Downloads/Rever; a repeat gets " (1)" before the extension.</p>
+<p><button id="blob" onclick="
+  const a = document.createElement('a');
+  a.href = window.URL.createObjectURL(new Blob(['%PDF-1.4 fixture'], { type: 'application/pdf' }));
+  a.download = 'fixture-export.pdf';
+  a.click();
+">blob download (like a PDF export)</button> <small>expected: fixture-export.pdf, 16 bytes</small></p>
+<p><a id="file" href="download-sample.txt" download>file link with download attribute</a> <small>expected: download-sample.txt, 23 bytes</small></p>

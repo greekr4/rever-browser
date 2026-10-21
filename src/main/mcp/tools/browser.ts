@@ -345,7 +345,7 @@ export function registerBrowserTools(mcp: McpServer) {
     'browser_handle_dialog',
     {
       description:
-        'Arm the answer the page\'s NEXT confirm() or prompt() will get, then trigger it. Without this every confirm() returns true and every prompt() returns its default, because the app answers dialogs itself so the renderer never blocks — so a "cancel" branch or a typed-in value could not be reached. One-shot: consumed by the first dialog, so a stale answer cannot apply to a later one. Call this BEFORE the click that opens the dialog.',
+        'Choose the answer for a page alert()/confirm()/prompt(). Dialogs that open while your tools run are answered automatically (OK / the prompt default) and listed at the end of that tool\'s result. Call this BEFORE the click to reach a "Cancel" branch or type a prompt value. One-shot: consumed by the first dialog.',
       inputSchema: {
         accept: z
           .boolean()

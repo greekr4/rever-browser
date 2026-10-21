@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 import type { CliCommand, CliData } from '../shared/cli-spec'
+import type { PageEvent } from '../main/ai-events'
+import type { DownloadRecord } from '../main/downloads'
+
+export type { PageEvent, DownloadRecord }
 
 import type {
   RequestPermissionRequest,
@@ -543,7 +547,10 @@ const api = {
       ipcRenderer.invoke('console:list', since, limit),
     exceptions: (limit?: number): Promise<RuntimeException[]> =>
       ipcRenderer.invoke('console:exceptions', limit),
-    clear: (): Promise<void> => ipcRenderer.invoke('console:clear')
+    clear: (): Promise<void> => ipcRenderer.invoke('console:clear'),
+    /** Run a command in the active tab like Chrome's console; output lands in the log. */
+    evaluate: (expression: string): Promise<void> =>
+      ipcRenderer.invoke('console:evaluate', expression)
   },
   // Lightweight badge counts — three integers, so the toolbar chips don't have
   // to pull the full console/exception/ws payloads over IPC on a timer.
@@ -560,6 +567,20 @@ const api = {
       Array<{ ts: number; type: string; message: string; url: string }>
     > => ipcRenderer.invoke('dialog:history', limit),
     clearHistory: (): Promise<boolean> => ipcRenderer.invoke('dialog:clear-history')
+  },
+  downloads: {
+    list: (limit?: number): Promise<DownloadRecord[]> => ipcRenderer.invoke('downloads:list', limit),
+    getSettings: (): Promise<{ askWhereToSave: boolean }> =>
+      ipcRenderer.invoke('downloads:get-settings'),
+    setAsk: (enabled: boolean): Promise<{ askWhereToSave: boolean }> =>
+      ipcRenderer.invoke('downloads:set-ask', enabled),
+    reveal: (id: number): Promise<boolean> => ipcRenderer.invoke('downloads:reveal', id)
+  },
+  /** Downloads finishing and dialogs the app answered for the agent. */
+  onPageEvent: (handler: (event: PageEvent) => void): (() => void) => {
+    const listener = (_e: unknown, event: PageEvent) => handler(event)
+    ipcRenderer.on('page-event', listener)
+    return () => ipcRenderer.removeListener('page-event', listener)
   },
   ws: {
     list: (): Promise<StoredRequestSummary[]> => ipcRenderer.invoke('ws:list'),

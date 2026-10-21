@@ -17,12 +17,12 @@ describe('capToolsForOpenAI', () => {
     expect(r.dropped).toEqual([])
   })
 
-  it('drops denylist tools first, in order, only as many as needed (138 -> 128)', () => {
+  it('drops denylist tools first, in order, only as many as needed (140 -> 128)', () => {
     const names = [
       ...OPENAI_DROP_ORDER,
       ...Array.from({ length: 129 }, (_, i) => `keep${i}`)
     ]
-    expect(names).toHaveLength(138)
+    expect(names).toHaveLength(140)
     const r = capToolsForOpenAI(names.map(tool))
     expect(r.tools).toHaveLength(128)
     expect(r.dropped).toEqual([...OPENAI_DROP_ORDER, 'keep128'])
@@ -52,19 +52,21 @@ describe('capToolsForOpenAI', () => {
     expect(r.tools.map((t) => t.function.name)).toContain('browser_snapshot')
   })
 
-  it('reverse에 browse 전용 36개를 더한 145개에서 등록 순 꼬리 17개만 떨어진다', () => {
+  it('reverse에 browse 전용 34개를 더한 147개에서 등록 순 꼬리 19개만 떨어진다', () => {
     const order = registrationOrder()
-    expect(order).toHaveLength(160)
+    expect(order).toHaveLength(162)
     const browseOnly = advertisedNames('browse').filter((name) => !isAdvertised(name, 'reverse'))
-    expect(browseOnly).toHaveLength(36)
+    expect(browseOnly).toHaveLength(34)
     const allowed = new Set([...advertisedNames('reverse'), ...browseOnly])
-    expect(allowed.size).toBe(145)
+    expect(allowed.size).toBe(147)
     const filtered = order.filter((name) => allowed.has(name))
-    expect(filtered).toHaveLength(145)
+    expect(filtered).toHaveLength(147)
     expect(filtered.at(-1)).toBe('tool_profile_set')
     const r = capToolsForOpenAI(filtered.map(tool))
     expect(r.tools).toHaveLength(128)
     expect(r.dropped).toEqual([
+      'dialog_inject_override',
+      'dialog_clear_history',
       'crypto_trace_stop',
       'fetch_body',
       'detect_antibot_vm',

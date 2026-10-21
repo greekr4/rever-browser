@@ -91,17 +91,17 @@ describe('tool-profile', () => {
     it('소스 registerTool 이름과 레지스트리 키가 같다', () => {
       const source = sourceToolNames()
       expect(sorted(Object.keys(TOOL_BUCKETS))).toEqual(sorted(source))
-      expect(source.size).toBe(160)
+      expect(source.size).toBe(162)
       expect(source.has('tool_profile_set')).toBe(true)
     })
   })
 
   describe('광고 수', () => {
-    it('browse 78, reverse 109, probe 33이고 예산 120을 넘지 않는다', () => {
+    it('browse 80, reverse 113, probe 37이고 예산 120을 넘지 않는다', () => {
       expect(PROFILE_TOOL_BUDGET).toBe(120)
-      expect(advertisedNames('browse')).toHaveLength(78)
-      expect(advertisedNames('reverse')).toHaveLength(109)
-      expect(advertisedNames('probe')).toHaveLength(33)
+      expect(advertisedNames('browse')).toHaveLength(80)
+      expect(advertisedNames('reverse')).toHaveLength(113)
+      expect(advertisedNames('probe')).toHaveLength(37)
       for (const profile of TOOL_PROFILES) {
         expect(() => assertProfileBudget(profile)).not.toThrow()
       }
@@ -184,7 +184,7 @@ describe('tool-profile', () => {
       expect(names).not.toContain('not_a_tool')
       expect(names.filter((name) => name === 'browser_snapshot')).toHaveLength(1)
       expect(names.filter((name) => name === 'grep_scripts')).toHaveLength(1)
-      expect(names).toHaveLength(79)
+      expect(names).toHaveLength(81)
     })
   })
 

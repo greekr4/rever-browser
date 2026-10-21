@@ -10,7 +10,7 @@ export type ToolBucket = 'browse' | 'reverse' | 'probe' | 'hidden'
 
 /** core: every in-app profile. hidden: none. Otherwise the union of the listed profiles. */
 export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
-  // core (23) — existing 22 + tool_profile_set
+  // core (27) — existing 22 + tool_profile_set + dialog answer/history + downloads
   tool_profile_set: 'core',
   browser_navigate: 'core',
   browser_snapshot: 'core',
@@ -34,14 +34,18 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   scope_clear: 'core',
   finding_add: 'core',
   finding_list: 'core',
+  // Pages pop dialogs and downloads in any profile; the agent must be able to steer them.
+  browser_handle_dialog: 'core',
+  dialog_history: 'core',
+  list_downloads: 'core',
+  wait_for_download: 'core',
 
-  // browse only (36)
+  // browse only (34)
   browser_hover: ['browse'],
   browser_scroll_element: ['browse'],
   browser_draw: ['browse'],
   browser_paste: ['browse'],
   browser_tabs: ['browse'],
-  browser_handle_dialog: ['browse'],
   browser_file_upload: ['browse'],
   browser_history: ['browse'],
   browser_click_modified: ['browse'],
@@ -50,7 +54,6 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   browser_hover_selector: ['browse'],
   browser_screenshot: ['browse'],
   set_viewport: ['browse'],
-  dialog_history: ['browse'],
   dialog_set_auto_dismiss: ['browse'],
   dialog_clear_history: ['browse'],
   dialog_inject_override: ['browse'],
