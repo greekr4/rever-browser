@@ -31,6 +31,7 @@ export function CookiesPanel() {
     enabled: false,
     snapshotCount: 0
   })
+  const [askWhereToSave, setAskWhereToSave] = useState(false)
   const [dialog, setDialog] = useState<{
     autoDismiss: boolean
     history: Array<{ ts: number; type: string; message: string; url: string }>
@@ -38,6 +39,7 @@ export function CookiesPanel() {
 
   useEffect(() => {
     void window.rev.storage.persistenceGet().then(setSticky)
+    void window.rev.downloads.getSettings().then((s) => setAskWhereToSave(s.askWhereToSave))
   }, [])
 
   const refresh = useCallback(async () => {
@@ -140,6 +142,35 @@ export function CookiesPanel() {
             marginBottom: 8,
             border: '1px solid var(--border)',
             borderRadius: 4,
+            background: 'var(--bg-bar)',
+            fontSize: 11
+          }}
+        >
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={askWhereToSave}
+              onChange={async (e) => {
+                const r = await window.rev.downloads.setAsk(e.target.checked)
+                setAskWhereToSave(r.askWhereToSave)
+              }}
+            />
+            <strong style={{ color: 'var(--text-2)' }}>{t('settings.downloadAsk')}</strong>
+          </label>
+          <span style={{ opacity: 0.6 }}>{t('settings.downloadAskHint')}</span>
+        </div>
+      )}
+
+      {section === 'cookies' && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '6px 10px',
+            marginBottom: 8,
+            border: '1px solid var(--border)',
+            borderRadius: 4,
             background: dialog.autoDismiss ? 'rgba(110, 231, 183, 0.05)' : 'var(--bg-bar)',
             fontSize: 11
           }}
@@ -154,12 +185,10 @@ export function CookiesPanel() {
               }}
             />
             <strong style={{ color: dialog.autoDismiss ? 'var(--status-ok)' : 'var(--text-2)' }}>
-              Auto-dismiss alert / confirm / prompt
+              {t('settings.dialogAuto')}
             </strong>
           </label>
-          <span style={{ opacity: 0.6 }}>
-            Auto-closes dialogs so CDP/AI keep running (contents are logged)
-          </span>
+          <span style={{ opacity: 0.6 }}>{t('settings.dialogAutoHint')}</span>
           <div style={{ flex: 1 }} />
           {dialog.history.length > 0 && (
             <>

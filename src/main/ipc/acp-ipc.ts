@@ -8,6 +8,7 @@ import type {
 } from '@agentclientprotocol/sdk'
 
 import { detectAgents, type AgentProbe } from '../acp-detect'
+import { runAsAgent } from '../chrome-cdp'
 import { probeAgents } from '../agent-probe'
 import { AGENT_CATALOG, catalogAgent } from '../agent-catalog'
 import {
@@ -123,14 +124,18 @@ export function registerAcpIpc(): void {
         pendingPermissions.set(id, { resolve, reject, timer })
         sender.send('acp:permission-request', { id, request: req })
       })
-    return promptSession(
-      sessionId,
-      text,
-      (notification) => {
-        if (sender.isDestroyed()) return
-        sender.send(channel, notification)
-      },
-      requestPermission
+    // The whole turn counts as the agent acting, so a dialog a page opens
+    // between tool calls is answered instead of stalling the run.
+    return runAsAgent(() =>
+      promptSession(
+        sessionId,
+        text,
+        (notification) => {
+          if (sender.isDestroyed()) return
+          sender.send(channel, notification)
+        },
+        requestPermission
+      )
     )
   })
 

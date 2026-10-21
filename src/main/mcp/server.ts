@@ -39,6 +39,7 @@ import { registerSecurityInspectTools } from './tools/security_inspect'
 import { registerDomEditTools } from './tools/dom_edit'
 import { registerServiceWorkerTools } from './tools/sw_inspect'
 import { registerDialogTools } from './tools/dialog'
+import { registerDownloadTools } from './tools/downloads'
 import { registerVisionTools } from './tools/vision'
 import { registerScopeTools } from './tools/scope'
 import { registerListenerTools } from './tools/listeners'
@@ -64,6 +65,24 @@ import {
 import { getToolProfile, registerFollowServer, unregisterFollowServer } from './tool-profile-state'
 import { emitAiAction } from '../ai-events'
 import { visualize } from './cdp-eval'
+import { getDialogHistory, getOpenDialog, runAsAgent } from '../chrome-cdp'
+import { downloadsStartedSince } from '../downloads'
+
+/** Tell the agent about dialogs answered and downloads started during its call; both are invisible otherwise. */
+function withPageNotes(res: unknown, since: number): unknown {
+  const lines = [
+    ...getDialogHistory(100)
+      .filter((d) => d.answer && d.answer.at >= since)
+      .map((d) => `[page ${d.type}] "${d.message}" → auto-answered ${d.answer!.accept ? 'OK' : 'Cancel'}`),
+    ...downloadsStartedSince(since).map(
+      (d) => `[download started] "${d.filename}" → call wait_for_download for the saved file`
+    )
+  ]
+  const content = (res as { content?: unknown[] } | null)?.content
+  if (lines.length === 0 || !Array.isArray(content)) return res
+  content.push({ type: 'text', text: lines.join('\n') })
+  return res
+}
 
 function summarizeToolArgs(input: unknown): string | undefined {
   if (!input || typeof input !== 'object') return undefined
@@ -103,7 +122,21 @@ function withActivity(mcp: McpServer, handles: Map<string, ToolToggle>): void {
         visualize('evalHudStart', detail ? `${pretty} · ${detail}` : pretty, 'ANALYZE')
       }
       try {
-        const res = await fn(...a)
+        // An open dialog blocks the page, so any page command would hang until the user answers.
+        const open = getOpenDialog()
+        if (open) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text',
+                text: `A page ${open.type}() is open on screen and waits for the user: "${open.message}". Ask the user to answer it, then retry.`
+              }
+            ]
+          }
+        }
+        const since = Date.now()
+        const res = withPageNotes(await runAsAgent(async () => fn(...a)), since)
         if (nonBrowser) visualize('evalHudDone', 'done')
         return res
       } catch (e) {
@@ -153,6 +186,7 @@ export function buildMcpServer(opts?: { catalog?: CatalogKind }): McpServer {
   registerDomEditTools(mcp)
   registerServiceWorkerTools(mcp)
   registerDialogTools(mcp)
+  registerDownloadTools(mcp)
   registerVisionTools(mcp)
   registerScopeTools(mcp)
   registerListenerTools(mcp)

@@ -10,6 +10,9 @@ export const OPENAI_MAX_TOOLS = 128
 
 // Ordered "drop first" list. Only as many entries as needed are removed.
 export const OPENAI_DROP_ORDER: string[] = [
+  // Native dialogs made the page-side override re-inject a rarely needed fallback.
+  'dialog_inject_override',
+  'dialog_clear_history',
   'bp_add',
   'bp_list',
   'bp_remove',

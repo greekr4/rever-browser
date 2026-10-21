@@ -13,6 +13,7 @@ import { TabBar } from '@/components/TabBar'
 import { WebviewTab, type WebviewTabHandle } from '@/components/WebviewTab'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { CopyToast } from '@/components/CopyToast'
+import { PageEventToast } from '@/components/PageEventToast'
 import { OnboardingModal } from '@/components/OnboardingModal'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { TerminalPanel } from '@/components/chat/TerminalPanel'
@@ -353,6 +354,7 @@ function App() {
       <OnboardingModal />
       <PermissionPrompt />
       <CopyToast />
+      <PageEventToast />
       {markupImage && (
         <MarkupEditor imageDataUrl={markupImage} onClose={() => setMarkupImage(null)} />
       )}

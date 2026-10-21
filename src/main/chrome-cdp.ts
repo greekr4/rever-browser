@@ -19,6 +19,7 @@ import { STEALTH_INIT_SCRIPT, SPOOFED_CHROME_VERSION, SPOOFED_CHROME_MAJOR } fro
 import { charsetFromContentType, encodeRefetchedBody } from './mcp/wasm-analysis'
 import { compileRules, findMatchingRule, type CompiledRule } from './intercept-match'
 import { clearScriptsFor, recordScript } from './script-registry'
+import { emitPageEvent } from './ai-events'
 
 interface AttachedTarget {
   dbg: Debugger
@@ -323,15 +324,11 @@ function hostFromUrl(url: string): string {
   }
 }
 
-// ── JS dialog override ──────────────────────────────────────────────────────
-// `alert()` / `confirm()` / `prompt()` block the renderer's main thread,
-// which freezes every subsequent CDP command (including AI tool calls).
-// Override them with non-blocking versions that record into a global
-// history array — the page never sees a real modal and execution continues.
-//
-// This complements the Page.javaScriptDialogOpening handler below; the
-// override script runs first (so the dialog never opens), and the CDP
-// handler is the safety net for anything that slips through.
+// ── JS dialog override (prompt only) ────────────────────────────────────────
+// alert()/confirm() are left native so the user sees real dialogs like in
+// Chrome; while the agent acts they are answered over CDP instead (see
+// runAsAgent). prompt() stays overridden because Electron throws
+// "prompt() is not supported" for it.
 const DIALOG_OVERRIDE_SCRIPT = `
 (() => {
   if (window.__revDialogOverride) return;
@@ -354,12 +351,6 @@ const DIALOG_OVERRIDE_SCRIPT = `
     window.__revDialogAnswer = null;
     return a;
   }
-  window.alert = function(msg) { record('alert', msg); takeAnswer(); };
-  window.confirm = function(msg) {
-    record('confirm', msg);
-    const a = takeAnswer();
-    return a ? a.accept !== false : true;
-  };
   window.prompt = function(msg, def) {
     record('prompt', msg, def);
     const a = takeAnswer();
@@ -381,9 +372,8 @@ export function getDialogAutoDismiss(): boolean {
 /**
  * Arm the answer the page's next `confirm()` / `prompt()` will receive.
  *
- * Set in the page rather than handed to `Page.handleJavaScriptDialog`: the
- * override script answers these before a native dialog ever opens, which is
- * what keeps the renderer from blocking, so the CDP handler never sees them.
+ * Kept in main for native alert()/confirm() (answered over CDP) and in the
+ * page for prompt(), which the override script answers.
  */
 export async function armDialogAnswer(
   accept: boolean,
@@ -391,6 +381,7 @@ export async function armDialogAnswer(
 ): Promise<void> {
   const target = getActiveTarget()
   if (!target) throw new Error('no active browser target')
+  armedAnswer = { accept, promptText }
   await target.dbg.sendCommand('Runtime.evaluate', {
     expression: `window.__revDialogAnswer = ${JSON.stringify({ accept, promptText })}`
   })
@@ -405,6 +396,61 @@ export interface DialogRecord {
   type: 'alert' | 'confirm' | 'prompt' | 'beforeunload'
   message: string
   url: string
+  /** Who closed it and how; unset while it is still open. */
+  answer?: { by: 'agent' | 'user'; accept: boolean; at: number }
+}
+
+// ── Agent-driven dialog answering ───────────────────────────────────────────
+// A native dialog blocks the page, and with it every CDP command a tool sends.
+// The agent cannot click an OS dialog, so while the agent acts we answer it
+// over CDP the moment it opens; otherwise it stays open for the user.
+// Answering one that is already on screen fixes the page's return value but
+// leaves Electron's message box behind, so a dialog the user can see is only
+// ever answered by the user.
+let agentBusy = 0
+let armedAnswer: { accept: boolean; promptText?: string } | null = null
+let pendingDialog: { dbg: Electron.Debugger; sessionId?: string; record: DialogRecord } | null =
+  null
+
+async function answerDialog(
+  dbg: Electron.Debugger,
+  sessionId: string | undefined,
+  record: DialogRecord
+): Promise<void> {
+  const a = armedAnswer ?? { accept: true }
+  const wasArmed = armedAnswer != null
+  armedAnswer = null
+  record.answer = { by: 'agent', accept: a.accept, at: Date.now() }
+  emitPageEvent({ kind: 'dialog', type: record.type, message: record.message, accept: a.accept })
+  if (pendingDialog?.record === record) pendingDialog = null
+  await dbg
+    .sendCommand(
+      'Page.handleJavaScriptDialog',
+      { accept: a.accept, ...(a.promptText != null ? { promptText: a.promptText } : {}) },
+      sessionId
+    )
+    .catch((e) => console.error('[cdp] handleJavaScriptDialog:', e))
+  // The same answer was also armed in-page for prompt(); drop it so it stays one-shot.
+  if (wasArmed) {
+    await dbg
+      .sendCommand('Runtime.evaluate', { expression: 'window.__revDialogAnswer = null' }, sessionId)
+      .catch(() => {})
+  }
+}
+
+/** Run an agent turn or tool call; dialogs that open meanwhile are answered. */
+export async function runAsAgent<T>(fn: () => Promise<T>): Promise<T> {
+  agentBusy++
+  try {
+    return await fn()
+  } finally {
+    agentBusy--
+  }
+}
+
+/** A dialog on screen waiting for the user, if any. */
+export function getOpenDialog(): DialogRecord | null {
+  return pendingDialog?.record ?? null
 }
 
 const dialogHistory: DialogRecord[] = []
@@ -818,37 +864,37 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
         exception: p.exceptionDetails.exception,
         stackTrace: p.exceptionDetails.stackTrace
       })
-    } else if (method === 'Page.javaScriptDialogOpening') {
-      // Safety net for any native dialog that bypassed the script override
-      // (e.g. dialogs triggered before our addScriptToEvaluateOnNewDocument
-      // got a chance to run, or from `<a target=_blank>` flows in some
-      // Chromium versions). Capture the content, then dismiss.
+    } else if (method === 'Page.javascriptDialogOpening') {
+      // CDP spells it "javascript" (lower s). Record every native dialog;
+      // answer it only while the agent acts, else leave it for the user.
       const p = params as {
         url: string
         message: string
         type: 'alert' | 'confirm' | 'prompt' | 'beforeunload'
-        defaultPrompt?: string
       }
-      dialogHistory.push({
+      const record: DialogRecord = {
         ts: Date.now(),
         type: p.type,
         message: p.message ?? '',
         url: p.url ?? ''
-      })
+      }
+      dialogHistory.push(record)
       if (dialogHistory.length > MAX_DIALOG_HISTORY) dialogHistory.shift()
       appendConsole({
         ts: Date.now(),
         type: 'dialog',
         text: `[${p.type}] ${p.message ?? ''}`
       })
-      if (dialogAutoDismiss) {
-        void dbg
-          .sendCommand('Page.handleJavaScriptDialog', {
-            accept: true,
-            ...(p.type === 'prompt' ? { promptText: p.defaultPrompt ?? '' } : {})
-          })
-          .catch((e) => console.error('[cdp] handleJavaScriptDialog:', e))
+      const sid = sessionId || undefined
+      // Electron settles beforeunload itself, so it never waits on anyone.
+      if (p.type !== 'beforeunload') pendingDialog = { dbg, sessionId: sid, record }
+      if (agentBusy > 0 && dialogAutoDismiss) void answerDialog(dbg, sid, record)
+    } else if (method === 'Page.javascriptDialogClosed') {
+      const p = params as { result: boolean }
+      if (pendingDialog && !pendingDialog.record.answer) {
+        pendingDialog.record.answer = { by: 'user', accept: p.result, at: Date.now() }
       }
+      pendingDialog = null
     } else if (method === 'Target.attachedToTarget') {
       const p = params as {
         sessionId: string
@@ -930,6 +976,8 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
     // removeAllListeners('detach')는 이 콜백 실행 후이므로 안전하다.
     dbg.removeAllListeners('message')
     dbg.removeAllListeners('detach')
+    // A dialog in a closed tab can never be answered; don't let it block tools.
+    if (pendingDialog?.dbg === dbg) pendingDialog = null
     attached.delete(targetId)
   clearScriptsFor(targetId)
     inFlight.delete(targetId)
@@ -948,6 +996,7 @@ export function detachCdpCapture(targetId: number): boolean {
   // 명시적 detach 시에도 리스너를 먼저 제거해 재-attach 시 중복을 방지한다.
   t.dbg.removeAllListeners('message')
   t.dbg.removeAllListeners('detach')
+  if (pendingDialog?.dbg === t.dbg) pendingDialog = null
   try {
     t.dbg.detach()
   } catch {}

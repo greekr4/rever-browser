@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>dialog fixture</title>
+<h1>Dialog fixture</h1>
+<p>Each button writes the dialog's return value into the box next to it.</p>
+<p><button id="alert" onclick="out1.textContent = String(alert('hello alert'))">alert</button>
+  <output id="out1"></output> <small>expected: undefined</small></p>
+<p><button id="confirm" onclick="out2.textContent = String(confirm('leave?'))">confirm</button>
+  <output id="out2"></output> <small>expected: true (default) or false after browser_handle_dialog accept:false</small></p>
+<p><button id="prompt" onclick="out3.textContent = String(prompt('name?', 'def'))">prompt</button>
+  <output id="out3"></output> <small>expected: def (default) or the armed promptText</small></p>

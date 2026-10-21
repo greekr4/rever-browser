@@ -40,6 +40,7 @@ import {
   getConsoleCount,
   getExceptionCount,
   getWebSocketCount,
+  appendConsole,
   clearConsole,
   clearTraffic,
   listRequests,
@@ -64,6 +65,9 @@ import {
 } from './tab-partition'
 import { applyTabProxy, proxyCredentialsForSession, type TabProxyConfig } from './tab-proxy'
 import { compileCaptured, executeCli } from './mcp/cli-exec'
+import { formatEvalResult, type EvalReply } from './console-format'
+import { attachDownloads } from './downloads'
+import { registerDownloadsIpc } from './ipc/downloads-ipc'
 import { listMcpTools } from './mcp/bridge'
 import type { CliCommand } from '../shared/cli-spec'
 import {
@@ -806,6 +810,7 @@ app.whenReady().then(() => {
     if (createdSession === session.defaultSession) return
     createdSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
     createdSession.setPermissionCheckHandler(() => false)
+    attachDownloads(createdSession)
   })
 
   // Webviews have their own webContents, so keys pressed while the page has
@@ -1067,6 +1072,32 @@ app.whenReady().then(() => {
     getExceptions().slice(-(limit ?? 100))
   )
   ipcMain.handle('console:clear', () => clearConsole())
+  // The console panel's command line. Not wrapped in runAsAgent, so an
+  // alert() typed here shows a real dialog and waits for the user.
+  ipcMain.handle('console:evaluate', async (_event, expression: string) => {
+    appendConsole({ ts: Date.now(), type: 'command', text: expression })
+    const target = getActiveTarget()
+    let out: { text: string; isError: boolean }
+    if (!target) {
+      out = { text: 'No active tab', isError: true }
+    } else {
+      try {
+        const reply = (await target.dbg.sendCommand('Runtime.evaluate', {
+          expression,
+          replMode: true,
+          awaitPromise: true,
+          userGesture: true,
+          includeCommandLineAPI: true,
+          generatePreview: true,
+          objectGroup: 'console'
+        })) as EvalReply
+        out = formatEvalResult(reply)
+      } catch (e) {
+        out = { text: e instanceof Error ? e.message : String(e), isError: true }
+      }
+    }
+    appendConsole({ ts: Date.now(), type: out.isError ? 'error' : 'result', text: out.text })
+  })
   ipcMain.handle('chips:counts', () => ({
     logs: getConsoleCount(),
     exceptions: getExceptionCount(),
@@ -1103,6 +1134,7 @@ app.whenReady().then(() => {
   )
 
   registerDialogIpc()
+  registerDownloadsIpc()
 
   registerExternalIpc(() => mainWindow)
 
