@@ -61,6 +61,20 @@ export function registerAcpIpc(): void {
   ipcMain.handle('acp:spawn', async (_event, agentId: string, _cwd: string) => {
     const agent = catalogAgent(agentId)
     if (!agent) throw new Error(`unknown agent id: ${agentId}`)
+    // E2E only: replace the ACP binary with a deterministic fake agent script
+    // (run via the node path the harness passes). Gated behind an env var so it
+    // can never affect a normal run; the renderer still only sends an id.
+    const fakeScript = process.env.REVER_FAKE_ACP_AGENT
+    if (fakeScript && agent.provider === 'acp') {
+      const node = process.env.REVER_FAKE_ACP_NODE || 'node'
+      const scratch = path.join(app.getPath('userData'), 'agent-scratch')
+      try {
+        mkdirSync(scratch, { recursive: true })
+      } catch (e) {
+        console.warn('[acp:spawn] failed to ensure scratch dir', e)
+      }
+      return spawnSession({ id: agent.id, command: node, args: [fakeScript] }, scratch)
+    }
     let command = agent.command
     if (agent.provider === 'acp') {
       const [found] = await detectAgents([

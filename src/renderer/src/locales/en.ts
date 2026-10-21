@@ -124,6 +124,12 @@ export const en = {
   'chat.output': 'output',
   'chat.switchModel': 'Switch model for this session',
   'chat.turnFailed': 'Turn failed',
+  'chat.refusedTitle': 'Request blocked by safety policy',
+  'chat.refused':
+    'This request was flagged by the model provider’s safety policy, so the agent stopped and did not run it. Rephrasing with clear context about your authorized task may help; otherwise this request cannot proceed.',
+  'chat.safeguardTitle': 'Safety fallback occurred',
+  'chat.safeguard':
+    'The model provider’s safeguard flagged this request once and the session continued on a fallback model. The answer may differ from usual — if it looks incomplete, rephrase with clear context about your authorized task.',
   'chat.modelSwitchFailed': 'This agent did not accept the model switch',
   'chat.newConversation': 'Start a new conversation (kills the current agent session)',
   'chat.placeholder': 'Type a message…',

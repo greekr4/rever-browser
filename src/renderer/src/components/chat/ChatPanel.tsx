@@ -173,22 +173,80 @@ function ToolBlock({ part }: { part: ToolPart }) {
 interface AnyPart {
   type: string
   text?: string
+  data?: { kind?: string; title?: string; text?: string }
+}
+
+// A policy-refusal (or similar) notice emitted by the transport as a
+// `data-notice` part. Rendered as a distinct banner, never blended into the
+// agent's markdown answer.
+function NoticeBanner({ part }: { part: AnyPart }) {
+  const title = part.data?.title
+  const text = part.data?.text ?? ''
+  const accent = part.data?.kind === 'refusal' ? 'var(--status-error)' : 'var(--status-warn)'
+  return (
+    <div
+      data-testid="chat-notice"
+      role="alert"
+      style={{
+        display: 'flex',
+        gap: 10,
+        alignItems: 'flex-start',
+        margin: '8px 0',
+        padding: '12px 14px',
+        fontSize: 12,
+        lineHeight: 1.55,
+        background: `color-mix(in srgb, ${accent} 8%, var(--surface))`,
+        borderRadius: 8,
+        color: 'var(--text-2)'
+      }}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={accent}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+        style={{ flexShrink: 0, marginTop: 1 }}
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <div>
+        {title && (
+          <div style={{ fontWeight: 600, color: accent, marginBottom: 3 }}>{title}</div>
+        )}
+        <div style={{ color: 'var(--text-dim)' }}>{text}</div>
+      </div>
+    </div>
+  )
 }
 
 type Group =
   | { kind: 'text'; part: AnyPart; key: number }
+  | { kind: 'notice'; part: AnyPart; key: number }
   | { kind: 'work'; parts: AnyPart[]; key: number }
 
 function groupParts(parts: AnyPart[]): Group[] {
   const groups: Group[] = []
   let buf: AnyPart[] = []
+  const flush = (i: number) => {
+    if (buf.length) {
+      groups.push({ kind: 'work', parts: buf, key: i - buf.length })
+      buf = []
+    }
+  }
   parts.forEach((p, i) => {
     if (p.type === 'text') {
-      if (buf.length) {
-        groups.push({ kind: 'work', parts: buf, key: i - buf.length })
-        buf = []
-      }
+      flush(i)
       groups.push({ kind: 'text', part: p, key: i })
+    } else if (p.type === 'data-notice') {
+      flush(i)
+      groups.push({ kind: 'notice', part: p, key: i })
     } else {
       buf.push(p)
     }
@@ -270,6 +328,8 @@ const MessageItem = memo(function MessageItem({ message }: { message: ChatMessag
       {groupParts(message.parts).map((g) =>
         g.kind === 'text' ? (
           <Markdown key={g.key} text={(g.part as { text: string }).text} />
+        ) : g.kind === 'notice' ? (
+          <NoticeBanner key={g.key} part={g.part} />
         ) : (
           <WorkGroup key={g.key} parts={g.parts} />
         )

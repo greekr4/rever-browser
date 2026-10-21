@@ -111,6 +111,12 @@ export const ko: Record<TKey, string> = {
   'chat.output': '출력',
   'chat.switchModel': '이 세션의 모델 변경',
   'chat.turnFailed': '턴 실패',
+  'chat.refusedTitle': '안전 정책에 의해 차단된 요청',
+  'chat.refused':
+    '이 요청은 모델 제공자의 안전 정책에 의해 플래깅되어, 에이전트가 실행하지 않고 중단했습니다. 인가된 작업이라는 맥락을 명확히 담아 다시 요청하면 통과될 수 있고, 그렇지 않으면 이 요청은 더 이상 진행할 수 없습니다.',
+  'chat.safeguardTitle': '안전장치 폴백이 발생함',
+  'chat.safeguard':
+    '모델 제공자의 안전장치가 이 요청을 한 번 막았고, 세션은 폴백 모델로 계속되었습니다. 답변이 평소와 다를 수 있으며, 불완전해 보이면 인가된 작업이라는 맥락을 명확히 담아 다시 요청하세요.',
   'chat.modelSwitchFailed': '이 에이전트가 모델 전환을 받아들이지 않았습니다',
   'chat.newConversation': '새 대화 시작 (현재 에이전트 세션 종료)',
   'chat.placeholder': '메시지를 입력하세요…',

@@ -5,6 +5,8 @@ import { cancelPendingPermissions, hasPendingPermission } from './acp-permission
 import { endsBackgroundTurn, startsBackgroundTurn } from './acp-background'
 import { mapUpdate } from './acp-map-update'
 import { formatConnectionError } from './format-error'
+import { detectSafeguardNotice } from './provider-notice'
+import { t } from '@/stores/i18n'
 
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 import type { ACPAgentDef } from '@/constants'
@@ -95,6 +97,10 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         let closed = false
         let anyContent = false
         let userStopped = false
+        // Full agent text for this turn, so the safeguard/fallback notice can be
+        // detected on the complete message at finish — it is split across
+        // streamed chunk boundaries, so per-delta matching is unreliable.
+        let agentText = ''
         const seenToolCallIds = new Set<string>()
 
         // Watchdog: if 60s pass with NO notification at all, surface as error
@@ -125,16 +131,32 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
         const finish = (
           reason: 'stop' | 'other' | 'error',
-          errorText?: string
+          errorText?: string,
+          opts?: { refusal?: boolean; safeguard?: boolean }
         ) => {
           if (closed) return
           closed = true
           clearWatchdog()
           if (errorText) controller.enqueue({ type: 'error', errorText })
           if (textStarted) controller.enqueue({ type: 'text-end', id: textId })
+          // A provider safety event: render a distinct banner (a `data-notice`
+          // part) instead of letting it blend into the answer or show the
+          // misleading "agent returned no response" empty-turn note.
+          //   refusal  — hard block (ACP stopReason 'refusal'); nothing ran.
+          //   safeguard — soft flag + model fallback; the answer still came back
+          //               but the notice arrived as plain text (see
+          //               detectSafeguardNotice).
+          const notice = opts?.refusal
+            ? { kind: 'refusal', title: t('chat.refusedTitle'), text: t('chat.refused') }
+            : opts?.safeguard
+              ? { kind: 'safeguard', title: t('chat.safeguardTitle'), text: t('chat.safeguard') }
+              : null
+          if (notice) {
+            controller.enqueue({ type: 'data-notice', data: notice } as unknown as UIMessageChunk)
+          }
           // Surface empty-turn case so users don't think the agent ignored them.
           // A user Stop isn't an empty answer — don't blame the agent for it.
-          if (!errorText && !anyContent && !userStopped) {
+          else if (!errorText && !anyContent && !userStopped) {
             const note = `text-${Date.now()}-empty`
             controller.enqueue({ type: 'text-start', id: note })
             controller.enqueue({
@@ -180,6 +202,13 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
             if (closed) return
             armWatchdog()
             const update = (notification as unknown as { update: Parameters<typeof mapUpdate>[0] }).update
+            if (
+              update.sessionUpdate === 'agent_message_chunk' &&
+              update.content?.type === 'text' &&
+              typeof update.content.text === 'string'
+            ) {
+              agentText += update.content.text
+            }
             const result = mapUpdate(update, textId, textStarted, { seenToolCallIds })
             if (result.chunks.length > 0) anyContent = true
             for (const chunk of result.chunks) controller.enqueue(chunk)
@@ -189,7 +218,18 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
             // 프롬프트가 성공적으로 완료된 후에 sentContext를 true로 설정
             // (실패 시에는 시스템 프롬프트가 다음 시도에서 재전송됨)
             if (!alreadySentContext) self.sentContext = true
-            finish(res.stopReason === 'end_turn' ? 'stop' : 'other')
+            if (res.stopReason === 'refusal') {
+              finish('other', undefined, { refusal: true })
+              return
+            }
+            const reason = res.stopReason === 'end_turn' ? 'stop' : 'other'
+            // Soft safeguard + model fallback: the turn completed, but the SDK
+            // streamed its notice as plain text. Flag it with a banner too.
+            if (detectSafeguardNotice(agentText)) {
+              finish(reason, undefined, { safeguard: true })
+              return
+            }
+            finish(reason)
           })
           .catch((e) => {
             finish('error', formatConnectionError(e))

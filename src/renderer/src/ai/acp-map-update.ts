@@ -1,6 +1,8 @@
 import type { SessionUpdate } from '@agentclientprotocol/sdk'
 import type { UIMessageChunk } from 'ai'
 
+import { detectSafeguardNotice } from './provider-notice'
+
 export interface MapResult {
   chunks: UIMessageChunk[]
   textStarted: boolean
@@ -26,10 +28,18 @@ export function mapUpdate(
           chunks.push({ type: 'text-start', id: textId })
           textStarted = true
         }
+        // The SDK streams its safeguard / model-fallback notice glued to the
+        // adjacent answer (no surrounding newlines), so it renders as one run-on
+        // paragraph. Isolate a notice chunk onto its own paragraph.
+        // shortcut: only catches a notice that arrives as one chunk; if the SDK
+        // splits it across deltas, upgrade to buffering in the transport.
+        const text = detectSafeguardNotice(update.content.text)
+          ? `\n\n${update.content.text.trim()}\n\n`
+          : update.content.text
         chunks.push({
           type: 'text-delta',
           id: textId,
-          delta: update.content.text
+          delta: text
         })
       } else if (update.content.type !== 'text') {
         console.warn('[ACP] Unhandled content type:', update.content.type)
