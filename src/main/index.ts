@@ -1113,7 +1113,9 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   killAllTerminals()
-  if (process.platform !== 'darwin') app.quit()
+  // Quit fully on every platform (incl. macOS): closing the window should also
+  // shut down the in-process MCP server and spawned agents, not leave them live.
+  app.quit()
 })
 
 app.on('before-quit', () => killAllTerminals())
