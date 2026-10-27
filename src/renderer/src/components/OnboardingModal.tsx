@@ -188,7 +188,7 @@ export function OnboardingModal() {
   )
 }
 
-const backdrop: React.CSSProperties = {
+export const backdrop: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
   zIndex: 9000,
@@ -199,7 +199,7 @@ const backdrop: React.CSSProperties = {
   padding: 16
 }
 
-const card: React.CSSProperties = {
+export const card: React.CSSProperties = {
   width: 'min(460px, 100%)',
   maxHeight: 'calc(100vh - 32px)',
   overflowY: 'auto',
@@ -272,7 +272,7 @@ const codeChip: React.CSSProperties = {
 // WCAG AA: --accent (#2f6fed) is only 4.02:1 on the light card; --accent-text
 // clears 4.5:1 in both themes. Disabled uses a muted surface rather than a
 // low-opacity accent (which dropped to ~1.7:1).
-const useBtn: React.CSSProperties = {
+export const useBtn: React.CSSProperties = {
   padding: '5px 14px',
   background: 'var(--accent-soft)',
   border: '1px solid var(--accent-border)',
@@ -312,7 +312,7 @@ const saveBtn: React.CSSProperties = {
   cursor: 'pointer'
 }
 
-const linkBtn: React.CSSProperties = {
+export const linkBtn: React.CSSProperties = {
   background: 'none',
   border: 'none',
   color: 'var(--text-2)',

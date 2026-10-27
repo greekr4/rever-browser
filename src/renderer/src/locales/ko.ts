@@ -177,6 +177,16 @@ export const ko: Record<TKey, string> = {
   'onboard.status.needs-login': '로그인 필요',
   'onboard.status.auth-failed': '키가 거부됨',
   'onboard.status.failed': '실행 실패',
+  'import.title': '기존 브라우저에서 가져오기',
+  'import.browser': '브라우저',
+  'import.profile': '프로필',
+  'import.run': '가져오기',
+  'import.running': '키체인 승인 대기 중…',
+  'import.done': '쿠키 {n}개를 가져왔습니다',
+  'import.appBound': '{n}개는 복호화할 수 없어 건너뛰었습니다',
+  'import.none': '가져올 수 있는 브라우저가 없습니다.',
+  'import.later': '나중에',
+  'import.close': '완료',
 
   // 주소창 툴바 (App)
   'toolbar.back': '뒤로',

@@ -193,6 +193,16 @@ export const en = {
   'onboard.status.needs-login': 'Sign-in required',
   'onboard.status.auth-failed': 'Key rejected',
   'onboard.status.failed': 'Failed to start',
+  'import.title': 'Import from your browser',
+  'import.browser': 'Browser',
+  'import.profile': 'Profile',
+  'import.run': 'Import',
+  'import.running': 'Waiting for Keychain approval…',
+  'import.done': 'Imported {n} cookies',
+  'import.appBound': '{n} could not be decrypted and were skipped',
+  'import.none': 'No supported browser found.',
+  'import.later': 'Not now',
+  'import.close': 'Done',
 
   // Address-bar toolbar (App)
   'toolbar.back': 'Back',

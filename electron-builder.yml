@@ -22,6 +22,21 @@ mac:
   artifactName: Rever-Browser-${version}-${arch}.${ext}
   identity: null
   darkModeSupport: true
+  # http/https + HTML claims make macOS list Rever under
+  # System Settings → Desktop & Dock → Default web browser.
+  extendInfo:
+    CFBundleURLTypes:
+      - CFBundleURLName: Web site URL
+        CFBundleURLSchemes:
+          - http
+          - https
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: HTML document
+        CFBundleTypeRole: Viewer
+        LSHandlerRank: Alternate
+        LSItemContentTypes:
+          - public.html
+          - public.xhtml
 dmg:
   title: ${productName}
 win:

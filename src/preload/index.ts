@@ -641,6 +641,7 @@ const api = {
       browser: BrowserId
       profile?: string
       hosts?: string[]
+      shared?: boolean
     }): Promise<{
       ok: boolean
       imported: number
@@ -673,12 +674,15 @@ const api = {
         | 'focus-address'
         | 'find'
         | 'open-tab'
+        | 'import-browser'
       index?: number
       url?: string
     }) => void
   ): (() => void) => {
     const listener = (_e: unknown, opts: Parameters<typeof handler>[0]) => handler(opts)
     ipcRenderer.on('browser-command', listener)
+    // Flushes URLs the OS opened us with before this listener existed.
+    ipcRenderer.send('browser-command:ready')
     return () => {
       ipcRenderer.removeListener('browser-command', listener)
     }

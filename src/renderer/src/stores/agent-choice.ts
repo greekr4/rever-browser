@@ -31,6 +31,8 @@ export function hasOnboarded(): boolean {
 }
 
 interface AgentChoiceState {
+  /** Mirrors hasOnboarded(); flips when the onboarding modal closes. */
+  onboarded: boolean
   /** Set only when the user picks during this session (null = untouched). */
   choice: Stored | null
   pick: (id: ACPAgentID, path: string | null) => void
@@ -38,12 +40,14 @@ interface AgentChoiceState {
 }
 
 export const useAgentChoice = create<AgentChoiceState>((set) => ({
+  onboarded: hasOnboarded(),
   choice: null,
   pick: (id, path) => {
     localStorage.setItem(KEY, JSON.stringify({ id, path }))
-    set({ choice: { id, path } })
+    set({ choice: { id, path }, onboarded: true })
   },
   skip: () => {
     localStorage.setItem(KEY, 'skipped')
+    set({ onboarded: true })
   }
 }))
