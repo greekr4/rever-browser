@@ -16,7 +16,7 @@ import {
 import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { getActivePartition } from './tab-partition'
+import { getActivePartition, SHARED_PARTITION } from './tab-partition'
 
 // Import session cookies from a real desktop browser into the active tab's
 // partition. Re-using a logged-in session is the single biggest lever for WAF /
@@ -72,6 +72,9 @@ export interface ImportOptions {
   // Substring filters on the cookie host (e.g. ['yes24.com', 'google']). When
   // omitted, every cookie is imported.
   hosts?: string[]
+  // Target the normal browsing session instead of the visible tab's (which may
+  // be an isolated proxy jar). The one-click import uses this.
+  shared?: boolean
 }
 
 export interface ImportResult {
@@ -443,7 +446,7 @@ export async function importBrowserCookies(opts: ImportOptions): Promise<ImportR
     ? all.filter((c) => hostFilters.some((f) => c.host.toLowerCase().includes(f)))
     : all
 
-  const sess = session.fromPartition(getActivePartition())
+  const sess = session.fromPartition(opts.shared ? SHARED_PARTITION : getActivePartition())
   const nowSec = Date.now() / 1000
   let imported = 0
   let skipped = 0

@@ -15,6 +15,7 @@ import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { CopyToast } from '@/components/CopyToast'
 import { PageEventToast } from '@/components/PageEventToast'
 import { OnboardingModal } from '@/components/OnboardingModal'
+import { BrowserImportModal, useBrowserImport } from '@/components/BrowserImportModal'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { TerminalPanel } from '@/components/chat/TerminalPanel'
 import { requestPermissionFromUser } from '@/ai/acp-permission'
@@ -282,6 +283,9 @@ function App() {
         case 'open-tab':
           if (url) addTab(url)
           break
+        case 'import-browser':
+          useBrowserImport.setState({ open: true })
+          break
       }
     })
   }, [])
@@ -352,6 +356,7 @@ function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <OnboardingModal />
+      <BrowserImportModal />
       <PermissionPrompt />
       <CopyToast />
       <PageEventToast />

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, net, session, shell, type MenuItemConstructorOptions } from 'electron'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { startMcpServer } from './mcp/server'
 import { refForBackendNodeId } from './mcp/snapshot'
@@ -136,6 +136,28 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 
 let mainWindow: BrowserWindow | null = null
+
+// Links and .html files the OS hands us as the default browser. A cold launch
+// fires these before the renderer subscribes to 'browser-command', so they
+// queue until preload signals 'browser-command:ready' (null = renderer live).
+let pendingOpenUrls: string[] | null = []
+function openFromOs(url: string): void {
+  if (pendingOpenUrls) pendingOpenUrls.push(url)
+  else sendBrowserCommand('open-tab', { url })
+}
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  openFromOs(url)
+})
+app.on('open-file', (event, filePath) => {
+  event.preventDefault()
+  openFromOs(pathToFileURL(filePath).href)
+})
+ipcMain.on('browser-command:ready', () => {
+  const urls = pendingOpenUrls ?? []
+  pendingOpenUrls = null
+  for (const url of urls) sendBrowserCommand('open-tab', { url })
+})
 
 // Window Controls Overlay colors per theme (Windows/Linux). Kept in sync with
 // the renderer's app theme via the 'theme:set-titlebar' IPC handler.
@@ -692,7 +714,35 @@ function installMenu() {
     }
   }
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? ([{ role: 'appMenu' }] as MenuItemConstructorOptions[]) : []),
+    ...(isMac
+      ? ([
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' },
+              { type: 'separator' },
+              { label: 'Import from Browser…', click: () => sendBrowserCommand('import-browser') },
+              {
+                label: 'Set as Default Browser',
+                // Dev runs register the stock Electron.app, not Rever.
+                enabled: app.isPackaged,
+                click: () => {
+                  app.setAsDefaultProtocolClient('http')
+                  app.setAsDefaultProtocolClient('https')
+                }
+              },
+              { type: 'separator' },
+              { role: 'services' },
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' }
+            ]
+          }
+        ] as MenuItemConstructorOptions[])
+      : []),
     {
       label: 'File',
       submenu: [
