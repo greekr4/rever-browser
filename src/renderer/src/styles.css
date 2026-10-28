@@ -256,7 +256,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 .bookmark-chip-x:hover { background: var(--border-2); color: var(--text); }
 
 /* Markdown */
-.md { line-height: 1.55; word-break: break-word; }
+/* keep-all stops Korean lines breaking mid-word; overflow-wrap still breaks
+   long unspaced tokens (hashes, URLs, code) so they don't overflow the panel. */
+.md { line-height: 1.55; word-break: keep-all; overflow-wrap: anywhere; }
 .md--dim { opacity: 0.6; font-style: italic; }
 
 .md p { margin: 0 0 0.6em; }
