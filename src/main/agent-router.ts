@@ -50,6 +50,8 @@ import type {
   SessionNotification
 } from '@agentclientprotocol/sdk'
 
+import { logPrompt, logStop, logUpdate } from './session-log'
+
 // spawn/prompt/cancel/kill/model-state/set-model 을 provider별로 라우팅한다.
 // agentDef.id 'anthropic'/'openai'/'grok' 이면 각 API 직접 연동, 그 외에는 기존 ACP.
 // 이후 호출은 sessionId 프리픽스('anthropic:'/'openai:'/'grok:')로 구분한다.
@@ -71,11 +73,22 @@ export async function promptSession(
   onUpdate: (n: SessionNotification) => void,
   requestPermission?: (req: RequestPermissionRequest) => Promise<RequestPermissionResponse>
 ): Promise<{ stopReason: string }> {
-  if (isAnthropicSession(sessionId)) return promptAnthropicSession(sessionId, text, onUpdate)
-  if (isOpenAiSession(sessionId)) return promptOpenAiSession(sessionId, text, onUpdate)
-  if (isGrokSession(sessionId)) return promptGrokSession(sessionId, text, onUpdate)
-  if (isGlmSession(sessionId)) return promptGlmSession(sessionId, text, onUpdate)
-  return promptAcpSession(sessionId, text, onUpdate, requestPermission)
+  // Single chokepoint for every provider — tap it to persist a masked transcript.
+  logPrompt(sessionId, text)
+  const tapped = (n: SessionNotification): void => {
+    logUpdate(sessionId, n)
+    onUpdate(n)
+  }
+  const route = (): Promise<{ stopReason: string }> => {
+    if (isAnthropicSession(sessionId)) return promptAnthropicSession(sessionId, text, tapped)
+    if (isOpenAiSession(sessionId)) return promptOpenAiSession(sessionId, text, tapped)
+    if (isGrokSession(sessionId)) return promptGrokSession(sessionId, text, tapped)
+    if (isGlmSession(sessionId)) return promptGlmSession(sessionId, text, tapped)
+    return promptAcpSession(sessionId, text, tapped, requestPermission)
+  }
+  const res = await route()
+  logStop(sessionId, res.stopReason)
+  return res
 }
 
 export async function cancelSession(sessionId: string): Promise<void> {
