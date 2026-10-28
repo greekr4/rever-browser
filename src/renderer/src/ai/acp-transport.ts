@@ -3,7 +3,7 @@ import { toolProfileTurnLine, type ToolProfileId } from '../../../shared/tool-pr
 import { cancelPendingPermissions, hasPendingPermission } from './acp-permission'
 
 import { endsBackgroundTurn, startsBackgroundTurn } from './acp-background'
-import { mapUpdate } from './acp-map-update'
+import { endOpenReasoning, mapUpdate, newTurnState } from './acp-map-update'
 import { formatConnectionError } from './format-error'
 import { detectSafeguardNotice } from './provider-notice'
 import { t } from '@/stores/i18n'
@@ -93,7 +93,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     return new ReadableStream<UIMessageChunk>({
       start: (controller) => {
         const textId = `text-${Date.now()}`
-        let textStarted = false
+        const turnState = newTurnState()
         let closed = false
         let anyContent = false
         let userStopped = false
@@ -138,7 +138,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           closed = true
           clearWatchdog()
           if (errorText) controller.enqueue({ type: 'error', errorText })
-          if (textStarted) controller.enqueue({ type: 'text-end', id: textId })
+          for (const c of endOpenReasoning(textId, turnState)) controller.enqueue(c)
+          if (turnState.textStarted) controller.enqueue({ type: 'text-end', id: textId })
           // A provider safety event: render a distinct banner (a `data-notice`
           // part) instead of letting it blend into the answer or show the
           // misleading "agent returned no response" empty-turn note.
@@ -209,10 +210,9 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
             ) {
               agentText += update.content.text
             }
-            const result = mapUpdate(update, textId, textStarted, { seenToolCallIds })
-            if (result.chunks.length > 0) anyContent = true
-            for (const chunk of result.chunks) controller.enqueue(chunk)
-            textStarted = result.textStarted
+            const result = mapUpdate(update, textId, turnState, { seenToolCallIds })
+            if (result.length > 0) anyContent = true
+            for (const chunk of result) controller.enqueue(chunk)
           })
           .then((res) => {
             // 프롬프트가 성공적으로 완료된 후에 sentContext를 true로 설정
@@ -280,7 +280,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     return new ReadableStream<UIMessageChunk>({
       start: (controller) => {
         const textId = `text-${Date.now()}-bg`
-        let textStarted = false
+        const turnState = newTurnState()
         let closed = false
         // Only this turn's tool calls: a late status refresh of an earlier
         // turn's call has no part in the message being continued.
@@ -299,7 +299,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           closed = true
           if (quietTimer) clearTimeout(quietTimer)
           if (self.bgSink === push) self.bgSink = null
-          if (textStarted) controller.enqueue({ type: 'text-end', id: textId })
+          for (const c of endOpenReasoning(textId, turnState)) controller.enqueue(c)
+          if (turnState.textStarted) controller.enqueue({ type: 'text-end', id: textId })
           controller.enqueue({ type: 'finish-step' })
           controller.enqueue({ type: 'finish', finishReason: 'stop' })
           controller.close()
@@ -318,9 +319,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
             return
           }
           if (update.sessionUpdate === 'tool_call_update' && !seenToolCallIds.has(update.toolCallId)) return
-          const result = mapUpdate(update, textId, textStarted, { seenToolCallIds })
-          for (const chunk of result.chunks) controller.enqueue(chunk)
-          textStarted = result.textStarted
+          const result = mapUpdate(update, textId, turnState, { seenToolCallIds })
+          for (const chunk of result) controller.enqueue(chunk)
         }
 
         controller.enqueue({ type: 'start' })

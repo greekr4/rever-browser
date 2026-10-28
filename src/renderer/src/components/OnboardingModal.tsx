@@ -21,10 +21,10 @@ const STATUS_COLOR: Record<AgentHealthStatus, string> = {
   failed: 'var(--status-error)'
 }
 
-type KeyProvider = 'anthropic' | 'openai' | 'grok'
+type KeyProvider = 'anthropic' | 'openai' | 'grok' | 'glm'
 
 function isKeyProvider(def: ACPAgentDef): def is ACPAgentDef & { provider: KeyProvider } {
-  return def.provider === 'anthropic' || def.provider === 'openai' || def.provider === 'grok'
+  return def.provider === 'anthropic' || def.provider === 'openai' || def.provider === 'grok' || def.provider === 'glm'
 }
 
 export function OnboardingModal() {

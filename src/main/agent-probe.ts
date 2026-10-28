@@ -14,6 +14,7 @@ import { agentEnv } from './acp-session'
 import { detectAgents } from './acp-detect'
 import { detectAgentLogins, type LoginAgentId, type LoginInfo } from './agent-login'
 import { GROK_PLAN, resolveGrokCredential } from './grok-login'
+import { GLM_BASE_URL } from './providers/glm-provider'
 import { XAI_BASE_URL } from './providers/grok-models'
 import { getApiKey } from './settings'
 
@@ -32,7 +33,7 @@ export type AgentStatus =
 
 export interface AgentProbeDef {
   id: string
-  provider?: 'acp' | 'anthropic' | 'openai' | 'grok'
+  provider?: 'acp' | 'anthropic' | 'openai' | 'grok' | 'glm'
   command: string
   fallbackBins?: string[]
 }
@@ -195,6 +196,19 @@ async function probeGrok(): Promise<AgentHealth> {
   }
 }
 
+async function probeGlm(): Promise<AgentHealth> {
+  const base = { id: 'glm', resolvedPath: null, auto: false, plan: null }
+  const apiKey = getApiKey('glm')
+  if (!apiKey) return { ...base, status: 'needs-key', detail: null }
+  try {
+    await new OpenAI({ apiKey, baseURL: GLM_BASE_URL, timeout: API_TIMEOUT_MS }).models.list()
+    return { ...base, status: 'ready', detail: null, plan: 'api-key' }
+  } catch (e) {
+    if (isAuthError(e)) return { ...base, status: 'auth-failed', detail: 'Key rejected' }
+    return { ...base, status: 'failed', detail: message(e) }
+  }
+}
+
 async function probeAcp(
   def: AgentProbeDef,
   resolvedPath: string | null,
@@ -228,6 +242,7 @@ export async function probeAgents(defs: AgentProbeDef[]): Promise<AgentHealth[]>
       if (def.provider === 'anthropic') return probeAnthropic()
       if (def.provider === 'openai') return probeOpenAi()
       if (def.provider === 'grok') return probeGrok()
+      if (def.provider === 'glm') return probeGlm()
       const login = logins[def.id as LoginAgentId] ?? noLogin
       return probeAcp(def, paths.get(def.command) ?? null, login)
     })

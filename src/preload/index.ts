@@ -503,11 +503,11 @@ const api = {
     }
   },
   settings: {
-    getApiKey: (provider: 'anthropic' | 'openai' | 'grok'): Promise<string | null> =>
+    getApiKey: (provider: 'anthropic' | 'openai' | 'grok' | 'glm'): Promise<string | null> =>
       ipcRenderer.invoke('settings:get-api-key', provider),
-    hasApiKey: (provider: 'anthropic' | 'openai' | 'grok'): Promise<boolean> =>
+    hasApiKey: (provider: 'anthropic' | 'openai' | 'grok' | 'glm'): Promise<boolean> =>
       ipcRenderer.invoke('settings:has-api-key', provider),
-    setApiKey: (provider: 'anthropic' | 'openai' | 'grok', key: string): Promise<boolean> =>
+    setApiKey: (provider: 'anthropic' | 'openai' | 'grok' | 'glm', key: string): Promise<boolean> =>
       ipcRenderer.invoke('settings:set-api-key', provider, key)
   },
   viewport: {

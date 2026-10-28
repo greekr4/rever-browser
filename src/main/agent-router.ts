@@ -34,6 +34,15 @@ import {
   setOpenAiModel,
   spawnOpenAiSession
 } from './providers/openai-provider'
+import {
+  cancelGlmSession,
+  getGlmModelState,
+  isGlmSession,
+  killGlmSession,
+  promptGlmSession,
+  setGlmModel,
+  spawnGlmSession
+} from './providers/glm-provider'
 
 import type {
   RequestPermissionRequest,
@@ -52,6 +61,7 @@ export async function spawnSession(
   if (agentDef.id === 'anthropic') return spawnAnthropicSession()
   if (agentDef.id === 'openai') return spawnOpenAiSession()
   if (agentDef.id === 'grok') return spawnGrokSession()
+  if (agentDef.id === 'glm') return spawnGlmSession()
   return spawnAcpSession(agentDef, cwd)
 }
 
@@ -64,6 +74,7 @@ export async function promptSession(
   if (isAnthropicSession(sessionId)) return promptAnthropicSession(sessionId, text, onUpdate)
   if (isOpenAiSession(sessionId)) return promptOpenAiSession(sessionId, text, onUpdate)
   if (isGrokSession(sessionId)) return promptGrokSession(sessionId, text, onUpdate)
+  if (isGlmSession(sessionId)) return promptGlmSession(sessionId, text, onUpdate)
   return promptAcpSession(sessionId, text, onUpdate, requestPermission)
 }
 
@@ -71,6 +82,7 @@ export async function cancelSession(sessionId: string): Promise<void> {
   if (isAnthropicSession(sessionId)) return cancelAnthropicSession(sessionId)
   if (isOpenAiSession(sessionId)) return cancelOpenAiSession(sessionId)
   if (isGrokSession(sessionId)) return cancelGrokSession(sessionId)
+  if (isGlmSession(sessionId)) return cancelGlmSession(sessionId)
   return cancelAcpSession(sessionId)
 }
 
@@ -78,6 +90,7 @@ export async function killSession(sessionId: string): Promise<void> {
   if (isAnthropicSession(sessionId)) return killAnthropicSession(sessionId)
   if (isOpenAiSession(sessionId)) return killOpenAiSession(sessionId)
   if (isGrokSession(sessionId)) return killGrokSession(sessionId)
+  if (isGlmSession(sessionId)) return killGlmSession(sessionId)
   return killAcpSession(sessionId)
 }
 
@@ -87,6 +100,7 @@ export function sessionModelState(
   if (isAnthropicSession(sessionId)) return getAnthropicModelState(sessionId)
   if (isOpenAiSession(sessionId)) return getOpenAiModelState(sessionId)
   if (isGrokSession(sessionId)) return getGrokModelState(sessionId)
+  if (isGlmSession(sessionId)) return getGlmModelState(sessionId)
   return getSessionModelState(sessionId)
 }
 
@@ -94,6 +108,7 @@ export async function setSessionModelRouted(sessionId: string, modelId: string):
   if (isAnthropicSession(sessionId)) return setAnthropicModel(sessionId, modelId)
   if (isOpenAiSession(sessionId)) return setOpenAiModel(sessionId, modelId)
   if (isGrokSession(sessionId)) return setGrokModel(sessionId, modelId)
+  if (isGlmSession(sessionId)) return setGlmModel(sessionId, modelId)
   return setSessionModel(sessionId, modelId)
 }
 

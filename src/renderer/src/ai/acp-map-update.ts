@@ -3,30 +3,51 @@ import type { UIMessageChunk } from 'ai'
 
 import { detectSafeguardNotice } from './provider-notice'
 
-export interface MapResult {
-  chunks: UIMessageChunk[]
+export interface TurnState {
   textStarted: boolean
+  /** A reasoning run is open between a start and its close. */
+  reasoningStarted: boolean
+  /** How many reasoning runs opened so far this turn; ids must be unique. */
+  reasoningRuns: number
 }
 
 interface MapUpdateOptions {
   seenToolCallIds?: Set<string>
 }
 
+/**
+ * Streamed turn state threaded through mapUpdate (mutated in place) so
+ * consecutive deltas extend open parts instead of each opening its own.
+ */
+export function newTurnState(): TurnState {
+  return { textStarted: false, reasoningStarted: false, reasoningRuns: 0 }
+}
+
 export function mapUpdate(
   update: SessionUpdate,
   textId: string,
-  textStarted: boolean,
+  state: TurnState,
   options: MapUpdateOptions = {}
-): MapResult {
+): UIMessageChunk[] {
   const chunks: UIMessageChunk[] = []
   const seenToolCallIds = options.seenToolCallIds
 
+  // GLM/Grok stream reasoning token-by-token: a part per delta would explode
+  // into dozens of "thoughts" blocks. One part per run of consecutive deltas.
+  const runId = () => `reasoning-${textId}-${state.reasoningRuns}`
+  const closeReasoning = () => {
+    if (!state.reasoningStarted) return
+    state.reasoningStarted = false
+    chunks.push({ type: 'reasoning-end', id: runId() })
+  }
+
   switch (update.sessionUpdate) {
     case 'agent_message_chunk': {
+      closeReasoning()
       if (update.content.type === 'text' && update.content.text) {
-        if (!textStarted) {
+        if (!state.textStarted) {
           chunks.push({ type: 'text-start', id: textId })
-          textStarted = true
+          state.textStarted = true
         }
         // The SDK streams its safeguard / model-fallback notice glued to the
         // adjacent answer (no surrounding newlines), so it renders as one run-on
@@ -48,18 +69,21 @@ export function mapUpdate(
     }
     case 'agent_thought_chunk': {
       if (update.content.type === 'text') {
-        const rid = `reasoning-${textId}`
-        chunks.push({ type: 'reasoning-start', id: rid })
+        if (!state.reasoningStarted) {
+          state.reasoningStarted = true
+          state.reasoningRuns += 1
+          chunks.push({ type: 'reasoning-start', id: runId() })
+        }
         chunks.push({
           type: 'reasoning-delta',
-          id: rid,
+          id: runId(),
           delta: update.content.text
         })
-        chunks.push({ type: 'reasoning-end', id: rid })
       }
       break
     }
     case 'tool_call': {
+      closeReasoning()
       if (!update.title) {
         console.warn('[ACP] Tool call without title:', update.toolCallId)
       }
@@ -85,6 +109,7 @@ export function mapUpdate(
       break
     }
     case 'tool_call_update': {
+      closeReasoning()
       const toolName = update.title || 'unknown'
       const seen = seenToolCallIds?.has(update.toolCallId) ?? false
       if (!seen) {
@@ -135,11 +160,20 @@ export function mapUpdate(
       break
     }
     default:
-      // rever_pulse and any other activity notice: keep the turn alive, show nothing.
+      // rever_pulse and any other activity notice: keep the turn alive, show
+      // nothing. Deliberately does NOT close an open reasoning part — pulses
+      // interleave with thought deltas on quiet turns.
       break
   }
 
-  return { chunks, textStarted }
+  return chunks
+}
+
+/** Close the turn's open reasoning part, if any (call at turn end). */
+export function endOpenReasoning(textId: string, state: TurnState): UIMessageChunk[] {
+  if (!state.reasoningStarted) return []
+  state.reasoningStarted = false
+  return [{ type: 'reasoning-end', id: `reasoning-${textId}-${state.reasoningRuns}` }]
 }
 
 export function textFromContent(

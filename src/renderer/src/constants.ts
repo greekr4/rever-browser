@@ -1,4 +1,4 @@
-export type ACPAgentID = 'claude-code' | 'codex' | 'anthropic' | 'openai' | 'grok'
+export type ACPAgentID = 'claude-code' | 'codex' | 'anthropic' | 'openai' | 'grok' | 'glm'
 
 export interface ACPAgentDef {
   id: ACPAgentID
@@ -13,10 +13,10 @@ export interface ACPAgentDef {
   acpSupported: boolean
   /**
    * How the agent loop runs. 'acp' spawns an external ACP binary; 'anthropic',
-   * 'openai', and 'grok' call their APIs directly in-process and are gated on
-   * an API key instead of a PATH binary.
+   * 'openai', 'grok', and 'glm' call their APIs directly in-process and are
+   * gated on an API key instead of a PATH binary.
    */
-  provider?: 'acp' | 'anthropic' | 'openai' | 'grok'
+  provider?: 'acp' | 'anthropic' | 'openai' | 'grok' | 'glm'
   /** Short hint shown in the picker when the binary isn't found. */
   installHint: string
   /** Command that signs the user in, shown when the binary is installed but unauthenticated. */
@@ -56,6 +56,16 @@ export const ACP_AGENTS: ACPAgentDef[] = [
     installHint: 'Add an xAI API key in settings',
     loginHint: 'grok login',
     icon: 'G'
+  },
+  {
+    id: 'glm',
+    name: 'GLM (API)',
+    command: '',
+    args: [],
+    acpSupported: true,
+    provider: 'glm',
+    installHint: 'Add a Z.ai API key in settings',
+    icon: 'Z'
   },
   {
     id: 'claude-code',
@@ -127,5 +137,11 @@ export const MODEL_CATALOG: CatalogModel[] = [
   { agentId: 'grok', modelId: 'grok-4.7', name: 'Grok 4.7' },
   { agentId: 'grok', modelId: 'grok-4.6', name: 'Grok 4.6' },
   { agentId: 'grok', modelId: 'grok-4.5', name: 'Grok 4.5' },
-  { agentId: 'grok', modelId: 'grok-4.3', name: 'Grok 4.3' }
+  { agentId: 'grok', modelId: 'grok-4.3', name: 'Grok 4.3' },
+  // GLM (Z.ai) — exact ids (mirror of GLM_MODELS in the main process).
+  { agentId: 'glm', modelId: 'glm-5.3', name: 'GLM-5.3' },
+  { agentId: 'glm', modelId: 'glm-5.3-flash', name: 'GLM-5.3 Flash' },
+  { agentId: 'glm', modelId: 'glm-5.3-flashx', name: 'GLM-5.3 FlashX' },
+  { agentId: 'glm', modelId: 'glm-5.2', name: 'GLM-5.2' },
+  { agentId: 'glm', modelId: 'glm-4.6', name: 'GLM-4.6' }
 ]

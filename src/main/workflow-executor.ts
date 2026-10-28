@@ -173,11 +173,12 @@ function pickAgentId(requested?: string): string {
   if (hasApiKey('anthropic')) return 'anthropic'
   if (hasApiKey('openai')) return 'openai'
   if (hasApiKey('grok')) return 'grok'
+  if (hasApiKey('glm')) return 'glm'
   return 'claude-code'
 }
 
 function agentDefFor(agentId: string): { id: string; command: string; args: string[] } {
-  if (agentId === 'anthropic' || agentId === 'openai' || agentId === 'grok') {
+  if (agentId === 'anthropic' || agentId === 'openai' || agentId === 'grok' || agentId === 'glm') {
     return { id: agentId, command: '', args: [] }
   }
   if (agentId === 'codex') return { id: 'codex', command: 'codex-acp', args: [] }

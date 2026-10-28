@@ -18,10 +18,10 @@ import { ProviderIcon } from './ProviderIcon'
 // (agent). Providers that need setup show install/sign-in hints or an API-key
 // input inline; only models whose provider is `ready` are selectable.
 
-type KeyProvider = 'anthropic' | 'openai' | 'grok'
+type KeyProvider = 'anthropic' | 'openai' | 'grok' | 'glm'
 
 function isKeyProvider(def: ACPAgentDef): def is ACPAgentDef & { provider: KeyProvider } {
-  return def.provider === 'anthropic' || def.provider === 'openai' || def.provider === 'grok'
+  return def.provider === 'anthropic' || def.provider === 'openai' || def.provider === 'grok' || def.provider === 'glm'
 }
 
 const API_SENTINEL = 'api'
