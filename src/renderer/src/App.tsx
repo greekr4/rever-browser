@@ -19,6 +19,7 @@ import { BrowserImportModal, useBrowserImport } from '@/components/BrowserImport
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { TerminalPanel } from '@/components/chat/TerminalPanel'
 import { requestPermissionFromUser } from '@/ai/acp-permission'
+import { normalizeAddress } from '@/lib/url'
 import { useCdpEvents } from '@/hooks/use-cdp-events'
 import { useFindInPage } from '@/hooks/use-find-in-page'
 import { useResizable } from '@/hooks/use-resizable'
@@ -334,9 +335,8 @@ function App() {
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
-    let target = urlDraft.trim()
+    const target = normalizeAddress(urlDraft)
     if (!target) return
-    if (!/^(https?|view-source):/i.test(target)) target = 'https://' + target
 
     if (browserMode === 'external') {
       void window.rev.external.navigate(target).catch((err) => {
