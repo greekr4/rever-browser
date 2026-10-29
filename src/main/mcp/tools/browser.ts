@@ -34,6 +34,7 @@ import {
   typeSelector
 } from '../snapshot'
 import { ok, okBudgeted, err, errorMessage } from '../utils'
+import { formatTriggeredRequests, collectTriggeredRequests } from '../triggered-requests'
 
 // One-line preview of an eval result / error for the in-page code HUD.
 function preview(text: string): string {
@@ -47,14 +48,26 @@ function preview(text: string): string {
  * tool response — saves the agent a separate browser_snapshot round-trip
  * and makes the previous snapshot's refs explicitly stale.
  */
+// Requests started within this window before snapshotAfter is entered are
+// still credited to the action — covers a fetch that fires on the same tick
+// the action resolves, just before we read the clock.
+// shortcut: correlates by a time window, not true causal linkage. Recurring
+// background endpoints are filtered out; a one-off unrelated request in the
+// same window still shows. Upgrade to initiator-stack correlation if that bites.
+const ACTION_WINDOW_MS = 500
+
 async function snapshotAfter(actionResult: string): Promise<{
   content: { type: 'text'; text: string }[]
 }> {
+  // Capture before the settle wait so requests the action kicks off *during*
+  // settling are included; the lookback absorbs any that raced just ahead.
+  const since = Date.now() - ACTION_WINDOW_MS
   try {
     await waitForSettle()
     const snap = await takeSnapshot()
+    const triggered = formatTriggeredRequests(collectTriggeredRequests(since, getActiveTarget()?.wc.id), since)
     return ok(
-      `${actionResult}\n\n--- snapshot (refs from previous snapshot are now stale) ---\nurl: ${snap.url}\ntitle: ${snap.title}\n\n${snap.tree}${filterNote(snap.stats)}`
+      `${actionResult}\n\n--- snapshot (refs from previous snapshot are now stale) ---\nurl: ${snap.url}\ntitle: ${snap.title}\n\n${snap.tree}${filterNote(snap.stats)}${triggered}`
     )
   } catch (e) {
     return ok(`${actionResult}\n\n[auto-snapshot failed: ${errorMessage(e)}]`)
