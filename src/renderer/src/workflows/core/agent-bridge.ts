@@ -4,6 +4,8 @@ import { attachExtract, parseExtract, type CliData } from '../../../../shared/cl
 import { resolveSteps, type MacroData, type MacroStep } from '../macro/MacroEditor'
 
 import { useWorkflowsStore } from './store'
+import { useTabsStore } from '@/stores/tabs'
+import { useScanStore, type ScanIntensity } from '@/stores/scan'
 import { newWorkflowId, type Workflow } from './types'
 
 /** Step shape the agent sends/receives: tool + parsed JSON input. */
@@ -118,6 +120,26 @@ export async function handleAgentRequest(op: string, payload: unknown): Promise<
   const store = useWorkflowsStore.getState()
 
   switch (op) {
+    case 'tab:open':
+      // Scan opens same-site pages in background tabs; don't steal focus.
+      useTabsStore.getState().addTab(String(p.url), { activate: false })
+      return { ok: true }
+
+    case 'scan:launch': {
+      // redteam_start: arm the popup and stop at confirm — the deterministic
+      // pipeline (and any active probing) only runs on the user's click.
+      const intensity = ['readonly', 'probe', 'redteam'].includes(String(p.intensity))
+        ? (p.intensity as ScanIntensity)
+        : 'readonly'
+      const scan = useScanStore.getState()
+      scan.setTarget(String(p.url))
+      if (typeof p.pages === 'number') scan.setPages(p.pages)
+      scan.setIntensity(intensity)
+      scan.open()
+      scan.askConfirm()
+      return { ok: true, phase: 'confirm' }
+    }
+
     case 'macro:list':
       return macros().map(summary)
 

@@ -1,4 +1,5 @@
 import { webContents, app, type WebContents, type Debugger } from 'electron'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -18,16 +19,29 @@ import {
 import { STEALTH_INIT_SCRIPT, SPOOFED_CHROME_VERSION, SPOOFED_CHROME_MAJOR } from './stealth-init'
 import { charsetFromContentType, encodeRefetchedBody } from './mcp/wasm-analysis'
 import { compileRules, findMatchingRule, type CompiledRule } from './intercept-match'
+import { askRenderer } from './renderer-bridge'
 import { clearScriptsFor, recordScript } from './script-registry'
 import { emitPageEvent } from './ai-events'
 
-interface AttachedTarget {
+export interface AttachedTarget {
   dbg: Debugger
   wc: WebContents
 }
 
 const attached = new Map<number, AttachedTarget>()
 let activeWebContentsId: number | null = null
+
+// Tab-addressed tool calls (browser_navigate/snapshot/evaluate with `tab`) run
+// inside this context so every getActiveTarget() downstream — snapshot, human
+// input, eval, settle waits — addresses THEIR tab instead of the shared active
+// one. Concurrent per-tab agents therefore cannot cross-fire into each other's
+// page; the async context propagates through awaits per tool invocation.
+const targetContext = new AsyncLocalStorage<AttachedTarget>()
+
+/** Run `fn` with `target` as the effective active target for this call chain. */
+export async function runInTarget<T>(target: AttachedTarget, fn: () => Promise<T>): Promise<T> {
+  return targetContext.run(target, fn)
+}
 
 // In-flight network request count per webContentsId. Used by waitForSettle so
 // auto-snapshot doesn't fire while the page is still loading.
@@ -77,12 +91,44 @@ export async function waitForSettle(
 }
 
 export function getActiveTarget(): AttachedTarget | null {
+  // A tab-addressed call chain overrides the shared selection; the has() guard
+  // drops a context whose tab was closed mid-call.
+  const ctx = targetContext.getStore()
+  if (ctx && attached.has(ctx.wc.id)) return ctx
   if (activeWebContentsId != null) {
     const t = attached.get(activeWebContentsId)
     if (t) return t
   }
   const first = attached.values().next().value as AttachedTarget | undefined
   return first ?? null
+}
+
+/** webContents ids of every attached tab. */
+export function getAttachedIds(): number[] {
+  return [...attached.keys()]
+}
+
+/**
+ * Open a background tab (not selected) and wait for its CDP to attach, so the
+ * caller gets a usable tab. Returns the new webContents id. Lets one agent
+ * load several same-site pages in parallel — capture is already per-tab.
+ */
+export async function openBackgroundTab(url: string): Promise<number> {
+  // Attaching a tab makes it the active target (see attachCdpCapture); remember
+  // the current active tab so the new one stays truly in the background.
+  const prevActive = getActiveTarget()
+  const prevId = prevActive ? ([...attached.entries()].find(([, v]) => v === prevActive)?.[0] ?? null) : null
+  const before = new Set(getAttachedIds())
+  await askRenderer('tab:open', { url })
+  for (let i = 0; i < 100; i++) {
+    const fresh = getAttachedIds().find((id) => !before.has(id))
+    if (fresh != null) {
+      if (prevId != null) activeWebContentsId = prevId
+      return fresh
+    }
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  throw new Error('background tab did not attach within 10s')
 }
 
 /** Every attached tab, for the tab-listing tool. */
@@ -94,6 +140,17 @@ export function listTargets(): Array<{ id: number; url: string; title: string; a
     title: t.wc.getTitle(),
     active: id === activeId
   }))
+}
+
+/** The attached target at a browser_tabs index (same order as listTargets). */
+export function getTargetByIndex(index: number): AttachedTarget | null {
+  const entry = [...attached.values()][index]
+  return entry ?? null
+}
+
+/** The attached target for a webContents id — how tab-addressed refs route back to their tab. */
+export function getTargetById(id: number): AttachedTarget | null {
+  return attached.get(id) ?? null
 }
 
 export function setActiveTarget(id: number): boolean {

@@ -34,6 +34,9 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   scope_clear: 'core',
   finding_add: 'core',
   finding_list: 'core',
+  // The deterministic site-sweep escape hatch — must be visible in every
+  // profile so an agent never hand-orchestrates per-tab sub-agents instead.
+  redteam_start: 'core',
   // Pages pop dialogs and downloads in any profile; the agent must be able to steer them.
   browser_handle_dialog: 'core',
   dialog_history: 'core',

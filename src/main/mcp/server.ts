@@ -35,6 +35,7 @@ import { registerPayloadProbeTools } from './tools/payload_probe'
 import { registerCrlfTools } from './tools/crlf'
 import { registerPathProbeTools } from './tools/path_probe'
 import { registerFindingTools } from './tools/findings'
+import { registerScanTools } from './tools/scan'
 import { registerSecurityInspectTools } from './tools/security_inspect'
 import { registerDomEditTools } from './tools/dom_edit'
 import { registerServiceWorkerTools } from './tools/sw_inspect'
@@ -184,6 +185,7 @@ export function buildMcpServer(opts?: { catalog?: CatalogKind }): McpServer {
   registerCrlfTools(mcp)
   registerPathProbeTools(mcp)
   registerFindingTools(mcp)
+  registerScanTools(mcp)
   registerSecurityInspectTools(mcp)
   registerDomEditTools(mcp)
   registerServiceWorkerTools(mcp)

@@ -1,4 +1,6 @@
 import SYSTEM_PROMPT from '@/ai/system-prompt.md?raw'
+import RECON_PROMPT from '@/ai/recon-prompt.md?raw'
+import { useScanModeStore } from '@/stores/scan-mode'
 import { toolProfileTurnLine, type ToolProfileId } from '../../../shared/tool-profile-line'
 import { cancelPendingPermissions, hasPendingPermission } from './acp-permission'
 
@@ -82,7 +84,13 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     }
 
     const alreadySentContext = this.sentContext
-    const body = alreadySentContext ? text : `${this.systemPrompt}\n\n${text}`
+    // The Scan bar arms a one-shot latch; consume it only on the first turn
+    // (the only one that carries context) to prepend the recon persona once.
+    const persona =
+      !alreadySentContext && useScanModeStore.getState().consume()
+        ? `${this.systemPrompt}\n\n${RECON_PROMPT}`
+        : this.systemPrompt
+    const body = alreadySentContext ? text : `${persona}\n\n${text}`
     // Every turn, including the first. The profile can change between messages.
     const promptText = `${body}\n${toolProfileTurnLine(await currentToolProfile())}`
     // self 참조: ReadableStream start 콜백은 arrow function이 아니므로 this를 미리 캡처

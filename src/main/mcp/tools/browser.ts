@@ -8,7 +8,10 @@ import { scopeBlockForUrl } from '../scope'
 import {
   armDialogAnswer,
   getActiveTarget,
+  getTargetByIndex,
   listTargets,
+  openBackgroundTab,
+  runInTarget,
   setActiveTarget,
   waitForSettle
 } from '../../chrome-cdp'
@@ -40,6 +43,24 @@ import { formatTriggeredRequests, collectTriggeredRequests } from '../triggered-
 function preview(text: string): string {
   const flat = text.replace(/\s+/g, ' ').trim()
   return flat.length > 120 ? flat.slice(0, 120) + '…' : flat
+}
+
+/**
+ * Resolve the optional `tab` index (as seen in browser_tabs) into the target a
+ * tool call should drive, and wrap the body so every downstream
+ * getActiveTarget() — snapshot refs, human input, settle waits — addresses
+ * that tab instead of the shared active one. Parallel agents each driving
+ * their own tab cannot cross-fire. Without `tab`, the call runs against the
+ * shared active tab exactly as before.
+ */
+async function runOnTab<T>(tab: number | undefined, fn: (target: NonNullable<ReturnType<typeof getActiveTarget>>) => Promise<T>) {
+  const target = tab != null ? getTargetByIndex(tab) : getActiveTarget()
+  if (!target) {
+    throw new Error(
+      tab != null ? `no tab at index ${tab} — call browser_tabs first` : 'no active browser target — open a page first'
+    )
+  }
+  return runInTarget(target, () => fn(target))
 }
 
 /**
@@ -140,26 +161,27 @@ export function registerBrowserTools(mcp: McpServer) {
     'browser_navigate',
     {
       description:
-        'Navigate the active browser tab to the given URL. Waits for the load and returns a fresh accessibility snapshot — no separate browser_snapshot needed.',
+        'Navigate the active browser tab to the given URL. Waits for the load and returns a fresh accessibility snapshot — no separate browser_snapshot needed. Pass `tab` to drive a specific background tab (index from browser_tabs) without selecting it.',
       inputSchema: {
-        url: z.string().describe('Absolute URL (must include scheme, e.g. https://...)')
+        url: z.string().describe('Absolute URL (must include scheme, e.g. https://...)'),
+        tab: z.number().int().optional().describe('Tab index from browser_tabs (default: the selected tab)')
       }
     },
-    async ({ url }) => {
+    async ({ url, tab }) => {
       const scopeBlock = scopeBlockForUrl(url)
       if (scopeBlock) return err(scopeBlock)
-      const target = getActiveTarget()
-      if (!target) return err('no active browser target — open a page first')
       try {
-        emitAiAction({ kind: 'navigate', label: `AI navigate`, detail: url })
-        // Sweep as soon as the new document is parsed, not after loadURL
-        // resolves — loadURL waits for the full load (images, subframes), so
-        // sweeping then reads as a beat too late. The overlay script is
-        // injected at document-start, so __reverAi already exists here. It has
-        // to be the NEW document: the old one's overlay dies on navigation.
-        target.wc.once('dom-ready', () => visualize('navSweep'))
-        await target.wc.loadURL(url)
-        return await snapshotAfter(`navigated to ${url}`)
+        return await runOnTab(tab, async (target) => {
+          emitAiAction({ kind: 'navigate', label: `AI navigate`, detail: url })
+          // Sweep as soon as the new document is parsed, not after loadURL
+          // resolves — loadURL waits for the full load (images, subframes), so
+          // sweeping then reads as a beat too late. The overlay script is
+          // injected at document-start, so __reverAi already exists here. It has
+          // to be the NEW document: the old one's overlay dies on navigation.
+          target.wc.once('dom-ready', () => visualize('navSweep'))
+          await target.wc.loadURL(url)
+          return await snapshotAfter(`navigated to ${url}`)
+        })
       } catch (e) {
         return err(errorMessage(e))
       }
@@ -170,22 +192,25 @@ export function registerBrowserTools(mcp: McpServer) {
     'browser_snapshot',
     {
       description:
-        'Capture the current page as a compact accessibility-tree snapshot. Returns url, title, and a YAML-like outline where actionable nodes carry [ref=rN] handles. Use these refs in browser_click and browser_type. This is the primary way to "see" the page — far cheaper than dumping HTML or screenshots. By default only what is painted inside the viewport is returned; hidden, overlay-covered and off-screen nodes are omitted and summarised as scroll hints. Scroll (browser_scroll) to reach them, or pass full=true when you genuinely need the whole document.',
+        'Capture the current page as a compact accessibility-tree snapshot. Returns url, title, and a YAML-like outline where actionable nodes carry [ref=rN] handles. Use these refs in browser_click and browser_type. This is the primary way to "see" the page — far cheaper than dumping HTML or screenshots. By default only what is painted inside the viewport is returned; hidden, overlay-covered and off-screen nodes are omitted and summarised as scroll hints. Scroll (browser_scroll) to reach them, or pass full=true when you genuinely need the whole document. Pass `tab` to snapshot a specific tab (index from browser_tabs) — refs are per-tab, so acting on them (browser_click/browser_type) needs the same `tab`.',
       inputSchema: {
         full: z
           .boolean()
           .optional()
           .describe(
             'Return the entire document instead of the viewport-filtered tree (much larger; default false)'
-          )
+          ),
+        tab: z.number().int().optional().describe('Tab index from browser_tabs (default: the selected tab)')
       }
     },
-    async ({ full }) => {
+    async ({ full, tab }) => {
       try {
-        const snap = await takeSnapshot({ full })
-        return okBudgeted(
-          `url: ${snap.url}\ntitle: ${snap.title}\n\n${snap.tree}${filterNote(snap.stats)}`
-        )
+        return await runOnTab(tab, async () => {
+          const snap = await takeSnapshot({ full })
+          return okBudgeted(
+            `url: ${snap.url}\ntitle: ${snap.title}\n\n${snap.tree}${filterNote(snap.stats)}`
+          )
+        })
       } catch (e) {
         return err(errorMessage(e))
       }
@@ -196,15 +221,18 @@ export function registerBrowserTools(mcp: McpServer) {
     'browser_click',
     {
       description:
-        'Click the element identified by ref (from the latest browser_snapshot). Scrolls into view, performs a human-like mouse move, then clicks. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards. Refs from the previous snapshot are now stale.',
+        'Click the element identified by ref (from the latest browser_snapshot). Scrolls into view, performs a human-like mouse move, then clicks. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards. Refs from the previous snapshot are now stale. Pass `tab` (browser_tabs index) when the ref came from a background tab\'s snapshot — refs are per-tab.',
       inputSchema: {
-        ref: z.string().describe('Element ref from browser_snapshot, e.g. "r12"')
+        ref: z.string().describe('Element ref from browser_snapshot, e.g. "r12"'),
+        tab: z.number().int().optional().describe('Tab the ref belongs to (browser_tabs index; default: the selected tab)')
       }
     },
-    async ({ ref }) => {
+    async ({ ref, tab }) => {
       try {
-        await clickRef(ref)
-        return await snapshotAfter(`clicked ${ref}`)
+        return await runOnTab(tab, async () => {
+          await clickRef(ref)
+          return await snapshotAfter(`clicked ${ref}`)
+        })
       } catch (e) {
         return err(errorMessage(e))
       }
@@ -215,15 +243,18 @@ export function registerBrowserTools(mcp: McpServer) {
     'browser_hover',
     {
       description:
-        'Hover over the element identified by ref (from the latest browser_snapshot). Scrolls into view and performs a human-like mouse move WITHOUT clicking — use it to open hover-triggered dropdown menus, tooltips and mega-navs. Returns a fresh snapshot so the hover-revealed content is visible. Refs from the previous snapshot are now stale.',
+        'Hover over the element identified by ref (from the latest browser_snapshot). Scrolls into view and performs a human-like mouse move WITHOUT clicking — use it to open hover-triggered dropdown menus, tooltips and mega-navs. Returns a fresh snapshot so the hover-revealed content is visible. Refs from the previous snapshot are now stale. Pass `tab` (browser_tabs index) when the ref came from a background tab\'s snapshot — refs are per-tab.',
       inputSchema: {
-        ref: z.string().describe('Element ref from browser_snapshot, e.g. "r12"')
+        ref: z.string().describe('Element ref from browser_snapshot, e.g. "r12"'),
+        tab: z.number().int().optional().describe('Tab the ref belongs to (browser_tabs index; default: the selected tab)')
       }
     },
-    async ({ ref }) => {
+    async ({ ref, tab }) => {
       try {
-        await hoverRef(ref)
-        return await snapshotAfter(`hovered ${ref}`)
+        return await runOnTab(tab, async () => {
+          await hoverRef(ref)
+          return await snapshotAfter(`hovered ${ref}`)
+        })
       } catch (e) {
         return err(errorMessage(e))
       }
@@ -234,20 +265,23 @@ export function registerBrowserTools(mcp: McpServer) {
     'browser_type',
     {
       description:
-        'Move the cursor to the input/textarea identified by ref, click to focus, then type the text with realistic per-keystroke timing. Press Enter with submit=true (default false). Returns a fresh snapshot — DO NOT call browser_snapshot afterwards. Refs from the previous snapshot are now stale.',
+        'Move the cursor to the input/textarea identified by ref, click to focus, then type the text with realistic per-keystroke timing. Press Enter with submit=true (default false). Returns a fresh snapshot — DO NOT call browser_snapshot afterwards. Refs from the previous snapshot are now stale. Pass `tab` (browser_tabs index) when the ref came from a background tab\'s snapshot — refs are per-tab.',
       inputSchema: {
         ref: z.string().describe('Element ref from browser_snapshot, e.g. "r7"'),
         text: z.string().describe('Text to put into the field'),
         submit: z
           .boolean()
           .optional()
-          .describe('If true, dispatches an Enter keydown after typing (default false)')
+          .describe('If true, dispatches an Enter keydown after typing (default false)'),
+        tab: z.number().int().optional().describe('Tab the ref belongs to (browser_tabs index; default: the selected tab)')
       }
     },
-    async ({ ref, text, submit }) => {
+    async ({ ref, text, submit, tab }) => {
       try {
-        await typeRef(ref, text, submit ?? false)
-        return await snapshotAfter(`typed into ${ref}${submit ? ' + submit' : ''}`)
+        return await runOnTab(tab, async () => {
+          await typeRef(ref, text, submit ?? false)
+          return await snapshotAfter(`typed into ${ref}${submit ? ' + submit' : ''}`)
+        })
       } catch (e) {
         return err(errorMessage(e))
       }
@@ -326,13 +360,14 @@ export function registerBrowserTools(mcp: McpServer) {
     'browser_tabs',
     {
       description:
-        'List the open browser tabs, or switch to one. A window.open popup becomes a tab, and its content is unreachable until the tools are pointed at it — every other browser tool acts on the selected tab only. Select by index from the list.',
+        'List the open browser tabs, switch to one, or open a new background tab. A window.open popup becomes a tab, and its content is unreachable until the tools are pointed at it — every other browser tool acts on the selected tab only. Select by index from the list. open loads a URL in a new tab WITHOUT switching to it, so several same-site pages can load in parallel; read each with list_endpoints({tab}) / list_requests({tab}).',
       inputSchema: {
-        action: z.enum(['list', 'select']).describe('What to do'),
-        index: z.number().optional().describe('Tab index to select, from the list output')
+        action: z.enum(['list', 'select', 'open']).describe('What to do'),
+        index: z.number().optional().describe('Tab index to select, from the list output'),
+        url: z.string().optional().describe('URL to load for action "open"')
       }
     },
-    async ({ action, index }) => {
+    async ({ action, index, url }) => {
       try {
         const tabs = listTargets()
         if (action === 'list') {
@@ -341,6 +376,19 @@ export function registerBrowserTools(mcp: McpServer) {
             tabs
               .map((t, i) => `${i}${t.active ? ' *' : '  '} ${t.title || '(untitled)'} — ${t.url}`)
               .join('\n') + '\n\n* = selected'
+          )
+        }
+        if (action === 'open') {
+          if (!url) return err('url required for action "open"')
+          const blocked = scopeBlockForUrl(url)
+          if (blocked) return err(blocked)
+          const newId = await openBackgroundTab(url)
+          const after = listTargets()
+          const idx = after.findIndex((t) => t.id === newId)
+          return ok(
+            `opened background tab ${idx}: ${url}\n` +
+              after.map((t, i) => `${i}${t.active ? ' *' : '  '} ${t.title || '(untitled)'} — ${t.url}`).join('\n') +
+              '\n\n* = selected. Read this tab with list_endpoints({tab: ' + idx + '}).'
           )
         }
         if (index == null || index < 0 || index >= tabs.length) {
@@ -644,25 +692,27 @@ export function registerBrowserTools(mcp: McpServer) {
     'browser_evaluate',
     {
       description:
-        'Run a JavaScript expression in the active page and return the result. The expression must return a JSON-serialisable value.',
+        'Run a JavaScript expression in the active page and return the result. The expression must return a JSON-serialisable value. Pass `tab` (browser_tabs index) to run it in a background tab without selecting it.',
       inputSchema: {
-        expression: z.string().describe('JavaScript expression to evaluate (must return a value)')
+        expression: z.string().describe('JavaScript expression to evaluate (must return a value)'),
+        tab: z.number().int().optional().describe('Tab index from browser_tabs (default: the selected tab)')
       }
     },
-    async ({ expression }) => {
+    async ({ expression, tab }) => {
       try {
-        emitAiAction({
-          kind: 'evaluate',
-          label: 'AI evaluate',
-          detail: expression.slice(0, 80)
+        return await runOnTab(tab, async () => {
+          emitAiAction({
+            kind: 'evaluate',
+            label: 'AI evaluate',
+            detail: expression.slice(0, 80)
+          })
+          visualize('evalHudStart', expression.slice(0, 160))
+          const result = await evalInPage<unknown>(expression)
+          const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+          visualize('evalHudDone', preview(text), false)
+          return ok(text)
         })
-        visualize('evalHudStart', expression.slice(0, 160))
-        const result = await evalInPage<unknown>(expression)
-        const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-        visualize('evalHudDone', preview(text), false)
-        return ok(text)
       } catch (e) {
-        visualize('evalHudDone', preview(errorMessage(e)), true)
         return err(errorMessage(e))
       }
     }
@@ -747,11 +797,14 @@ export function registerBrowserTools(mcp: McpServer) {
     'browser_screenshot',
     {
       description:
-        'Capture a PNG screenshot of the current page (visible area). Returned as image content.'
+        'Capture a PNG screenshot of the current page (visible area). Returned as image content. Pass `tab` (browser_tabs index) to shoot a background tab without selecting it.',
+      inputSchema: {
+        tab: z.number().int().optional().describe('Tab index from browser_tabs (default: the selected tab)')
+      }
     },
-    async () => {
-      const target = getActiveTarget()
-      if (!target) return err('no active browser target — open a page first')
+    async ({ tab }) => {
+      const target = tab != null ? getTargetByIndex(tab) : getActiveTarget()
+      if (!target) return err(tab != null ? `no tab at index ${tab} — call browser_tabs first` : 'no active browser target — open a page first')
       try {
         emitAiAction({ kind: 'screenshot', label: 'AI screenshot' })
         const img = await target.wc.capturePage()

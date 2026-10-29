@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 
 import { emitAiAction } from '../ai-events'
-import { getActiveTarget, waitForSettle } from '../chrome-cdp'
+import { getActiveTarget, getAttachedIds, waitForSettle } from '../chrome-cdp'
 import { visualize } from './cdp-eval'
 import {
   humanDrag,
@@ -68,7 +68,30 @@ interface RefEntry {
   sessionId?: string
 }
 
-const refMap = new Map<string, RefEntry>()
+// Refs are namespaced per tab: a "r3" from tab A must never resolve against
+// tab B's tree, and one tab's snapshot must not drop another's live refs —
+// which is exactly what a single shared map did to concurrent tab-addressed
+// agents. Keyed by the target getActiveTarget() resolves to (the tab-addressed
+// call context when one is active), so every read/write below is scoped to the
+// tab the tool call is driving.
+const refMaps = new Map<number, Map<string, RefEntry>>()
+
+function refsNow(): Map<string, RefEntry> {
+  const id = getActiveTarget()?.wc.id
+  if (id == null) return new Map()
+  let m = refMaps.get(id)
+  if (!m) {
+    // shortcut: maps for closed tabs are only pruned opportunistically here;
+    // switch to a detach hook if unbounded growth ever shows
+    if (refMaps.size > 40) {
+      const live = new Set([...getAttachedIds()])
+      for (const k of refMaps.keys()) if (!live.has(k)) refMaps.delete(k)
+    }
+    m = new Map()
+    refMaps.set(id, m)
+  }
+  return m
+}
 
 /**
  * Reverse lookup: which ref from the CURRENT snapshot points at this backend
@@ -76,7 +99,7 @@ const refMap = new Map<string, RefEntry>()
  * undefined means the page session (see RefEntry.sessionId).
  */
 export function refForBackendNodeId(backendNodeId: number, sessionId?: string): string | null {
-  for (const [ref, entry] of refMap) {
+  for (const [ref, entry] of refsNow()) {
     if (entry.backendNodeId === backendNodeId && entry.sessionId === sessionId) return ref
   }
   return null
@@ -480,7 +503,7 @@ async function captureSnapshot(opts: { full?: boolean }): Promise<SnapshotResult
     filter: PageLayout | null,
     prune: boolean
   ): { tree: string; stats: SnapshotStats; refTargets: Set<string> } => {
-    refMap.clear()
+    refsNow().clear()
     let counter = 0
     let clickOnlyRefs = 0
     let newRefs = 0
@@ -597,7 +620,7 @@ async function captureSnapshot(opts: { full?: boolean }): Promise<SnapshotResult
           }
           seenRefTargets.add(refKey)
           const r = `r${counter}`
-          refMap.set(r, {
+          refsNow().set(r, {
             backendNodeId: n.backendDOMNodeId,
             role: role || 'clickable',
             name: shownName,
@@ -679,7 +702,7 @@ async function captureSnapshot(opts: { full?: boolean }): Promise<SnapshotResult
         clickOnlyRefs++
         const r = `r${counter}`
         seenRefTargets.add(`:${backendId}`)
-        refMap.set(r, { backendNodeId: backendId, role: 'clickable', name: '' })
+        refsNow().set(r, { backendNodeId: backendId, role: 'clickable', name: '' })
         lines.push(`- clickable [ref=${r}] (click-scan, not in the a11y tree)`)
       }
     }
@@ -782,7 +805,7 @@ async function captureSnapshot(opts: { full?: boolean }): Promise<SnapshotResult
   // expressed in another coordinate space.
   if (layout) {
     const boxes: Array<{ ref: string; x: number; y: number; w: number; h: number }> = []
-    for (const [ref, entry] of refMap) {
+    for (const [ref, entry] of refsNow()) {
       if (entry.frameOwners?.length) continue
       const lay = layout.byBackendId.get(entry.backendNodeId)
       if (!lay) continue
@@ -813,11 +836,11 @@ async function captureSnapshot(opts: { full?: boolean }): Promise<SnapshotResult
 export async function resolveRefObject(
   ref: string
 ): Promise<{ objectId: string; sessionId: string | undefined }> {
-  return { objectId: await resolveObjectId(ref), sessionId: refMap.get(ref)?.sessionId }
+  return { objectId: await resolveObjectId(ref), sessionId: refsNow().get(ref)?.sessionId }
 }
 
 async function resolveObjectId(ref: string): Promise<string> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   if (!entry) throw new Error(`unknown ref "${ref}" — call browser_snapshot first`)
   const target = getActiveTarget()
   if (!target) throw new Error('no active browser target')
@@ -954,7 +977,7 @@ async function clickObjectId(
  * re-deriving coordinates that would be wrong inside an iframe.
  */
 async function pointForRef(ref: string): Promise<{ x: number; y: number }> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   const objectId = await resolveObjectId(ref)
   const target = getActiveTarget()!
   const res = (await target.dbg.sendCommand(
@@ -980,7 +1003,7 @@ export async function clickRefWith(
   ref: string,
   mouse: { button?: 'left' | 'right' | 'middle'; clickCount?: number }
 ): Promise<void> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   const objectId = await resolveObjectId(ref)
   const kind = mouse.clickCount === 2 ? 'double-click' : `${mouse.button ?? 'left'}-click`
   const label = `AI ${kind}${entry?.name ? ` "${entry.name.slice(0, 28)}"` : ''}`
@@ -993,7 +1016,7 @@ export async function clickRefWith(
  * to leaves this identical.
  */
 async function dropSignature(ref: string): Promise<string> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   const objectId = await resolveObjectId(ref)
   const target = getActiveTarget()!
   const res = (await target.dbg.sendCommand(
@@ -1017,7 +1040,7 @@ async function dropSignature(ref: string): Promise<string> {
  * trusted input, so a page that checks isTrusted will not be fooled.
  */
 async function synthesiseDrag(fromRef: string, toRef: string): Promise<void> {
-  const fromEntry = refMap.get(fromRef)
+  const fromEntry = refsNow().get(fromRef)
   const fromObj = await resolveObjectId(fromRef)
   const toObj = await resolveObjectId(toRef)
   const target = getActiveTarget()!
@@ -1058,7 +1081,7 @@ async function synthesiseDrag(fromRef: string, toRef: string): Promise<void> {
  * they would for a person.
  */
 export async function scrollRefBy(ref: string, deltaY: number): Promise<number> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   const objectId = await resolveObjectId(ref)
   const target = getActiveTarget()!
   emitAiAction({ kind: 'scroll', label: `AI scroll ${ref}`, detail: `${deltaY}px` })
@@ -1118,7 +1141,7 @@ export async function drawOnRef(
   from: { x: number; y: number },
   to: { x: number; y: number }
 ): Promise<void> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   const objectId = await resolveObjectId(ref)
   const target = getActiveTarget()!
   const res = (await target.dbg.sendCommand(
@@ -1279,14 +1302,14 @@ async function typeObjectId(
 }
 
 export async function clickRef(ref: string): Promise<void> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   const objectId = await resolveObjectId(ref)
   const label = `AI click${entry?.name ? ` "${entry.name.slice(0, 32)}"` : ''}`
   await clickObjectId(objectId, label, entry?.role, entry?.frameOwners, entry?.sessionId)
 }
 
 export async function typeRef(ref: string, text: string, submit: boolean): Promise<void> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   const objectId = await resolveObjectId(ref)
   const label = `AI type${entry?.name ? ` → "${entry.name.slice(0, 24)}"` : ''}`
   await typeObjectId(
@@ -1313,7 +1336,7 @@ export async function typeRef(ref: string, text: string, submit: boolean): Promi
  * back in the error, so the caller can retry without another snapshot.
  */
 export async function selectRef(ref: string, values: string[]): Promise<string[]> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   const objectId = await resolveObjectId(ref)
   const target = getActiveTarget()!
   emitAiAction({ kind: 'type', label: `AI select${entry?.name ? ` "${entry.name.slice(0, 24)}"` : ''}`, detail: values.join(', ') })
@@ -1368,7 +1391,7 @@ export async function selectRef(ref: string, values: string[]): Promise<string[]
  * `input[type=file]` before the files are set.
  */
 export async function uploadToRef(ref: string, paths: string[]): Promise<string[]> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   if (!entry) throw new Error(`unknown ref "${ref}" — call browser_snapshot first`)
   const missing = paths.filter((p) => !existsSync(p))
   if (missing.length) {
@@ -1435,7 +1458,7 @@ export async function navigateHistory(direction: 'back' | 'forward'): Promise<st
  * arrow keys ever run.
  */
 export async function focusRef(ref: string): Promise<void> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   const objectId = await resolveObjectId(ref)
   const target = getActiveTarget()!
   await target.dbg.sendCommand(
@@ -1452,7 +1475,7 @@ export async function focusRef(ref: string): Promise<void> {
 }
 
 export async function hoverRef(ref: string): Promise<void> {
-  const entry = refMap.get(ref)
+  const entry = refsNow().get(ref)
   const objectId = await resolveObjectId(ref)
   const label = `AI hover${entry?.name ? ` "${entry.name.slice(0, 32)}"` : ''}`
   await hoverObjectId(objectId, label, entry?.role, entry?.frameOwners, entry?.sessionId)
