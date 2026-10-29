@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import type { UIMessage, UIMessageChunk } from 'ai'
 
 import { ACPChatTransport } from '@/ai/acp-transport'
+import { checklistFor } from '@/ai/redteam-categories'
 import { setRedTeamScan, siteKey } from '@/ai/red-team-mode'
 import REDTEAM_PROBE_PROMPT from '@/ai/redteam-probe.md?raw'
 import { ACP_AGENTS } from '@/constants'
@@ -458,9 +459,13 @@ export const useScanStore = create<ScanState>((set, get) => ({
             const w = newAgent()
             workers.push(w)
             try {
+              // Category-driven checklist (OWASP) is active-only → redteam only.
+              const m = /^(\S+)\s+(.+)$/.exec(ep)
+              const checklist =
+                intensity === 'redteam' ? checklistFor(m?.[1] ?? 'GET', m?.[2] ?? ep) : ''
               const { findingAdds } = await runTurnOn(
                 w,
-                `${REDTEAM_PROBE_PROMPT}\n\n${levelLine}\n대상: ${ep}\n사이트 범위: ${site}\n${findingsLangLine()}`,
+                `${REDTEAM_PROBE_PROMPT}\n\n${levelLine}\n대상: ${ep}\n사이트 범위: ${site}\n${checklist}\n${findingsLangLine()}`,
                 signal,
                 (e) => onEv(e)
               )
