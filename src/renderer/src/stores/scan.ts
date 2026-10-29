@@ -479,8 +479,12 @@ export const useScanStore = create<ScanState>((set, get) => ({
         if (needProbe) await useToolProfileStore.getState().setProfile('reverse')
       }
 
-      // Phase 4 — the orchestrator exports the combined report.
+      // Phase 4 — the orchestrator exports the combined report. Reset first:
+      // its session sat idle through the (minutes-long) probe phase and its MCP
+      // (SSE) connection can drop, making finding_export uncallable. A fresh
+      // session reconnects; findings live in the main process, so none are lost.
       pushLog('phase', t('scan.log.report'))
+      await transport.reset()
       const { exportText, finalText } = await runTurnOn(
         transport,
         `지금까지 기록된 finding 으로 finding_export 를 호출하고, 반환된 Markdown 보고서를 그대로 출력한다.`,
