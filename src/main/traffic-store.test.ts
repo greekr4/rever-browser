@@ -62,6 +62,12 @@ describe('listRequests', () => {
     expect(listRequests({ host: 'a.com' }).map((r) => r.requestId)).toEqual(['r3', 'r1'])
   })
 
+  it('filters by tabId', () => {
+    upsertRequest({ requestId: 'r4', url: 'https://c.com/4', host: 'c.com', startedAt: 400, tabId: 7 })
+    expect(listRequests({ tabId: 7 }).map((r) => r.requestId)).toEqual(['r4'])
+    expect(listRequests({ tabId: 99 })).toEqual([])
+  })
+
   it('filters by method (case-insensitive)', () => {
     expect(listRequests({ methodOrType: 'post' }).map((r) => r.requestId)).toEqual(['r2'])
   })

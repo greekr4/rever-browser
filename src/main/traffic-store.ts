@@ -16,6 +16,8 @@ export interface StoredRequest {
   responseBodyBase64?: boolean
   responseBodyTruncated?: boolean
   responseBodyError?: string
+  // webContents id of the tab that sent it; the store is shared by every tab
+  tabId?: number
   // initiator info
   initiatorType?: string
   initiatorStack?: Array<{
@@ -204,6 +206,7 @@ export function upsertRequest(rawReq: Partial<StoredRequest> & { requestId: stri
 
 export interface ListFilter {
   host?: string
+  tabId?: number
   methodOrType?: string
   since?: number
   // har_export ships its whole response as one SSE event, and widely used
@@ -242,6 +245,7 @@ function scan(
     const e = store.get(ids[i])
     if (!e) continue
     if (filter.host && !e.host.includes(filter.host)) continue
+    if (filter.tabId != null && e.tabId !== filter.tabId) continue
     if (filter.methodOrType) {
       const needle = filter.methodOrType.toLowerCase()
       if (

@@ -683,6 +683,7 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
         method: p.request.method,
         resourceType,
         startedAt: Date.now(),
+        tabId: targetId,
         requestHeaders: p.request.headers,
         requestPostData: p.request.postData,
         initiatorType: initiator?.type,

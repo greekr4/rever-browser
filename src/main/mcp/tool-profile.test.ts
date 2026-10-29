@@ -21,6 +21,7 @@ import {
 } from './tool-profile'
 
 const BROWSE_REVERSE = [
+  'list_endpoints',
   'console_eval',
   'console_get_props',
   'cookie_list',
@@ -91,16 +92,16 @@ describe('tool-profile', () => {
     it('소스 registerTool 이름과 레지스트리 키가 같다', () => {
       const source = sourceToolNames()
       expect(sorted(Object.keys(TOOL_BUCKETS))).toEqual(sorted(source))
-      expect(source.size).toBe(162)
+      expect(source.size).toBe(163)
       expect(source.has('tool_profile_set')).toBe(true)
     })
   })
 
   describe('광고 수', () => {
-    it('browse 80, reverse 113, probe 37이고 예산 120을 넘지 않는다', () => {
+    it('browse 81, reverse 114, probe 37이고 예산 120을 넘지 않는다', () => {
       expect(PROFILE_TOOL_BUDGET).toBe(120)
-      expect(advertisedNames('browse')).toHaveLength(80)
-      expect(advertisedNames('reverse')).toHaveLength(113)
+      expect(advertisedNames('browse')).toHaveLength(81)
+      expect(advertisedNames('reverse')).toHaveLength(114)
       expect(advertisedNames('probe')).toHaveLength(37)
       for (const profile of TOOL_PROFILES) {
         expect(() => assertProfileBudget(profile)).not.toThrow()
@@ -118,7 +119,7 @@ describe('tool-profile', () => {
   })
 
   describe('browse와 reverse의 겹침', () => {
-    it('코어를 뺀 겹침은 19개 이름으로 고정된다', () => {
+    it('코어를 뺀 겹침은 20개 이름으로 고정된다', () => {
       const overlap = Object.keys(TOOL_BUCKETS).filter(
         (name) =>
           TOOL_BUCKETS[name] !== 'core' &&
@@ -184,7 +185,7 @@ describe('tool-profile', () => {
       expect(names).not.toContain('not_a_tool')
       expect(names.filter((name) => name === 'browser_snapshot')).toHaveLength(1)
       expect(names.filter((name) => name === 'grep_scripts')).toHaveLength(1)
-      expect(names).toHaveLength(81)
+      expect(names).toHaveLength(82)
     })
   })
 
@@ -209,16 +210,16 @@ describe('tool-profile', () => {
   })
 
   describe('카탈로그와 반환 문자열', () => {
-    it('헤더는 follow와 direct만 받고 나머지는 full이다', () => {
+    it('헤더는 full과 direct만 받고 없거나 나머지는 follow다', () => {
       expect(catalogFromHeader('follow')).toBe('follow')
       expect(catalogFromHeader('direct')).toBe('direct')
-      expect(catalogFromHeader(undefined)).toBe('full')
       expect(catalogFromHeader('full')).toBe('full')
-      expect(catalogFromHeader('Follow')).toBe('full')
-      expect(catalogFromHeader('DIRECT')).toBe('full')
-      expect(catalogFromHeader('')).toBe('full')
+      expect(catalogFromHeader(undefined)).toBe('follow')
+      expect(catalogFromHeader('Full')).toBe('follow')
+      expect(catalogFromHeader('DIRECT')).toBe('follow')
+      expect(catalogFromHeader('')).toBe('follow')
       expect(catalogFromHeader(['direct'])).toBe('direct')
-      expect(catalogFromHeader(['Follow'])).toBe('full')
+      expect(catalogFromHeader(['full'])).toBe('full')
     })
 
     it('매 턴 한 줄은 프로파일 이름만 바뀐다', () => {

@@ -112,7 +112,9 @@ async function connectMcp(userData: string): Promise<Client> {
   const client = new Client({ name: 'rever-e2e', version: '1' })
   await client.connect(
     new StreamableHTTPClientTransport(new URL(url), {
-      requestInit: { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      requestInit: {
+        headers: { 'X-Rever-Catalog': 'full', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+      }
     })
   )
   return client

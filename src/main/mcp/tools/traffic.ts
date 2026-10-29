@@ -4,6 +4,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { getRequest, listRequests, type StoredRequest } from '../../traffic-store'
 import { ok, okFullOrSummary, err } from '../utils'
+import { formatEndpoints, splitBySite, summarizeEndpoints } from '../endpoints'
+import { getActiveTarget, listTargets } from '../../chrome-cdp'
 
 // Top-level keys of a JSON response body, for the summary view. Returns null
 // when the body isn't present/decodable JSON.
@@ -34,6 +36,14 @@ function toSummary(e: StoredRequest) {
   }
 }
 
+// The agent addresses tabs by the index it sees in browser_tabs; the store keys
+// traffic by webContents id. Map one to the other, or null for a bad index.
+function tabIdForIndex(index: number | undefined): number | null | undefined {
+  if (index == null) return undefined
+  const t = listTargets()[index]
+  return t ? t.id : null
+}
+
 export function registerTrafficTools(mcp: McpServer) {
   mcp.registerTool(
     'list_requests',
@@ -49,6 +59,7 @@ export function registerTrafficTools(mcp: McpServer) {
             'Substring match against HTTP method (GET/POST...) or ResourceType (XHR/Fetch/Document...)'
           ),
         since: z.number().optional().describe('Only include requests started after this epoch ms'),
+        tab: z.number().int().optional().describe('Only this tab, by its index in browser_tabs (default: all tabs)'),
         limit: z.number().int().positive().max(200).optional().describe('Max items (default 50)'),
         source: z
           .enum(['live', 'import', 'all'])
@@ -56,9 +67,37 @@ export function registerTrafficTools(mcp: McpServer) {
           .describe('live = captured in this app (default), import = loaded with import_har, all = both')
       }
     },
-    async (args) => {
-      const rows = listRequests(args).map(toSummary)
+    async ({ tab, ...args }) => {
+      const tabId = tabIdForIndex(tab)
+      if (tabId === null) return err(`no tab at index ${tab} — call browser_tabs first`)
+      const rows = listRequests({ ...args, tabId }).map(toSummary)
       return ok(JSON.stringify(rows, null, 2))
+    }
+  )
+
+  mcp.registerTool(
+    'list_endpoints',
+    {
+      description:
+        'Map of the API endpoints seen so far: captured XHR/Fetch requests grouped by method + origin + path (numeric/hex/uuid segments become :id), one line each with call count, status codes and the latest requestId. Defaults to the current page\'s site (eTLD+1; other sites visited earlier are counted, not listed). Far smaller than list_requests — call this first to find the API, then get_request the last=# id.',
+      inputSchema: {
+        host: z.string().optional().describe('Substring host filter (e.g. "api.example.com"); replaces the current-site default'),
+        all: z.boolean().optional().describe('Include every site in the store, not just the current page\'s'),
+        tab: z.number().int().optional().describe('Only endpoints captured in this tab, by its browser_tabs index'),
+        limit: z.number().int().positive().max(200).optional().describe('Max endpoints listed (default 50)')
+      }
+    },
+    async ({ host, all, tab, limit }) => {
+      const tabId = tabIdForIndex(tab)
+      if (tabId === null) return err(`no tab at index ${tab} — call browser_tabs first`)
+      // The live ring buffer holds 500 entries, so this scans all of it.
+      const rows = listRequests({ host, tabId, limit: 500 })
+      if (host || all) return ok(formatEndpoints(summarizeEndpoints(rows), limit ?? 50))
+      // When a tab is named, scope the site by THAT tab's URL, not the active one.
+      const pageUrl = tab != null ? listTargets()[tab]?.url : getActiveTarget()?.wc.getURL()
+      const { site, same, other } = splitBySite(rows, pageUrl)
+      const scope = site ? { site, otherSites: summarizeEndpoints(other).length } : undefined
+      return ok(formatEndpoints(summarizeEndpoints(same), limit ?? 50, scope))
     }
   )
 

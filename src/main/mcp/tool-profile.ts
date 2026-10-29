@@ -77,6 +77,7 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   inspect_listeners: ['browse'],
 
   // browse ∩ reverse (19)
+  list_endpoints: ['browse', 'reverse'],
   console_eval: ['browse', 'reverse'],
   console_get_props: ['browse', 'reverse'],
   cookie_list: ['browse', 'reverse'],
@@ -255,11 +256,17 @@ export function readToolProfile(json: string): ToolProfile | null {
 
 export type CatalogKind = 'full' | 'follow' | 'direct'
 
-/** Header value must be exactly `follow` or `direct`. Anything else is the full catalog. */
+/**
+ * Header value must be exactly `full` or `direct`; anything else, including no
+ * header, is `follow`. An external client (the /rever skill, a hand-added
+ * Claude Code or Codex) gets the in-app profile, not all ~160 tool schemas;
+ * in-app callers that need every tool (macros, workflows, mcp-call.py, e2e)
+ * send `full` explicitly.
+ */
 export function catalogFromHeader(value: string | string[] | undefined): CatalogKind {
   const raw = Array.isArray(value) ? value[0] : value
-  if (raw === 'follow' || raw === 'direct') return raw
-  return 'full'
+  if (raw === 'full' || raw === 'direct') return raw
+  return 'follow'
 }
 
 export const TOOL_PROFILE_SET_DESCRIPTION = `Switch the in-app tool profile, or omit profile to read it.
@@ -290,7 +297,7 @@ export interface ToolToggle {
 }
 
 /**
- * Only follow sessions disable tools. full stays complete for external clients.
+ * Only follow sessions disable tools. full stays complete for callers that ask for it.
  * direct stays complete because the provider filters each turn instead.
  */
 export function catalogDisablesTools(catalog: CatalogKind): boolean {
