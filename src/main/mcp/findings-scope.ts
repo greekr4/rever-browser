@@ -1,11 +1,10 @@
-import { hostnameOf, registrableDomain } from './scope'
+import { scopeKey } from './scope'
 
-/** eTLD+1 of an http(s) URL (localhost:8080 → "localhost"); undefined otherwise. */
+/** Scope key of an http(s) URL (localhost:8080 → "localhost:8080"); undefined otherwise. */
 export function originOf(url: string | undefined): string | undefined {
   if (!url) return undefined
   if (!/^https?:\/\//i.test(url)) return undefined
-  const hn = hostnameOf(url)
-  return hn ? registrableDomain(hn) : undefined
+  return scopeKey(url) ?? undefined
 }
 
 /**

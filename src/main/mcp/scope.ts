@@ -54,13 +54,46 @@ export function registrableDomain(hostname: string): string {
   return last2
 }
 
+// The scope membership key. Loopback / IP share one hostname across many apps
+// on different ports (localhost:8080 vs :8090), so for those the port is
+// load-bearing and kept; public domains fold to their registrable domain as
+// before. Returns null for an unparseable input.
+export function scopeKey(input: string): string | null {
+  const s = input.trim().toLowerCase()
+  if (!s) return null
+  let hostname: string | null = null
+  let port = ''
+  if (/^[a-z][a-z0-9+.-]*:\/\//.test(s)) {
+    try {
+      const u = new URL(s)
+      hostname = u.hostname || null
+      port = u.port
+    } catch {
+      return null
+    }
+  } else {
+    const hp = s.replace(/^\*\./, '').split('/')[0]
+    const m = /^(.+?):(\d+)$/.exec(hp)
+    if (m) {
+      hostname = m[1]
+      port = m[2]
+    } else {
+      hostname = hp
+    }
+    if (!hostname || !/^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(hostname)) return null
+  }
+  if (!hostname) return null
+  const reg = registrableDomain(hostname)
+  if (port && (hostname === 'localhost' || isIpLiteral(hostname))) return `${reg}:${port}`
+  return reg
+}
+
 function normalize(hosts: string[]): string[] {
   const out: string[] = []
   for (const h of hosts) {
-    const hn = hostnameOf(h)
-    if (!hn) continue
-    const reg = registrableDomain(hn)
-    if (!out.includes(reg)) out.push(reg)
+    const key = scopeKey(h)
+    if (!key) continue
+    if (!out.includes(key)) out.push(key)
   }
   return out
 }
@@ -95,10 +128,13 @@ export function clearScope(): void {
 export function scopeBlockForUrl(url: string | undefined): string | null {
   if (!url) return null
   if (allowed.length === 0) return null
-  const hn = hostnameOf(url)
-  if (!hn) return null
-  if (hostInScope(hn, allowed)) return null
-  return `Out of scope: ${hn} is not within the allowed scope [${allowed.join(', ')}]. Add it with scope_add if this target is intended.`
+  const key = scopeKey(url)
+  if (!key) return null
+  // Exact key, or a port-agnostic scope entry (bare "localhost"/"10.0.0.1"
+  // covers all ports of that host; "localhost:8080" covers only that port).
+  const bare = key.split(':')[0]
+  if (allowed.includes(key) || (bare !== key && allowed.includes(bare))) return null
+  return `Out of scope: ${key} is not within the allowed scope [${allowed.join(', ')}]. Add it with scope_add if this target is intended.`
 }
 
 const RISKY = new Set<string>(ALWAYS_RISKY_TOOLS)

@@ -7,9 +7,9 @@ describe('originOf', () => {
     expect(originOf('https://api.careernote.io/v1/x')).toBe('careernote.io')
     expect(originOf('https://www.example.co.kr/')).toBe('example.co.kr')
   })
-  it('localhost는 포트를 떼고 localhost로', () => {
-    expect(originOf('http://localhost:8080/my')).toBe('localhost')
-    expect(originOf('http://localhost:3000/v1/jobs')).toBe('localhost')
+  it('localhost는 포트를 유지해 앱별로 구분한다', () => {
+    expect(originOf('http://localhost:8080/my')).toBe('localhost:8080')
+    expect(originOf('http://localhost:3000/v1/jobs')).toBe('localhost:3000')
   })
   it('http(s)가 아니거나 못 읽으면 undefined', () => {
     expect(originOf('about:blank')).toBeUndefined()

@@ -9,6 +9,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { ok, err } from '../utils'
 import { getActiveTarget } from '../../chrome-cdp'
 import { originOf, filterByOrigin } from '../findings-scope'
+import { endpointKeyOf, mergeDuplicateEndpoints } from '../findings-dedupe'
 
 type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical'
 type Category = 'endpoint' | 'auth' | 'vuln' | 'secret' | 'other'
@@ -92,11 +93,36 @@ export function listFindings(): Finding[] {
   return [...findings.values()].sort((a, b) => b.createdAt - a.createdAt)
 }
 
-function renderMarkdown(list: Finding[], scopeNote?: string): string {
+function renderMarkdown(all: Finding[], scopeNote?: string): string {
+  // Parallel tab workers each record the same public endpoint; the export is
+  // the one place that can merge them deterministically, whatever the workers
+  // did. (finding_add already nudges duplicates away at the source.)
+  const { merged: list, mergedAway } = mergeDuplicateEndpoints(all)
   const lines: string[] = []
   lines.push('# Reversing Session Findings', '')
   if (scopeNote) lines.push(`_site: ${scopeNote}_`, '')
-  lines.push(`_${list.length} finding${list.length === 1 ? '' : 's'}_`, '')
+
+  // Summary block: one glance, then details.
+  const counts = new Map<Category, Partial<Record<Severity, number>>>()
+  for (const f of list) {
+    const bySev = counts.get(f.category) ?? {}
+    bySev[f.severity] = (bySev[f.severity] ?? 0) + 1
+    counts.set(f.category, bySev)
+  }
+  lines.push('| Category | Critical | High | Medium | Low | Info |', '|---|---|---|---|---|---|')
+  for (const cat of CATEGORY_ORDER) {
+    const bySev = counts.get(cat)
+    if (!bySev) continue
+    const cells = (['critical', 'high', 'medium', 'low', 'info'] as Severity[]).map(
+      (s) => String(bySev[s] ?? 0)
+    )
+    lines.push(`| ${CATEGORY_LABEL[cat]} | ${cells.join(' | ')} |`)
+  }
+  lines.push(
+    '',
+    `_${list.length} unique finding${list.length === 1 ? '' : 's'}${mergedAway ? `, ${mergedAway} duplicate report${mergedAway === 1 ? '' : 's'} merged` : ''}_`,
+    ''
+  )
 
   for (const cat of CATEGORY_ORDER) {
     const inCat = list
@@ -161,6 +187,20 @@ export function registerFindingTools(mcp: McpServer) {
       status = 'candidate',
       tags = []
     }) => {
+      // Duplicate gate: parallel tab workers each see the same public endpoint
+      // and would otherwise record it once per tab. Point the caller at the
+      // existing finding instead of storing another copy.
+      const key = endpointKeyOf({ title, body, category })
+      if (key) {
+        const dupe = listFindings().find((f) => endpointKeyOf(f) === key)
+        if (dupe) {
+          return ok(
+            `not saved: an endpoint finding for the same host+path already exists — #${dupe.id} "${dupe.title}" (${dupe.severity}, ${dupe.status}).\n` +
+              `If this adds new evidence, record it on that finding instead (its body/evidence), or finding_remove it first.\n` +
+              `If this is a genuinely different endpoint, include the full URL in the title.`
+          )
+        }
+      }
       // Validated gate: never silently promote a thinly-evidenced claim.
       let effectiveStatus = status
       let warning: string | undefined

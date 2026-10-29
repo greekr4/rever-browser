@@ -39,6 +39,20 @@ describe('scope', () => {
     })
   })
 
+  describe('localhost 포트', () => {
+    it('포트가 지정되면 그 포트만 범위 안이다 (8080 ≠ 8090)', () => {
+      setScope(['localhost:8080'])
+      expect(getScope().domains).toEqual(['localhost:8080'])
+      expect(scopeBlockForUrl('http://localhost:8080/my')).toBeNull()
+      expect(scopeBlockForUrl('http://localhost:8090/activity')).toMatch(/Out of scope/)
+    })
+    it('포트 없이 localhost 만 주면 모든 포트를 허용한다', () => {
+      setScope(['localhost'])
+      expect(scopeBlockForUrl('http://localhost:8080/a')).toBeNull()
+      expect(scopeBlockForUrl('http://localhost:9999/b')).toBeNull()
+    })
+  })
+
   describe('registrableDomain', () => {
     it('서브도메인을 등록가능도메인(eTLD+1)으로 접는다', () => {
       expect(registrableDomain('api.example.com')).toBe('example.com')
