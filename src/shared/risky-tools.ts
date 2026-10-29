@@ -58,7 +58,8 @@ export function extractMethod(rawInput: unknown): string | null {
 }
 
 export function extractTargetHost(rawInput: unknown): string | null {
-  const url = inputField(rawInput, 'url')
+  // path_probe/lfi_probe target a base URL under `baseUrl`, not `url`.
+  const url = inputField(rawInput, 'url') ?? inputField(rawInput, 'baseUrl')
   if (typeof url === 'string') {
     try {
       return new URL(url).host

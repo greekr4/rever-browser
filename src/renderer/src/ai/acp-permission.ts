@@ -10,8 +10,10 @@ import {
   findRejectOption,
   isRiskyToolRequest,
   matchedRiskyTool,
-  sanitizeSelection
+  sanitizeSelection,
+  SHELL_HTTP_TOOL
 } from './risky-tools'
+import { hostInRedTeamScope, isRedTeamActive } from './red-team-mode'
 import { grantSession, hasSessionGrant } from './session-grants'
 
 import type {
@@ -100,6 +102,23 @@ export function requestPermissionFromUser(
   params: RequestPermissionRequest
 ): Promise<RequestPermissionResponse> {
   const risky = isRiskyToolRequest(params)
+
+  // Red Team scan: auto-approve probe tools (even risky ones) on the scan's own
+  // scoped site — the user authorized the sweep of their own target.
+  // - Raw shell HTTP (curl/wget in Bash) is excluded: it runs in the agent
+  //   process and bypasses the server scope check, so it always prompts.
+  // - A known host that is out of scope falls through to the normal prompt.
+  // - No resolvable host (replay_request/repeater_send target a captured request
+  //   by id) → auto-approve: the server-side scope check (repeater.ts →
+  //   scopeBlockForUrl) already blocks replays to out-of-scope URLs.
+  if (isRedTeamActive() && matchedRiskyTool(params) !== SHELL_HTTP_TOOL) {
+    const host = extractTargetHost(toolCallOf(params)?.rawInput)
+    if (host === null || hostInRedTeamScope(host)) {
+      const optionId = chooseAllowOption(params)
+      audit(params, optionId, { auto: true, risky })
+      return Promise.resolve({ outcome: { outcome: 'selected', optionId } })
+    }
+  }
 
   // Auto-approve never applies to risky tools: a side-effecting action on the
   // user's live session always surfaces the prompt, regardless of the setting.

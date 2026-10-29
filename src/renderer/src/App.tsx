@@ -11,6 +11,8 @@ import { ProxyButton } from '@/components/ProxyButton'
 import { ScreencastView } from '@/components/ScreencastView'
 import { TabBar } from '@/components/TabBar'
 import { WebviewTab, type WebviewTabHandle } from '@/components/WebviewTab'
+import { ScanPopup } from '@/components/ScanPopup'
+import { useScanStore } from '@/stores/scan'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { CopyToast } from '@/components/CopyToast'
 import { PageEventToast } from '@/components/PageEventToast'
@@ -52,6 +54,7 @@ function App() {
   const activeId = useTabsStore((s) => s.activeId)
   const addTab = useTabsStore((s) => s.addTab)
   const activeTab = tabs.find((t) => t.id === activeId)
+  const scanRunning = useScanStore((s) => s.phase === 'running')
 
   const browserMode = useBrowserModeStore((s) => s.mode)
   const setBrowserMode = useBrowserModeStore((s) => s.setMode)
@@ -676,16 +679,32 @@ function App() {
             }}
           >
             {browserMode === 'embedded' ? (
-              <>
+              <div
+                style={
+                  scanRunning
+                    ? {
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gridAutoRows: 'min-content',
+                        gap: 8,
+                        padding: 8,
+                        overflowY: 'auto'
+                      }
+                    : { display: 'contents' }
+                }
+              >
                 {tabs.map((t) => (
                   <WebviewTab
                     key={t.id}
                     ref={setTabRef(t.id)}
                     tab={t}
                     active={t.id === activeId}
+                    tiled={scanRunning}
                   />
                 ))}
-              </>
+              </div>
             ) : (
               <ScreencastView />
             )}
@@ -767,6 +786,7 @@ function App() {
               }
             }} />
             <FloatingChips openPanel={openPanel} setOpenPanel={setOpenPanel} />
+            <ScanPopup />
             <DetailDrawer />
           </div>
         </section>

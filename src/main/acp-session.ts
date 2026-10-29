@@ -190,7 +190,7 @@ export async function spawnAcpSession(
 
   await withTimeout(
     connection.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} }),
-    10_000,
+    25_000,
     'initialize'
   ).catch((e) => {
     // childError가 있으면 더 구체적인 메시지를 포함해 던진다.
@@ -221,7 +221,9 @@ export async function spawnAcpSession(
       // (인증은 settingSources와 무관하게 유지된다.)
       _meta: { claudeCode: { options: { settingSources: [] } } }
     }),
-    10_000,
+    // ~9.5s cold boot alone; under a Red Team scan several sessions boot at once
+    // and contend, so allow more headroom than a single spawn needs.
+    25_000,
     'newSession'
   )
 

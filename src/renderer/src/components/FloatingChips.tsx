@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 
 import { TrafficList } from '@/components/network/TrafficList'
 import { ApiMapPanel } from '@/components/panels/ApiMapPanel'
+import { useScanStore } from '@/stores/scan'
+import { useTabsStore } from '@/stores/tabs'
 import { ConsolePanel } from '@/components/panels/ConsolePanel'
 import { CookiesPanel } from '@/components/panels/CookiesPanel'
 import { ExceptionsPanel } from '@/components/panels/ExceptionsPanel'
@@ -114,6 +116,10 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
     setOpenPanel(openPanel === id ? null : id)
   }
 
+  const scanVisible = useScanStore((st) => st.visible)
+  const openScan = useScanStore((st) => st.open)
+  const activeTabUrl = useTabsStore((st) => st.tabs.find((t) => t.id === st.activeId)?.url ?? '')
+
   const panelTitle: Record<PanelId, string> = {
     traffic: 'Traffic',
     apimap: 'API Map',
@@ -145,6 +151,11 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
     <>
       {/* Bottom menu bar — full width, fixed at bottom of webview area */}
       <div className="chip-stack" ref={chipStackRef}>
+        <ChipButton
+          label="Red Team"
+          active={scanVisible}
+          onClick={() => openScan(activeTabUrl)}
+        />
         <ChipButton
           label="Traffic"
           active={openPanel === 'traffic'}

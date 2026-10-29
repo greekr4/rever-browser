@@ -1,8 +1,9 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { useHistoryStore } from '@/stores/history'
 import type { Tab } from '@/stores/tabs'
 import { useTabsStore } from '@/stores/tabs'
+import { useScanStore } from '@/stores/scan'
 import { useAppThemeStore } from '@/stores/app-theme'
 import {
   originFromUrl,
@@ -13,6 +14,8 @@ import {
 interface Props {
   tab: Tab
   active: boolean
+  // Red Team grid view: show every tab as a tile while a scan runs.
+  tiled?: boolean
 }
 
 export interface WebviewTabHandle {
@@ -31,7 +34,7 @@ interface PageTitleEvent extends Event {
 }
 
 export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTab(
-  { tab, active },
+  { tab, active, tiled },
   ref
 ) {
   const wvRef = useRef<Electron.WebviewTag>(null)
@@ -201,27 +204,125 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab.id])
 
+  // Tile: render the page at a real viewport size, then scale it down so the
+  // WHOLE page shows as a thumbnail at the same aspect ratio (not a clipped
+  // top-left corner). The cell fills its grid column (2 columns), so measure
+  // its width and scale the fixed 1280×800 viewport to fit.
+  const VIEW_W = 1280
+  const VIEW_H = 800
+  const cellRef = useRef<HTMLDivElement>(null)
+  const [cellW, setCellW] = useState(0)
+  useEffect(() => {
+    if (!tiled) return
+    const el = cellRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => setCellW(entries[0].contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [tiled])
+  const scale = cellW > 0 ? cellW / VIEW_W : 0.34
+  const scan = useScanStore((st) => (tiled ? st.scanTabs[tab.id] : undefined))
+
+  // The webview stays inside the SAME wrapper div whether tiled or not — only
+  // styles toggle. Changing the root element (bare <webview> ↔ wrapped) would
+  // remount the webview and reload it to src=initialUrl, snapping the page back
+  // to the default URL when a scan starts.
   return (
-    <webview
-      ref={wvRef as unknown as React.Ref<HTMLElement>}
-      src={tab.initialUrl}
+    <div
+      ref={cellRef}
+      title={tiled ? tab.title || tab.url : undefined}
       style={
-        {
-          flex: 1,
-          minWidth: 0,
-          background: 'var(--viewport-bg)',
-          display: active ? 'flex' : 'none'
-        } as React.CSSProperties
+        (tiled
+          ? {
+              width: '100%',
+              height: VIEW_H * scale,
+              overflow: 'hidden',
+              position: 'relative',
+              borderRadius: 4,
+              border: active ? '2px solid var(--accent)' : '1px solid var(--border)',
+              background: 'var(--viewport-bg)'
+            }
+          : {
+              flex: 1,
+              minWidth: 0,
+              display: active ? 'flex' : 'none'
+            }) as React.CSSProperties
       }
-      allowpopups={'true' as unknown as boolean}
-      // Shared partition → all tabs share one cookie/storage jar like a normal
-      // browser profile (must match SHARED_PARTITION in main/tab-partition.ts).
-      // Proxy tabs carry their own in-memory partition (incognito-style).
-      partition={tab.partition ?? 'persist:rever-shared'}
-      // The tab has its own webContents, so the window's backgroundThrottling
-      // setting does not reach it. Without this, CDP input dispatch into a
-      // backgrounded window is acked only every ~5s.
-      webpreferences="backgroundThrottling=false"
-    />
+    >
+      <webview
+        ref={wvRef as unknown as React.Ref<HTMLElement>}
+        src={tab.initialUrl}
+        style={
+          (tiled
+            ? {
+                width: VIEW_W,
+                height: VIEW_H,
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left',
+                background: 'var(--viewport-bg)',
+                display: 'flex'
+              }
+            : {
+                flex: 1,
+                minWidth: 0,
+                background: 'var(--viewport-bg)',
+                display: 'flex'
+              }) as React.CSSProperties
+        }
+        allowpopups={'true' as unknown as boolean}
+        // Shared partition → all tabs share one cookie/storage jar like a normal
+        // browser profile (must match SHARED_PARTITION in main/tab-partition.ts).
+        // Proxy tabs carry their own in-memory partition (incognito-style).
+        partition={tab.partition ?? 'persist:rever-shared'}
+        // The tab has its own webContents, so the window's backgroundThrottling
+        // setting does not reach it. Without this, CDP input dispatch into a
+        // backgrounded window is acked only every ~5s.
+        webpreferences="backgroundThrottling=false"
+      />
+      {tiled && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            padding: '2px 6px',
+            fontSize: 10,
+            color: 'var(--text-2)',
+            background: 'var(--bg-bar)',
+            borderTop: '1px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6
+          }}
+        >
+          {scan && (
+            <span
+              style={{
+                flexShrink: 0,
+                fontWeight: 600,
+                color:
+                  scan.status === 'done'
+                    ? 'var(--status-ok, #5fd07a)'
+                    : scan.status === 'error'
+                      ? 'var(--status-error)'
+                      : 'var(--chip-info-text)'
+              }}
+            >
+              {scan.status === 'inspecting'
+                ? '● 검사 중'
+                : scan.status === 'done'
+                  ? `✓ 발견 ${scan.findings}`
+                  : scan.status === 'error'
+                    ? '✕ 오류'
+                    : '… 로딩'}
+            </span>
+          )}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {tab.title || tab.url}
+          </span>
+        </div>
+      )}
+    </div>
   )
 })
