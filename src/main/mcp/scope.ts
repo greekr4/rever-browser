@@ -18,6 +18,8 @@ const TWO_LEVEL_SUFFIXES = new Set([
   'com.br', 'com.cn', 'com.tw', 'com.hk', 'com.sg', 'co.in', 'co.nz'
 ])
 
+import { ALWAYS_RISKY_TOOLS } from '../../shared/risky-tools'
+
 let allowed: string[] = []
 
 export function hostnameOf(input: string): string | null {
@@ -97,4 +99,12 @@ export function scopeBlockForUrl(url: string | undefined): string | null {
   if (!hn) return null
   if (hostInScope(hn, allowed)) return null
   return `Out of scope: ${hn} is not within the allowed scope [${allowed.join(', ')}]. Add it with scope_add if this target is intended.`
+}
+
+const RISKY = new Set<string>(ALWAYS_RISKY_TOOLS)
+
+/** A one-line nudge on active-attack tool results while no scope is enforced. */
+export function scopeOffWarning(toolName: string): string | null {
+  if (allowed.length > 0 || !RISKY.has(toolName)) return null
+  return `[scope off] ${toolName} ran with no target scope — any host is allowed. Pin the authorized target with scope_set before further probing.`
 }

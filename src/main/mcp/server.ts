@@ -67,10 +67,12 @@ import { emitAiAction } from '../ai-events'
 import { visualize } from './cdp-eval'
 import { getDialogHistory, getOpenDialog, runAsAgent } from '../chrome-cdp'
 import { downloadsStartedSince } from '../downloads'
+import { scopeOffWarning } from './scope'
 
-/** Tell the agent about dialogs answered and downloads started during its call; both are invisible otherwise. */
-function withPageNotes(res: unknown, since: number): unknown {
+/** Tell the agent about dialogs answered, downloads started and an unscoped attack tool — all invisible otherwise. */
+function withPageNotes(res: unknown, since: number, toolName: string): unknown {
   const lines = [
+    ...[scopeOffWarning(toolName)].filter((w): w is string => w != null),
     ...getDialogHistory(100)
       .filter((d) => d.answer && d.answer.at >= since)
       .map((d) => `[page ${d.type}] "${d.message}" → auto-answered ${d.answer!.accept ? 'OK' : 'Cancel'}`),
@@ -136,7 +138,7 @@ function withActivity(mcp: McpServer, handles: Map<string, ToolToggle>): void {
           }
         }
         const since = Date.now()
-        const res = withPageNotes(await runAsAgent(async () => fn(...a)), since)
+        const res = withPageNotes(await runAsAgent(async () => fn(...a)), since, toolName)
         if (nonBrowser) visualize('evalHudDone', 'done')
         return res
       } catch (e) {

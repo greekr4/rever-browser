@@ -8,6 +8,7 @@ import {
   hostnameOf,
   registrableDomain,
   scopeBlockForUrl,
+  scopeOffWarning,
   setScope
 } from './scope'
 
@@ -91,6 +92,21 @@ describe('scope', () => {
       setScope(['example.com'])
       expect(scopeBlockForUrl('not a url')).toBeNull()
       expect(scopeBlockForUrl(undefined)).toBeNull()
+    })
+  })
+
+  describe('scopeOffWarning', () => {
+    it('scope가 꺼져 있으면 공격성 툴 결과에 경고를 단다', () => {
+      expect(scopeOffWarning('intruder_run')).toContain('scope_set')
+    })
+
+    it('scope가 켜져 있으면 경고하지 않는다', () => {
+      setScope(['example.com'])
+      expect(scopeOffWarning('intruder_run')).toBeNull()
+    })
+
+    it('공격성 툴이 아니면 scope가 꺼져 있어도 경고하지 않는다', () => {
+      expect(scopeOffWarning('list_requests')).toBeNull()
     })
   })
 })
