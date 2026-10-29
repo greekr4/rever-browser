@@ -7,6 +7,8 @@ import { app } from 'electron'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { ok, err } from '../utils'
+import { getActiveTarget } from '../../chrome-cdp'
+import { originOf, filterByOrigin } from '../findings-scope'
 
 type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical'
 type Category = 'endpoint' | 'auth' | 'vuln' | 'secret' | 'other'
@@ -27,6 +29,8 @@ interface Finding {
   reproCommand?: string
   status: FindingStatus
   tags: string[]
+  // Site (eTLD+1) the finding was recorded on; scopes the export report.
+  origin?: string
   createdAt: number
 }
 
@@ -88,9 +92,10 @@ export function listFindings(): Finding[] {
   return [...findings.values()].sort((a, b) => b.createdAt - a.createdAt)
 }
 
-function renderMarkdown(list: Finding[]): string {
+function renderMarkdown(list: Finding[], scopeNote?: string): string {
   const lines: string[] = []
   lines.push('# Reversing Session Findings', '')
+  if (scopeNote) lines.push(`_site: ${scopeNote}_`, '')
   lines.push(`_${list.length} finding${list.length === 1 ? '' : 's'}_`, '')
 
   for (const cat of CATEGORY_ORDER) {
@@ -175,6 +180,7 @@ export function registerFindingTools(mcp: McpServer) {
         reproCommand,
         status: effectiveStatus,
         tags,
+        origin: originOf(getActiveTarget()?.wc.getURL()),
         createdAt: Date.now()
       }
       findings.set(f.id, f)
@@ -212,13 +218,18 @@ export function registerFindingTools(mcp: McpServer) {
     'finding_export',
     {
       description:
-        'Render all findings as a structured Markdown report grouped by category (endpoints / auth / vulns / secrets) and ordered by severity. The session deliverable.',
-      inputSchema: {}
+        'Render findings as a structured Markdown report grouped by category (endpoints / auth / vulns / secrets) and ordered by severity — the session deliverable. Defaults to the current page\'s site so one scan\'s report is not polluted by findings from other targets; pass all=true for every finding in the store.',
+      inputSchema: {
+        all: z.boolean().optional().describe('Include findings from every site, not just the current page\'s')
+      }
     },
-    async () => {
-      const list = listFindings()
-      if (list.length === 0) return ok('No findings recorded yet.')
-      return ok(renderMarkdown(list))
+    async ({ all }) => {
+      const scope = originOf(getActiveTarget()?.wc.getURL())
+      const list = filterByOrigin(listFindings(), scope, all ?? false)
+      if (list.length === 0) {
+        return ok(scope ? `No findings recorded yet for ${scope}.` : 'No findings recorded yet.')
+      }
+      return ok(renderMarkdown(list, scope && !all ? scope : undefined))
     }
   )
 
