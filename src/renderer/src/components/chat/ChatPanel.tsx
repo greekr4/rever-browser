@@ -1,12 +1,12 @@
 import { useChat } from '@ai-sdk/react'
 import { memo, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 
 import { ACPChatTransport } from '@/ai/acp-transport'
 import { useAcpAutoApprove, setAcpAutoApprove } from '@/ai/acp-permission'
 import { ACP_AGENTS, type ACPAgentID, type CatalogModel } from '@/constants'
 import { ModelPicker } from './ModelPicker'
+import { Markdown } from './Markdown'
+import { ProviderIcon } from './ProviderIcon'
 import { ChatHistoryMenu } from './ChatHistoryMenu'
 import { formatOutput } from '@/lib/format-json'
 import { useChatDraft } from '@/stores/chat-draft'
@@ -45,56 +45,7 @@ function Spinner() {
   return <span className="spinner" aria-hidden />
 }
 
-function CodeBlock({ children }: { children?: React.ReactNode }) {
-  const [copied, setCopied] = useState(false)
-  const ref = useRef<HTMLPreElement>(null)
-  const onCopy = async () => {
-    const text = ref.current?.innerText ?? ''
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1200)
-    } catch {}
-  }
-  return (
-    <div style={{ position: 'relative' }}>
-      <button
-        type="button"
-        onClick={onCopy}
-        style={{
-          position: 'absolute',
-          top: 6,
-          right: 6,
-          padding: '2px 8px',
-          fontSize: 11,
-          background: 'var(--surface)',
-          border: '1px solid var(--border-2)',
-          color: 'var(--text-2)',
-          borderRadius: 4,
-          cursor: 'pointer',
-          opacity: 0.85
-        }}
-      >
-        {copied ? 'copied' : 'copy'}
-      </button>
-      <pre ref={ref}>{children}</pre>
-    </div>
-  )
-}
 
-const MD_COMPONENTS = {
-  pre: ({ children }: { children?: React.ReactNode }) => <CodeBlock>{children}</CodeBlock>
-}
-
-const Markdown = memo(function Markdown({ text, dim }: { text: string; dim?: boolean }) {
-  return (
-    <div className={`md${dim ? ' md--dim' : ''}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
-        {text}
-      </ReactMarkdown>
-    </div>
-  )
-})
 
 interface ToolPart {
   type: string
@@ -368,6 +319,16 @@ const TOOL_PROFILE_TIP: Record<ToolProfileId, TKey> = {
 }
 const TOOL_PROFILE_ORDER: readonly ToolProfileId[] = ['browse', 'reverse', 'probe']
 
+// Which company makes the agent's model — shown compactly by the input.
+const AGENT_COMPANY: Record<ACPAgentID, string> = {
+  'claude-code': 'Anthropic',
+  anthropic: 'Anthropic',
+  codex: 'OpenAI',
+  openai: 'OpenAI',
+  grok: 'xAI',
+  glm: 'Z.ai'
+}
+
 function ToolsProfileSegment() {
   const tr = useT()
   const profile = useToolProfileStore((s) => s.profile)
@@ -379,7 +340,6 @@ function ToolsProfileSegment() {
       data-testid="tool-profile"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
     >
-      <span style={{ fontSize: 11, opacity: 0.65 }}>{tr('tools.profile.label')}</span>
       <span
         style={{
           display: 'inline-flex',
@@ -418,6 +378,7 @@ function ToolsProfileSegment() {
   )
 }
 
+// Autonomous scan bar above the chat input: URL + page budget + Start. Start
 export function ChatPanel() {
   const tr = useT()
   // Restore the most recently used conversation on launch so a reload/restart
@@ -681,6 +642,7 @@ export function ChatPanel() {
     submit()
   }
 
+
   // Auto-grow the input up to 4 lines; beyond that it scrolls.
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const INPUT_MAX_HEIGHT = 18 * 4 + 14 // 4 lines × line-height + padding + border
@@ -743,7 +705,7 @@ export function ChatPanel() {
             color: autoApprove ? 'var(--chip-ok-text)' : 'var(--chip-warn-text)'
           }}
         >
-          {autoApprove ? 'Auto-approve' : 'Manual approve'}
+          {autoApprove ? 'Auto' : 'Manual'}
         </button>
         <ChatHistoryMenu currentId={currentId} disabled={busy} onOpen={openConversation} />
         <button
@@ -822,11 +784,39 @@ export function ChatPanel() {
         )}
       </div>
 
+      <div
+        data-testid="model-readout"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          padding: '7px 12px 3px',
+          fontSize: 11,
+          color: 'var(--text-dim)',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          // The readout + input form are one footer layer, split from the chat
+          // scroll above by this top border + the footer's own background.
+          borderTop: '1px solid var(--border)',
+          background: 'var(--bg-bar)'
+        }}
+      >
+        <ProviderIcon agentId={agentId} size={13} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {AGENT_COMPANY[agentId]} ·{' '}
+          {selectedModelName ??
+            models.find((m) => m.modelId === currentModel)?.name ??
+            currentModel ??
+            (ACP_AGENTS.find((a) => a.id === agentId)?.name ?? agentId)}
+        </span>
+      </div>
+
       <form
         onSubmit={onSubmit}
         data-testid="chat-form"
         data-status={status}
-        style={{ display: 'flex', gap: 8, padding: 12, borderTop: '1px solid var(--border-2)', alignItems: 'center' }}
+        style={{ display: 'flex', gap: 8, padding: '8px 12px 12px', background: 'var(--bg-bar)', alignItems: 'center' }}
       >
         <textarea
           data-testid="chat-input"

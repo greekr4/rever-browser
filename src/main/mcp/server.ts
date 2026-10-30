@@ -35,6 +35,8 @@ import { registerPayloadProbeTools } from './tools/payload_probe'
 import { registerCrlfTools } from './tools/crlf'
 import { registerPathProbeTools } from './tools/path_probe'
 import { registerFindingTools } from './tools/findings'
+import { registerScanTools } from './tools/scan'
+import { registerUiCrawlTools } from './tools/ui-crawl'
 import { registerSecurityInspectTools } from './tools/security_inspect'
 import { registerDomEditTools } from './tools/dom_edit'
 import { registerServiceWorkerTools } from './tools/sw_inspect'
@@ -67,10 +69,12 @@ import { emitAiAction } from '../ai-events'
 import { visualize } from './cdp-eval'
 import { getDialogHistory, getOpenDialog, runAsAgent } from '../chrome-cdp'
 import { downloadsStartedSince } from '../downloads'
+import { scopeOffWarning } from './scope'
 
-/** Tell the agent about dialogs answered and downloads started during its call; both are invisible otherwise. */
-function withPageNotes(res: unknown, since: number): unknown {
+/** Tell the agent about dialogs answered, downloads started and an unscoped attack tool — all invisible otherwise. */
+function withPageNotes(res: unknown, since: number, toolName: string): unknown {
   const lines = [
+    ...[scopeOffWarning(toolName)].filter((w): w is string => w != null),
     ...getDialogHistory(100)
       .filter((d) => d.answer && d.answer.at >= since)
       .map((d) => `[page ${d.type}] "${d.message}" → auto-answered ${d.answer!.accept ? 'OK' : 'Cancel'}`),
@@ -136,7 +140,7 @@ function withActivity(mcp: McpServer, handles: Map<string, ToolToggle>): void {
           }
         }
         const since = Date.now()
-        const res = withPageNotes(await runAsAgent(async () => fn(...a)), since)
+        const res = withPageNotes(await runAsAgent(async () => fn(...a)), since, toolName)
         if (nonBrowser) visualize('evalHudDone', 'done')
         return res
       } catch (e) {
@@ -182,6 +186,8 @@ export function buildMcpServer(opts?: { catalog?: CatalogKind }): McpServer {
   registerCrlfTools(mcp)
   registerPathProbeTools(mcp)
   registerFindingTools(mcp)
+  registerScanTools(mcp)
+  registerUiCrawlTools(mcp)
   registerSecurityInspectTools(mcp)
   registerDomEditTools(mcp)
   registerServiceWorkerTools(mcp)

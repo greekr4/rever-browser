@@ -23,7 +23,8 @@ function connect(): Promise<{ client: Client; tools: McpToolInfo[] }> {
     const client = new Client({ name: 'rever-workflow', version: '0.1.0' })
     await client.connect(
       new StreamableHTTPClientTransport(new URL(url), {
-        requestInit: { headers: { Authorization: authHeader } }
+        // Macros and workflows run tools by name, so they need every tool.
+        requestInit: { headers: { Authorization: authHeader, 'X-Rever-Catalog': 'full' } }
       })
     )
     const listed = await client.listTools()

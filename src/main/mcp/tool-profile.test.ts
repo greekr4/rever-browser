@@ -21,6 +21,7 @@ import {
 } from './tool-profile'
 
 const BROWSE_REVERSE = [
+  'list_endpoints',
   'console_eval',
   'console_get_props',
   'cookie_list',
@@ -91,17 +92,17 @@ describe('tool-profile', () => {
     it('소스 registerTool 이름과 레지스트리 키가 같다', () => {
       const source = sourceToolNames()
       expect(sorted(Object.keys(TOOL_BUCKETS))).toEqual(sorted(source))
-      expect(source.size).toBe(162)
+      expect(source.size).toBe(165)
       expect(source.has('tool_profile_set')).toBe(true)
     })
   })
 
   describe('광고 수', () => {
-    it('browse 80, reverse 113, probe 37이고 예산 120을 넘지 않는다', () => {
+    it('browse 82, reverse 116, probe 38이고 예산 120을 넘지 않는다', () => {
       expect(PROFILE_TOOL_BUDGET).toBe(120)
-      expect(advertisedNames('browse')).toHaveLength(80)
-      expect(advertisedNames('reverse')).toHaveLength(113)
-      expect(advertisedNames('probe')).toHaveLength(37)
+      expect(advertisedNames('browse')).toHaveLength(82)
+      expect(advertisedNames('reverse')).toHaveLength(116)
+      expect(advertisedNames('probe')).toHaveLength(38)
       for (const profile of TOOL_PROFILES) {
         expect(() => assertProfileBudget(profile)).not.toThrow()
       }
@@ -118,7 +119,7 @@ describe('tool-profile', () => {
   })
 
   describe('browse와 reverse의 겹침', () => {
-    it('코어를 뺀 겹침은 19개 이름으로 고정된다', () => {
+    it('코어를 뺀 겹침은 20개 이름으로 고정된다', () => {
       const overlap = Object.keys(TOOL_BUCKETS).filter(
         (name) =>
           TOOL_BUCKETS[name] !== 'core' &&
@@ -184,7 +185,7 @@ describe('tool-profile', () => {
       expect(names).not.toContain('not_a_tool')
       expect(names.filter((name) => name === 'browser_snapshot')).toHaveLength(1)
       expect(names.filter((name) => name === 'grep_scripts')).toHaveLength(1)
-      expect(names).toHaveLength(81)
+      expect(names).toHaveLength(83)
     })
   })
 
@@ -209,16 +210,16 @@ describe('tool-profile', () => {
   })
 
   describe('카탈로그와 반환 문자열', () => {
-    it('헤더는 follow와 direct만 받고 나머지는 full이다', () => {
+    it('헤더는 full과 direct만 받고 없거나 나머지는 follow다', () => {
       expect(catalogFromHeader('follow')).toBe('follow')
       expect(catalogFromHeader('direct')).toBe('direct')
-      expect(catalogFromHeader(undefined)).toBe('full')
       expect(catalogFromHeader('full')).toBe('full')
-      expect(catalogFromHeader('Follow')).toBe('full')
-      expect(catalogFromHeader('DIRECT')).toBe('full')
-      expect(catalogFromHeader('')).toBe('full')
+      expect(catalogFromHeader(undefined)).toBe('follow')
+      expect(catalogFromHeader('Full')).toBe('follow')
+      expect(catalogFromHeader('DIRECT')).toBe('follow')
+      expect(catalogFromHeader('')).toBe('follow')
       expect(catalogFromHeader(['direct'])).toBe('direct')
-      expect(catalogFromHeader(['Follow'])).toBe('full')
+      expect(catalogFromHeader(['full'])).toBe('full')
     })
 
     it('매 턴 한 줄은 프로파일 이름만 바뀐다', () => {
@@ -231,13 +232,13 @@ describe('tool-profile', () => {
 
     it('읽기·전환·probe 거부 문자열이 고정이다', () => {
       expect(toolProfileReadText('browse', 77)).toBe(
-        'profile=browse advertised=77. Switch with profile "browse" or "reverse". You cannot select probe; the user sets Tools → Probe. bp_* is not in any profile.'
+        'profile=browse advertised=77. Switch with profile "browse" or "reverse". You cannot select probe; the user sets Tools → Access. bp_* is not in any profile.'
       )
       expect(toolProfileSwitchedText('reverse', 109)).toBe(
         'profile=reverse advertised=109. If grep_scripts is not in your tool list yet, ask the user to send one more message.'
       )
       expect(TOOL_PROFILE_PROBE_REJECTED).toBe(
-        'probe is user-selected. Ask the user to set Tools → Probe. Profile was not changed.'
+        'probe is user-selected. Ask the user to set Tools → Access. Profile was not changed.'
       )
     })
   })

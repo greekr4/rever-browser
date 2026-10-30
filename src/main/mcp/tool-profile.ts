@@ -34,6 +34,9 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   scope_clear: 'core',
   finding_add: 'core',
   finding_list: 'core',
+  // The deterministic site-sweep escape hatch — must be visible in every
+  // profile so an agent never hand-orchestrates per-tab sub-agents instead.
+  redteam_start: 'core',
   // Pages pop dialogs and downloads in any profile; the agent must be able to steer them.
   browser_handle_dialog: 'core',
   dialog_history: 'core',
@@ -77,6 +80,7 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   inspect_listeners: ['browse'],
 
   // browse ∩ reverse (19)
+  list_endpoints: ['browse', 'reverse'],
   console_eval: ['browse', 'reverse'],
   console_get_props: ['browse', 'reverse'],
   cookie_list: ['browse', 'reverse'],
@@ -99,6 +103,9 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
 
   // reverse, not browse (63). The four shared with probe are listed next.
   get_request_initiator: ['reverse'],
+  // Red Team exhaustive-click crawler — the deterministic UI sweep that feeds
+  // discovered endpoints into the probe phase.
+  ui_crawl: ['reverse'],
   finding_export: ['reverse'],
   finding_remove: ['reverse'],
   list_scripts: ['reverse'],
@@ -255,21 +262,27 @@ export function readToolProfile(json: string): ToolProfile | null {
 
 export type CatalogKind = 'full' | 'follow' | 'direct'
 
-/** Header value must be exactly `follow` or `direct`. Anything else is the full catalog. */
+/**
+ * Header value must be exactly `full` or `direct`; anything else, including no
+ * header, is `follow`. An external client (the /rever skill, a hand-added
+ * Claude Code or Codex) gets the in-app profile, not all ~160 tool schemas;
+ * in-app callers that need every tool (macros, workflows, mcp-call.py, e2e)
+ * send `full` explicitly.
+ */
 export function catalogFromHeader(value: string | string[] | undefined): CatalogKind {
   const raw = Array.isArray(value) ? value[0] : value
-  if (raw === 'follow' || raw === 'direct') return raw
-  return 'full'
+  if (raw === 'full' || raw === 'direct') return raw
+  return 'follow'
 }
 
 export const TOOL_PROFILE_SET_DESCRIPTION = `Switch the in-app tool profile, or omit profile to read it.
 browse (default): drive the page, read the DOM, and use the site CLI (cli_compile / cli_run / cli_export).
 reverse: scripts, source maps, deobfuscation, wasm, crypto_trace, intercept/replay, codegen (export_python_client / export_client), site CLI, websockets.
-probe: intruder_run, burst_send, payload_probe, crlf_test, path_probe, lfi_probe. You cannot select probe; ask the user to set Tools → Probe.
+probe: intruder_run, burst_send, payload_probe, crlf_test, path_probe, lfi_probe. You cannot select probe; ask the user to set Tools → Access.
 bp_* breakpoints are not available in any profile.`
 
 export function toolProfileReadText(profile: ToolProfile, advertised: number): string {
-  return `profile=${profile} advertised=${advertised}. Switch with profile "browse" or "reverse". You cannot select probe; the user sets Tools → Probe. bp_* is not in any profile.`
+  return `profile=${profile} advertised=${advertised}. Switch with profile "browse" or "reverse". You cannot select probe; the user sets Tools → Access. bp_* is not in any profile.`
 }
 
 export function toolProfileSwitchedText(profile: ToolProfile, advertised: number): string {
@@ -277,7 +290,7 @@ export function toolProfileSwitchedText(profile: ToolProfile, advertised: number
 }
 
 export const TOOL_PROFILE_PROBE_REJECTED =
-  'probe is user-selected. Ask the user to set Tools → Probe. Profile was not changed.'
+  'probe is user-selected. Ask the user to set Tools → Access. Profile was not changed.'
 
 export type { ToolProfileId } from '../../shared/tool-profile-line'
 export { toolProfileTurnLine } from '../../shared/tool-profile-line'
@@ -290,7 +303,7 @@ export interface ToolToggle {
 }
 
 /**
- * Only follow sessions disable tools. full stays complete for external clients.
+ * Only follow sessions disable tools. full stays complete for callers that ask for it.
  * direct stays complete because the provider filters each turn instead.
  */
 export function catalogDisablesTools(catalog: CatalogKind): boolean {

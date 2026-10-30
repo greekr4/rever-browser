@@ -8,6 +8,7 @@ import {
   hostnameOf,
   registrableDomain,
   scopeBlockForUrl,
+  scopeOffWarning,
   setScope
 } from './scope'
 
@@ -35,6 +36,20 @@ describe('scope', () => {
       expect(scopeBlockForUrl('http://127.0.0.1:8777/x')).toMatch(/Out of scope/)
       expect(scopeBlockForUrl('http://192.168.0.1/')).toMatch(/Out of scope/)
       expect(scopeBlockForUrl('http://10.0.0.1:8080/a')).toBeNull()
+    })
+  })
+
+  describe('localhost 포트', () => {
+    it('포트가 지정되면 그 포트만 범위 안이다 (8080 ≠ 8090)', () => {
+      setScope(['localhost:8080'])
+      expect(getScope().domains).toEqual(['localhost:8080'])
+      expect(scopeBlockForUrl('http://localhost:8080/my')).toBeNull()
+      expect(scopeBlockForUrl('http://localhost:8090/activity')).toMatch(/Out of scope/)
+    })
+    it('포트 없이 localhost 만 주면 모든 포트를 허용한다', () => {
+      setScope(['localhost'])
+      expect(scopeBlockForUrl('http://localhost:8080/a')).toBeNull()
+      expect(scopeBlockForUrl('http://localhost:9999/b')).toBeNull()
     })
   })
 
@@ -91,6 +106,21 @@ describe('scope', () => {
       setScope(['example.com'])
       expect(scopeBlockForUrl('not a url')).toBeNull()
       expect(scopeBlockForUrl(undefined)).toBeNull()
+    })
+  })
+
+  describe('scopeOffWarning', () => {
+    it('scope가 꺼져 있으면 공격성 툴 결과에 경고를 단다', () => {
+      expect(scopeOffWarning('intruder_run')).toContain('scope_set')
+    })
+
+    it('scope가 켜져 있으면 경고하지 않는다', () => {
+      setScope(['example.com'])
+      expect(scopeOffWarning('intruder_run')).toBeNull()
+    })
+
+    it('공격성 툴이 아니면 scope가 꺼져 있어도 경고하지 않는다', () => {
+      expect(scopeOffWarning('list_requests')).toBeNull()
     })
   })
 })

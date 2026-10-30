@@ -26,6 +26,10 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
   // Monotonic request id — a late response from a superseded fetch is dropped.
   const seq = useRef(0)
 
+  // No deps: useT()'s `t` is a fresh function every render, so depending on it
+  // would recreate `refresh`, re-run the effect each render and keep `loading`
+  // stuck true (the IP shows "…" forever even though it resolved). The error
+  // string is localized at render time instead.
   const refresh = useCallback(() => {
     const id = ++seq.current
     setLoading(true)
@@ -36,62 +40,54 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
         if (id !== seq.current) return
         setLoading(false)
         setIp(res.ip ?? null)
-        setError(res.ip ? null : res.error ?? t('ip.unknownError'))
+        setError(res.ip ? null : res.error ?? 'unknown')
       })
-  }, [t])
+  }, [])
 
   useEffect(() => {
     refresh()
   }, [refresh, activeId, refreshSignal])
 
+  // One pill: shows the egress IP (or masked), click toggles visibility.
+  // Still auto-refreshes on mount / active-tab change / proxy change; a manual
+  // re-check is a right-click.
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        flexShrink: 0,
-        marginLeft: 8,
-        marginBottom: 6
+    <button
+      className="toolbar-btn"
+      type="button"
+      onClick={toggleHidden}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        refresh()
       }}
+      title={
+        hidden ? t('ip.showTitle') : error ? t('ip.errorTitle', { error }) : t('ip.title')
+      }
+      style={
+        {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          flexShrink: 0,
+          marginLeft: 8,
+          marginBottom: 2,
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: 11,
+          color: 'var(--text-dim)',
+          WebkitAppRegion: 'no-drag'
+        } as React.CSSProperties
+      }
     >
-      <button
-        className="toolbar-btn"
-        type="button"
-        onClick={refresh}
-        title={
-          hidden
-            ? t('ip.hiddenTitle')
-            : error
-              ? t('ip.errorTitle', { error })
-              : t('ip.title')
-        }
-        style={
-          {
-            fontFamily: 'ui-monospace, monospace',
-            fontSize: 11,
-            color: 'var(--text-dim)',
-            WebkitAppRegion: 'no-drag'
-          } as React.CSSProperties
-        }
+      <span>IP:</span>
+      <span
+        style={{
+          filter: hidden ? 'blur(5px)' : undefined,
+          userSelect: hidden ? 'none' : undefined,
+          transition: 'filter 0.1s'
+        }}
       >
-        {hidden ? t('ip.masked') : loading ? '…' : (ip ?? t('ip.none'))}
-      </button>
-      <button
-        className="toolbar-btn"
-        type="button"
-        onClick={toggleHidden}
-        title={hidden ? t('ip.showTitle') : t('ip.hideTitle')}
-        style={
-          {
-            fontSize: 11,
-            color: 'var(--text-dim)',
-            WebkitAppRegion: 'no-drag'
-          } as React.CSSProperties
-        }
-      >
-        {hidden ? t('ip.show') : t('ip.hide')}
-      </button>
-    </div>
+        {loading ? '…' : (ip ?? '—')}
+      </span>
+    </button>
   )
 }

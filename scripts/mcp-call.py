@@ -77,6 +77,8 @@ class Client:
                 "Content-Type": "application/json",
                 "Accept": "application/json, text/event-stream",
                 **({"Authorization": f"Bearer {self.token}"} if self.token else {}),
+                # Testing drives any tool; without this the app hands out only its current profile.
+                "X-Rever-Catalog": "full",
                 **({"mcp-session-id": self.sid} if self.sid else {}),
             },
             method="POST",

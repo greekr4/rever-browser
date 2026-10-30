@@ -96,6 +96,7 @@ When the user asks for a CLI, to turn what they just did into a command, or to r
 - `browser_screenshot` — raw PNG of viewport (use sparingly). `set_viewport` — desktop ↔ mobile.
 
 ### Network capture
+- `list_endpoints` — the API map: XHR/Fetch grouped by method + path, one line each. Call it before `list_requests` when looking for the API; it is ~200× smaller on a busy site.
 - `list_requests` / `get_request` — recent traffic, filter by host/method/type/since. `get_request` returns a summary for large entries; pass `full=true` for headers + body. Any result ending in a `[truncated: … resultId=…]` footer pages with `tool_result_more`.
 - `inspect_listeners` — element → its event handlers (`url:line:col` + source), *before* clicking. Keep `ancestors` on — React/Vue register one dispatcher on the root, not on the button.
 

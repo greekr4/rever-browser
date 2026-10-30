@@ -2,6 +2,8 @@ import { create } from 'zustand'
 
 import type { ApiEndpoint, NetworkEvent, TrafficEntry } from '@/types/traffic'
 
+import { templatePath } from '../../../shared/endpoint-template'
+
 const MAX_ENTRIES = 500
 // Endpoints are aggregated once per request (O(1)), never by rescanning entries.
 // They outlive the entry ring buffer on purpose — the map should not forget an
@@ -9,20 +11,6 @@ const MAX_ENTRIES = 500
 const MAX_ENDPOINTS = 300
 const API_TYPES = new Set(['XHR', 'Fetch'])
 const AUTH_HINT = /(oauth|token|login|signin|auth|session|refresh)/i
-
-/** /users/12/orders/9f8a-... → /users/:id/orders/:id */
-function templatePath(path: string): string {
-  return path
-    .split('/')
-    .map((seg) => {
-      if (!seg) return seg
-      if (/^\d+$/.test(seg)) return ':id'
-      if (/^[0-9a-f]{16,}$/i.test(seg)) return ':id'
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(seg)) return ':id'
-      return seg
-    })
-    .join('/')
-}
 
 function aggregate(
   current: Record<string, ApiEndpoint>,

@@ -11,6 +11,8 @@ import { ProxyButton } from '@/components/ProxyButton'
 import { ScreencastView } from '@/components/ScreencastView'
 import { TabBar } from '@/components/TabBar'
 import { WebviewTab, type WebviewTabHandle } from '@/components/WebviewTab'
+import { ScanPopup } from '@/components/ScanPopup'
+import { useScanStore } from '@/stores/scan'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { CopyToast } from '@/components/CopyToast'
 import { PageEventToast } from '@/components/PageEventToast'
@@ -52,6 +54,7 @@ function App() {
   const activeId = useTabsStore((s) => s.activeId)
   const addTab = useTabsStore((s) => s.addTab)
   const activeTab = tabs.find((t) => t.id === activeId)
+  const scanRunning = useScanStore((s) => s.phase === 'running')
 
   const browserMode = useBrowserModeStore((s) => s.mode)
   const setBrowserMode = useBrowserModeStore((s) => s.setMode)
@@ -386,6 +389,35 @@ function App() {
           </span>
         )}
         <IpBadge refreshSignal={ipRefresh} />
+        {/* Page (webview) theme, co-located with the app theme. */}
+        {browserMode === 'embedded' && (
+          <button
+            className="toolbar-btn"
+            type="button"
+            onClick={() => {
+              if (activeOrigin) cycleTheme(activeOrigin)
+            }}
+            disabled={!activeOrigin}
+            title={
+              activeOrigin
+                ? `Page theme for ${activeOrigin} — Auto follows the app theme. Click to cycle Auto → Light → Dark`
+                : 'No site loaded'
+            }
+            style={{
+              flexShrink: 0,
+              marginLeft: 8,
+              marginBottom: 2,
+              WebkitAppRegion: 'no-drag',
+              background:
+                activeTheme === 'light' ? '#eee' : activeTheme === 'dark' ? '#222' : undefined,
+              color: activeTheme === 'light' ? '#111' : activeTheme === 'dark' ? '#eee' : undefined,
+              borderColor:
+                activeTheme === 'light' ? '#aaa' : activeTheme === 'dark' ? '#555' : undefined
+            } as React.CSSProperties}
+          >
+            {activeTheme === 'auto' ? 'Auto' : activeTheme === 'light' ? 'Light' : 'Dark'}
+          </button>
+        )}
         <button
           className="toolbar-btn"
           type="button"
@@ -394,8 +426,8 @@ function App() {
           style={
             {
               flexShrink: 0,
-              marginLeft: 8,
-              marginBottom: 6,
+              marginLeft: 4,
+              marginBottom: 2,
               WebkitAppRegion: 'no-drag'
             } as React.CSSProperties
           }
@@ -411,7 +443,7 @@ function App() {
             {
               flexShrink: 0,
               marginLeft: 4,
-              marginBottom: 6,
+              marginBottom: 2,
               fontSize: 11,
               WebkitAppRegion: 'no-drag'
             } as React.CSSProperties
@@ -484,124 +516,68 @@ function App() {
                 >
                   &lt;/&gt;
                 </button>
-                <button
-                  className="toolbar-btn"
-                  type="button"
-                  aria-pressed={pickerActive}
-                  onClick={() => {
-                    void (pickerActive ? window.rev.picker.stop() : window.rev.picker.start())
-                  }}
-                  disabled={!activeTab}
-                  title={t('toolbar.pick')}
-                  style={{
-                    background: pickerActive ? 'var(--accent-soft)' : undefined,
-                    borderColor: pickerActive ? 'var(--accent-border)' : undefined
-                  }}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="12" r="7" />
-                    <line x1="12" y1="2" x2="12" y2="6" />
-                    <line x1="12" y1="18" x2="12" y2="22" />
-                    <line x1="2" y1="12" x2="6" y2="12" />
-                    <line x1="18" y1="12" x2="22" y2="12" />
-                  </svg>
-                </button>
-                <button
-                  className="toolbar-btn"
-                  type="button"
-                  aria-pressed={grabbing}
-                  onClick={() => {
-                    if (grabbing) {
-                      void window.rev.grab.stop()
-                      setGrabbing(false)
-                    } else {
-                      void window.rev.grab.start()
-                      setGrabbing(true)
-                    }
-                  }}
-                  disabled={!activeTab}
-                  title={t('toolbar.grab')}
-                  style={{
-                    background: grabbing ? 'var(--accent-soft)' : undefined,
-                    borderColor: grabbing ? 'var(--accent-border)' : undefined
-                  }}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5z" />
-                  </svg>
-                </button>
               </>
             )}
-            <input
-              ref={addressInputRef}
-              value={urlDraft}
-              onChange={(e) => setUrlDraft(e.target.value)}
-              placeholder={t('toolbar.addressPlaceholder')}
-              style={{
-                flex: 1,
-                height: 28,
-                padding: '0 10px',
-                fontFamily: 'ui-monospace, monospace',
-                boxSizing: 'border-box'
-              }}
-            />
-            {browserMode === 'embedded' && (
-              <button
-                className="toolbar-btn"
-                type="button"
-                onClick={() => {
-                  if (!activeTab) return
-                  if (isBookmarked) removeBookmarkByUrl(activeTab.url)
-                  else addBookmark({ url: activeTab.url, title: activeTab.title })
+            {/* Chrome-style: bookmark star lives inside the address field. */}
+            <div style={{ position: 'relative', flex: 1, display: 'flex', minWidth: 0 }}>
+              <input
+                ref={addressInputRef}
+                value={urlDraft}
+                onChange={(e) => setUrlDraft(e.target.value)}
+                placeholder={t('toolbar.addressPlaceholder')}
+                style={{
+                  flex: 1,
+                  height: 28,
+                  padding: browserMode === 'embedded' ? '0 32px 0 10px' : '0 10px',
+                  fontFamily: 'ui-monospace, monospace',
+                  boxSizing: 'border-box'
                 }}
-                disabled={!activeTab || !/^https?:\/\//i.test(activeTab.url)}
-                title={isBookmarked ? 'Remove bookmark' : 'Bookmark this page'}
-              >
-                <svg
-                  width="15"
-                  height="15"
-                  viewBox="0 0 24 24"
-                  fill={isBookmarked ? 'var(--accent)' : 'none'}
-                  stroke={isBookmarked ? 'var(--accent)' : 'currentColor'}
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
+              />
+              {browserMode === 'embedded' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!activeTab) return
+                    if (isBookmarked) removeBookmarkByUrl(activeTab.url)
+                    else addBookmark({ url: activeTab.url, title: activeTab.title })
+                  }}
+                  disabled={!activeTab || !/^https?:\/\//i.test(activeTab.url)}
+                  title={isBookmarked ? 'Remove bookmark' : 'Bookmark this page'}
+                  style={
+                    {
+                      position: 'absolute',
+                      right: 6,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 22,
+                      height: 22,
+                      padding: 0,
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'var(--text-dim)',
+                      cursor: 'pointer'
+                    } as React.CSSProperties
+                  }
                 >
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                </svg>
-              </button>
-            )}
-            <button className="toolbar-btn" type="submit">{t('toolbar.go')}</button>
-            <button
-              className="toolbar-btn"
-              type="button"
-              onClick={() => {
-                if (activeOrigin) cycleTheme(activeOrigin)
-              }}
-              disabled={!activeOrigin}
-              title={
-                activeOrigin
-                  ? `Page theme for ${activeOrigin} — Auto follows the app theme. Click to cycle Auto → Light → Dark`
-                  : 'No site loaded'
-              }
-              style={{
-                background: activeTheme === 'light'
-                  ? '#eee'
-                  : activeTheme === 'dark'
-                    ? '#222'
-                    : undefined,
-                color: activeTheme === 'light' ? '#111' : activeTheme === 'dark' ? '#eee' : undefined,
-                borderColor:
-                  activeTheme === 'light'
-                    ? '#aaa'
-                    : activeTheme === 'dark'
-                      ? '#555'
-                      : undefined
-              }}
-            >
-              {activeTheme === 'auto' ? 'Auto' : activeTheme === 'light' ? 'Light' : 'Dark'}
-            </button>
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill={isBookmarked ? 'var(--accent)' : 'none'}
+                    stroke={isBookmarked ? 'var(--accent)' : 'currentColor'}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                </button>
+              )}
+            </div>
             {browserMode === 'embedded' && (
               <ProxyButton
                 tab={activeTab}
@@ -676,16 +652,32 @@ function App() {
             }}
           >
             {browserMode === 'embedded' ? (
-              <>
+              <div
+                style={
+                  scanRunning
+                    ? {
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gridAutoRows: 'min-content',
+                        gap: 8,
+                        padding: 8,
+                        overflowY: 'auto'
+                      }
+                    : { display: 'contents' }
+                }
+              >
                 {tabs.map((t) => (
                   <WebviewTab
                     key={t.id}
                     ref={setTabRef(t.id)}
                     tab={t}
                     active={t.id === activeId}
+                    tiled={scanRunning}
                   />
                 ))}
-              </>
+              </div>
             ) : (
               <ScreencastView />
             )}
@@ -767,6 +759,7 @@ function App() {
               }
             }} />
             <FloatingChips openPanel={openPanel} setOpenPanel={setOpenPanel} />
+            <ScanPopup />
             <DetailDrawer />
           </div>
         </section>
