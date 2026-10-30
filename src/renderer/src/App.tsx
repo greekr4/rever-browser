@@ -398,7 +398,7 @@ function App() {
             {
               flexShrink: 0,
               marginLeft: 8,
-              marginBottom: 6,
+              marginBottom: 2,
               WebkitAppRegion: 'no-drag'
             } as React.CSSProperties
           }
@@ -414,7 +414,7 @@ function App() {
             {
               flexShrink: 0,
               marginLeft: 4,
-              marginBottom: 6,
+              marginBottom: 2,
               fontSize: 11,
               WebkitAppRegion: 'no-drag'
             } as React.CSSProperties
@@ -486,52 +486,6 @@ function App() {
                   style={{ fontFamily: 'ui-monospace, monospace' }}
                 >
                   &lt;/&gt;
-                </button>
-                <button
-                  className="toolbar-btn"
-                  type="button"
-                  aria-pressed={pickerActive}
-                  onClick={() => {
-                    void (pickerActive ? window.rev.picker.stop() : window.rev.picker.start())
-                  }}
-                  disabled={!activeTab}
-                  title={t('toolbar.pick')}
-                  style={{
-                    background: pickerActive ? 'var(--accent-soft)' : undefined,
-                    borderColor: pickerActive ? 'var(--accent-border)' : undefined
-                  }}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="12" r="7" />
-                    <line x1="12" y1="2" x2="12" y2="6" />
-                    <line x1="12" y1="18" x2="12" y2="22" />
-                    <line x1="2" y1="12" x2="6" y2="12" />
-                    <line x1="18" y1="12" x2="22" y2="12" />
-                  </svg>
-                </button>
-                <button
-                  className="toolbar-btn"
-                  type="button"
-                  aria-pressed={grabbing}
-                  onClick={() => {
-                    if (grabbing) {
-                      void window.rev.grab.stop()
-                      setGrabbing(false)
-                    } else {
-                      void window.rev.grab.start()
-                      setGrabbing(true)
-                    }
-                  }}
-                  disabled={!activeTab}
-                  title={t('toolbar.grab')}
-                  style={{
-                    background: grabbing ? 'var(--accent-soft)' : undefined,
-                    borderColor: grabbing ? 'var(--accent-border)' : undefined
-                  }}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5z" />
-                  </svg>
                 </button>
               </>
             )}

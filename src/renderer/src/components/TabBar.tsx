@@ -255,9 +255,16 @@ export function TabBar() {
     )
   }
 
+  // Match .toolbar-btn metrics (height 28) so + / ⋯ / 👤 line up with the IP,
+  // theme and language buttons next to them.
   const smallBtn = {
-    padding: '4px 10px',
+    height: 28,
+    padding: '0 10px',
     marginBottom: 2,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxSizing: 'border-box',
     background: 'transparent',
     border: '1px solid var(--border-2)',
     borderRadius: 4,
@@ -307,7 +314,7 @@ export function TabBar() {
       </button>
 
       {overflowTabs.length > 0 && (
-        <div style={{ marginBottom: 2, flexShrink: 0 }}>
+        <div style={{ flexShrink: 0 }}>
           <button
             ref={ofBtnRef}
             type="button"
@@ -398,7 +405,7 @@ export function TabBar() {
         </div>
       )}
 
-      <div style={{ marginBottom: 2, flexShrink: 0 }}>
+      <div style={{ flexShrink: 0 }}>
         <button ref={btnRef} type="button" onClick={toggleMenu} style={smallBtn} title={tr('tab.newInProfile')}>
           👤
         </button>

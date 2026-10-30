@@ -44,54 +44,37 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
     refresh()
   }, [refresh, activeId, refreshSignal])
 
+  // One pill: shows the egress IP (or masked), click toggles visibility.
+  // Still auto-refreshes on mount / active-tab change / proxy change; a manual
+  // re-check is a right-click.
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        flexShrink: 0,
-        marginLeft: 8,
-        marginBottom: 6
+    <button
+      className="toolbar-btn"
+      type="button"
+      onClick={toggleHidden}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        refresh()
       }}
+      title={
+        hidden ? t('ip.showTitle') : error ? t('ip.errorTitle', { error }) : t('ip.title')
+      }
+      style={
+        {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          flexShrink: 0,
+          marginLeft: 8,
+          marginBottom: 2,
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: 11,
+          color: 'var(--text-dim)',
+          WebkitAppRegion: 'no-drag'
+        } as React.CSSProperties
+      }
     >
-      <button
-        className="toolbar-btn"
-        type="button"
-        onClick={refresh}
-        title={
-          hidden
-            ? t('ip.hiddenTitle')
-            : error
-              ? t('ip.errorTitle', { error })
-              : t('ip.title')
-        }
-        style={
-          {
-            fontFamily: 'ui-monospace, monospace',
-            fontSize: 11,
-            color: 'var(--text-dim)',
-            WebkitAppRegion: 'no-drag'
-          } as React.CSSProperties
-        }
-      >
-        {hidden ? t('ip.masked') : loading ? '…' : (ip ?? t('ip.none'))}
-      </button>
-      <button
-        className="toolbar-btn"
-        type="button"
-        onClick={toggleHidden}
-        title={hidden ? t('ip.showTitle') : t('ip.hideTitle')}
-        style={
-          {
-            fontSize: 11,
-            color: 'var(--text-dim)',
-            WebkitAppRegion: 'no-drag'
-          } as React.CSSProperties
-        }
-      >
-        {hidden ? t('ip.show') : t('ip.hide')}
-      </button>
-    </div>
+      {hidden ? t('ip.masked') : loading ? 'IP: …' : ip ? `IP: ${ip}` : t('ip.none')}
+    </button>
   )
 }

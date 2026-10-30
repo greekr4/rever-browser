@@ -340,7 +340,6 @@ function ToolsProfileSegment() {
       data-testid="tool-profile"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
     >
-      <span style={{ fontSize: 11, opacity: 0.65 }}>{tr('tools.profile.label')}</span>
       <span
         style={{
           display: 'inline-flex',
@@ -706,7 +705,7 @@ export function ChatPanel() {
             color: autoApprove ? 'var(--chip-ok-text)' : 'var(--chip-warn-text)'
           }}
         >
-          {autoApprove ? 'Auto-approve' : 'Manual approve'}
+          {autoApprove ? 'Auto' : 'Manual'}
         </button>
         <ChatHistoryMenu currentId={currentId} disabled={busy} onOpen={openConversation} />
         <button
