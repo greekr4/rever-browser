@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { hostInRedTeamScope, isRedTeamActive, setRedTeamScan } from './red-team-mode'
+import { addRedTeamScope, hostInRedTeamScope, isRedTeamActive, setRedTeamScan } from './red-team-mode'
 
 afterEach(() => setRedTeamScan(false))
 
@@ -25,6 +25,14 @@ describe('red-team-mode', () => {
     expect(hostInRedTeamScope('localhost:8090')).toBe(false)
     expect(hostInRedTeamScope('localhost')).toBe(false)
     expect(hostInRedTeamScope('example.com')).toBe(false)
+  })
+
+  it('scope_add 로 들어온 API 호스트(다른 포트)는 범위 안이 된다', () => {
+    setRedTeamScan(true, 'http://localhost:8080/my')
+    expect(hostInRedTeamScope('localhost:3000')).toBe(false)
+    addRedTeamScope(['http://localhost:3000/'])
+    expect(hostInRedTeamScope('localhost:3000')).toBe(true)
+    expect(hostInRedTeamScope('localhost:8090')).toBe(false) // 추가 안 한 포트는 여전히 밖
   })
 
   it('중지하면 다시 범위 밖이다', () => {

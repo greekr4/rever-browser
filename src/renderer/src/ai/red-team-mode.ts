@@ -1,7 +1,9 @@
 // Signals that a Red Team scan is running so the permission layer
 // (acp-permission.ts) can auto-approve risky probe tools without prompting —
-// but ONLY for the scan's own scoped site. Out-of-scope requests still prompt,
-// and the main-process scope check (mcp/scope.ts) blocks them regardless.
+// but only for hosts in the scan's scope. The scope grows as the agent
+// scope_set/scope_add's the target's own API hosts (e.g. a backend on another
+// localhost port), tracked here so the auto-approve matches what the agent (and
+// the server-side scope check in mcp/scope.ts) actually enforce.
 
 function isLoopbackOrIp(host: string): boolean {
   return host === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)
@@ -14,9 +16,9 @@ function regDomain(host: string): string {
   return p.length <= 2 ? host : p.slice(-2).join('.')
 }
 
-// The scope key. Loopback / IP share one hostname across apps on different
-// ports (localhost:8080 vs :8090), so the port is load-bearing there; public
-// domains fold to eTLD+1. Mirrors mcp/scope.ts `scopeKey` on the renderer side.
+// Scope key from a full URL. Loopback / IP keep the port (localhost:8080 vs
+// :8090 are distinct apps); public domains fold to eTLD+1. Mirrors scopeKey in
+// mcp/scope.ts on the renderer side.
 export function siteKey(input: string): string {
   try {
     const u = new URL(input)
@@ -27,8 +29,7 @@ export function siteKey(input: string): string {
   }
 }
 
-// Same key from a bare host that may carry a port (URL.host form, e.g. what
-// risky-tools' extractTargetHost returns: "localhost:8090").
+// Same key from a bare host that may carry a port ("localhost:8090").
 function hostKey(hostMaybePort: string): string {
   const m = /^(.+):(\d+)$/.exec(hostMaybePort)
   const host = m ? m[1] : hostMaybePort
@@ -37,20 +38,43 @@ function hostKey(hostMaybePort: string): string {
   return port && isLoopbackOrIp(host) ? `${reg}:${port}` : reg
 }
 
+// A host or URL (as passed to scope_set/scope_add) → a scope key.
+function keyOf(hostOrUrl: string): string {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(hostOrUrl) ? siteKey(hostOrUrl) : hostKey(hostOrUrl)
+}
+
 let active = false
-let scopeHost = ''
+const scope = new Set<string>()
 
 export function setRedTeamScan(on: boolean, target?: string): void {
   active = on
-  scopeHost = on ? siteKey(target ?? '') : ''
+  scope.clear()
+  if (on && target) {
+    const k = siteKey(target)
+    if (k) scope.add(k)
+  }
+}
+
+// Union-add hosts the agent brought into scope (scope_set/scope_add). Monotonic
+// grow: the server enforces replace semantics; the renderer only needs to not
+// prompt for anything the agent authorized, so a superset is safe.
+export function addRedTeamScope(hostsOrUrls: string[]): void {
+  for (const h of hostsOrUrls) {
+    const k = keyOf(h)
+    if (k) scope.add(k)
+  }
 }
 
 export function isRedTeamActive(): boolean {
   return active
 }
 
-// True only while a scan runs AND the request host is the scan's scoped site
-// (port-aware for loopback/IP, so localhost:8080 never covers :8090).
+// True while a scan runs AND the request host is within the tracked scope. A
+// bare entry ("localhost") covers all its ports; "localhost:8080" only that one.
 export function hostInRedTeamScope(host: string | null): boolean {
-  return active && !!host && !!scopeHost && hostKey(host) === scopeHost
+  if (!active || !host) return false
+  const k = hostKey(host)
+  if (scope.has(k)) return true
+  const bare = k.split(':')[0]
+  return bare !== k && scope.has(bare)
 }

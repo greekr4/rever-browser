@@ -5,7 +5,7 @@ import {
   hasPendingPermission,
   requestPermissionFromUser
 } from './acp-permission'
-import { setRedTeamScan } from './red-team-mode'
+import { addRedTeamScope, setRedTeamScan } from './red-team-mode'
 import type { RequestPermissionRequest } from '@agentclientprotocol/sdk'
 
 
@@ -81,6 +81,18 @@ describe('acp-permission', () => {
       )
       expect(hasPendingPermission('rt3')).toBe(true)
       cancelPendingPermissions('rt3')
+    })
+
+    it('scope_add 된 API 호스트(:3000)의 replay 는 자동승인한다', async () => {
+      setRedTeamScan(true, 'http://localhost:8080/my')
+      addRedTeamScope(['http://localhost:3000/'])
+      const r = await requestPermissionFromUser(
+        toolReq('rt5', 'mcp__rever-traffic__replay_request', {
+          requestId: '1',
+          url: 'http://localhost:3000/v1/users/1'
+        })
+      )
+      expect(r).toEqual(ALLOW)
     })
 
     it('셸 HTTP(curl)는 Red Team 이어도 프롬프트한다', () => {

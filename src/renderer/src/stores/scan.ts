@@ -4,7 +4,7 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 
 import { ACPChatTransport } from '@/ai/acp-transport'
 import { checklistFor } from '@/ai/redteam-categories'
-import { setRedTeamScan, siteKey } from '@/ai/red-team-mode'
+import { addRedTeamScope, setRedTeamScan, siteKey } from '@/ai/red-team-mode'
 import REDTEAM_PROBE_PROMPT from '@/ai/redteam-probe.md?raw'
 import { ACP_AGENTS } from '@/constants'
 
@@ -85,7 +85,19 @@ const MAX_PARALLEL = 8
 let stopRequested = false
 
 // A live event from an agent turn, fed to the activity log + counters.
-type ToolEvent = { kind: 'tool'; name: string } | { kind: 'finding'; input: unknown }
+type ToolEvent =
+  | { kind: 'tool'; name: string }
+  | { kind: 'finding'; input: unknown }
+  | { kind: 'scope'; input: unknown }
+
+// Hosts the agent brought into scope via scope_set/scope_add.
+function scopeHostsOf(input: unknown): string[] {
+  if (input && typeof input === 'object') {
+    const h = (input as Record<string, unknown>).hosts
+    if (Array.isArray(h)) return h.filter((x): x is string => typeof x === 'string')
+  }
+  return []
+}
 
 // MCP tools arrive namespaced (mcp__rever__browser_navigate) — show the bare id.
 function stripTool(name: string): string {
@@ -133,7 +145,10 @@ async function runTurnOn(
       if (name.includes('finding_add')) findingAdds++
     } else if (c.type === 'tool-input-available') {
       const ci = c as UIMessageChunk & { toolName?: string; input?: unknown }
-      if ((ci.toolName ?? '').includes('finding_add')) onEvent?.({ kind: 'finding', input: ci.input })
+      const name = ci.toolName ?? ''
+      if (name.includes('finding_add')) onEvent?.({ kind: 'finding', input: ci.input })
+      else if (name.includes('scope_set') || name.includes('scope_add'))
+        onEvent?.({ kind: 'scope', input: ci.input })
     } else if (c.type === 'tool-output-available') {
       const out = extractText(c.output)
       if (out.includes('Reversing Session Findings')) exportText = out
@@ -315,8 +330,12 @@ export const useScanStore = create<ScanState>((set, get) => ({
         const n = stripTool(e.name)
         set({ currentTool: n })
         pushLog('tool', n, tabId)
-      } else {
+      } else if (e.kind === 'finding') {
         pushLog('finding', describeFinding(e.input), tabId)
+      } else {
+        // Track scope the agent set/added so auto-approve matches it (e.g. the
+        // app's own API on another localhost port).
+        addRedTeamScope(scopeHostsOf(e.input))
       }
     }
     const newAgent = (): ACPChatTransport =>
@@ -362,7 +381,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       pushLog('phase', t('scan.log.discover', { site }))
       const { finalText: linksText } = await runTurnOn(
         transport,
-        `scope_set({ hosts: ["${scopeArg}"] }) 로 범위를 고정하고 browser_navigate("${target.trim()}") 후 browser_snapshot. list_endpoints 가 없으면 tool_profile_set({ profile: "reverse" }) 먼저. 같은 사이트 링크를 모으되, 대표 링크 2~3개는 browser_navigate 로 들어가 browser_snapshot 해서 그 안의 링크까지(깊이 2) 수집한다. 점검할 만한 페이지를 최대 ${pages}개. 설명 없이 절대경로 URL들의 JSON 배열 한 줄만 출력.`,
+        `scope_set({ hosts: ["${scopeArg}"] }) 로 범위를 고정하고 browser_navigate("${target.trim()}") 후 browser_snapshot. list_requests 로 이 앱이 호출하는 자체 API 호스트(예: 다른 localhost 포트의 백엔드, api.* 서브도메인)를 확인하면 scope_add 로 범위에 추가한다 — 단 서드파티(분석/광고/CDN)는 추가하지 않는다. list_endpoints 가 없으면 tool_profile_set({ profile: "reverse" }) 먼저. 같은 사이트 링크를 모으되, 대표 링크 2~3개는 browser_navigate 로 들어가 browser_snapshot 해서 그 안의 링크까지(깊이 2) 수집한다. 점검할 만한 페이지를 최대 ${pages}개. 설명 없이 절대경로 URL들의 JSON 배열 한 줄만 출력.`,
         signal,
         (e) => onEv(e)
       )
