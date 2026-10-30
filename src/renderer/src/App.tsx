@@ -389,6 +389,35 @@ function App() {
           </span>
         )}
         <IpBadge refreshSignal={ipRefresh} />
+        {/* Page (webview) theme, co-located with the app theme. */}
+        {browserMode === 'embedded' && (
+          <button
+            className="toolbar-btn"
+            type="button"
+            onClick={() => {
+              if (activeOrigin) cycleTheme(activeOrigin)
+            }}
+            disabled={!activeOrigin}
+            title={
+              activeOrigin
+                ? `Page theme for ${activeOrigin} — Auto follows the app theme. Click to cycle Auto → Light → Dark`
+                : 'No site loaded'
+            }
+            style={{
+              flexShrink: 0,
+              marginLeft: 8,
+              marginBottom: 2,
+              WebkitAppRegion: 'no-drag',
+              background:
+                activeTheme === 'light' ? '#eee' : activeTheme === 'dark' ? '#222' : undefined,
+              color: activeTheme === 'light' ? '#111' : activeTheme === 'dark' ? '#eee' : undefined,
+              borderColor:
+                activeTheme === 'light' ? '#aaa' : activeTheme === 'dark' ? '#555' : undefined
+            } as React.CSSProperties}
+          >
+            {activeTheme === 'auto' ? 'Auto' : activeTheme === 'light' ? 'Light' : 'Dark'}
+          </button>
+        )}
         <button
           className="toolbar-btn"
           type="button"
@@ -397,7 +426,7 @@ function App() {
           style={
             {
               flexShrink: 0,
-              marginLeft: 8,
+              marginLeft: 4,
               marginBottom: 2,
               WebkitAppRegion: 'no-drag'
             } as React.CSSProperties
@@ -489,76 +518,66 @@ function App() {
                 </button>
               </>
             )}
-            <input
-              ref={addressInputRef}
-              value={urlDraft}
-              onChange={(e) => setUrlDraft(e.target.value)}
-              placeholder={t('toolbar.addressPlaceholder')}
-              style={{
-                flex: 1,
-                height: 28,
-                padding: '0 10px',
-                fontFamily: 'ui-monospace, monospace',
-                boxSizing: 'border-box'
-              }}
-            />
-            {browserMode === 'embedded' && (
-              <button
-                className="toolbar-btn"
-                type="button"
-                onClick={() => {
-                  if (!activeTab) return
-                  if (isBookmarked) removeBookmarkByUrl(activeTab.url)
-                  else addBookmark({ url: activeTab.url, title: activeTab.title })
+            {/* Chrome-style: bookmark star lives inside the address field. */}
+            <div style={{ position: 'relative', flex: 1, display: 'flex', minWidth: 0 }}>
+              <input
+                ref={addressInputRef}
+                value={urlDraft}
+                onChange={(e) => setUrlDraft(e.target.value)}
+                placeholder={t('toolbar.addressPlaceholder')}
+                style={{
+                  flex: 1,
+                  height: 28,
+                  padding: browserMode === 'embedded' ? '0 32px 0 10px' : '0 10px',
+                  fontFamily: 'ui-monospace, monospace',
+                  boxSizing: 'border-box'
                 }}
-                disabled={!activeTab || !/^https?:\/\//i.test(activeTab.url)}
-                title={isBookmarked ? 'Remove bookmark' : 'Bookmark this page'}
-              >
-                <svg
-                  width="15"
-                  height="15"
-                  viewBox="0 0 24 24"
-                  fill={isBookmarked ? 'var(--accent)' : 'none'}
-                  stroke={isBookmarked ? 'var(--accent)' : 'currentColor'}
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
+              />
+              {browserMode === 'embedded' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!activeTab) return
+                    if (isBookmarked) removeBookmarkByUrl(activeTab.url)
+                    else addBookmark({ url: activeTab.url, title: activeTab.title })
+                  }}
+                  disabled={!activeTab || !/^https?:\/\//i.test(activeTab.url)}
+                  title={isBookmarked ? 'Remove bookmark' : 'Bookmark this page'}
+                  style={
+                    {
+                      position: 'absolute',
+                      right: 6,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 22,
+                      height: 22,
+                      padding: 0,
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'var(--text-dim)',
+                      cursor: 'pointer'
+                    } as React.CSSProperties
+                  }
                 >
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                </svg>
-              </button>
-            )}
-            <button className="toolbar-btn" type="submit">{t('toolbar.go')}</button>
-            <button
-              className="toolbar-btn"
-              type="button"
-              onClick={() => {
-                if (activeOrigin) cycleTheme(activeOrigin)
-              }}
-              disabled={!activeOrigin}
-              title={
-                activeOrigin
-                  ? `Page theme for ${activeOrigin} — Auto follows the app theme. Click to cycle Auto → Light → Dark`
-                  : 'No site loaded'
-              }
-              style={{
-                background: activeTheme === 'light'
-                  ? '#eee'
-                  : activeTheme === 'dark'
-                    ? '#222'
-                    : undefined,
-                color: activeTheme === 'light' ? '#111' : activeTheme === 'dark' ? '#eee' : undefined,
-                borderColor:
-                  activeTheme === 'light'
-                    ? '#aaa'
-                    : activeTheme === 'dark'
-                      ? '#555'
-                      : undefined
-              }}
-            >
-              {activeTheme === 'auto' ? 'Auto' : activeTheme === 'light' ? 'Light' : 'Dark'}
-            </button>
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill={isBookmarked ? 'var(--accent)' : 'none'}
+                    stroke={isBookmarked ? 'var(--accent)' : 'currentColor'}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                </button>
+              )}
+            </div>
             {browserMode === 'embedded' && (
               <ProxyButton
                 tab={activeTab}

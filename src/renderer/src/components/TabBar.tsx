@@ -406,8 +406,14 @@ export function TabBar() {
       )}
 
       <div style={{ flexShrink: 0 }}>
-        <button ref={btnRef} type="button" onClick={toggleMenu} style={smallBtn} title={tr('tab.newInProfile')}>
-          👤
+        <button
+          ref={btnRef}
+          type="button"
+          onClick={toggleMenu}
+          style={{ ...smallBtn, fontSize: 12 }}
+          title={tr('tab.newInProfile')}
+        >
+          Profile
         </button>
 
         {menuOpen && (
