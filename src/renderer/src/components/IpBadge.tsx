@@ -78,7 +78,16 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
         } as React.CSSProperties
       }
     >
-      {hidden ? t('ip.masked') : loading ? 'IP: …' : ip ? `IP: ${ip}` : t('ip.none')}
+      <span>IP:</span>
+      <span
+        style={{
+          filter: hidden ? 'blur(5px)' : undefined,
+          userSelect: hidden ? 'none' : undefined,
+          transition: 'filter 0.1s'
+        }}
+      >
+        {loading ? '…' : (ip ?? '—')}
+      </span>
     </button>
   )
 }
