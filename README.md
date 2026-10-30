@@ -9,7 +9,7 @@
 
 **[⬇ Download macOS](https://github.com/greekr4/rever-browser/releases/latest)** · **[⬇ Download Windows](https://github.com/greekr4/rever-browser/releases/latest)**
 
-[한국어](./README.ko.md) · [What is it?](#what-is-rever-browser) · [How it works](#how-it-works) · [Features](#features) · [Tool surface](#tool-surface) · [Getting started](#getting-started) · [Architecture](#architecture)
+[한국어](./README.ko.md)
 
 </div>
 
@@ -65,6 +65,41 @@ Reversing an API in rever-browser is a five-phase loop. The agent moves through 
 - **Macros & workflows.** Turn a sequence of tool calls into a named macro that replays deterministically with no LLM in the loop. In-app Macro, Pipeline, and Template editors build these one-click flows, and any captured request exports to a ready-to-run CLI command or Python client.
 - **Grab & markup.** Click any element to capture its screenshot and context (selector, ref, tag, text). The context drops into the chat and the screenshot opens in a markup editor for rectangles, arrows, and freehand notes.
 - **Profiles & cookie import.** Named persistent or incognito profiles, each an isolated cookie/storage jar. Pull a logged-in session from Chrome, Edge, Brave, Arc, Chromium, Vivaldi, Firefox, or Safari.
+
+## Red Team scan
+
+One click turns the current site into an autonomous, **read-only** security sweep. It discovers the app's pages and API hosts, opens them as parallel background tabs, and runs a sub-agent per tab — then writes a single findings report (OWASP-style categories, severity, repro).
+
+Three intensities:
+
+- **Recon** — observe and record only, no probes.
+- **Access** — replay captured requests unchanged + passive security/secret inspection.
+- **Red Team** — adds single-shot mutated probes (payload / path-traversal / CRLF), hidden-path discovery (`.env`, `admin/`, `.git/HEAD`, source maps…), an OWASP category checklist per endpoint, and the exhaustive UI crawl below.
+
+**Exhaustive UI crawl + capture-not-send fence.** At Red Team intensity a deterministic crawler (`ui_crawl`) clicks *every* actionable element once and attributes the request each one fired — so APIs behind unclicked buttons, modals and multi-step forms stop being invisible. A network-layer fence makes it safe: any request that would change server state (`POST`/`PUT`/`PATCH`/`DELETE`, or a logout/revoke path) is captured and answered with a synthetic `204` instead of being sent. The endpoint's shape is recorded; the server is never mutated.
+
+Example — the Red Team panel's live activity log and the crawler's button→API map:
+
+```
+00:03 🎯 Target discovery started — localhost:8080
+00:11 📑 6 pages found → opening tabs
+00:18 🔎 Parallel inspection (6 at once)
+00:24 [tab3] ui_crawl · elements: 9 — clicked 6, blocked-destructive 2, failed 0, navigated 1, noop 0
+00:31 [tab3] ✓ IDOR on /api/orders/{id} — localhost:8080/orders
+00:52 🕵 Hidden-path discovery (.env, admin, .git…)
+01:20 📝 Writing report
+01:27 ✅ Done — 17 findings
+```
+
+```
+element → API map (tab 3)
+  "Load orders"  → GET  http://localhost:8080/api/orders
+  "Open report"  → GET  http://localhost:8080/api/report
+  "Subscribe"    → POST   http://localhost:8080/api/subscribe   [blocked]
+  "Delete item"  → DELETE http://localhost:8080/api/items/1     [blocked]
+```
+
+The report exports to Markdown (**Save .md**) or pipes straight into the chat panel (**Send to chat**) for follow-up analysis.
 
 ## Token efficiency
 

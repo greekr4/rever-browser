@@ -9,7 +9,7 @@
 
 **[⬇ macOS 다운로드](https://github.com/greekr4/rever-browser/releases/latest)** · **[⬇ Windows 다운로드](https://github.com/greekr4/rever-browser/releases/latest)**
 
-[English](./README.md) · [소개](#rever-browser란) · [동작 방식](#동작-방식) · [기능](#기능) · [툴 구성](#툴-구성) · [시작하기](#시작하기) · [아키텍처](#아키텍처)
+[English](./README.md)
 
 </div>
 
@@ -65,6 +65,41 @@ rever-browser에서 API를 리버싱하는 과정은 5단계 루프입니다. �
 - **매크로 & 워크플로**: 툴 호출 시퀀스를 LLM 없이 결정적으로 재생되는 명명 매크로로 변환합니다. 인앱 Macro·Pipeline·Template 에디터로 원클릭 플로를 구성하고, 캡처한 요청은 바로 실행 가능한 CLI 명령이나 Python 클라이언트로 내보냅니다.
 - **Grab & markup**: 아무 요소나 클릭해 스크린샷과 컨텍스트(셀렉터·ref·태그·텍스트)를 캡처합니다. 컨텍스트는 채팅으로 들어가고, 스크린샷은 사각형·화살표·자유 메모용 마크업 에디터로 열립니다.
 - **프로필 & 쿠키 가져오기**: 명명된 영구/시크릿 프로필 각각이 독립된 쿠키/스토리지 공간입니다. Chrome·Edge·Brave·Arc·Chromium·Vivaldi·Firefox·Safari에서 로그인 세션을 가져올 수 있습니다.
+
+## 레드팀 스캔
+
+한 번의 클릭으로 현재 사이트를 자율 **읽기 전용** 보안 점검으로 바꾼다. 앱의 페이지와 API 호스트를 찾아 병렬 백그라운드 탭으로 열고 탭마다 서브 에이전트를 돌린 뒤, 하나의 발견 보고서(OWASP식 카테고리·심각도·재현)를 작성한다.
+
+세 가지 강도:
+
+- **Recon** — 관측·기록만, 프로브 없음.
+- **Access** — 캡처된 요청을 변경 없이 재생 + 수동 보안/시크릿 점검.
+- **Red Team** — 변형 단발 프로브(payload / path-traversal / CRLF), 숨은 경로 탐색(`.env`, `admin/`, `.git/HEAD`, 소스맵 …), 엔드포인트별 OWASP 체크리스트, 그리고 아래의 전수 UI 크롤까지 추가.
+
+**전수 UI 크롤 + capture-not-send 펜스.** Red Team 강도에서 결정적 크롤러(`ui_crawl`)가 실행 가능한 모든 요소를 1회씩 누르고 그 클릭이 쏜 요청을 귀속시킨다 — 안 눌린 버튼·모달·다단계 폼 뒤의 API가 더는 안 보이지 않게 된다. 네트워크 계층 펜스가 안전을 보장한다: 서버 상태를 바꾸는 요청(`POST`/`PUT`/`PATCH`/`DELETE`, 또는 logout/revoke 경로)은 전송 대신 캡처 후 synthetic `204`로 응답한다. 엔드포인트 형태는 기록되고 서버는 변경되지 않는다.
+
+예시 — 레드팀 패널의 실시간 활동 로그와 크롤러의 버튼→API 맵:
+
+```
+00:03 🎯 대상 탐색 시작 — localhost:8080
+00:11 📑 6개 페이지 발견 → 탭 열기
+00:18 🔎 병렬 검사 시작 (동시 6개)
+00:24 [tab3] ui_crawl · elements: 9 — clicked 6, blocked-destructive 2, failed 0, navigated 1, noop 0
+00:31 [tab3] ✓ IDOR on /api/orders/{id} — localhost:8080/orders
+00:52 🕵 숨은 경로 탐색 (.env, admin, .git…)
+01:20 📝 보고서 작성
+01:27 ✅ 완료 — 발견 17건
+```
+
+```
+element → API map (tab 3)
+  "Load orders"  → GET  http://localhost:8080/api/orders
+  "Open report"  → GET  http://localhost:8080/api/report
+  "Subscribe"    → POST   http://localhost:8080/api/subscribe   [blocked]
+  "Delete item"  → DELETE http://localhost:8080/api/items/1     [blocked]
+```
+
+보고서는 Markdown으로 저장(**Save .md**)하거나 후속 분석을 위해 채팅 패널로 바로 보낼 수 있다(**Send to chat**).
 
 ## 토큰 효율
 
