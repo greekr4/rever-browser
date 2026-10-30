@@ -34,6 +34,10 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   scope_clear: 'core',
   finding_add: 'core',
   finding_list: 'core',
+  // Export belongs with add/list: an agent that can record findings in any
+  // profile must be able to write the report in that profile too — gating it to
+  // reverse made finding_export look "missing" to a browse/probe session.
+  finding_export: 'core',
   // The deterministic site-sweep escape hatch — must be visible in every
   // profile so an agent never hand-orchestrates per-tab sub-agents instead.
   redteam_start: 'core',
@@ -106,7 +110,6 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   // Red Team exhaustive-click crawler — the deterministic UI sweep that feeds
   // discovered endpoints into the probe phase.
   ui_crawl: ['reverse'],
-  finding_export: ['reverse'],
   finding_remove: ['reverse'],
   list_scripts: ['reverse'],
   grep_script: ['reverse'],

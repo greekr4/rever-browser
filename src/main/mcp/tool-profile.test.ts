@@ -98,11 +98,11 @@ describe('tool-profile', () => {
   })
 
   describe('광고 수', () => {
-    it('browse 82, reverse 116, probe 38이고 예산 120을 넘지 않는다', () => {
+    it('browse 83, reverse 116, probe 39이고 예산 120을 넘지 않는다', () => {
       expect(PROFILE_TOOL_BUDGET).toBe(120)
-      expect(advertisedNames('browse')).toHaveLength(82)
+      expect(advertisedNames('browse')).toHaveLength(83)
       expect(advertisedNames('reverse')).toHaveLength(116)
-      expect(advertisedNames('probe')).toHaveLength(38)
+      expect(advertisedNames('probe')).toHaveLength(39)
       for (const profile of TOOL_PROFILES) {
         expect(() => assertProfileBudget(profile)).not.toThrow()
       }
@@ -185,7 +185,7 @@ describe('tool-profile', () => {
       expect(names).not.toContain('not_a_tool')
       expect(names.filter((name) => name === 'browser_snapshot')).toHaveLength(1)
       expect(names.filter((name) => name === 'grep_scripts')).toHaveLength(1)
-      expect(names).toHaveLength(83)
+      expect(names).toHaveLength(84)
     })
   })
 
