@@ -26,6 +26,10 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
   // Monotonic request id — a late response from a superseded fetch is dropped.
   const seq = useRef(0)
 
+  // No deps: useT()'s `t` is a fresh function every render, so depending on it
+  // would recreate `refresh`, re-run the effect each render and keep `loading`
+  // stuck true (the IP shows "…" forever even though it resolved). The error
+  // string is localized at render time instead.
   const refresh = useCallback(() => {
     const id = ++seq.current
     setLoading(true)
@@ -36,9 +40,9 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
         if (id !== seq.current) return
         setLoading(false)
         setIp(res.ip ?? null)
-        setError(res.ip ? null : res.error ?? t('ip.unknownError'))
+        setError(res.ip ? null : res.error ?? 'unknown')
       })
-  }, [t])
+  }, [])
 
   useEffect(() => {
     refresh()
