@@ -103,6 +103,9 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
 
   // reverse, not browse (63). The four shared with probe are listed next.
   get_request_initiator: ['reverse'],
+  // Red Team exhaustive-click crawler — the deterministic UI sweep that feeds
+  // discovered endpoints into the probe phase.
+  ui_crawl: ['reverse'],
   finding_export: ['reverse'],
   finding_remove: ['reverse'],
   list_scripts: ['reverse'],

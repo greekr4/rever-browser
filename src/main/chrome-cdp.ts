@@ -19,6 +19,8 @@ import {
 import { STEALTH_INIT_SCRIPT, SPOOFED_CHROME_VERSION, SPOOFED_CHROME_MAJOR } from './stealth-init'
 import { charsetFromContentType, encodeRefetchedBody } from './mcp/wasm-analysis'
 import { compileRules, findMatchingRule, type CompiledRule } from './intercept-match'
+import { isFenceActive, fenceReason, recordFenceBlock } from './mcp/fence'
+import { getScope, scopeBlockForUrl } from './mcp/scope'
 import { askRenderer } from './renderer-bridge'
 import { clearScriptsFor, recordScript } from './script-registry'
 import { emitPageEvent } from './ai-events'
@@ -1004,6 +1006,19 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
       debuggerPaused = null
     } else if (method === 'Fetch.requestPaused') {
       const p = params as FetchRequestPausedParams
+      // Capture-not-send fence: while a Red Team crawl holds it, an in-scope
+      // request that would mutate server state is answered with a synthetic 204
+      // and recorded — the endpoint is already captured, the server stays clean.
+      if (isFenceActive() && getScope().enabled && scopeBlockForUrl(p.request.url) === null) {
+        const reason = fenceReason(p.request.method, p.request.url)
+        if (reason) {
+          recordFenceBlock(p.request.method, p.request.url, reason)
+          void dbg
+            .sendCommand('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 204, responseHeaders: [] })
+            .catch(() => {})
+          return
+        }
+      }
       // Find matching rule
       const rule = findMatchingRule(compiledInterceptRules, p.request.url)
       if (!rule) {

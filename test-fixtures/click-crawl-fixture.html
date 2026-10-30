@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rever click-crawl fixture</title>
+<style>
+  body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:#0d1117;color:#e6edf3;padding:16px}
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{color:#9aa7b4;font-size:12px;margin:0 0 12px}
+  section{border:1px solid #2b3444;border-radius:8px;padding:10px 12px;margin:0 0 10px;background:#161b22}
+  h2{font-size:13px;margin:0 0 8px;color:#6ea8fe}
+  button{font:13px inherit;padding:5px 10px;margin:3px}
+  .exp{font:12px ui-monospace,Menlo,monospace;color:#7d8896;white-space:pre-wrap;margin-top:8px}
+  #log{font:12px ui-monospace,Menlo,monospace;color:#7ee787}
+</style>
+</head>
+<body>
+
+<h1>rever-browser click-crawl fixture</h1>
+<p class="sub">ui_crawl should click every button once and attribute the request each fires.
+GET reads pass through the fence; POST/DELETE are captured-not-sent (synthetic 204).</p>
+
+<section>
+  <h2>Idempotent reads (pass through)</h2>
+  <button onclick="hit('GET','/api/crawl/profile')">Load profile</button>
+  <button onclick="hit('GET','/api/crawl/orders')">Load orders</button>
+  <button onclick="hit('GET','/api/crawl/report?id=7')">Open report</button>
+</section>
+
+<section>
+  <h2>Mutating actions (fence blocks — recorded, never sent)</h2>
+  <button onclick="hit('POST','/api/crawl/subscribe')">Subscribe</button>
+  <button onclick="hit('DELETE','/api/crawl/items/1')">Delete item</button>
+</section>
+
+<section>
+  <h2>No-request control</h2>
+  <button onclick="document.getElementById('log').textContent='local click, no fetch'">Just a label</button>
+</section>
+
+<section>
+  <h2>Expected button → API map</h2>
+  <div class="exp" id="expected">
+"Load profile"  -> GET  /api/crawl/profile
+"Load orders"   -> GET  /api/crawl/orders
+"Open report"   -> GET  /api/crawl/report   (query stripped in the signature)
+"Subscribe"     -> POST   /api/crawl/subscribe   [blocked]
+"Delete item"   -> DELETE /api/crawl/items/1     [blocked]
+"Just a label"  -> (no request)
+
+Run: ui_crawl on this page's tab.
+PASS when: 6 elements clicked, 3 clicked / 2 blocked-destructive / 1 noop,
+and the 5 fetching buttons map to the endpoints above.</div>
+  <div id="log"></div>
+</section>
+
+<script>
+  function hit(method, path) {
+    // Fire-and-forget. A 404 (static server) or a 204 (fence) are both fine —
+    // the crawler attributes by the request that left, not the response.
+    fetch(path, { method }).catch(() => {})
+    document.getElementById('log').textContent = method + ' ' + path + ' fired';
+  }
+</script>
+</body>
+</html>

@@ -110,6 +110,7 @@ type ToolEvent =
   | { kind: 'tool'; name: string }
   | { kind: 'finding'; input: unknown }
   | { kind: 'scope'; input: unknown }
+  | { kind: 'crawl'; summary: string }
 
 // Hosts the agent brought into scope via scope_set/scope_add.
 function scopeHostsOf(input: unknown): string[] {
@@ -175,6 +176,10 @@ async function runTurnOn(
     } else if (c.type === 'tool-output-available') {
       const out = extractText(c.output)
       if (out.includes('Reversing Session Findings')) exportText = out
+      else if (out.startsWith('--- ui_crawl')) {
+        const line = out.split('\n').find((l) => l.startsWith('elements:')) ?? 'ui_crawl done'
+        onEvent?.({ kind: 'crawl', summary: line })
+      }
     } else if (c.type === 'text-delta') {
       finalText += c.delta ?? ''
     } else if (c.type === 'error') {
@@ -245,9 +250,13 @@ function findingsLangLine(): string {
 // The per-tab inspection turn. The worker may DRIVE its own tab (tab-param
 // tools are race-free — refs live in that tab's namespace), which is what
 // makes dynamic exploration (accordions, pagination, XHR triggers) possible.
-function workerPrompt(url: string): string {
+function workerPrompt(url: string, crawl: boolean): string {
+  const crawlLine = crawl
+    ? `- 먼저 ui_crawl({tab:N}) 를 한 번 호출한다 — 페이지의 모든 버튼/링크를 결정적으로 눌러 숨은 API 를 드러내고 버튼→API 맵을 만든다(펜스가 변이 요청을 204 로 막아 서버는 안전). 반환된 'endpoints discovered' 가 캡처되어 이후 점검 대상에 포함된다. 그 다음 아래를 진행한다.\n`
+    : ''
   return (
     `여러 탭이 열려 있다. browser_tabs({action:"list"}) 로 목록을 보고 URL 이 "${url}" 인 탭의 인덱스 N 을 찾는다. 그 탭만 다룬다:\n` +
+    crawlLine +
     `- 읽기: list_endpoints({tab:N}), list_requests({tab:N}), 흥미로운 요청은 get_request/get_request_initiator, security_inspect({url:"${url}"})\n` +
     `- 동적 탐색(필요할 때): browser_snapshot({tab:N}) → browser_click/browser_type/browser_navigate 에 같은 tab:N 을 전달한다(아코디언 펼치기, 페이지네이션, 더보기, 검색). ref 는 탭별 네임스페이스라 같은 tab:N 으로만 동작한다.\n` +
     `- 오직 rever 도구만 사용한다. Terminal/Bash/셸/curl/wget 및 ToolSearch 금지(scope 를 우회한다). 다른 탭 열기/닫기/선택 금지. buy/pay/delete/결제/삭제/제출 확인 컨트롤 클릭 금지. 로그인 페이지는 기록만.\n` +
@@ -359,6 +368,9 @@ export const useScanStore = create<ScanState>((set, get) => ({
         pushLog('tool', n, tabId)
       } else if (e.kind === 'finding') {
         pushLog('finding', describeFinding(e.input), tabId)
+      } else if (e.kind === 'crawl') {
+        // Element coverage ledger from ui_crawl (P3) — surfaced in the log.
+        pushLog('tool', `ui_crawl · ${e.summary}`, tabId)
       } else {
         // Track scope the agent set/added so auto-approve matches it (e.g. the
         // app's own API on another localhost port).
@@ -454,7 +466,9 @@ export const useScanStore = create<ScanState>((set, get) => ({
         const w = newAgent()
         workers.push(w)
         try {
-          const { findingAdds } = await runTurnOn(w, workerPrompt(url), signal, (e) => onEv(e, tabId))
+          const { findingAdds } = await runTurnOn(w, workerPrompt(url, intensity === 'redteam'), signal, (e) =>
+            onEv(e, tabId)
+          )
           setTab(tabId, { status: 'done', findings: findingAdds })
           set({ findings: get().findings + findingAdds })
         } catch {

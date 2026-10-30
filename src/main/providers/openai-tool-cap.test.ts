@@ -52,15 +52,15 @@ describe('capToolsForOpenAI', () => {
     expect(r.tools.map((t) => t.function.name)).toContain('browser_snapshot')
   })
 
-  it('reverse에 browse 전용 34개를 더한 149개에서 list_endpoints와 등록 순 꼬리 20개만 떨어진다', () => {
+  it('reverse에 browse 전용 34개를 더한 150개에서 list_endpoints와 등록 순 꼬리를 자른다', () => {
     const order = registrationOrder()
-    expect(order).toHaveLength(164)
+    expect(order).toHaveLength(165)
     const browseOnly = advertisedNames('browse').filter((name) => !isAdvertised(name, 'reverse'))
     expect(browseOnly).toHaveLength(34)
     const allowed = new Set([...advertisedNames('reverse'), ...browseOnly])
-    expect(allowed.size).toBe(149)
+    expect(allowed.size).toBe(150)
     const filtered = order.filter((name) => allowed.has(name))
-    expect(filtered).toHaveLength(149)
+    expect(filtered).toHaveLength(150)
     expect(filtered.at(-1)).toBe('tool_profile_set')
     const r = capToolsForOpenAI(filtered.map(tool))
     expect(r.tools).toHaveLength(128)
@@ -68,6 +68,7 @@ describe('capToolsForOpenAI', () => {
       'dialog_inject_override',
       'dialog_clear_history',
       'list_endpoints',
+      'crypto_trace_start',
       'crypto_trace_list',
       'crypto_trace_stop',
       'fetch_body',
@@ -90,7 +91,7 @@ describe('capToolsForOpenAI', () => {
     const kept = r.tools.map((t) => t.function.name)
     expect(kept).toContain('browser_snapshot')
     expect(kept).toContain('tool_profile_set')
-    expect(kept).toContain('crypto_trace_start')
+    expect(kept).toContain('finding_export')
   })
 })
 
