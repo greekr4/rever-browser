@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="./docs/media/icon.png" alt="rever-browser" width="120" />
-
-# rever-browser
+<img src="./docs/media/logo.png" alt="rever-browser" width="760" />
 
 ### API 리버스 엔지니어링을 위한 에이전트 네이티브 워크벤치.
 

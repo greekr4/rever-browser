@@ -1,46 +1,85 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="1024" height="1024">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 256 256" width="1024" height="1024">
   <defs>
     <linearGradient id="rvr-bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#101c12"/>
-      <stop offset="0.55" stop-color="#0a140c"/>
       <stop offset="1" stop-color="#060a07"/>
     </linearGradient>
-    <linearGradient id="rvr-edge" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
-      <stop offset="0.3" stop-color="#ffffff" stop-opacity="0.05"/>
-      <stop offset="0.7" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
-    <radialGradient id="rvr-glow" cx="0.5" cy="0.46" r="0.55">
-      <stop offset="0" stop-color="#2bff6a" stop-opacity="0.20"/>
-      <stop offset="0.6" stop-color="#2bff6a" stop-opacity="0.07"/>
-      <stop offset="1" stop-color="#2bff6a" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="rvr-bracket" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="rvr-face" x1="0" y1="1" x2="1" y2="0"><!-- y flipped: glyph uses font (y-up) units -->
       <stop offset="0" stop-color="#6dff9e"/>
       <stop offset="0.5" stop-color="#2bff6a"/>
-      <stop offset="1" stop-color="#00c24d"/>
+      <stop offset="1" stop-color="#00a843"/>
     </linearGradient>
-    <linearGradient id="rvr-glyph" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#dcffe8"/>
-    </linearGradient>
-    <filter id="rvr-glyphGlow" x="-60%" y="-40%" width="220%" height="180%">
-      <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#2bff6a" flood-opacity="0.45"/>
-    </filter>
+    <!-- Arial Black "R" outline (mirrored below into Я), centered on its advance -->
+    <path id="rvr-r" transform="translate(-65.337890625 0) scale(0.08203125 -0.08203125)" d="M156 0V1466H911Q1121 1466 1232.0 1430.0Q1343 1394 1411.0 1296.5Q1479 1199 1479 1059Q1479 937 1427.0 848.5Q1375 760 1284 705Q1226 670 1125 647Q1206 620 1243 593Q1268 575 1315.5 516.0Q1363 457 1379 425L1598 0H1086L844 448Q798 535 762 561Q713 595 651 595H611V0ZM611 872H802Q833 872 922 892Q967 901 995.5 938.0Q1024 975 1024 1023Q1024 1094 979.0 1132.0Q934 1170 810 1170H611Z"/>
+    <pattern id="rvr-slash" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(-32)">
+      <rect width="24" height="3.5" fill="black"/>
+    </pattern>
+    <mask id="rvr-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
+      <rect width="256" height="256" fill="white"/>
+      <rect width="256" height="256" fill="url(#rvr-slash)"/>
+    </mask>
   </defs>
-  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#rvr-bg)"/>
-  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#rvr-glow)"/>
-  <rect x="5.2" y="5.2" width="117.6" height="117.6" rx="27" fill="none" stroke="url(#rvr-edge)" stroke-width="2.4"/>
-  <rect x="5" y="5" width="118" height="118" rx="27.5" fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="2"/>
-  <g stroke="url(#rvr-bracket)" stroke-width="7.5" fill="none" stroke-linecap="round">
-    <path d="M25 41 V33.5 a8.5 8.5 0 0 1 8.5 -8.5 H41"/>
-    <path d="M87 25 h7.5 a8.5 8.5 0 0 1 8.5 8.5 V41"/>
-    <path d="M103 87 v7.5 a8.5 8.5 0 0 1 -8.5 8.5 H87"/>
-    <path d="M41 103 H33.5 a8.5 8.5 0 0 1 -8.5 -8.5 V87"/>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#rvr-bg)"/>
+  <g fill="#0b3d1c">
+    <use xlink:href="#rvr-r" transform="translate(133.5 202) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(133.25 201.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(133 201.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(132.75 201.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(132.5 201) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(132.25 200.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(132 200.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(131.75 200.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(131.5 200) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(131.25 199.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(131 199.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(130.75 199.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(130.5 199) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(130.25 198.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(130 198.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(129.75 198.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(129.5 198) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(129.25 197.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(129 197.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(128.75 197.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(128.5 197) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(128.25 196.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(128 196.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(127.75 196.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(127.5 196) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(127.25 195.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(127 195.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(126.75 195.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(126.5 195) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(126.25 194.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(126 194.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(125.75 194.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(125.5 194) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(125.25 193.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(125 193.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(124.75 193.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(124.5 193) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(124.25 192.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(124 192.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(123.75 192.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(123.5 192) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(123.25 191.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(123 191.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(122.75 191.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(122.5 191) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(122.25 190.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(122 190.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(121.75 190.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(121.5 190) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(121.25 189.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(121 189.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(120.75 189.25) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(120.5 189) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(120.25 188.75) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(120 188.5) skewX(-14) scale(-1 1)"/>
+    <use xlink:href="#rvr-r" transform="translate(119.75 188.25) skewX(-14) scale(-1 1)"/>
   </g>
-  <path d="M81 91 V37.5 H63.5 a17.2 17.2 0 0 0 0 34.4 H74 M74 71.9 L49.5 91"
-        transform="translate(64 63) scale(0.92) translate(-64 -64)"
-        fill="none" stroke="url(#rvr-glyph)" stroke-width="10.5"
-        stroke-linecap="round" stroke-linejoin="round"
-        filter="url(#rvr-glyphGlow)"/>
+  <g mask="url(#rvr-cut)">
+    <use xlink:href="#rvr-r" transform="translate(119.5 188) skewX(-14) scale(-1 1)"
+         fill="url(#rvr-face)" stroke="#050805" stroke-width="73.1" paint-order="stroke" stroke-linejoin="round"/>
+  </g>
 </svg>

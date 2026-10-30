@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="./docs/media/icon.png" alt="rever-browser" width="120" />
-
-# rever-browser
+<img src="./docs/media/logo.png" alt="rever-browser" width="760" />
 
 ### An agent-native workbench for API reverse engineering.
 
