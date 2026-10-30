@@ -7,6 +7,7 @@ import { checklistFor } from '@/ai/redteam-categories'
 import { addRedTeamScope, setRedTeamScan, siteKey } from '@/ai/red-team-mode'
 import REDTEAM_PROBE_PROMPT from '@/ai/redteam-probe.md?raw'
 import { ACP_AGENTS } from '@/constants'
+import type { TKey } from '@/locales/en'
 
 import { t, useI18nStore } from './i18n'
 import { useTabsStore } from './tabs'
@@ -51,7 +52,12 @@ export type LogKind = 'phase' | 'tool' | 'finding' | 'error'
 export interface LogEntry {
   ts: number
   kind: LogKind
+  // Literal text (tool name, finding title, error). Phase lines carry `key`
+  // instead and are translated at render time, so the log follows the current
+  // app language even for a run that executed under a different one.
   text: string
+  key?: TKey
+  vars?: Record<string, string | number>
   tabId?: string
 }
 const LOG_CAP = 300
@@ -72,6 +78,7 @@ interface ScanState {
   scanTabs: Record<string, ScanTab>
   log: LogEntry[]
   pushLog: (kind: LogKind, text: string, tabId?: string) => void
+  pushPhase: (key: TKey, vars?: Record<string, string | number>) => void
   /** Sweep intensity — see ScanIntensity. */
   intensity: ScanIntensity
   setIntensity: (m: ScanIntensity) => void
@@ -119,14 +126,16 @@ function stripTool(name: string): string {
 }
 
 // Best-effort one-line summary of a finding_add call for the activity log.
+// Returns '' when no title can be pulled, so the render falls back to the
+// translated 'scan.log.finding' label (keeps the log in the current language).
 function describeFinding(input: unknown): string {
-  if (!input || typeof input !== 'object') return t('scan.log.finding')
+  if (!input || typeof input !== 'object') return ''
   const o = input as Record<string, unknown>
   const f = o.finding && typeof o.finding === 'object' ? (o.finding as Record<string, unknown>) : o
   const pick = (k: string): string | undefined => (typeof f[k] === 'string' ? (f[k] as string) : undefined)
-  const title = pick('title') ?? pick('name') ?? pick('summary') ?? pick('kind') ?? pick('type') ?? t('scan.log.finding')
+  const title = pick('title') ?? pick('name') ?? pick('summary') ?? pick('kind') ?? pick('type') ?? ''
   const loc = pick('url') ?? pick('endpoint') ?? pick('path') ?? ''
-  return loc ? `${title} — ${loc}` : title
+  return title && loc ? `${title} — ${loc}` : title || loc
 }
 
 // Run one agent turn on a given transport; returns its text, any export report,
@@ -314,6 +323,10 @@ export const useScanStore = create<ScanState>((set, get) => ({
   log: [],
   pushLog: (kind, text, tabId) =>
     set((st) => ({ log: [...st.log, { ts: Date.now(), kind, text, tabId }].slice(-LOG_CAP) })),
+  pushPhase: (key, vars) =>
+    set((st) => ({
+      log: [...st.log, { ts: Date.now(), kind: 'phase' as const, text: '', key, vars }].slice(-LOG_CAP)
+    })),
   intensity: 'readonly',
   setIntensity: (m) => set({ intensity: m }),
   open: (url) => set((st) => ({ visible: true, target: url || st.target })),
@@ -326,7 +339,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
     // Don't discard: flag the run so start()'s catch exports what was found.
     stopRequested = true
     for (const w of workers.splice(0)) void w.reset()
-    get().pushLog('phase', t('scan.log.stopped'))
+    get().pushPhase('scan.log.stopped')
     set({ currentTool: '중지 — 지금까지 발견으로 보고서 작성 중…' })
     try {
       abort?.abort()
@@ -336,7 +349,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
     const { target, pages, intensity } = get()
     if (!target.trim()) return
     set({ phase: 'running', pagesSeen: 0, findings: 0, currentTool: '', report: '', errorText: '', startedAt: Date.now(), scanTabs: {}, log: [] })
-    const { pushLog } = get()
+    const { pushLog, pushPhase } = get()
     // Feed the activity log + the status line from each agent turn. tabId is
     // passed by the per-tab workers so the log can show which tab acted.
     const onEv = (e: ToolEvent, tabId?: string): void => {
@@ -392,7 +405,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
 
       // Phase 1 — discovery: the agent walks the start page AND follows a few
       // links (depth 2) to gather a broad same-site link set.
-      pushLog('phase', t('scan.log.discover', { site }))
+      pushPhase('scan.log.discover', { site })
       const { finalText: linksText } = await runTurnOn(
         transport,
         `scope_set({ hosts: ["${scopeArg}"] }) 로 범위를 고정하고 browser_navigate("${target.trim()}") 후 browser_snapshot. list_requests 로 이 앱이 호출하는 자체 API 호스트(예: 다른 localhost 포트의 백엔드, api.* 서브도메인)를 확인하면 scope_add 로 범위에 추가한다 — 단 서드파티(분석/광고/CDN)는 추가하지 않는다. list_endpoints 가 없으면 tool_profile_set({ profile: "reverse" }) 먼저. 같은 사이트 링크를 모으되, 대표 링크 2~3개는 browser_navigate 로 들어가 browser_snapshot 해서 그 안의 링크까지(깊이 2) 수집한다. 점검할 만한 페이지를 최대 ${pages}개. 설명 없이 절대경로 URL들의 JSON 배열 한 줄만 출력.`,
@@ -411,7 +424,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
         } catch {}
       }
       set({ pagesSeen: links.length, scanTabs })
-      pushLog('phase', t('scan.log.pagesFound', { n: links.length }))
+      pushPhase('scan.log.pagesFound', { n: links.length })
       await waitForTabs(jobs.map((j) => j.tabId))
       await new Promise((r) => setTimeout(r, 2000)) // settle: let capture fill
 
@@ -422,7 +435,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       const connected = connectedHosts(site)
       if (connected.length) {
         addRedTeamScope(connected)
-        pushLog('phase', t('scan.log.scopeExpand', { hosts: connected.join(', ') }))
+        pushPhase('scan.log.scopeExpand', { hosts: connected.join(', ') })
         await runTurnOn(
           transport,
           `scope_add({ hosts: ${JSON.stringify(connected)} }) 로 이 앱이 연결된 호스트를 범위에 추가한다. 다른 설명 없이 호출만.`,
@@ -434,7 +447,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       // Phase 3 — one worker agent per tab, reading and exploring in parallel
       // (all at once, up to the process cap).
       const tabLimit = Math.min(jobs.length, MAX_PARALLEL)
-      pushLog('phase', t('scan.log.inspecting', { n: tabLimit }))
+      pushPhase('scan.log.inspecting', { n: tabLimit })
       await pool(jobs, tabLimit, async ({ url, tabId }) => {
         if (signal.aborted) return
         setTab(tabId, { status: 'inspecting' })
@@ -456,7 +469,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       // the deduped in-scope endpoint set. intruder_run / burst_send stay
       // manual at every level, by design.
       if (intensity !== 'readonly' && !signal.aborted) {
-        pushLog('phase', t('scan.log.probeCollect', { mode: intensity }))
+        pushPhase('scan.log.probeCollect', { mode: intensity })
         set({ currentTool: 'redteam: 엔드포인트 수집' })
         const { finalText: epText } = await runTurnOn(
           transport,
@@ -475,7 +488,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
         // hidden-path sweep always happens: path_probe walks a built-in wordlist
         // (.env, admin/, .git/HEAD, *.js.map, server-status, …) on the origin.
         if (intensity === 'redteam' && !signal.aborted) {
-          pushLog('phase', t('scan.log.hiddenPaths'))
+          pushPhase('scan.log.hiddenPaths')
           const w = newAgent()
           workers.push(w)
           try {
@@ -502,7 +515,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
             intensity === 'probe'
               ? '강도: probe — replay_request 는 캡처된 요청을 변경 없이 재생만 한다. payload_probe/path_probe/crlf_test 금지. security_inspect/scan_secrets/replay_request(변경 없음)만 사용.'
               : '강도: redteam — 각 체크마다 변형 요청 최대 1개까지 허용.'
-          pushLog('phase', t('scan.log.probeRun', { n: endpoints.length }))
+          pushPhase('scan.log.probeRun', { n: endpoints.length })
           await pool(endpoints, Math.min(endpoints.length, MAX_PARALLEL), async (ep) => {
             if (signal.aborted) return
             const w = newAgent()
@@ -532,7 +545,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       // its session sat idle through the (minutes-long) probe phase and its MCP
       // (SSE) connection can drop, making finding_export uncallable. A fresh
       // session reconnects; findings live in the main process, so none are lost.
-      pushLog('phase', t('scan.log.report'))
+      pushPhase('scan.log.report')
       await transport.reset()
       const { exportText, finalText } = await runTurnOn(
         transport,
@@ -540,8 +553,8 @@ export const useScanStore = create<ScanState>((set, get) => ({
         signal,
         (e) => onEv(e)
       )
-      pushLog('phase', t('scan.log.done', { n: get().findings }))
-      set({ report: exportText || finalText || '(보고서가 비어 있습니다)', phase: 'done' })
+      pushPhase('scan.log.done', { n: get().findings })
+      set({ report: exportText || finalText || t('scan.report.empty'), phase: 'done' })
     } catch (e) {
       if (stopRequested && transport) {
         // Stopped mid-scan: export what's already in the findings store.
@@ -553,8 +566,8 @@ export const useScanStore = create<ScanState>((set, get) => ({
             `finding_export 를 호출하고 반환된 Markdown 보고서를 그대로 출력한다.`,
             new AbortController().signal
           )
-          const body = exportText || finalText || '(중지됨 — 기록된 발견 없음)'
-          set({ report: `${body}\n\n_— 스캔 중지됨 (부분 결과)_`, phase: 'done' })
+          const body = exportText || finalText || t('scan.report.stoppedEmpty')
+          set({ report: `${body}\n\n${t('scan.report.stoppedPartial')}`, phase: 'done' })
         } catch (e2) {
           set({ errorText: e2 instanceof Error ? e2.message : String(e2), phase: 'error' })
         }

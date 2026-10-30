@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 
 import { ProviderIcon } from '@/components/chat/ProviderIcon'
 import { Markdown } from '@/components/chat/Markdown'
+import { useChatDraft } from '@/stores/chat-draft'
 import { useT } from '@/stores/i18n'
-import { useScanStore } from '@/stores/scan'
+import { useScanStore, type LogEntry } from '@/stores/scan'
 import { useTabsStore } from '@/stores/tabs'
 
 // Movable Red Team popup. State lives in useScanStore, so closing this popup
@@ -11,6 +12,7 @@ import { useTabsStore } from '@/stores/tabs'
 export function ScanPopup() {
   const tr = useT()
   const s = useScanStore()
+  const tabs = useTabsStore((st) => st.tabs)
   const activeUrl = useTabsStore((st) => st.tabs.find((t) => t.id === st.activeId)?.url ?? '')
 
   const [pos, setPos] = useState({ x: 0, y: 0 })
@@ -112,15 +114,23 @@ export function ScanPopup() {
     const sec = Math.max(0, Math.floor((ts - (s.startedAt || ts)) / 1000))
     return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
   }
-  const tabHost = (tabId?: string): string => {
-    const u = tabId ? s.scanTabs[tabId]?.url : undefined
-    if (!u) return ''
+  // A tool/finding line shows which tab fired it ([tab3]) and that tab's live
+  // page (host + path, e.g. localhost:8080/analysis) so the user can see where.
+  const tabInfo = (tabId?: string): { tag: string; loc: string } => {
+    if (!tabId) return { tag: '', loc: '' }
+    const idx = tabs.findIndex((t) => t.id === tabId)
+    const url = (idx >= 0 ? tabs[idx]?.url : undefined) ?? s.scanTabs[tabId]?.url
+    let loc = ''
     try {
-      return new URL(u).host
-    } catch {
-      return ''
-    }
+      const u = new URL(url ?? '')
+      loc = u.host + (u.pathname === '/' ? '' : u.pathname)
+    } catch {}
+    return { tag: idx >= 0 ? `[tab${idx + 1}]` : '', loc }
   }
+  // Phase lines carry an i18n key translated now; literals (tool/error/finding
+  // title) render as-is. An empty finding title falls back to a localized label.
+  const lineText = (e: LogEntry): string =>
+    e.key ? tr(e.key, e.vars) : e.text || (e.kind === 'finding' ? tr('scan.log.finding') : '')
   // Each intensity's risk shown as a colored dot + word, in place of prose.
   const risk = (level: string): { label: string; color: string } =>
     level === 'readonly'
@@ -382,6 +392,16 @@ export function ScanPopup() {
               <button type="button" onClick={saveReport} style={reportBtn}>
                 {tr('scan.panel.save')}
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  useChatDraft.getState().push(s.report)
+                  s.close()
+                }}
+                style={reportBtn}
+              >
+                {tr('scan.panel.sendChat')}
+              </button>
             </div>
             <div
               data-testid="scan-report"
@@ -439,14 +459,15 @@ export function ScanPopup() {
                 }}
               >
                 {s.log.map((e, i) => {
-                  const host = e.kind !== 'phase' ? tabHost(e.tabId) : ''
+                  const info = e.kind === 'phase' ? { tag: '', loc: '' } : tabInfo(e.tabId)
                   return (
                     <div key={i} style={{ display: 'flex', gap: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                       <span style={{ color: '#555', flexShrink: 0 }}>{fmtAt(e.ts)}</span>
                       <span style={{ color: logColor(e.kind), flexShrink: 0 }}>{logGlyph(e.kind)}</span>
                       <span style={{ color: e.kind === 'tool' ? 'var(--text-2)' : logColor(e.kind), flex: 1, minWidth: 0 }}>
-                        {e.text}
-                        {host && <span style={{ color: '#555' }}> · {host}</span>}
+                        {info.tag && <span style={{ color: '#6a8f6a' }}>{info.tag} </span>}
+                        {lineText(e)}
+                        {info.loc && <span style={{ color: '#555' }}> · {info.loc}</span>}
                       </span>
                     </div>
                   )
