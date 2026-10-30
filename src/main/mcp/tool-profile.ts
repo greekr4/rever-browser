@@ -275,11 +275,11 @@ export function catalogFromHeader(value: string | string[] | undefined): Catalog
 export const TOOL_PROFILE_SET_DESCRIPTION = `Switch the in-app tool profile, or omit profile to read it.
 browse (default): drive the page, read the DOM, and use the site CLI (cli_compile / cli_run / cli_export).
 reverse: scripts, source maps, deobfuscation, wasm, crypto_trace, intercept/replay, codegen (export_python_client / export_client), site CLI, websockets.
-probe: intruder_run, burst_send, payload_probe, crlf_test, path_probe, lfi_probe. You cannot select probe; ask the user to set Tools → Probe.
+probe: intruder_run, burst_send, payload_probe, crlf_test, path_probe, lfi_probe. You cannot select probe; ask the user to set Tools → Access.
 bp_* breakpoints are not available in any profile.`
 
 export function toolProfileReadText(profile: ToolProfile, advertised: number): string {
-  return `profile=${profile} advertised=${advertised}. Switch with profile "browse" or "reverse". You cannot select probe; the user sets Tools → Probe. bp_* is not in any profile.`
+  return `profile=${profile} advertised=${advertised}. Switch with profile "browse" or "reverse". You cannot select probe; the user sets Tools → Access. bp_* is not in any profile.`
 }
 
 export function toolProfileSwitchedText(profile: ToolProfile, advertised: number): string {
@@ -287,7 +287,7 @@ export function toolProfileSwitchedText(profile: ToolProfile, advertised: number
 }
 
 export const TOOL_PROFILE_PROBE_REJECTED =
-  'probe is user-selected. Ask the user to set Tools → Probe. Profile was not changed.'
+  'probe is user-selected. Ask the user to set Tools → Access. Profile was not changed.'
 
 export type { ToolProfileId } from '../../shared/tool-profile-line'
 export { toolProfileTurnLine } from '../../shared/tool-profile-line'

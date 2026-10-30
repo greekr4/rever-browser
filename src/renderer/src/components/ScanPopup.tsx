@@ -22,7 +22,7 @@ export function ScanPopup() {
   useEffect(() => {
     if (!s.visible) return
     if (!placed) {
-      setPos({ x: Math.max(20, window.innerWidth / 2 - 240), y: 90 })
+      setPos({ x: Math.max(20, window.innerWidth / 2 - 310), y: 90 })
       setPlaced(true)
     }
     if (!s.target) s.setTarget(activeUrl)
@@ -144,7 +144,7 @@ export function ScanPopup() {
         position: 'fixed',
         left: pos.x,
         top: pos.y,
-        width: 480,
+        width: 620,
         maxHeight: '72vh',
         display: 'flex',
         flexDirection: 'column',
@@ -205,7 +205,7 @@ export function ScanPopup() {
                 placeholder={tr('scan.bar.placeholder')}
                 style={{
                   flex: 1,
-                  minWidth: 140,
+                  minWidth: 240,
                   fontSize: 12,
                   padding: '4px 8px',
                   borderRadius: 4,

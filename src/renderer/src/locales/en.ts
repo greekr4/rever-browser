@@ -283,9 +283,9 @@ export const en = {
   'perm.allowSession': 'Allow all {tool} calls this session',
 
   'tools.profile.label': 'Tools',
-  'tools.profile.browse': 'Browse',
-  'tools.profile.reverse': 'Reverse',
-  'tools.profile.probe': 'Probe',
+  'tools.profile.browse': 'Recon',
+  'tools.profile.reverse': 'Reversing',
+  'tools.profile.probe': 'Access',
   'tools.profile.tip.browse': 'Page and DOM tools. API reversing tools are hidden.',
   'tools.profile.tip.reverse': 'Scripts, crypto, replay, and client export.',
   'tools.profile.tip.probe':
@@ -320,8 +320,8 @@ export const en = {
   'scan.panel.copy': 'Copy',
   'scan.panel.save': 'Save .md',
   'scan.panel.intensity': 'Intensity',
-  'scan.panel.intensity.readonly': 'Read-only',
-  'scan.panel.intensity.probe': 'Probe',
+  'scan.panel.intensity.readonly': 'Recon',
+  'scan.panel.intensity.probe': 'Access',
   'scan.panel.intensity.redteam': 'Red Team',
   'scan.panel.risk': 'Risk',
   'scan.risk.safe': 'Safe',

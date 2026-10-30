@@ -232,13 +232,13 @@ describe('tool-profile', () => {
 
     it('읽기·전환·probe 거부 문자열이 고정이다', () => {
       expect(toolProfileReadText('browse', 77)).toBe(
-        'profile=browse advertised=77. Switch with profile "browse" or "reverse". You cannot select probe; the user sets Tools → Probe. bp_* is not in any profile.'
+        'profile=browse advertised=77. Switch with profile "browse" or "reverse". You cannot select probe; the user sets Tools → Access. bp_* is not in any profile.'
       )
       expect(toolProfileSwitchedText('reverse', 109)).toBe(
         'profile=reverse advertised=109. If grep_scripts is not in your tool list yet, ask the user to send one more message.'
       )
       expect(TOOL_PROFILE_PROBE_REJECTED).toBe(
-        'probe is user-selected. Ask the user to set Tools → Probe. Profile was not changed.'
+        'probe is user-selected. Ask the user to set Tools → Access. Profile was not changed.'
       )
     })
   })
