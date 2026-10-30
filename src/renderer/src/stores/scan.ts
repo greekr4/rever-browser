@@ -11,6 +11,20 @@ import { ACP_AGENTS } from '@/constants'
 import { t, useI18nStore } from './i18n'
 import { useTabsStore } from './tabs'
 import { useToolProfileStore } from './tool-profile'
+import { useTrafficStore } from './traffic'
+
+// Hosts the target app actually talked to (captured traffic) that share its
+// bare host — i.e. the same app's API on another localhost port, or a sibling
+// subdomain. Unrelated apps never appear unless the app called them.
+function connectedHosts(targetKey: string): string[] {
+  const bare = targetKey.split(':')[0]
+  const out = new Set<string>()
+  for (const e of Object.values(useTrafficStore.getState().entries)) {
+    const k = siteKey(e.url)
+    if (k && k !== targetKey && k.split(':')[0] === bare) out.add(k)
+  }
+  return [...out]
+}
 
 type Phase = 'idle' | 'confirm' | 'running' | 'done' | 'error'
 type TabStatus = 'opening' | 'inspecting' | 'done' | 'error'
@@ -400,6 +414,22 @@ export const useScanStore = create<ScanState>((set, get) => ({
       pushLog('phase', t('scan.log.pagesFound', { n: links.length }))
       await waitForTabs(jobs.map((j) => j.tabId))
       await new Promise((r) => setTimeout(r, 2000)) // settle: let capture fill
+
+      // Follow the connections: pull every host the app actually talked to
+      // (its API on another port, sibling subdomains) into scope — deterministic,
+      // not left to the agent. Unrelated apps never appear unless the app calls
+      // them. scope_add on the server + the renderer's auto-approve scope.
+      const connected = connectedHosts(site)
+      if (connected.length) {
+        addRedTeamScope(connected)
+        pushLog('phase', t('scan.log.scopeExpand', { hosts: connected.join(', ') }))
+        await runTurnOn(
+          transport,
+          `scope_add({ hosts: ${JSON.stringify(connected)} }) 로 이 앱이 연결된 호스트를 범위에 추가한다. 다른 설명 없이 호출만.`,
+          signal,
+          (e) => onEv(e)
+        )
+      }
 
       // Phase 3 — one worker agent per tab, reading and exploring in parallel
       // (all at once, up to the process cap).

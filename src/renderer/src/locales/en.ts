@@ -308,6 +308,7 @@ export const en = {
   'scan.panel.log': 'Activity log',
   'scan.log.discover': '🎯 Target discovery started — {site}',
   'scan.log.pagesFound': '📑 {n} pages found → opening tabs',
+  'scan.log.scopeExpand': '🔗 Scope + connected hosts: {hosts}',
   'scan.log.inspecting': '🔎 Parallel inspection ({n} at once)',
   'scan.log.probeCollect': '⚡ {mode} probe — collecting endpoints',
   'scan.log.hiddenPaths': '🕵 Hidden-path discovery (.env, admin, .git…)',

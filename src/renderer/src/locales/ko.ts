@@ -291,6 +291,7 @@ export const ko: Record<TKey, string> = {
   'scan.panel.log': '활동 로그',
   'scan.log.discover': '🎯 대상 탐색 시작 — {site}',
   'scan.log.pagesFound': '📑 {n}개 페이지 발견 → 탭 열기',
+  'scan.log.scopeExpand': '🔗 연결 호스트 범위 추가: {hosts}',
   'scan.log.inspecting': '🔎 병렬 검사 시작 (동시 {n}개)',
   'scan.log.probeCollect': '⚡ {mode} 프로브 — 엔드포인트 수집',
   'scan.log.hiddenPaths': '🕵 숨은 경로 탐색 (.env, admin, .git…)',
