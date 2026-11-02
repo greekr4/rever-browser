@@ -310,6 +310,8 @@ export const ko: Record<TKey, string> = {
   'scan.notify.done': '스캔 완료 — 발견 {n}건',
   'scan.notify.error': '스캔 실패',
   'scan.notify.stopped': '스캔 중지 — 현재까지 발견 {n}건',
+  'notify.on': '알림 켜짐 — 눌러서 끄기',
+  'notify.off': '알림 꺼짐 — 눌러서 켜기',
   'scan.panel.intensity': 'Intensity',
   'scan.panel.intensity.readonly': 'Recon',
   'scan.panel.intensity.probe': 'Access',

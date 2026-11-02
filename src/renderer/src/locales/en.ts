@@ -327,6 +327,8 @@ export const en = {
   'scan.notify.done': 'Scan complete — {n} findings',
   'scan.notify.error': 'Scan failed',
   'scan.notify.stopped': 'Scan stopped — {n} findings so far',
+  'notify.on': 'Notifications on — click to mute',
+  'notify.off': 'Notifications off — click to enable',
   'scan.panel.intensity': 'Intensity',
   'scan.panel.intensity.readonly': 'Recon',
   'scan.panel.intensity.probe': 'Access',

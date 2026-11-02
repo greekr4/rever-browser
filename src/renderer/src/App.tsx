@@ -34,6 +34,7 @@ import { useAgentModeStore } from '@/stores/agent-mode'
 import { useChatCollapsedStore } from '@/stores/chat-collapsed'
 import { useChatDraft } from '@/stores/chat-draft'
 import { useI18nStore, useT } from '@/stores/i18n'
+import { useNotifyStore } from '@/stores/notify'
 import { useViewportStore } from '@/stores/viewport'
 import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 import { handleAgentRequest } from '@/workflows/core/agent-bridge'
@@ -110,6 +111,8 @@ function App() {
   // overlay; `grabbing` tracks the toolbar toggle separately from the picker.
   const [grabbing, setGrabbing] = useState(false)
   const [markupImage, setMarkupImage] = useState<string | null>(null)
+  const notifyEnabled = useNotifyStore((s) => s.enabled)
+  const toggleNotify = useNotifyStore((s) => s.toggle)
 
   const chat = useResizable({ initial: 420, min: 300, max: 720, storageKey: 'rev:chat-w' })
   const chatCollapsed = useChatCollapsedStore((s) => s.collapsed)
@@ -450,6 +453,18 @@ function App() {
           }
         >
           {lang === 'en' ? 'EN' : '한'}
+        </button>
+        <button
+          className="toolbar-btn"
+          type="button"
+          onClick={() => toggleNotify()}
+          title={notifyEnabled ? t('notify.on') : t('notify.off')}
+          aria-pressed={notifyEnabled}
+          style={
+            { flexShrink: 0, marginLeft: 4, marginBottom: 2, fontSize: 13, WebkitAppRegion: 'no-drag' } as React.CSSProperties
+          }
+        >
+          {notifyEnabled ? '🔔' : '🔕'}
         </button>
       </div>
 

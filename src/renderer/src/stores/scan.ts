@@ -10,6 +10,7 @@ import { ACP_AGENTS } from '@/constants'
 import type { TKey } from '@/locales/en'
 
 import { t, useI18nStore } from './i18n'
+import { notifyEnabled } from './notify'
 import { useTabsStore } from './tabs'
 import { useToolProfileStore } from './tool-profile'
 import { useTrafficStore } from './traffic'
@@ -236,6 +237,7 @@ export function scanNotification(
 }
 
 function fireScanNotification(phase: 'done' | 'error' | 'stopped', findings: number): void {
+  if (!notifyEnabled()) return
   const { title, body } = scanNotification(phase, findings)
   try {
     void window.rev?.notify?.show(title, body)
