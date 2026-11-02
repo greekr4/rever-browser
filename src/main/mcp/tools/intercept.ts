@@ -13,7 +13,7 @@ import {
 } from '../../chrome-cdp'
 import { getRequest } from '../../traffic-store'
 import { scopeBlockForUrl } from '../scope'
-import { ok, err, errorMessage } from '../utils'
+import { ok, err, errorMessage, mergeReplayHeaders } from '../utils'
 
 export function registerInterceptTools(mcp: McpServer) {
   mcp.registerTool(
@@ -181,7 +181,7 @@ export function registerInterceptTools(mcp: McpServer) {
     'replay_request',
     {
       description:
-        'Replay a captured request via Node fetch (independent of the browser). Cookies are pulled from the page and injected automatically.',
+        'Replay a captured request via Node fetch (independent of the browser). Cookies are pulled from the page and injected automatically, but explicit header overrides win — set a header to "" to remove it. For a truly unauthenticated replay you must blank BOTH {"cookie":"","authorization":""}: the page cookie may itself authenticate the request (e.g. a JWT extracted from a cookie server-side). The result lists `credentialsSent` so you can see what was actually attached.',
       inputSchema: {
         requestId: z.string().describe('requestId to replay'),
         overrides: z
@@ -218,11 +218,17 @@ export function registerInterceptTools(mcp: McpServer) {
         } catch {}
       }
 
-      const headers: Record<string, string> = {
-        ...(entry.requestHeaders ?? {}),
-        ...((overrides?.headers ?? {}) as Record<string, string>)
-      }
-      if (cookieHeader) headers['cookie'] = cookieHeader
+      const headers = mergeReplayHeaders(
+        entry.requestHeaders as Record<string, string> | undefined,
+        cookieHeader,
+        overrides?.headers as Record<string, string> | undefined
+      )
+      // Surface which credential headers survived the merge — an auto-injected
+      // page cookie can silently authenticate a replay the agent believed was
+      // credential-stripped (cookie-extracted JWTs do exactly this).
+      const credentialsSent = ['cookie', 'authorization', 'proxy-authorization'].filter(
+        (k) => headers[k]
+      )
 
       try {
         const resp = await fetch(overrides?.url ?? entry.url, {
@@ -238,6 +244,7 @@ export function registerInterceptTools(mcp: McpServer) {
             {
               status: resp.status,
               statusText: resp.statusText,
+              credentialsSent,
               headers: respHeaders,
               body: responseText.slice(0, 10000),
               truncated: responseText.length > 10000
