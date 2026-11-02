@@ -293,6 +293,12 @@ const api = {
       return () => ipcRenderer.removeListener('tool-profile:changed', listener)
     }
   },
+  // Findings store control. clearSite wipes the persisted findings for the
+  // target's site (eTLD+1) — used when a Red Team scan starts so a rescan
+  // (or a different app on the same localhost port) reports only its own run.
+  findings: {
+    clearSite: (url: string): Promise<number> => ipcRenderer.invoke('findings:clear-site', url)
+  },
   // Native OS notification (e.g. a long Red Team scan finished). Shows via the
   // main process so it appears even when the app is in the background.
   notify: {

@@ -409,6 +409,11 @@ export const useScanStore = create<ScanState>((set, get) => ({
     const { target, pages, intensity } = get()
     if (!target.trim()) return
     set({ phase: 'running', pagesSeen: 0, findings: 0, currentTool: '', report: '', errorText: '', startedAt: Date.now(), scanTabs: {}, log: [] })
+    // Fresh-scan guarantee: findings persist per site (eTLD+1), which cannot
+    // distinguish two apps sharing an origin (e.g. a new challenge deployed on
+    // the same localhost port) — drop this site's old findings before scanning.
+    // (window is renderer-only; the headless store tests skip this wipe.)
+    if (typeof window !== 'undefined') await window.rev.findings.clearSite(target)
     const { pushLog, pushPhase } = get()
     // Feed the activity log + the status line from each agent turn. tabId is
     // passed by the per-tab workers so the log can show which tab acted.
