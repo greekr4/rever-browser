@@ -12,6 +12,8 @@
 // only. The hold is ref-counted so parallel per-tab crawls can each take it; it
 // lifts only when the last releases.
 
+import { scopeKey } from './scope'
+
 export type FenceReason = 'mutation' | 'auth-invalidation'
 
 export interface FenceBlock {
@@ -24,6 +26,60 @@ export interface FenceBlock {
 let holders = 0
 const blocks: FenceBlock[] = []
 const BLOCKS_CAP = 1000
+
+// Loopback = your own machine, so mutating it during a red-team scan is safe and
+// expected (local dev app, a localhost CTF/benchmark). The fence steps aside for
+// loopback BY DEFAULT, so the red team CONFIRMS mutation-only vulns (SSTI,
+// SQLi/cmd-injection via POST, auth bypass) out of the box instead of stopping at
+// "candidate". Every non-loopback host stays fenced unless explicitly marked.
+export function isLoopbackHost(url: string): boolean {
+  let hostname: string
+  try {
+    hostname = new URL(url).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+  return (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname === '::1' ||
+    hostname === '[::1]' ||
+    /^127\./.test(hostname)
+  )
+}
+
+// Extra lab targets — non-loopback hosts the user owns and has explicitly marked
+// safe to mutate (e.g. an authorized staging domain), via the lab_target tool.
+// Stored as scopeKey()s so loopback-style entries are port-specific; a bare host
+// opens all its ports. Opt-in and off by default.
+let labHosts: string[] = []
+
+export function setLabHosts(hosts: string[]): string[] {
+  const out: string[] = []
+  for (const h of hosts) {
+    const key = scopeKey(h)
+    if (key && !out.includes(key)) out.push(key)
+  }
+  labHosts = out
+  return [...labHosts]
+}
+
+export function getLabHosts(): string[] {
+  return [...labHosts]
+}
+
+export function clearLabHosts(): void {
+  labHosts = []
+}
+
+/** Whether `url`'s host was marked a disposable lab target (fence steps aside). */
+export function isLabHost(url: string): boolean {
+  if (labHosts.length === 0) return false
+  const key = scopeKey(url)
+  if (!key) return false
+  const bare = key.split(':')[0]
+  return labHosts.includes(key) || (bare !== key && labHosts.includes(bare))
+}
 
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 // Session-ending paths, blocked at any method.
@@ -44,6 +100,9 @@ export function isFenceActive(): boolean {
 
 /** Whether this request mutates server state (so the fence must hold it). */
 export function fenceReason(method: string, url: string): FenceReason | null {
+  // Disposable lab target (loopback by default, or explicitly marked): allow
+  // mutations through so the red team can confirm the vuln.
+  if (isLoopbackHost(url) || isLabHost(url)) return null
   let path = url
   try {
     path = new URL(url).pathname

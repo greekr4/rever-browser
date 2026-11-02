@@ -90,7 +90,25 @@ function save(): void {
 }
 
 export function listFindings(): Finding[] {
+  load()
   return [...findings.values()].sort((a, b) => b.createdAt - a.createdAt)
+}
+
+// A rescan of the same site must not inherit the previous app's findings —
+// the origin scope (eTLD+1) cannot tell two apps apart when e.g. a new
+// challenge is deployed on the same localhost port.
+export function clearFindingsForSite(url: string): number {
+  load()
+  const scope = originOf(url)
+  let removed = 0
+  for (const [id, f] of findings) {
+    if (scope && f.origin === scope) {
+      findings.delete(id)
+      removed++
+    }
+  }
+  if (removed > 0) save()
+  return removed
 }
 
 function renderMarkdown(all: Finding[], scopeNote?: string): string {

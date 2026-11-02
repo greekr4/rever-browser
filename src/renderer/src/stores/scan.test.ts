@@ -33,7 +33,8 @@ vi.mock('@/ai/acp-transport', () => ({
       } else if (text.includes('깊이 2')) {
         chunks.push({
           type: 'text-delta',
-          delta: '["https://example.com/a","https://example.com/b","https://other.com/c"]'
+          delta:
+            '["https://example.com/a","https://example.com/b","https://other.com/c","https://example.com/font/Ancient_G_Written.ttf","https://example.com/css/style.css"]'
         })
       } else {
         chunks.push(
@@ -144,7 +145,7 @@ describe('useScanStore 스캔 파이프라인', () => {
 
   it('같은 사이트 링크만 탭으로 열고 워커 프롬프트에 그 탭 URL 이 있다', async () => {
     await useScanStore.getState().start()
-    // other.com 링크는 제외 — a/b 두 탭만 연다
+    // other.com(사이트 밖) + 폰트/CSS(정적 자산)는 제외 — a/b 두 탭만 연다
     expect(state.tabs.map((t) => t.url)).toEqual(['https://example.com/a', 'https://example.com/b'])
     const workerPrompts = state.prompts.filter((p) => p.includes('인 탭의 인덱스'))
     expect(workerPrompts).toHaveLength(2)

@@ -24,7 +24,7 @@ const SECURITY_HEADERS = [
   'cross-origin-embedder-policy'
 ]
 
-function analyze(headers: Record<string, string>): SecurityIssue[] {
+export function analyze(headers: Record<string, string>): SecurityIssue[] {
   const lc: Record<string, string> = {}
   for (const [k, v] of Object.entries(headers)) lc[k.toLowerCase()] = v
 
@@ -77,6 +77,21 @@ function analyze(headers: Record<string, string>): SecurityIssue[] {
   return out
 }
 
+// A Document whose headers never landed (failed navigation, cache hit where
+// headers only arrive via ExtraInfo, a response still in flight, or an evicted
+// ring-buffer entry) must not be audited as an empty header map — that reads
+// as "no security headers" and mints false positives. Pick the newest
+// candidate that actually has response headers.
+export function pickInspectable<T extends { requestId: string }>(
+  candidates: T[],
+  getFull: (id: string) => { responseHeaders?: Record<string, string> } | undefined
+): T | undefined {
+  return candidates.find((c) => {
+    const h = getFull(c.requestId)?.responseHeaders
+    return h != null && Object.keys(h).length > 0
+  })
+}
+
 export function registerSecurityInspectTools(mcp: McpServer) {
   mcp.registerTool(
     'security_inspect',
@@ -93,7 +108,8 @@ export function registerSecurityInspectTools(mcp: McpServer) {
           url ? r.url === url : r.resourceType === 'Document'
         )
         if (candidates.length === 0) return err('no matching request in traffic store')
-        const r = candidates[0]
+        const r = pickInspectable(candidates, getRequest)
+        if (!r) return err('no matching request with response headers yet (response may still be in flight)')
         const full = getRequest(r.requestId)
         const headers = full?.responseHeaders ?? {}
         const issues = analyze(headers)

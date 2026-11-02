@@ -317,6 +317,24 @@ function workerPrompt(url: string, crawl: boolean): string {
 }
 
 // Pull the JSON array of same-site links the discovery turn prints.
+// Static, non-navigable assets (fonts, styles, scripts, images, media, source
+// maps, archives). The agent sometimes lists these among "pages to inspect", but
+// opening a .ttf/.css/.js as a browsable page tab is pointless noise — they load
+// as sub-resources of the real pages and are analyzed by the script/wasm tools,
+// not by snapshotting a tab. Checked against the path only (query/hash stripped).
+const NON_PAGE_ASSET =
+  /\.(?:ttf|otf|woff2?|eot|css|m?js|cjs|map|png|jpe?g|gif|svg|webp|avif|ico|bmp|mp4|webm|mp3|wav|ogg|m4a|mov|pdf|zip|gz|wasm)$/i
+
+function isNonPageAsset(url: string): boolean {
+  let path = url
+  try {
+    path = new URL(url).pathname
+  } catch {
+    path = url.replace(/[?#].*$/, '')
+  }
+  return NON_PAGE_ASSET.test(path)
+}
+
 function parseLinks(text: string, site: string, cap: number): string[] {
   const m = text.match(/\[[\s\S]*\]/)
   if (!m) return []
@@ -332,6 +350,7 @@ function parseLinks(text: string, site: string, cap: number): string[] {
   for (const x of arr) {
     if (typeof x !== 'string' || !/^https?:\/\//i.test(x)) continue
     if (siteKey(x) !== site || seen.has(x)) continue
+    if (isNonPageAsset(x)) continue // don't open fonts/css/js/images as page tabs
     seen.add(x)
     out.push(x)
     if (out.length >= cap) break
@@ -409,6 +428,11 @@ export const useScanStore = create<ScanState>((set, get) => ({
     const { target, pages, intensity } = get()
     if (!target.trim()) return
     set({ phase: 'running', pagesSeen: 0, findings: 0, currentTool: '', report: '', errorText: '', startedAt: Date.now(), scanTabs: {}, log: [] })
+    // Fresh-scan guarantee: findings persist per site (eTLD+1), which cannot
+    // distinguish two apps sharing an origin (e.g. a new challenge deployed on
+    // the same localhost port) — drop this site's old findings before scanning.
+    // (window is renderer-only; the headless store tests skip this wipe.)
+    if (typeof window !== 'undefined') await window.rev.findings.clearSite(target)
     const { pushLog, pushPhase } = get()
     // Feed the activity log + the status line from each agent turn. tabId is
     // passed by the per-tab workers so the log can show which tab acted.

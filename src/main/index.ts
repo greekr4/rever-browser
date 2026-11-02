@@ -69,6 +69,7 @@ import { formatEvalResult, type EvalReply } from './console-format'
 import { attachDownloads } from './downloads'
 import { registerDownloadsIpc } from './ipc/downloads-ipc'
 import { listMcpTools } from './mcp/bridge'
+import { clearFindingsForSite } from './mcp/tools/findings'
 import type { CliCommand } from '../shared/cli-spec'
 import {
   cancelWorkflow,
@@ -911,6 +912,10 @@ app.whenReady().then(() => {
   ipcMain.handle('cdp:set-active', async (_event, webContentsId: number) => {
     return setActiveTarget(webContentsId)
   })
+
+  // Red Team rescan freshness — drop the previous run's findings for the
+  // target site so a new app on the same origin can't inherit them.
+  ipcMain.handle('findings:clear-site', (_event, url: string) => clearFindingsForSite(url))
 
   // Cmd/Ctrl+W on the last remaining tab → close the window (Chromium parity).
   ipcMain.on('window:close', () => {

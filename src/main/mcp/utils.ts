@@ -10,6 +10,27 @@ export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
+// --- replay_request header merge -------------------------------------------
+// Two failure modes this merge must prevent: CDP records lowercase header
+// names while agents override capitalized ones (a case-sensitive spread keeps
+// both, so `Authorization: ""` never strips `authorization: Bearer …`), and
+// the page-cookie injection must not stomp an explicit cookie override.
+// Normalize to lowercase, inject cookies BEFORE overrides, and treat an
+// override value of "" as "remove this header" — the credential-strip idiom
+// security scans rely on.
+export function mergeReplayHeaders(
+  captured: Record<string, string> | undefined,
+  cookieHeader: string,
+  overrideHeaders: Record<string, string> | undefined
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(captured ?? {})) out[k.toLowerCase()] = v
+  if (cookieHeader) out['cookie'] = cookieHeader
+  for (const [k, v] of Object.entries(overrideHeaders ?? {})) out[k.toLowerCase()] = v
+  for (const k of Object.keys(out)) if (out[k] === '') delete out[k]
+  return out
+}
+
 // --- Tool-result size budgeting -------------------------------------------
 // Large tool results (full request bodies, snapshots, bundle dumps) can eat
 // tens of thousands of tokens of agent context in one call. okBudgeted() caps
