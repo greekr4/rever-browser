@@ -158,13 +158,25 @@ async function runTurnOn(
   let finalText = ''
   let exportText = ''
   let findingAdds = 0
+  // Map toolCallId → name so finding_export's OUTPUT is captured by its tool
+  // name, not by a fragile substring of the report. The model may refuse to
+  // echo a huge report (or fall back mid-turn and chatter about it); the tool
+  // result is the source of truth regardless.
+  const toolNames = new Map<string, string>()
   const reader = stream.getReader()
   for (;;) {
     const { value, done } = await reader.read()
     if (done) break
-    const c = value as UIMessageChunk & { toolName?: string; delta?: string; output?: unknown; errorText?: string }
+    const c = value as UIMessageChunk & {
+      toolName?: string
+      toolCallId?: string
+      delta?: string
+      output?: unknown
+      errorText?: string
+    }
     if (c.type === 'tool-input-start') {
       const name = c.toolName ?? ''
+      if (c.toolCallId) toolNames.set(c.toolCallId, name)
       onEvent?.({ kind: 'tool', name })
       if (name.includes('finding_add')) findingAdds++
     } else if (c.type === 'tool-input-available') {
@@ -175,7 +187,8 @@ async function runTurnOn(
         onEvent?.({ kind: 'scope', input: ci.input })
     } else if (c.type === 'tool-output-available') {
       const out = extractText(c.output)
-      if (out.includes('Reversing Session Findings')) exportText = out
+      const toolName = c.toolCallId ? toolNames.get(c.toolCallId) ?? '' : ''
+      if (toolName.includes('finding_export') || out.includes('Reversing Session Findings')) exportText = out
       else if (out.startsWith('--- ui_crawl')) {
         const line = out.split('\n').find((l) => l.startsWith('elements:')) ?? 'ui_crawl done'
         onEvent?.({ kind: 'crawl', summary: line })
@@ -199,6 +212,18 @@ async function pool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>
     }
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run))
+}
+
+// Drop runtime meta lines the agent transport injects as text (model-fallback /
+// safeguard notices) so they never leak into the findings report shown to the
+// user. Used only on the finalText fallback — the finding_export tool output is
+// already clean.
+export function cleanReport(text: string): string {
+  return text
+    .split('\n')
+    .filter((l) => !/^\s*(Notice:|Model fallback:)/.test(l))
+    .join('\n')
+    .trim()
 }
 
 // Tool output arrives as rawOutput: a string, a content part, or an array of
@@ -563,12 +588,12 @@ export const useScanStore = create<ScanState>((set, get) => ({
       await transport.reset()
       const { exportText, finalText } = await runTurnOn(
         transport,
-        `지금까지 기록된 finding 으로 finding_export 를 호출하고, 반환된 Markdown 보고서를 그대로 출력한다.`,
+        `지금까지 기록된 finding 으로 finding_export 를 한 번 호출한다. 반환 보고서는 앱이 직접 캡처하므로 본문을 다시 출력하지 말고 "완료"라고만 한 줄로 답한다.`,
         signal,
         (e) => onEv(e)
       )
       pushPhase('scan.log.done', { n: get().findings })
-      set({ report: exportText || finalText || t('scan.report.empty'), phase: 'done' })
+      set({ report: exportText || cleanReport(finalText) || t('scan.report.empty'), phase: 'done' })
     } catch (e) {
       if (stopRequested && transport) {
         // Stopped mid-scan: export what's already in the findings store.
@@ -577,10 +602,10 @@ export const useScanStore = create<ScanState>((set, get) => ({
           await transport.reset()
           const { exportText, finalText } = await runTurnOn(
             transport,
-            `finding_export 를 호출하고 반환된 Markdown 보고서를 그대로 출력한다.`,
+            `finding_export 를 한 번 호출한다. 보고서는 앱이 캡처하므로 본문을 다시 출력하지 말고 "완료"라고만 답한다.`,
             new AbortController().signal
           )
-          const body = exportText || finalText || t('scan.report.stoppedEmpty')
+          const body = exportText || cleanReport(finalText) || t('scan.report.stoppedEmpty')
           set({ report: `${body}\n\n${t('scan.report.stoppedPartial')}`, phase: 'done' })
         } catch (e2) {
           set({ errorText: e2 instanceof Error ? e2.message : String(e2), phase: 'error' })

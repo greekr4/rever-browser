@@ -84,9 +84,22 @@ vi.mock('./i18n', () => ({
 
 vi.mock('@/constants', () => ({ ACP_AGENTS: [{ id: 'claude-code' }] }))
 
-import { useScanStore } from './scan'
+import { useScanStore, cleanReport } from './scan'
 
 const TAB_OF = (url: string) => `URL 이 "${url}" 인 탭의 인덱스`
+
+describe('cleanReport', () => {
+  it('런타임 Notice·Model fallback 라인을 제거하고 본문은 남긴다', () => {
+    const input =
+      '# Reversing Session Findings\n\nNotice: Fable 5.1 safeguards stopped the response above\n- real finding\nModel fallback: claude-fable-5-1 declined this request (cyber)\n- another finding'
+    const out = cleanReport(input)
+    expect(out).not.toContain('Notice:')
+    expect(out).not.toContain('Model fallback:')
+    expect(out).toContain('# Reversing Session Findings')
+    expect(out).toContain('- real finding')
+    expect(out).toContain('- another finding')
+  })
+})
 
 describe('useScanStore 스캔 파이프라인', () => {
   beforeEach(() => {
