@@ -84,9 +84,25 @@ vi.mock('./i18n', () => ({
 
 vi.mock('@/constants', () => ({ ACP_AGENTS: [{ id: 'claude-code' }] }))
 
-import { useScanStore, cleanReport } from './scan'
+import { useScanStore, cleanReport, scanNotification } from './scan'
 
 const TAB_OF = (url: string) => `URL 이 "${url}" 인 탭의 인덱스`
+
+describe('scanNotification', () => {
+  it('done 은 발견 수를 담은 완료 알림을 만든다', () => {
+    const n = scanNotification('done', 5)
+    expect(n.title).toBe('scan.notify.title')
+    expect(n.body).toBe('scan.notify.done {"n":5}')
+  })
+
+  it('error 는 실패 알림을 만든다', () => {
+    expect(scanNotification('error', 0).body).toBe('scan.notify.error')
+  })
+
+  it('stopped 는 부분 결과 알림을 만든다', () => {
+    expect(scanNotification('stopped', 3).body).toBe('scan.notify.stopped {"n":3}')
+  })
+})
 
 describe('cleanReport', () => {
   it('런타임 Notice·Model fallback 라인을 제거하고 본문은 남긴다', () => {

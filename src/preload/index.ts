@@ -293,6 +293,11 @@ const api = {
       return () => ipcRenderer.removeListener('tool-profile:changed', listener)
     }
   },
+  // Native OS notification (e.g. a long Red Team scan finished). Shows via the
+  // main process so it appears even when the app is in the background.
+  notify: {
+    show: (title: string, body: string): Promise<boolean> => ipcRenderer.invoke('notify:show', title, body)
+  },
   // Local CLI agent running in a PTY (terminal mode), wired to rever's MCP.
   terminal: {
     spawn: (opts: { cols: number; rows: number; agent: 'claude' | 'shell' }): Promise<string> =>

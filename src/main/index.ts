@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, net, session, shell, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, net, Notification, session, shell, type MenuItemConstructorOptions } from 'electron'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -1086,6 +1086,14 @@ app.whenReady().then(() => {
 
   // ── /rever skill status ───────────────────────────────────────────────────
   ipcMain.handle('skill:status', () => ({ installed: skillInstalled() }))
+
+  // Native OS notification (long Red Team scans ping when done). Shows from the
+  // main process so it appears even when the app window is in the background.
+  ipcMain.handle('notify:show', (_event, title: unknown, body: unknown) => {
+    if (!Notification.isSupported()) return false
+    new Notification({ title: String(title ?? ''), body: String(body ?? '') }).show()
+    return true
+  })
 
   ipcMain.handle('viewport:get', () => getViewport())
   ipcMain.handle('viewport:set', async (_event, mode: ViewportMode) => {

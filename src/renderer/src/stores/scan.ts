@@ -218,6 +218,30 @@ async function pool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>
 // safeguard notices) so they never leak into the findings report shown to the
 // user. Used only on the finalText fallback — the finding_export tool output is
 // already clean.
+// Build the OS-notification title/body for a finished scan, localized. Pure so
+// it is unit-tested; firing goes through the main process (window.rev.notify)
+// so it shows even when the app is in the background — the point of the ping.
+export function scanNotification(
+  phase: 'done' | 'error' | 'stopped',
+  findings: number
+): { title: string; body: string } {
+  const title = t('scan.notify.title')
+  const body =
+    phase === 'error'
+      ? t('scan.notify.error')
+      : phase === 'stopped'
+        ? t('scan.notify.stopped', { n: findings })
+        : t('scan.notify.done', { n: findings })
+  return { title, body }
+}
+
+function fireScanNotification(phase: 'done' | 'error' | 'stopped', findings: number): void {
+  const { title, body } = scanNotification(phase, findings)
+  try {
+    void window.rev?.notify?.show(title, body)
+  } catch {}
+}
+
 export function cleanReport(text: string): string {
   return text
     .split('\n')
@@ -594,6 +618,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       )
       pushPhase('scan.log.done', { n: get().findings })
       set({ report: exportText || cleanReport(finalText) || t('scan.report.empty'), phase: 'done' })
+      fireScanNotification('done', get().findings)
     } catch (e) {
       if (stopRequested && transport) {
         // Stopped mid-scan: export what's already in the findings store.
@@ -607,13 +632,16 @@ export const useScanStore = create<ScanState>((set, get) => ({
           )
           const body = exportText || cleanReport(finalText) || t('scan.report.stoppedEmpty')
           set({ report: `${body}\n\n${t('scan.report.stoppedPartial')}`, phase: 'done' })
+          fireScanNotification('stopped', get().findings)
         } catch (e2) {
           set({ errorText: e2 instanceof Error ? e2.message : String(e2), phase: 'error' })
+          fireScanNotification('error', 0)
         }
       } else {
         const msg = e instanceof Error ? e.message : String(e)
         pushLog('error', msg)
         set({ errorText: msg, phase: 'error' })
+        fireScanNotification('error', 0)
       }
     } finally {
       setRedTeamScan(false)
