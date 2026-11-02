@@ -6,12 +6,17 @@ import {
   isFenceActive,
   fenceReason,
   recordFenceBlock,
-  getFenceBlocks
+  getFenceBlocks,
+  setLabHosts,
+  clearLabHosts,
+  getLabHosts,
+  isLabHost
 } from './fence'
 
 afterEach(() => {
   // Drain any holders left by a test so the ref-count starts clean.
   while (isFenceActive()) releaseFence()
+  clearLabHosts()
 })
 
 describe('fence', () => {
@@ -36,6 +41,36 @@ describe('fence', () => {
 
     it('경로에 logout 유사 문자열이 포함돼도 토큰 경계가 아니면 막지 않는다', () => {
       expect(fenceReason('GET', 'https://x.test/products/logouter-brand')).toBeNull()
+    })
+
+    it('loopback(내 컴퓨터)은 기본으로 변경 요청을 통과시킨다(확증용)', () => {
+      expect(fenceReason('POST', 'http://localhost:1337/')).toBeNull()
+      expect(fenceReason('POST', 'http://127.0.0.1:5000/x')).toBeNull()
+      expect(fenceReason('DELETE', 'http://[::1]/api')).toBeNull()
+    })
+
+    it('loopback 외의 호스트는 기본으로 막고, lab_target 으로 지정하면 통과시킨다', () => {
+      expect(fenceReason('POST', 'https://staging.example.com/api')).toBe('mutation')
+      setLabHosts(['https://staging.example.com/'])
+      expect(fenceReason('POST', 'https://staging.example.com/api')).toBeNull()
+      // 지정하지 않은 다른 외부 호스트는 여전히 막는다
+      expect(fenceReason('POST', 'https://x.test/api')).toBe('mutation')
+    })
+  })
+
+  describe('lab hosts', () => {
+    it('set/get/clear 로 랩 호스트 목록을 관리한다', () => {
+      expect(getLabHosts()).toEqual([])
+      setLabHosts(['http://localhost:1337/', 'bad host'])
+      expect(getLabHosts()).toEqual(['localhost:1337'])
+      clearLabHosts()
+      expect(getLabHosts()).toEqual([])
+    })
+
+    it('isLabHost 는 포트 단위로 매칭한다', () => {
+      setLabHosts(['localhost:1337'])
+      expect(isLabHost('http://localhost:1337/path')).toBe(true)
+      expect(isLabHost('http://localhost:1338/')).toBe(false)
     })
   })
 

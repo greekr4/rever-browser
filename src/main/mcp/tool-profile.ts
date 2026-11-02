@@ -32,6 +32,7 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   scope_set: 'core',
   scope_add: 'core',
   scope_clear: 'core',
+  lab_target: 'core',
   finding_add: 'core',
   finding_list: 'core',
   // Export belongs with add/list: an agent that can record findings in any
@@ -183,6 +184,7 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   burst_send: ['probe'],
   payload_probe: ['probe'],
   crlf_test: ['probe'],
+  ssti_probe: ['probe'],
   path_probe: ['probe'],
   lfi_probe: ['probe'],
 
@@ -281,7 +283,7 @@ export function catalogFromHeader(value: string | string[] | undefined): Catalog
 export const TOOL_PROFILE_SET_DESCRIPTION = `Switch the in-app tool profile, or omit profile to read it.
 browse (default): drive the page, read the DOM, and use the site CLI (cli_compile / cli_run / cli_export).
 reverse: scripts, source maps, deobfuscation, wasm, crypto_trace, intercept/replay, codegen (export_python_client / export_client), site CLI, websockets.
-probe: intruder_run, burst_send, payload_probe, crlf_test, path_probe, lfi_probe. You cannot select probe; ask the user to set Tools → Access.
+probe: intruder_run, burst_send, payload_probe, crlf_test, ssti_probe, path_probe, lfi_probe. You cannot select probe; ask the user to set Tools → Access.
 bp_* breakpoints are not available in any profile.`
 
 export function toolProfileReadText(profile: ToolProfile, advertised: number): string {

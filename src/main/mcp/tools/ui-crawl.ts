@@ -201,7 +201,7 @@ export function registerUiCrawlTools(mcp: McpServer): void {
     'ui_crawl',
     {
       description:
-        'Red Team exhaustive-click crawler: deterministically clicks every actionable element on the page once, attributes the requests each fired (button→API map), and returns the discovered endpoints for the probe phase. Mutating requests are captured and answered with a synthetic 204 by the capture-not-send fence — the server state is never changed. Pass `tab` (browser_tabs index) to crawl a background tab.',
+        'Red Team exhaustive-click crawler: deterministically clicks every actionable element on the page once, attributes the requests each fired (button→API map), and returns the discovered endpoints for the probe phase. On non-loopback hosts, mutating requests are captured and answered with a synthetic 204 by the capture-not-send fence — the server state is never changed; loopback / lab_target hosts pass through so local benchmarks can be confirmed. Pass `tab` (browser_tabs index) to crawl a background tab.',
       inputSchema: {
         tab: z.number().int().optional().describe('Tab index from browser_tabs (default: the selected tab)'),
         maxElements: z

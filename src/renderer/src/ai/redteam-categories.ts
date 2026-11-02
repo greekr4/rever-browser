@@ -6,7 +6,7 @@
 // Only categories with a backing single-shot rever tool are listed — no faked
 // coverage. Each check is one or two requests; loops/fuzzing stay forbidden.
 
-export type VulnId = 'broken_auth' | 'idor' | 'xss' | 'crlf' | 'ssrf' | 'lfi'
+export type VulnId = 'broken_auth' | 'idor' | 'xss' | 'ssti' | 'crlf' | 'ssrf' | 'lfi'
 
 export interface VulnCategory {
   id: VulnId
@@ -68,7 +68,13 @@ const CHECKS: Record<VulnId, Omit<VulnCategory, 'id'>> = {
     owasp: 'WSTG-INPV:Reflected XSS',
     severity: 'medium',
     check:
-      'payload_probe({ requestId }) 로 반사형 XSS 를 확인한다. 응답에 페이로드가 이스케이프 없이 반사되면 보고.'
+      '반사되는 파라미터(쿼리 또는 폼 바디)를 § 로 표시하고 payload_probe({ requestId }) 로 반사형 XSS 를 확인한다. 응답에 페이로드가 이스케이프 없이 반사되면 보고.'
+  },
+  ssti: {
+    owasp: 'WSTG-INPV:Server-Side Template Injection',
+    severity: 'high',
+    check:
+      '반사되는 파라미터를 § 로 표시하고 ssti_probe({ requestId }) 를 1회 실행한다 — Velocity/Freemarker/Jinja/ERB/Thymeleaf/Razor 를 한 번에 시험한다. 한 엔진이라도 산술을 평가하면(리터럴이 아닌 계산 결과가 응답에 나타나면) SSTI 확정: RCE 급이므로 severity:"critical" 로 올려 보고한다. {{7*7}} 하나가 리터럴로 반사된다고 SSTI 를 기각하지 말 것 — Java 스택은 ${…}/#set 으로만 평가된다.'
   },
   crlf: {
     owasp: 'WSTG-INPV:CRLF/Header Injection',
@@ -95,8 +101,15 @@ export function classify(method: string, url: string): VulnCategory[] {
   const ids: VulnId[] = ['broken_auth'] // every captured request can be auth-replayed
   if (hasIdParam(url)) ids.push('idor')
   const params = p.params
-  const isGet = method.toUpperCase() === 'GET'
-  if (params.length && isGet) ids.push('xss')
+  // Reflected-input sinks (XSS, template injection) take user input from a query
+  // param OR a request body, so they apply to GET-with-query and to any
+  // body-bearing method — a POST form field is the classic SSTI surface.
+  const bodyMethod = ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())
+  const reflectable = params.length > 0 || bodyMethod
+  if (reflectable) {
+    ids.push('xss')
+    ids.push('ssti')
+  }
   if (params.length) ids.push('crlf')
   if (params.some((k) => URL_PARAM_RE.test(k))) ids.push('ssrf')
   if (params.some((k) => FILE_PARAM_RE.test(k)) || p.segs.some((s) => FILE_PARAM_RE.test(s))) {

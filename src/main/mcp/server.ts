@@ -33,6 +33,7 @@ import { registerCryptoTools } from './tools/crypto'
 import { registerDeobTools } from './tools/deob'
 import { registerPayloadProbeTools } from './tools/payload_probe'
 import { registerCrlfTools } from './tools/crlf'
+import { registerSstiProbeTools } from './tools/ssti_probe'
 import { registerPathProbeTools } from './tools/path_probe'
 import { registerFindingTools } from './tools/findings'
 import { registerScanTools } from './tools/scan'
@@ -184,6 +185,7 @@ export function buildMcpServer(opts?: { catalog?: CatalogKind }): McpServer {
   registerDeobTools(mcp)
   registerPayloadProbeTools(mcp)
   registerCrlfTools(mcp)
+  registerSstiProbeTools(mcp)
   registerPathProbeTools(mcp)
   registerFindingTools(mcp)
   registerScanTools(mcp)

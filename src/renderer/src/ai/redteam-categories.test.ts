@@ -17,17 +17,24 @@ describe('redteam-categories classify', () => {
     expect(ids('GET', 'https://ex.com/orders/550e8400-e29b-41d4-a716-446655440000')).toContain('idor')
   })
 
-  it('GET 쿼리 파라미터가 있으면 XSS·CRLF 를 적용하고, id 류가 아니면 IDOR 는 아니다', () => {
+  it('GET 쿼리 파라미터가 있으면 XSS·SSTI·CRLF 를 적용하고, id 류가 아니면 IDOR 는 아니다', () => {
     const c = ids('GET', 'https://ex.com/search?q=hi')
     expect(c).toContain('xss')
+    expect(c).toContain('ssti')
     expect(c).toContain('crlf')
     expect(c).not.toContain('idor')
   })
 
-  it('POST 는 XSS 를 적용하지 않지만 CRLF 는 적용한다', () => {
-    const c = ids('POST', 'https://ex.com/submit?token=1')
+  it('POST 는 바디가 반사 싱크이므로 XSS·SSTI 를 적용한다(쿼리 없어도)', () => {
+    const c = ids('POST', 'https://ex.com/')
+    expect(c).toContain('xss')
+    expect(c).toContain('ssti')
+  })
+
+  it('파라미터 없는 GET 은 반사 체크(XSS/SSTI)를 적용하지 않는다', () => {
+    const c = ids('GET', 'https://ex.com/health')
     expect(c).not.toContain('xss')
-    expect(c).toContain('crlf')
+    expect(c).not.toContain('ssti')
   })
 
   it('url 류 파라미터가 있으면 SSRF 를 적용한다', () => {
