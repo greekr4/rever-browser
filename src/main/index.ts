@@ -97,6 +97,10 @@ app.userAgentFallback = app.userAgentFallback
 // original 'rever-browser' directory so mcp-endpoint.json, cookies and
 // localStorage keep their existing location.
 app.setName('Rever Browser')
+// Windows shows notification toasts only when the process has an explicit
+// AppUserModelID matching the installed appId — without it the toast is dropped
+// silently. No-op on macOS/Linux.
+app.setAppUserModelId('io.greekr4.reverbrowser')
 // REVER_USER_DATA_DIR isolates a run (E2E tests) from the real profile —
 // chat history, cookies, settings and mcp-endpoint.json all live under it.
 app.setPath(
