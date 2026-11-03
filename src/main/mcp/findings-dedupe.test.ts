@@ -4,6 +4,7 @@ import {
   endpointKeyOf,
   mergeDuplicateEndpoints,
   vulnKeyOf,
+  isScanNoise,
   type DedupableFinding
 } from './findings-dedupe'
 
@@ -192,5 +193,21 @@ describe('vulnKeyOf — 같은 싱크를 본 워커들의 중복 병합 (TimeKOR
     const { merged } = mergeDuplicateEndpoints(list)
     expect(merged).toHaveLength(1)
     expect(merged[0].severity).toBe('medium')
+  })
+})
+
+describe('isScanNoise', () => {
+  it('false_positive 상태는 노이즈다', () => {
+    expect(isScanNoise({ status: 'false_positive', tags: [] })).toBe(true)
+  })
+
+  it('negative 태그는 상태와 무관하게 노이즈다', () => {
+    expect(isScanNoise({ status: 'candidate', tags: ['broken_auth', 'negative'] })).toBe(true)
+    expect(isScanNoise({ status: 'validated', tags: ['Negative'] })).toBe(true)
+  })
+
+  it('진짜 후보/검증 발견은 노이즈가 아니다', () => {
+    expect(isScanNoise({ status: 'candidate', tags: ['ssrf'] })).toBe(false)
+    expect(isScanNoise({ status: 'validated', tags: ['sqli'] })).toBe(false)
   })
 })

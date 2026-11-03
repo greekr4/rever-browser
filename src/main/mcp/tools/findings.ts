@@ -9,7 +9,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { ok, err } from '../utils'
 import { getActiveTarget } from '../../chrome-cdp'
 import { originOf, filterByOrigin, resolveExportScope } from '../findings-scope'
-import { endpointKeyOf, mergeDuplicateEndpoints } from '../findings-dedupe'
+import { endpointKeyOf, mergeDuplicateEndpoints, isScanNoise } from '../findings-dedupe'
 
 type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical'
 type Category = 'endpoint' | 'auth' | 'vuln' | 'secret' | 'other'
@@ -115,7 +115,9 @@ function renderMarkdown(all: Finding[], scopeNote?: string): string {
   // Parallel tab workers each record the same public endpoint; the export is
   // the one place that can merge them deterministically, whatever the workers
   // did. (finding_add already nudges duplicates away at the source.)
-  const { merged: list, mergedAway } = mergeDuplicateEndpoints(all)
+  // Legacy guard: drop any negative/false-positive noise already on disk so an
+  // old scan's report is clean without a rescan (finding_add blocks new ones).
+  const { merged: list, mergedAway } = mergeDuplicateEndpoints(all.filter((f) => !isScanNoise(f)))
   const lines: string[] = []
   lines.push('# Reversing Session Findings', '')
   if (scopeNote) lines.push(`_site: ${scopeNote}_`, '')
@@ -226,6 +228,15 @@ export function registerFindingTools(mcp: McpServer) {
       if (status === 'validated' && evidence < 2) {
         effectiveStatus = 'candidate'
         warning = `status downgraded to 'candidate': 'validated' needs ≥2 independent evidence items, got ${evidence}. Add more evidenceIds (best: 1 static + 1 dynamic) or record it as residual risk.`
+      }
+      // Noise gate: a pure-negative result is not recorded (scan-noise policy).
+      // Workers flag their own negatives; don't let them flood the report.
+      if (isScanNoise({ status: effectiveStatus, tags })) {
+        return ok(
+          "not saved: negative / false-positive results aren't recorded (scan-noise policy) — " +
+            'the report carries only confirmed or candidate vulnerabilities. ' +
+            'If you ruled OUT a vuln that was already saved, finding_remove it instead.'
+        )
       }
       const f: Finding = {
         id: randomUUID(),

@@ -17,6 +17,16 @@ export interface DedupableFinding {
 
 const SEVERITY_RANK: Record<string, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1 }
 
+// A pure-negative result ("I checked X and it's fine / not a vuln") is scan
+// noise, not a deliverable — a weak worker floods the report with "static CSS
+// served without auth = expected" notes instead of the one real vuln. Workers
+// label these themselves: `false_positive` status, or a `negative` tag. Enforce
+// deterministically so prose ("don't record negatives") a model can ignore
+// becomes a rule it can't. The report carries only confirmed/candidate vulns.
+export function isScanNoise(f: { status: string; tags: string[] }): boolean {
+  return f.status === 'false_positive' || f.tags.some((t) => t.toLowerCase() === 'negative')
+}
+
 /** host(:port)+path of the first URL in the text, or first bare-path form. */
 function hostPathOf(text: string): string | null {
   const url = text.match(/https?:\/\/[^\s`)\]"'<>]+/i)
