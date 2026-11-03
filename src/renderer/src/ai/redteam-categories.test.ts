@@ -41,6 +41,19 @@ describe('redteam-categories classify', () => {
     expect(s).toContain('severity:"critical"')
   })
 
+  it('로그인 폼 POST 는 NoSQL 체크라인(nosqli_probe, critical)도 받는다 — Mongo/Neo4j 스택', () => {
+    const s = checklistFor('POST', 'http://localhost:1337/')
+    expect(s).toContain('nosqli_probe')
+    expect(s).toContain('WSTG-INPV:NoSQL / Cypher Injection')
+    expect(s).toContain('severity:"critical"')
+  })
+
+  it('반사 가능 엔드포인트는 sqli 와 nosqli 를 함께 적용한다', () => {
+    const c = ids('GET', 'https://ex.com/search?q=hi')
+    expect(c).toContain('sqli')
+    expect(c).toContain('nosqli')
+  })
+
   it('다중 필드 저장 폼은 path_write_probe 라인을 받는다 — Testimonial 회귀', () => {
     const s = checklistFor('GET', 'http://localhost:1337/?customer=a&testimonial=b')
     expect(s).toContain('path_write_probe')
