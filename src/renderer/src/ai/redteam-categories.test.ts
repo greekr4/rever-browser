@@ -17,12 +17,28 @@ describe('redteam-categories classify', () => {
     expect(ids('GET', 'https://ex.com/orders/550e8400-e29b-41d4-a716-446655440000')).toContain('idor')
   })
 
-  it('GET 쿼리 파라미터가 있으면 XSS·SSTI·CRLF 를 적용하고, id 류가 아니면 IDOR 는 아니다', () => {
+  it('GET 쿼리 파라미터가 있으면 XSS·SSTI·CMDI·SQLI·CRLF 를 적용하고, id 류가 아니면 IDOR 는 아니다', () => {
     const c = ids('GET', 'https://ex.com/search?q=hi')
     expect(c).toContain('xss')
     expect(c).toContain('ssti')
+    expect(c).toContain('cmdi')
+    expect(c).toContain('sqli')
     expect(c).toContain('crlf')
     expect(c).not.toContain('idor')
+  })
+
+  it('date/format 류 쿼리 파라미터는 CMDI 체크라인(cmd_probe, critical)을 받는다 — TimeKORP 회귀', () => {
+    const s = checklistFor('GET', 'http://localhost:1337/?format=%Y')
+    expect(s).toContain('cmd_probe')
+    expect(s).toContain('WSTG-INPV:OS Command Injection')
+    expect(s).toContain('severity:"critical"')
+  })
+
+  it('로그인 폼 POST 는 SQLI 체크라인(sqli_probe, critical)을 받는다 — KORP Terminal 회귀', () => {
+    const s = checklistFor('POST', 'http://localhost:1337/')
+    expect(s).toContain('sqli_probe')
+    expect(s).toContain('WSTG-INPV:SQL Injection')
+    expect(s).toContain('severity:"critical"')
   })
 
   it('POST 는 바디가 반사 싱크이므로 XSS·SSTI 를 적용한다(쿼리 없어도)', () => {

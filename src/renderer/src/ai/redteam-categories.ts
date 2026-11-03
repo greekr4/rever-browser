@@ -6,12 +6,21 @@
 // Only categories with a backing single-shot rever tool are listed — no faked
 // coverage. Each check is one or two requests; loops/fuzzing stay forbidden.
 
-export type VulnId = 'broken_auth' | 'idor' | 'xss' | 'ssti' | 'crlf' | 'ssrf' | 'lfi'
+export type VulnId =
+  | 'broken_auth'
+  | 'idor'
+  | 'xss'
+  | 'ssti'
+  | 'cmdi'
+  | 'sqli'
+  | 'crlf'
+  | 'ssrf'
+  | 'lfi'
 
 export interface VulnCategory {
   id: VulnId
   owasp: string
-  severity: 'low' | 'medium' | 'high'
+  severity: 'low' | 'medium' | 'high' | 'critical'
   /** One imperative line telling the worker exactly which tool to run. */
   check: string
 }
@@ -74,7 +83,19 @@ const CHECKS: Record<VulnId, Omit<VulnCategory, 'id'>> = {
     owasp: 'WSTG-INPV:Server-Side Template Injection',
     severity: 'high',
     check:
-      '반사되는 파라미터를 § 로 표시하고 ssti_probe({ requestId }) 를 1회 실행한다 — Velocity/Freemarker/Jinja/ERB/Thymeleaf/Razor 를 한 번에 시험한다. 한 엔진이라도 산술을 평가하면(리터럴이 아닌 계산 결과가 응답에 나타나면) SSTI 확정: RCE 급이므로 severity:"critical" 로 올려 보고한다. {{7*7}} 하나가 리터럴로 반사된다고 SSTI 를 기각하지 말 것 — Java 스택은 ${…}/#set 으로만 평가된다.'
+      'ssti_probe({ requestId, param }) 를 1회 실행한다(§ 마커 스테이징 불필요) — Velocity/Freemarker/Jinja/ERB/Thymeleaf/Razor 를 한 번에 시험한다. 한 엔진이라도 산술을 평가하면(리터럴이 아닌 계산 결과가 응답에 나타나면) SSTI 확정: RCE 급이므로 severity:"critical" 로 올려 보고한다. {{7*7}}/${7*7} 하나가 리터럴로 반사된다고 SSTI 를 기각하지 말 것 — Java 스택은 ${…}/#set 으로만 평가된다.'
+  },
+  cmdi: {
+    owasp: 'WSTG-INPV:OS Command Injection',
+    severity: 'critical',
+    check:
+      'cmd_probe({ requestId, param }) 를 1회 실행한다 — quote break/;/|/backtick/$() 컨텍스트를 한 번에 시험한다. 셸이 nonce 산술을 계산해 돌려보내면(리터럴이 아닌 계산 결과) 커맨드 인젝션 확정: RCE 급. date/format/exec 류 파라미터가 전형적 매개체이며, 페이로드가 리터럴로 반사되거나 인용부호가 깨진 에러가 나도 기각하지 말 것 — 도구의 산술 결과만이 판정 근거다.'
+  },
+  sqli: {
+    owasp: 'WSTG-INPV:SQL Injection',
+    severity: 'critical',
+    check:
+      'sqli_probe({ requestId, param }) 를 1회 실행한다 — quote 에러 시그니처와 boolean 산술(true/false) 차등을 한 번에 시험한다. SQL 에러 문자열이 응답에 드러나거나 true/false 페이로드의 응답이 차등을 보이면 SQL 인젝션 확정: 데이터 유출 가능 critical. 로그인/검색 폼 필드(username·q)가 전형적 매개체이며, 페이로드가 리터럴로 반사되어도 기각하지 말 것 — 도구의 에러 시그니처·차등만이 판정 근거다.'
   },
   crlf: {
     owasp: 'WSTG-INPV:CRLF/Header Injection',
@@ -109,6 +130,8 @@ export function classify(method: string, url: string): VulnCategory[] {
   if (reflectable) {
     ids.push('xss')
     ids.push('ssti')
+    ids.push('cmdi')
+    ids.push('sqli')
   }
   if (params.length) ids.push('crlf')
   if (params.some((k) => URL_PARAM_RE.test(k))) ids.push('ssrf')
