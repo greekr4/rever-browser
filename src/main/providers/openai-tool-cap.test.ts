@@ -54,7 +54,7 @@ describe('capToolsForOpenAI', () => {
 
   it('reverse에 browse 전용 34개를 더한 151개에서 list_endpoints와 등록 순 꼬리를 자른다', () => {
     const order = registrationOrder()
-    expect(order).toHaveLength(173)
+    expect(order).toHaveLength(174)
     const browseOnly = advertisedNames('browse').filter((name) => !isAdvertised(name, 'reverse'))
     expect(browseOnly).toHaveLength(34)
     const allowed = new Set([...advertisedNames('reverse'), ...browseOnly])

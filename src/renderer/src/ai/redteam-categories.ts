@@ -13,6 +13,7 @@ export type VulnId =
   | 'ssti'
   | 'cmdi'
   | 'sqli'
+  | 'nosqli'
   | 'pathwrite'
   | 'crlf'
   | 'ssrf'
@@ -98,6 +99,12 @@ const CHECKS: Record<VulnId, Omit<VulnCategory, 'id'>> = {
     check:
       'sqli_probe({ requestId, param }) 를 1회 실행한다 — quote 에러 시그니처와 boolean 산술(true/false) 차등을 한 번에 시험한다. SQL 에러 문자열이 응답에 드러나거나 true/false 페이로드의 응답이 차등을 보이면 SQL 인젝션 확정: 데이터 유출 가능 critical. 로그인/검색 폼 필드(username·q)가 전형적 매개체이며, 페이로드가 리터럴로 반사되어도 기각하지 말 것 — 도구의 에러 시그니처·차등만이 판정 근거다.'
   },
+  nosqli: {
+    owasp: 'WSTG-INPV:NoSQL / Cypher Injection',
+    severity: 'critical',
+    check:
+      'nosqli_probe({ requestId, param }) 를 1회 실행한다 — 백엔드가 Mongo/Neo4j 로 보이면(세션 쿠키·스택·드라이버 흔적) sqli_probe 대신 이것을 쓴다(sqli_probe 는 SQL 에러 기반이라 NoSQL 에 장님). param[$ne] vs param[$eq] 연산자 차등과 Mongo/Neo4j 파서 에러 시그니처를 한 번에 시험한다. 응답이 차등을 보이거나 드라이버 에러가 드러나면 NoSQL/Cypher 인젝션 확정: 인증 우회·데이터 유출 가능 critical. 로그인/검색 폼(username·q)이 전형적 매개체이며, bcrypt 로 막힌 로그인은 password 가 쿼리 밖에서 비교되어 음성이 정상이다.'
+  },
   pathwrite: {
     owasp: 'WSTG-ATHZ:Path Traversal / Arbitrary File Write',
     severity: 'critical',
@@ -139,6 +146,7 @@ export function classify(method: string, url: string): VulnCategory[] {
     ids.push('ssti')
     ids.push('cmdi')
     ids.push('sqli')
+    ids.push('nosqli')
   }
   // Stored-then-displayed forms (a filename field + a content field, or any
   // body-bearing write) can hide an arbitrary-file-write sink the reflection
