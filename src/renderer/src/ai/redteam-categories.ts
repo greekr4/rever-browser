@@ -13,6 +13,7 @@ export type VulnId =
   | 'ssti'
   | 'cmdi'
   | 'sqli'
+  | 'pathwrite'
   | 'crlf'
   | 'ssrf'
   | 'lfi'
@@ -97,6 +98,12 @@ const CHECKS: Record<VulnId, Omit<VulnCategory, 'id'>> = {
     check:
       'sqli_probe({ requestId, param }) 를 1회 실행한다 — quote 에러 시그니처와 boolean 산술(true/false) 차등을 한 번에 시험한다. SQL 에러 문자열이 응답에 드러나거나 true/false 페이로드의 응답이 차등을 보이면 SQL 인젝션 확정: 데이터 유출 가능 critical. 로그인/검색 폼 필드(username·q)가 전형적 매개체이며, 페이로드가 리터럴로 반사되어도 기각하지 말 것 — 도구의 에러 시그니처·차등만이 판정 근거다.'
   },
+  pathwrite: {
+    owasp: 'WSTG-ATHZ:Path Traversal / Arbitrary File Write',
+    severity: 'critical',
+    check:
+      '저장-후-표시형 폼(테스티모니얼/댓글/업로드 등)에서 값이 서버 파일명이 될 만한 필드(name/customer/filename/title 류)를 param 으로 지정해 path_write_probe({ requestId, param }) 를 1회 실행한다. 평문 이름 마커는 되읽기 페이지에 뜨는데 ../ 이름 마커는 안 뜨면 의도 디렉토리 밖 임의 파일 쓰기 확정: 소스/템플릿(.templ/.html/.php) 덮어쓰기로 RCE 가능 — critical. 반사 프로브가 "저장되지만 이스케이프됨(XSS/SSTI 아님)"이라고 할 때 그 폼의 파일명 필드가 진짜 싱크다. 되읽기 URL 이 다르면 readback 으로 지정한다.'
+  },
   crlf: {
     owasp: 'WSTG-INPV:CRLF/Header Injection',
     severity: 'medium',
@@ -133,6 +140,11 @@ export function classify(method: string, url: string): VulnCategory[] {
     ids.push('cmdi')
     ids.push('sqli')
   }
+  // Stored-then-displayed forms (a filename field + a content field, or any
+  // body-bearing write) can hide an arbitrary-file-write sink the reflection
+  // probes miss — only worth it when there's more than one field to carry
+  // filename + content.
+  if (reflectable && (params.length >= 2 || bodyMethod)) ids.push('pathwrite')
   if (params.length) ids.push('crlf')
   if (params.some((k) => URL_PARAM_RE.test(k))) ids.push('ssrf')
   if (params.some((k) => FILE_PARAM_RE.test(k)) || p.segs.some((s) => FILE_PARAM_RE.test(s))) {
