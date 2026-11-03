@@ -92,7 +92,7 @@ describe('tool-profile', () => {
     it('소스 registerTool 이름과 레지스트리 키가 같다', () => {
       const source = sourceToolNames()
       expect(sorted(Object.keys(TOOL_BUCKETS))).toEqual(sorted(source))
-      expect(source.size).toBe(172)
+      expect(source.size).toBe(173)
       expect(source.has('tool_profile_set')).toBe(true)
     })
   })
@@ -102,7 +102,7 @@ describe('tool-profile', () => {
       expect(PROFILE_TOOL_BUDGET).toBe(120)
       expect(advertisedNames('browse')).toHaveLength(84)
       expect(advertisedNames('reverse')).toHaveLength(117)
-      expect(advertisedNames('probe')).toHaveLength(46)
+      expect(advertisedNames('probe')).toHaveLength(47)
       for (const profile of TOOL_PROFILES) {
         expect(() => assertProfileBudget(profile)).not.toThrow()
       }
