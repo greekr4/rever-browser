@@ -190,6 +190,7 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   path_write_probe: ['probe'],
   grpc_call: ['probe'],
   pickle_gadget: ['probe'],
+  raw_http: ['probe'],
   path_probe: ['probe'],
   lfi_probe: ['probe'],
 

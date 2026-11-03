@@ -39,6 +39,7 @@ import { registerSqliProbeTools } from './tools/sqli_probe'
 import { registerPathWriteProbeTools } from './tools/path_write_probe'
 import { registerGrpcCallTools } from './tools/grpc_call'
 import { registerPickleGadgetTools } from './tools/pickle_gadget'
+import { registerRawHttpTools } from './tools/raw_http'
 import { registerPathProbeTools } from './tools/path_probe'
 import { registerFindingTools } from './tools/findings'
 import { registerScanTools } from './tools/scan'
@@ -196,6 +197,7 @@ export function buildMcpServer(opts?: { catalog?: CatalogKind }): McpServer {
   registerPathWriteProbeTools(mcp)
   registerGrpcCallTools(mcp)
   registerPickleGadgetTools(mcp)
+  registerRawHttpTools(mcp)
   registerPathProbeTools(mcp)
   registerFindingTools(mcp)
   registerScanTools(mcp)
