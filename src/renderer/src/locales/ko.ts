@@ -289,6 +289,8 @@ export const ko: Record<TKey, string> = {
   'scan.panel.findings': '발견',
   'scan.panel.stop': '중지',
   'scan.panel.log': '활동 로그',
+  'scan.log.auth': '🔑 인증 부트스트랩 — 회원가입 + 로그인',
+  'scan.log.authResult': '🔑 {state}',
   'scan.log.discover': '🎯 대상 탐색 시작 — {site}',
   'scan.log.pagesFound': '📑 {n}개 페이지 발견 → 탭 열기',
   'scan.log.scopeExpand': '🔗 연결 호스트 범위 추가: {hosts}',

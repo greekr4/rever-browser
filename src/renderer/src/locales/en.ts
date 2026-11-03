@@ -306,6 +306,8 @@ export const en = {
   'scan.panel.findings': 'findings',
   'scan.panel.stop': 'Stop',
   'scan.panel.log': 'Activity log',
+  'scan.log.auth': '🔑 Auth bootstrap — registering + logging in',
+  'scan.log.authResult': '🔑 {state}',
   'scan.log.discover': '🎯 Target discovery started — {site}',
   'scan.log.pagesFound': '📑 {n} pages found → opening tabs',
   'scan.log.scopeExpand': '🔗 Scope + connected hosts: {hosts}',

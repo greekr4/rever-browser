@@ -524,6 +524,29 @@ export const useScanStore = create<ScanState>((set, get) => ({
       const jobs: { url: string; tabId: string }[] = []
       const scanTabs: Record<string, ScanTab> = {}
 
+      // Phase 0 — auth bootstrap: most of an app's surface (and its real vulns)
+      // sits behind a login. A self-driven scan that never authenticates only
+      // ever sees the public login/register pages. So first, if the start page
+      // is an auth gate, register a throwaway account and log in — the session
+      // cookie lives in the shared partition, so every discovery/worker tab
+      // below inherits it. On loopback/lab targets the fence steps aside, so the
+      // register+login POSTs land for real; on a fenced host they 204 and the
+      // agent simply reports PUBLIC (no harm). Credentials are generated here so
+      // the agent fills exactly these, not invented ones.
+      const authCred = {
+        user: 'rever_' + Math.random().toString(36).slice(2, 10),
+        pass: 'Rv_' + Math.random().toString(36).slice(2, 10) + '!1'
+      }
+      pushPhase('scan.log.auth')
+      const { finalText: authText } = await runTurnOn(
+        transport,
+        `browser_navigate("${target.trim()}") 후 browser_snapshot. 이 페이지가 로그인/회원가입 게이트면(로그인 폼이 있거나 /login·/panel 로 리다이렉트), 스캔을 인증 상태로 만들기 위해 먼저 계정을 만든다: 회원가입(register/signup) 링크나 폼으로 가서 browser_type 으로 사용자명 "${authCred.user}" 와 비밀번호 "${authCred.pass}" 를 넣고 제출한 뒤, 로그인 폼에 같은 자격으로 로그인한다. 폼 필드명이 username/password 가 아니면 스냅샷의 실제 필드명을 쓰고, 이메일 필드가 있으면 "${authCred.user}@example.com" 을 넣는다. 최대 6번의 browser 액션. 로그인에 성공해 보호 영역(대시보드/패널/홈)으로 들어가면 'AUTHED' 한 단어만, 인증 게이트가 없거나 로그인에 실패하면 'PUBLIC' 한 단어만 출력.`,
+        signal,
+        (e) => onEv(e)
+      )
+      const authed = /AUTHED/i.test(authText) && !/PUBLIC/i.test(authText)
+      pushPhase('scan.log.authResult', { state: authed ? 'Authenticated session established' : 'No auth gate (public scan)' })
+
       // Phase 1 — discovery: the agent walks the start page AND follows a few
       // links (depth 2) to gather a broad same-site link set.
       pushPhase('scan.log.discover', { site })
