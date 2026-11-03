@@ -85,7 +85,7 @@ vi.mock('./i18n', () => ({
 
 vi.mock('@/constants', () => ({ ACP_AGENTS: [{ id: 'claude-code' }] }))
 
-import { useScanStore, cleanReport, scanNotification } from './scan'
+import { useScanStore, cleanReport, scanNotification, mergeQueryEndpoints } from './scan'
 
 const TAB_OF = (url: string) => `URL 이 "${url}" 인 탭의 인덱스`
 
@@ -176,5 +176,30 @@ describe('useScanStore 스캔 파이프라인', () => {
     useScanStore.getState().setIntensity('probe')
     await useScanStore.getState().start()
     expect(state.prompts.some((p) => p.includes('path_probe({ baseUrl:'))).toBe(false)
+  })
+})
+
+describe('mergeQueryEndpoints', () => {
+  it('쿼리 있는 링크가 베어 GET 을 대체한다 — 주입 계열 체크리스트가 살아난다', () => {
+    expect(
+      mergeQueryEndpoints(['GET http://localhost:1337/'], ['http://localhost:1337/?format=%H'])
+    ).toEqual(['GET http://localhost:1337/?format=%H'])
+  })
+
+  it('POST 엔드포인트는 유지하고 쿼리 GET 을 추가한다 — Labyrinth 형태', () => {
+    expect(mergeQueryEndpoints(['POST http://x/'], ['http://x/?a=1'])).toEqual([
+      'POST http://x/',
+      'GET http://x/?a=1'
+    ])
+  })
+
+  it('에이전트가 이미 쿼리 URL 을 냈으면 중복 추가하지 않는다', () => {
+    expect(
+      mergeQueryEndpoints(['GET http://x/?format=1'], ['http://x/?format=2'])
+    ).toEqual(['GET http://x/?format=1'])
+  })
+
+  it('쿼리 없는 링크만 있으면 그대로다', () => {
+    expect(mergeQueryEndpoints(['GET http://x/'], ['http://x/about'])).toEqual(['GET http://x/'])
   })
 })

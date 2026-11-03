@@ -10,7 +10,8 @@ import {
   setLabHosts,
   clearLabHosts,
   getLabHosts,
-  isLabHost
+  isLabHost,
+  isLoopbackHost
 } from './fence'
 
 afterEach(() => {
@@ -55,6 +56,20 @@ describe('fence', () => {
       expect(fenceReason('POST', 'https://staging.example.com/api')).toBeNull()
       // 지정하지 않은 다른 외부 호스트는 여전히 막는다
       expect(fenceReason('POST', 'https://x.test/api')).toBe('mutation')
+    })
+  })
+
+  describe('isLoopbackHost — redteam_start 자동시작 게이트', () => {
+    it('loopback 타겟만 true (벤치마크 포트 포함)', () => {
+      expect(isLoopbackHost('http://localhost:1337/')).toBe(true)
+      expect(isLoopbackHost('http://127.0.0.1:8080/x')).toBe(true)
+      expect(isLoopbackHost('http://[::1]:3000/')).toBe(true)
+      expect(isLoopbackHost('https://app.localhost/')).toBe(true)
+    })
+    it('공인 호스트는 false — start:true 여도 자동시작 금지', () => {
+      expect(isLoopbackHost('https://example.com/')).toBe(false)
+      expect(isLoopbackHost('https://127.0.0.1.evil.com/')).toBe(false)
+      expect(isLoopbackHost('not a url')).toBe(false)
     })
   })
 

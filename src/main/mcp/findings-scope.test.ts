@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { originOf, filterByOrigin } from './findings-scope'
+import { originOf, filterByOrigin, resolveExportScope } from './findings-scope'
 
 describe('originOf', () => {
   it('http(s) URL을 등록가능도메인으로 접는다', () => {
@@ -32,5 +32,23 @@ describe('filterByOrigin', () => {
   })
   it('스코프가 undefined면(사이트 못 정함) 전부 반환 — 빈 보고서보다 낫다', () => {
     expect(filterByOrigin(list, undefined, false).map((f) => f.id)).toEqual(['1', '2', '3'])
+  })
+})
+
+describe('resolveExportScope', () => {
+  it('명시적 site가 활성 탭보다 우선한다 — 탭이 없어도 스코프가 잡힌다', () => {
+    expect(resolveExportScope('http://localhost:1337/', undefined, false)).toEqual({ scope: 'localhost:1337' })
+    expect(resolveExportScope('https://arqoven.com', 'http://other:8080/', false)).toEqual({ scope: 'arqoven.com' })
+  })
+  it('site가 없으면 활성 탭 URL로 스코프를 잡는다', () => {
+    expect(resolveExportScope(undefined, 'https://api.careernote.io/v1/x', false)).toEqual({ scope: 'careernote.io' })
+  })
+  it('둘 다 없으면 전체 덤프 대신 안내 에러를 낸다 (343KB 사고 회귀 방지)', () => {
+    const r = resolveExportScope(undefined, undefined, false)
+    expect(r.scope).toBeUndefined()
+    expect(r.error).toContain('site')
+  })
+  it('all=true면 에러 없이 전체 내보내기 허용', () => {
+    expect(resolveExportScope(undefined, undefined, true)).toEqual({})
   })
 })

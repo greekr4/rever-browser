@@ -44,7 +44,9 @@ export function isLoopbackHost(url: string): boolean {
     hostname.endsWith('.localhost') ||
     hostname === '::1' ||
     hostname === '[::1]' ||
-    /^127\./.test(hostname)
+    // Full 127.0.0.0/8 IPv4 only — anchored so "127.0.0.1.evil.com" (a public
+    // DNS name that merely starts with 127.) is NOT treated as loopback.
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)
   )
 }
 

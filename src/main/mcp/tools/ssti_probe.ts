@@ -59,24 +59,48 @@ export function sstiEvaluated(body: string, c: SstiCase): boolean {
   return body.includes(c.expected)
 }
 
+/**
+ * Rewrite one form field of a URL-encoded body to the § marker, so ssti_probe
+ * can inject without the caller having to stage a marked request first
+ * (replays are Node fetch — they never land in the traffic store, so a § set
+ * that way was unreachable).
+ */
+export function formSlotToMarker(body: string, param: string): string {
+  const re = new RegExp(`(^|&)${param.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}=[^&]*`)
+  const encoded = encodeURIComponent(param)
+  const slot = `${encoded}=§`
+  let out: string
+  if (re.test(body)) out = body.replace(re, (_m, p1) => `${p1}${slot}`)
+  else out = body ? `${body}&${slot}` : slot
+  // Sibling fields captured EMPTY (a crawl submits forms blank) fail required
+  // validation ("400 Missing parameters") before the injected value reaches its
+  // sink — fill once, here, with one benign dummy value. Lookahead keeps the
+  // delimiter so consecutive empty fields (a=&b=) all match.
+  return out.replace(/(^|&)([A-Za-z_][\w.-]*)=(?=&|$)/g, (_m, p1, name) => `${p1}${name}=reverprobe`)
+}
+
 export function registerSstiProbeTools(mcp: McpServer) {
   mcp.registerTool(
     'ssti_probe',
     {
       description:
-        'Confirm server-side template injection at a request slot (marker §). Fires ONE arithmetic payload per template engine (Velocity, Freemarker/JSP-EL, Jinja2/Twig, ERB/EJS, Thymeleaf, Razor) and reports which engine EVALUATED it — i.e. the computed result (not the literal payload) appears in the response. Use this instead of concluding "not SSTI" from a single {{7*7}} probe: Java stacks only evaluate ${…}/#set, never {{…}}. A positive result is RCE-class (template eval → code execution); escalate severity accordingly.',
+        'Confirm server-side template injection at a reflecting parameter. Fires ONE arithmetic payload per template engine (Velocity, Freemarker/JSP-EL, Jinja2/Twig, ERB/EJS, Thymeleaf, Razor) and reports which engine EVALUATED it — i.e. the computed result (not the literal payload) appears in the response. Pass param=<form field name> (e.g. param: "text") and the tool marks the slot itself; no pre-staged § marker needed. Use this instead of concluding "not SSTI" from a literal ${7*7}/{{7*7}} echo: Java stacks only evaluate #set/${…} forms, never {{…}}. A positive result is RCE-class (template eval → code execution); escalate severity accordingly.',
       inputSchema: {
         requestId: z.string(),
+        param: z.string().optional().describe('Form field that reflects input (e.g. "text") — the tool marks it with § itself'),
         a: z.number().int().optional().describe('First factor (test determinism; default random prime)'),
         b: z.number().int().optional().describe('Second factor (default random prime)')
       }
     },
-    async ({ requestId, a, b }) => {
+    async ({ requestId, param, a, b }) => {
       try {
         const base = restoreMarker(buildRequestSpec(requestId, undefined))
+        if (param) base.body = formSlotToMarker(base.body ?? '', param)
         const markerIn = (s: string | undefined) => (s ?? '').includes('§')
         if (!markerIn(base.url) && !markerIn(base.body) && !Object.values(base.headers).some(markerIn)) {
-          return err('marker § not found in request — mark the reflecting param (e.g. body text=§) first')
+          return err(
+            'no injectable slot: pass param=<form field name> (e.g. param: "text") or stage a request with a literal § marker first'
+          )
         }
         // A form-urlencoded body must carry the payload URL-encoded, or template
         // chars (= # & +) corrupt the field; other bodies (JSON) stay raw.
