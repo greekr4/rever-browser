@@ -128,6 +128,8 @@ export async function handleAgentRequest(op: string, payload: unknown): Promise<
     case 'scan:launch': {
       // redteam_start: arm the popup and stop at confirm — the deterministic
       // pipeline (and any active probing) only runs on the user's click.
+      // EXCEPTION: autostart (gated to loopback by the MCP tool) runs the whole
+      // pipeline without a click, so the agent can self-drive local benchmarks.
       const intensity = ['readonly', 'probe', 'redteam'].includes(String(p.intensity))
         ? (p.intensity as ScanIntensity)
         : 'readonly'
@@ -136,6 +138,11 @@ export async function handleAgentRequest(op: string, payload: unknown): Promise<
       if (typeof p.pages === 'number') scan.setPages(p.pages)
       scan.setIntensity(intensity)
       scan.open()
+      if (p.autostart) {
+        // Non-blocking: the scan runs for minutes; return now, caller polls.
+        void scan.start()
+        return { ok: true, phase: 'running' }
+      }
       scan.askConfirm()
       return { ok: true, phase: 'confirm' }
     }

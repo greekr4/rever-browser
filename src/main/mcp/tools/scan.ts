@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { askRenderer } from '../../renderer-bridge'
+import { isLoopbackHost } from '../fence'
 import { ok, err } from '../utils'
 
 /**
@@ -16,7 +17,7 @@ export function registerScanTools(mcp: McpServer) {
     'redteam_start',
     {
       description:
-        'Launch a site-wide Red Team scan of one target URL: opens up to N same-site pages as background tabs, runs one inspecting agent per tab in parallel (read + dynamic exploration), then (at probe/redteam intensity) single-shot probes against the deduped endpoint set, and finishes with a merged Markdown report. The user confirms the run in the Red Team popup — active intensities are never started silently. Use this instead of spawning sub-agents per tab. Poll progress with finding_list / list_requests; the final report is exported by finding_export.',
+        'Launch a site-wide Red Team scan of one target URL: opens up to N same-site pages as background tabs, runs one inspecting agent per tab in parallel (read + dynamic exploration), then (at probe/redteam intensity) single-shot probes against the deduped endpoint set, and finishes with a merged Markdown report. By default the user confirms the run in the Red Team popup — active intensities are never started silently. Pass start:true to run the whole pipeline without a click; this is honoured ONLY for loopback targets (localhost/127.x/::1 — your own machine), matching the network fence, so the agent can self-drive local benchmarks. Non-loopback targets ignore start:true and still wait for the human click. Use this instead of spawning sub-agents per tab. Poll progress with finding_list / list_requests; the final report is exported by finding_export.',
       inputSchema: {
         url: z.string().describe('Absolute start URL of the site to scan (scheme required)'),
         pages: z
@@ -29,19 +30,34 @@ export function registerScanTools(mcp: McpServer) {
           .optional()
           .describe(
             'readonly = observe only; probe = replay captured requests unchanged + security headers; redteam = additionally one mutated/payload request per endpoint (default readonly)'
+          ),
+        start: z
+          .boolean()
+          .optional()
+          .describe(
+            'Run the full pipeline immediately without the user click. Honoured only for loopback targets (localhost/127.x/::1); ignored otherwise.'
           )
       }
     },
-    async ({ url, pages, intensity }) => {
+    async ({ url, pages, intensity, start }) => {
       if (!/^https?:\/\//i.test(url)) return err('url must be absolute, including the scheme')
+      const autostart = start === true && isLoopbackHost(url)
       try {
         const res = (await askRenderer('scan:launch', {
           url,
           pages: pages ?? 20,
-          intensity: intensity ?? 'readonly'
+          intensity: intensity ?? 'readonly',
+          autostart
         }, 8000)) as { phase?: string } | undefined
+        if (autostart) {
+          return ok(
+            `scan started (${intensity ?? 'readonly'}, loopback target) — running without a click. ` +
+              `Findings appear via finding_add (poll finding_list), and the merged report is produced by finding_export when it finishes. Reply state: ${res?.phase ?? 'running'}`
+          )
+        }
+        const why = start === true ? ' (start:true ignored — target is not loopback, so a human click is required)' : ''
         return ok(
-          `scan armed (${intensity ?? 'readonly'}) — the user confirms it in the Red Team popup; nothing runs until then. ` +
+          `scan armed (${intensity ?? 'readonly'}) — the user confirms it in the Red Team popup; nothing runs until then${why}. ` +
             `Once running, findings appear via finding_add (poll finding_list) and the merged report is produced by finding_export at the end. Reply state: ${res?.phase ?? 'confirm'}`
         )
       } catch (e) {
