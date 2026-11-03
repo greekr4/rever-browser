@@ -191,8 +191,9 @@ export function registerInterceptTools(mcp: McpServer) {
             headers: z.record(z.string(), z.string()).optional(),
             body: z.string().optional()
           })
+          .strict()
           .optional()
-          .describe('Optional overrides for the replayed request')
+          .describe('Optional overrides for the replayed request (strict: unknown keys error)')
       }
     },
     async ({ requestId, overrides }) => {
@@ -231,10 +232,12 @@ export function registerInterceptTools(mcp: McpServer) {
       )
 
       try {
+        const sentMethod = overrides?.method ?? entry.method
+        const sentBody = overrides?.body ?? entry.requestPostData ?? ''
         const resp = await fetch(overrides?.url ?? entry.url, {
-          method: overrides?.method ?? entry.method,
+          method: sentMethod,
           headers,
-          body: overrides?.body ?? entry.requestPostData ?? undefined
+          body: sentBody || undefined
         })
         const responseText = await resp.text()
         const respHeaders: Record<string, string> = {}
@@ -245,6 +248,9 @@ export function registerInterceptTools(mcp: McpServer) {
               status: resp.status,
               statusText: resp.statusText,
               credentialsSent,
+              // What actually went out — a silently-unchanged replay (e.g.
+              // overrides in the wrong shape) must be visible to the caller.
+              sent: { method: sentMethod, body: sentBody.slice(0, 200) },
               headers: respHeaders,
               body: responseText.slice(0, 10000),
               truncated: responseText.length > 10000
