@@ -41,6 +41,16 @@ describe('redteam-categories classify', () => {
     expect(s).toContain('severity:"critical"')
   })
 
+  it('다중 필드 저장 폼은 path_write_probe 라인을 받는다 — Testimonial 회귀', () => {
+    const s = checklistFor('GET', 'http://localhost:1337/?customer=a&testimonial=b')
+    expect(s).toContain('path_write_probe')
+    expect(s).toContain('WSTG-ATHZ:Path Traversal / Arbitrary File Write')
+  })
+
+  it('단일 쿼리 파라미터(검색)는 path_write_probe 를 받지 않는다 — 과발사 방지', () => {
+    expect(ids('GET', 'https://ex.com/search?q=hi')).not.toContain('pathwrite')
+  })
+
   it('POST 는 바디가 반사 싱크이므로 XSS·SSTI 를 적용한다(쿼리 없어도)', () => {
     const c = ids('POST', 'https://ex.com/')
     expect(c).toContain('xss')

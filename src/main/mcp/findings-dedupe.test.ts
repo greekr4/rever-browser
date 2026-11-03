@@ -173,4 +173,24 @@ describe('vulnKeyOf — 같은 싱크를 본 워커들의 중복 병합 (TimeKOR
     ]
     expect(mergeDuplicateEndpoints(list).merged).toHaveLength(2)
   })
+
+  it("category 'other' 의 헤더 누락 중복도 병합된다 — Testimonial 회귀", () => {
+    const list = [
+      f({
+        title: 'Missing security headers on localhost:1337 (no CSP/HSTS/X-Frame-Options/nosniff)',
+        body: 'security_inspect on http://localhost:1337/ returned none.',
+        category: 'other',
+        severity: 'medium'
+      }),
+      f({
+        title: 'Missing HTTP security headers on localhost:1337 app root (no CSP, HSTS, X-Frame-Options, nosniff)',
+        body: 'all responses from http://localhost:1337/ omit them.',
+        category: 'other',
+        severity: 'low'
+      })
+    ]
+    const { merged } = mergeDuplicateEndpoints(list)
+    expect(merged).toHaveLength(1)
+    expect(merged[0].severity).toBe('medium')
+  })
 })

@@ -187,6 +187,7 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   ssti_probe: ['probe'],
   cmd_probe: ['probe'],
   sqli_probe: ['probe'],
+  path_write_probe: ['probe'],
   path_probe: ['probe'],
   lfi_probe: ['probe'],
 

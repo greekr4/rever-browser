@@ -48,7 +48,9 @@ export function registerScanTools(mcp: McpServer) {
           pages: pages ?? 20,
           intensity: intensity ?? 'readonly',
           autostart
-        }, 8000)) as { phase?: string } | undefined
+          // autostart opens the target tab and waits for its webview to attach
+          // (up to 10s) before returning, so allow more than the 8s default.
+        }, autostart ? 15000 : 8000)) as { phase?: string } | undefined
         if (autostart) {
           return ok(
             `scan started (${intensity ?? 'readonly'}, loopback target) — running without a click. ` +
