@@ -8,7 +8,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { ok, err } from '../utils'
 import { getActiveTarget } from '../../chrome-cdp'
-import { originOf, filterByOrigin } from '../findings-scope'
+import { originOf, filterByOrigin, resolveExportScope } from '../findings-scope'
 import { endpointKeyOf, mergeDuplicateEndpoints } from '../findings-dedupe'
 
 type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical'
@@ -276,13 +276,15 @@ export function registerFindingTools(mcp: McpServer) {
     'finding_export',
     {
       description:
-        'Render findings as a structured Markdown report grouped by category (endpoints / auth / vulns / secrets) and ordered by severity — the session deliverable. Defaults to the current page\'s site so one scan\'s report is not polluted by findings from other targets; pass all=true for every finding in the store.',
+        'Render findings as a structured Markdown report grouped by category (endpoints / auth / vulns / secrets) and ordered by severity — the session deliverable. Defaults to the current page\'s site so one scan\'s report is not polluted by findings from other targets; pass site=<url> when no tab is active (e.g. from a finished scan), or all=true for every finding in the store.',
       inputSchema: {
+        site: z.string().optional().describe('URL of the scanned site — use when the page/tab is gone so the report stays scoped'),
         all: z.boolean().optional().describe('Include findings from every site, not just the current page\'s')
       }
     },
-    async ({ all }) => {
-      const scope = originOf(getActiveTarget()?.wc.getURL())
+    async ({ site, all }) => {
+      const { scope, error } = resolveExportScope(site, getActiveTarget()?.wc.getURL(), all ?? false)
+      if (error) return err(error)
       const list = filterByOrigin(listFindings(), scope, all ?? false)
       if (list.length === 0) {
         return ok(scope ? `No findings recorded yet for ${scope}.` : 'No findings recorded yet.')
