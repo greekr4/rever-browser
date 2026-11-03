@@ -139,6 +139,18 @@ export async function handleAgentRequest(op: string, payload: unknown): Promise<
       scan.setIntensity(intensity)
       scan.open()
       if (p.autostart) {
+        // The UI flow assumes the user already has the target open in the
+        // active tab; autostart has no such tab, so open one and wait for its
+        // webview to attach (CDP) before discovery drives browser_navigate —
+        // otherwise every turn fails "no active browser target" and the worker
+        // pool respawns forever. Mirrors scan.ts waitForTabs.
+        const tabId = useTabsStore.getState().addTab(String(p.url), { activate: true })
+        const attachStart = Date.now()
+        while (Date.now() - attachStart < 10000) {
+          const tab = useTabsStore.getState().tabs.find((t) => t.id === tabId)
+          if (tab?.webContentsId != null) break
+          await new Promise((r) => setTimeout(r, 200))
+        }
         // Non-blocking: the scan runs for minutes; return now, caller polls.
         void scan.start()
         return { ok: true, phase: 'running' }
