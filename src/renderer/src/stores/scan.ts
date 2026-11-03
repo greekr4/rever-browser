@@ -360,6 +360,40 @@ function parseLinks(text: string, site: string, cap: number): string[] {
 
 // Same, for "METHOD URL" endpoint strings the redteam collector turn prints;
 // the method prefix must not break the same-site check.
+// The per-endpoint probe checklist derives XSS/SSTI/CMDI from query/body
+// presence, but the agent's endpoint aggregation tends to strip queries — a
+// bare "GET /" then classifies as nothing and the injection checks never
+// reach the worker. Deterministic repair: a discovered page URL that carries
+// a query supersedes its bare GET (superset checklist) and joins non-GET
+// endpoints on the same path. No agent compliance involved.
+export function mergeQueryEndpoints(endpoints: string[], links: string[], cap = 30): string[] {
+  const pathOf = (u: string): string => {
+    try {
+      return new URL(u).pathname
+    } catch {
+      return u.replace(/[?#].*$/, '')
+    }
+  }
+  const byPath = new Map<string, string[]>()
+  for (const ep of endpoints) {
+    const m = /^([A-Z]+)\s+(\S+)$/.exec(ep)
+    const method = m?.[1] ?? 'GET'
+    const url = m?.[2] ?? ep
+    byPath.set(pathOf(url), [...(byPath.get(pathOf(url)) ?? []), `${method} ${url}`])
+  }
+  for (const u of links) {
+    if (!u.includes('?')) continue
+    const cur = byPath.get(pathOf(u)) ?? []
+    if (cur.some((e) => /^GET \S+\?/.test(e))) continue // query GET already there
+    const entry = `GET ${u}`
+    const bareGet = cur.findIndex((e) => /^GET \S+$/.test(e))
+    if (bareGet >= 0) cur[bareGet] = entry
+    else cur.push(entry)
+    byPath.set(pathOf(u), cur)
+  }
+  return [...byPath.values()].flat().slice(0, cap)
+}
+
 function parseEndpoints(text: string, site: string, cap: number): string[] {
   const m = text.match(/\[[\s\S]*\]/)
   if (!m) return []
@@ -562,11 +596,11 @@ export const useScanStore = create<ScanState>((set, get) => ({
         set({ currentTool: 'redteam: 엔드포인트 수집' })
         const { finalText: epText } = await runTurnOn(
           transport,
-          `finding_list 와 list_endpoints 로 지금까지 기록된 엔드포인트를 중복 없이 모은다(같은 path 는 하나, 쿼리 파라미터 제거). HTTP 메서드를 아는 경우 "METHOD URL" 형식으로, 모르면 "GET URL". 최대 30개. 설명 없이 JSON 문자열 배열 한 줄만 출력.`,
+          `finding_list · list_endpoints · list_requests 로 지금까지 기록된 엔드포인트를 중복 없이 모은다(같은 path 는 하나. 단, 쿼리 파라미터가 있는 엔드포인트는 파라미터 이름별 대표 URL 을 쿼리째 유지 — 쿼리가 사라지면 워커의 반사/주입(XSS·SSTI·CMDI) 체크리스트가 아예 생성되지 않는다). HTTP 메서드를 아는 경우 "METHOD URL" 형식으로, 모르면 "GET URL". 최대 30개. 설명 없이 JSON 문자열 배열 한 줄만 출력.`,
           signal,
           (e) => onEv(e)
         )
-        const endpoints = parseEndpoints(epText, site, 30)
+        const endpoints = mergeQueryEndpoints(parseEndpoints(epText, site, 30), links)
         // path_probe lives in the probe profile; redteam also runs the Scanner
         // step below, so switch when either needs it.
         const needProbe = intensity === 'redteam' || endpoints.length > 0
@@ -638,7 +672,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       await transport.reset()
       const { exportText, finalText } = await runTurnOn(
         transport,
-        `지금까지 기록된 finding 으로 finding_export 를 한 번 호출한다. 반환 보고서는 앱이 직접 캡처하므로 본문을 다시 출력하지 말고 "완료"라고만 한 줄로 답한다.`,
+        `지금까지 기록된 finding 으로 finding_export(site: "${target}") 를 한 번 호출한다. 반환 보고서는 앱이 직접 캡처하므로 본문을 다시 출력하지 말고 "완료"라고만 한 줄로 답한다.`,
         signal,
         (e) => onEv(e)
       )
@@ -653,7 +687,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
           await transport.reset()
           const { exportText, finalText } = await runTurnOn(
             transport,
-            `finding_export 를 한 번 호출한다. 보고서는 앱이 캡처하므로 본문을 다시 출력하지 말고 "완료"라고만 답한다.`,
+            `finding_export(site: "${target}") 를 한 번 호출한다. 보고서는 앱이 캡처하므로 본문을 다시 출력하지 말고 "완료"라고만 답한다.`,
             new AbortController().signal
           )
           const body = exportText || cleanReport(finalText) || t('scan.report.stoppedEmpty')
