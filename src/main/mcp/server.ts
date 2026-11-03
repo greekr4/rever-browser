@@ -37,6 +37,7 @@ import { registerSstiProbeTools } from './tools/ssti_probe'
 import { registerCmdProbeTools } from './tools/cmd_probe'
 import { registerSqliProbeTools } from './tools/sqli_probe'
 import { registerPathWriteProbeTools } from './tools/path_write_probe'
+import { registerGrpcCallTools } from './tools/grpc_call'
 import { registerPathProbeTools } from './tools/path_probe'
 import { registerFindingTools } from './tools/findings'
 import { registerScanTools } from './tools/scan'
@@ -192,6 +193,7 @@ export function buildMcpServer(opts?: { catalog?: CatalogKind }): McpServer {
   registerCmdProbeTools(mcp)
   registerSqliProbeTools(mcp)
   registerPathWriteProbeTools(mcp)
+  registerGrpcCallTools(mcp)
   registerPathProbeTools(mcp)
   registerFindingTools(mcp)
   registerScanTools(mcp)
