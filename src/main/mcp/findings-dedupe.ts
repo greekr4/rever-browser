@@ -60,7 +60,9 @@ const VULN_CLASS_PATTERNS: [string, RegExp][] = [
   ['idor', /\bidor\b|\bbola\b|broken.?object/i],
   ['crlf', /\bcrlf\b|header.?inject/i],
   ['redirect', /open.?redirect/i],
+  ['pathwrite', /arbitrary.?file.?write|path.?travers|file.?write/i],
   ['headers', /security.?header|missing[^\n]*headers?\b|\bcsp\b|content.?security|hsts|x.?frame|nosniff|clickjack/i],
+  ['csrf', /\bcsrf\b|cross.?site.?request.?forgery|state.?chang|content.?injection|content.?spoof/i],
   ['xss', /\bxss\b|cross.?site.?script/i],
   ['auth', /broken.?auth|auth.?bypass|unauth/i],
   ['secret', /\bsecret\b|api.?key|credential|token.?leak/i]
@@ -88,18 +90,19 @@ function vulnParamOf(title: string): string {
  * Identity of a vuln finding: vulnerability class + endpoint + param. N probe
  * workers each validate the same sink (e.g. reflected XSS on ?format=) and
  * report it with different titles — class|endpoint|param is the shared claim.
- * null = never deduped: unknown class, or another category (auth/secret
- * findings about the same endpoint stay separate claims).
+ * Covers 'vuln' and 'other' (misconfig/headers/CSRF land in 'other' and dupe
+ * just as often). null = never deduped: unknown class, or auth/secret/endpoint
+ * categories whose same-endpoint findings stay separate claims.
  */
 export function vulnKeyOf(
   f: Pick<DedupableFinding, 'title' | 'body' | 'category' | 'tags'>
 ): string | null {
-  if (f.category !== 'vuln') return null
+  if (f.category !== 'vuln' && f.category !== 'other') return null
   const cls = vulnClassOf(f)
   if (!cls) return null
   const ep = hostPathOf(`${f.title}\n${f.body}`)
   if (!ep) return null
-  return `vuln|${cls}|${ep}|${vulnParamOf(f.title)}`
+  return `vulnlike|${cls}|${ep}|${vulnParamOf(f.title)}`
 }
 
 /**
