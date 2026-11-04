@@ -1,10 +1,17 @@
 import { scopeKey } from './scope'
 
+/** Fold loopback spellings in an already-computed site key — heals legacy
+ *  findings stamped "127.0.0.1:1337" before the fold existed. */
+export function canonicalOriginKey(key: string | undefined): string | undefined {
+  if (!key) return undefined
+  return key.replace(/^(?:\[?::1\]?|127\.\d{1,3}\.\d{1,3}\.\d{1,3})(?=:\d+$|$)/, 'localhost')
+}
+
 /** Scope key of an http(s) URL (localhost:8080 → "localhost:8080"); undefined otherwise. */
 export function originOf(url: string | undefined): string | undefined {
   if (!url) return undefined
   if (!/^https?:\/\//i.test(url)) return undefined
-  return scopeKey(url) ?? undefined
+  return canonicalOriginKey(scopeKey(url) ?? undefined)
 }
 
 /**

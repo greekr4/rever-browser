@@ -8,6 +8,7 @@ import {
   hostnameOf,
   registrableDomain,
   scopeBlockForUrl,
+  scopeKey,
   scopeOffWarning,
   setScope
 } from './scope'
@@ -26,9 +27,22 @@ describe('scope', () => {
   })
 
   describe('IP 주소', () => {
-    it('IP 리터럴은 접지 않고 그대로 둔다', () => {
+    it('일반 IP 리터럴은 접지 않고 그대로 둔다', () => {
       expect(registrableDomain('10.0.0.1')).toBe('10.0.0.1')
-      expect(registrableDomain('[::1]')).toBe('[::1]')
+      expect(registrableDomain('192.168.0.1')).toBe('192.168.0.1')
+    })
+    it('루프백 표기(127.x, ::1)는 localhost 하나로 접는다 — 같은 기계의 같은 앱', () => {
+      expect(registrableDomain('127.0.0.1')).toBe('localhost')
+      expect(registrableDomain('127.0.0.1')).not.toBe('10.0.0.1')
+      expect(registrableDomain('[::1]')).toBe('localhost')
+      expect(scopeKey('http://127.0.0.1:1337/x')).toBe('localhost:1337')
+      expect(scopeKey('http://[::1]:1337/x')).toBe('localhost:1337')
+    })
+    it('localhost 스코프는 127.0.0.1 표기도 같은 앱으로 묶는다', () => {
+      setScope(['localhost:8080'])
+      expect(scopeBlockForUrl('http://127.0.0.1:8080/my')).toBeNull()
+      expect(scopeBlockForUrl('http://localhost:8080/my')).toBeNull()
+      expect(scopeBlockForUrl('http://127.0.0.1:8090/x')).toMatch(/Out of scope/)
     })
     it('다른 IP는 scope 밖이다', () => {
       setScope(['10.0.0.1'])

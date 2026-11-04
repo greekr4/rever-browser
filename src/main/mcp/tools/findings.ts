@@ -8,7 +8,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { ok, err } from '../utils'
 import { getActiveTarget } from '../../chrome-cdp'
-import { originOf, filterByOrigin, resolveExportScope } from '../findings-scope'
+import { originOf, filterByOrigin, resolveExportScope, canonicalOriginKey } from '../findings-scope'
 import { endpointKeyOf, mergeDuplicateEndpoints, isScanNoise } from '../findings-dedupe'
 
 type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical'
@@ -73,7 +73,11 @@ function load(): void {
         category: f.category ?? 'other',
         tags: f.tags ?? [],
         evidenceIds: f.evidenceIds ?? [],
-        status: f.status ?? 'candidate'
+        status: f.status ?? 'candidate',
+        // Heal origins stamped before loopback spellings were folded (a
+        // "127.0.0.1:1337" stamp made the finding invisible to a
+        // "localhost:1337" export).
+        origin: canonicalOriginKey(f.origin)
       })
     }
   } catch (e) {

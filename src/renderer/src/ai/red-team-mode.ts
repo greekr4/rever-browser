@@ -11,10 +11,21 @@ function isLoopbackOrIp(host: string): boolean {
 
 // Rough eTLD+1 (mirrors mcp/scope.ts) for a bare hostname (no port).
 function regDomain(host: string): string {
+  // 127.0.0.1 / [::1] fold onto localhost — same machine, same app (mirrors
+  // the fold in mcp/scope.ts so renderer scope keys match the server's).
+  if (host === '::1' || host === '[::1]' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+    return 'localhost'
+  }
   if (!host || isLoopbackOrIp(host)) return host
   const p = host.split('.')
   return p.length <= 2 ? host : p.slice(-2).join('.')
 }
+
+// Port-bearing key rule (mirrors scopeKey in mcp/scope.ts): loopback (any
+// spelling, post-fold) and IP/IPv6 literals keep the port; public domains fold
+// to eTLD+1. Test the FOLDED host — raw "[::1]" would fail the plain checks.
+const portBearing = (host: string, reg: string): boolean =>
+  reg === 'localhost' || isLoopbackOrIp(host) || host.includes(':')
 
 // Scope key from a full URL. Loopback / IP keep the port (localhost:8080 vs
 // :8090 are distinct apps); public domains fold to eTLD+1. Mirrors scopeKey in
@@ -23,7 +34,7 @@ export function siteKey(input: string): string {
   try {
     const u = new URL(input)
     const reg = regDomain(u.hostname)
-    return u.port && isLoopbackOrIp(u.hostname) ? `${reg}:${u.port}` : reg
+    return u.port && portBearing(u.hostname, reg) ? `${reg}:${u.port}` : reg
   } catch {
     return ''
   }
@@ -55,7 +66,7 @@ function hostKey(hostMaybePort: string): string {
   const host = m ? m[1] : hostMaybePort
   const port = m ? m[2] : ''
   const reg = regDomain(host)
-  return port && isLoopbackOrIp(host) ? `${reg}:${port}` : reg
+  return port && portBearing(host, reg) ? `${reg}:${port}` : reg
 }
 
 // A host or URL (as passed to scope_set/scope_add) → a scope key.

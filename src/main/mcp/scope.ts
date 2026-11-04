@@ -46,6 +46,18 @@ function isIpLiteral(hostname: string): boolean {
 }
 
 export function registrableDomain(hostname: string): string {
+  // 127.0.0.1 and [::1] ARE localhost — apps redirect/link between the two
+  // spellings freely, so all loopback spellings fold onto ONE key: a scope,
+  // finding origin, or export keyed "localhost:1337" must also cover the
+  // 127.0.0.1 spelling of the same app (a Percetron scan lost its NoSQLi
+  // finding to exactly this split).
+  if (
+    hostname === '::1' ||
+    hostname === '[::1]' ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)
+  ) {
+    return 'localhost'
+  }
   if (isIpLiteral(hostname)) return hostname
   const parts = hostname.split('.').filter(Boolean)
   if (parts.length <= 2) return hostname
