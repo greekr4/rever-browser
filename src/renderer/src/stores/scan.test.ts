@@ -5,6 +5,7 @@ const state = vi.hoisted(() => ({
   prompts: [] as string[],
   profileCalls: [] as string[],
   tabs: [] as { id: string; url: string; webContentsId: number }[],
+  closed: [] as string[],
   tabSeq: 0
 }))
 
@@ -72,6 +73,7 @@ vi.mock('./tabs', () => ({
         state.tabs.push({ id, url, webContentsId: state.tabSeq })
         return id
       },
+      closeTab: (id: string) => state.closed.push(id),
       tabs: state.tabs
     })
   }
@@ -123,6 +125,7 @@ describe('useScanStore 스캔 파이프라인', () => {
     state.prompts.length = 0
     state.profileCalls.length = 0
     state.tabs.length = 0
+    state.closed.length = 0
     state.tabSeq = 0
     useScanStore.setState({
       phase: 'idle',
@@ -147,6 +150,8 @@ describe('useScanStore 스캔 파이프라인', () => {
     await useScanStore.getState().start()
     // other.com(사이트 밖) + 폰트/CSS(정적 자산)는 제외 — a/b 두 탭만 연다
     expect(state.tabs.map((t) => t.url)).toEqual(['https://example.com/a', 'https://example.com/b'])
+    // the scan closes the tabs it opened once it finishes
+    expect(state.closed).toEqual(state.tabs.map((t) => t.id))
     const workerPrompts = state.prompts.filter((p) => p.includes('인 탭의 인덱스'))
     expect(workerPrompts).toHaveLength(2)
     expect(workerPrompts.some((p) => p.includes(TAB_OF('https://example.com/a')))).toBe(true)
