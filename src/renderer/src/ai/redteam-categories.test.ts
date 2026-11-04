@@ -13,6 +13,12 @@ describe('redteam-categories classify', () => {
     expect(ids('GET', 'https://ex.com/users/42')).toContain('idor')
   })
 
+  it('UUID 경로 리소스는 idor_probe 체크라인(BOLA/IDOR)을 받는다', () => {
+    const s = checklistFor('GET', 'https://ex.com/v1/ats/jobs/cdb11ac2-9993-4ac6-bb9d-6959df5228a9')
+    expect(s).toContain('idor_probe')
+    expect(s).toContain('API1:BOLA/IDOR')
+  })
+
   it('uuid 경로도 IDOR 로 본다', () => {
     expect(ids('GET', 'https://ex.com/orders/550e8400-e29b-41d4-a716-446655440000')).toContain('idor')
   })

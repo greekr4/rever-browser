@@ -547,6 +547,30 @@ export const useScanStore = create<ScanState>((set, get) => ({
       const authed = /AUTHED/i.test(authText) && !/PUBLIC/i.test(authText)
       pushPhase('scan.log.authResult', { state: authed ? 'Authenticated session established' : 'No auth gate (public scan)' })
 
+      // Phase 0b — alternate tenant: confirming BOLA/IDOR needs a SECOND identity
+      // (anonymous is denied, but can a different tenant read the owner's object?).
+      // Register a throwaway attacker account, stash its session via
+      // redteam_alt_session_set (idor_probe reads it), then restore the owner
+      // session so discovery crawls the data-rich tenant. Redteam-only and
+      // best-effort: no self-serve registration → idor stays candidate.
+      if (authed && intensity === 'redteam') {
+        const altCred = {
+          user: 'rever_alt_' + Math.random().toString(36).slice(2, 9),
+          pass: 'Rv_' + Math.random().toString(36).slice(2, 10) + '!1'
+        }
+        pushPhase('scan.log.altTenant')
+        const { finalText: altText } = await runTurnOn(
+          transport,
+          `BOLA/IDOR 를 확정하려면 2번째(공격자) 테넌트가 필요하다. 순서대로: 1) cookie_list({ urls: ["${origin}"] }) 로 현재 소유자 세션 쿠키(이름=값들)를 읽어 전부 기억한다. 2) 회원가입(register/signup) 폼으로 가서 새 계정 사용자명 "${altCred.user}", 비밀번호 "${altCred.pass}" (이메일 필드가 있으면 "${altCred.user}@example.com")로 가입하고 로그인한다. 3) cookie_list({ urls: ["${origin}"] }) 로 이 새 계정의 세션 쿠키를 읽어, 전체를 "name1=value1; name2=value2" 형식으로 합쳐 redteam_alt_session_set({ cookie: "<합친 값>" }) 로 저장한다. 4) 1)에서 기억한 소유자 쿠키를 각각 cookie_set({ name, value, url: "${origin}", httpOnly: true }) 로 복원해 원래(데이터 있는) 세션으로 되돌린다 — 이후 크롤이 소유자로 돌아야 한다. 저장까지 성공하면 'ALT_READY' 한 단어만, 회원가입이 불가하거나 실패하면 'NO_ALT' 한 단어만 출력.`,
+          signal,
+          (e) => onEv(e)
+        )
+        const altReady = /ALT_READY/i.test(altText) && !/NO_ALT/i.test(altText)
+        pushPhase('scan.log.altResult', {
+          state: altReady ? 'Attacker tenant ready — idor_probe can cross-check' : 'No 2nd tenant (IDOR stays candidate)'
+        })
+      }
+
       // Phase 1 — discovery: the agent walks the start page AND follows a few
       // links (depth 2) to gather a broad same-site link set.
       pushPhase('scan.log.discover', { site })

@@ -73,7 +73,7 @@ const CHECKS: Record<VulnId, Omit<VulnCategory, 'id'>> = {
     owasp: 'API1:BOLA/IDOR',
     severity: 'high',
     check:
-      'replay_request 로 경로/쿼리의 객체 id 를 다른 값(±1 또는 다른 uuid) 하나로 바꿔 1회 재생한다. 남의 리소스가 오면 IDOR.'
+      '객체 id(경로 UUID/숫자 또는 쿼리 id)로 접근하는 인증 리소스면 idor_probe({ requestId }) 를 1회 실행한다 — 대체 테넌트 세션(auth 부트스트랩이 redteam_alt_session_set 으로 저장)으로 소유자 요청을 재생해, 익명은 거부되는데 다른 테넌트가 같은 리소스를 읽으면 BOLA/IDOR 확정(교차 테넌트 데이터 접근, high/critical). 대체 세션이 없으면(단일 신원) 숫자 id ±1 또는 다른 uuid 로 replay_request 1회로 약식 확인하되, 확정은 idor_probe 로만. 익명도 같은 리소스를 주면 그건 BOLA 가 아니라 공개 노출(broken auth)이니 그렇게 기록.'
   },
   xss: {
     owasp: 'WSTG-INPV:Reflected XSS',

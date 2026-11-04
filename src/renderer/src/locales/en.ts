@@ -308,6 +308,8 @@ export const en = {
   'scan.panel.log': 'Activity log',
   'scan.log.auth': '🔑 Auth bootstrap — registering + logging in',
   'scan.log.authResult': '🔑 {state}',
+  'scan.log.altTenant': '👥 Provisioning a 2nd tenant for BOLA/IDOR confirmation',
+  'scan.log.altResult': '👥 {state}',
   'scan.log.discover': '🎯 Target discovery started — {site}',
   'scan.log.pagesFound': '📑 {n} pages found → opening tabs',
   'scan.log.scopeExpand': '🔗 Scope + connected hosts: {hosts}',

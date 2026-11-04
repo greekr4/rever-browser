@@ -37,6 +37,7 @@ import { registerSstiProbeTools } from './tools/ssti_probe'
 import { registerCmdProbeTools } from './tools/cmd_probe'
 import { registerSqliProbeTools } from './tools/sqli_probe'
 import { registerNosqliProbeTools } from './tools/nosqli_probe'
+import { registerIdorProbeTools } from './tools/idor_probe'
 import { registerPathWriteProbeTools } from './tools/path_write_probe'
 import { registerGrpcCallTools } from './tools/grpc_call'
 import { registerPickleGadgetTools } from './tools/pickle_gadget'
@@ -196,6 +197,7 @@ export function buildMcpServer(opts?: { catalog?: CatalogKind }): McpServer {
   registerCmdProbeTools(mcp)
   registerSqliProbeTools(mcp)
   registerNosqliProbeTools(mcp)
+  registerIdorProbeTools(mcp)
   registerPathWriteProbeTools(mcp)
   registerGrpcCallTools(mcp)
   registerPickleGadgetTools(mcp)
