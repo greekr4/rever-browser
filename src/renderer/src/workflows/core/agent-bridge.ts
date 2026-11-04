@@ -145,6 +145,14 @@ export async function handleAgentRequest(op: string, payload: unknown): Promise<
         // otherwise every turn fails "no active browser target" and the worker
         // pool respawns forever. Mirrors scan.ts waitForTabs.
         const tabId = useTabsStore.getState().addTab(String(p.url), { activate: true })
+        // Clean slate: a prior (or crashed) self-driven run leaves its tabs
+        // behind — 16 stale /login + /search tabs pile up, and a worker that
+        // lists tabs can't tell which is "the" target, stalling the scan. Close
+        // everything except the fresh target tab. (Self-driven only; a manual
+        // UI scan keeps the user's tabs.)
+        for (const t of useTabsStore.getState().tabs) {
+          if (t.id !== tabId) useTabsStore.getState().closeTab(t.id)
+        }
         const attachStart = Date.now()
         while (Date.now() - attachStart < 10000) {
           const tab = useTabsStore.getState().tabs.find((t) => t.id === tabId)
