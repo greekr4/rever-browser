@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { addRedTeamScope, hostInRedTeamScope, isRedTeamActive, setRedTeamScan } from './red-team-mode'
+import { addRedTeamScope, hostInRedTeamScope, isRedTeamActive, setRedTeamScan, siteKey } from './red-team-mode'
 
 afterEach(() => setRedTeamScan(false))
 
@@ -25,6 +25,14 @@ describe('red-team-mode', () => {
     expect(hostInRedTeamScope('localhost:8090')).toBe(false)
     expect(hostInRedTeamScope('localhost')).toBe(false)
     expect(hostInRedTeamScope('example.com')).toBe(false)
+  })
+
+  it('루프백 표기(127.0.0.1, ::1)는 localhost 로 접는다 — 같은 앱이 다른 키로 갈라지지 않게', () => {
+    expect(siteKey('http://127.0.0.1:1337/panel/search')).toBe('localhost:1337')
+    expect(siteKey('http://[::1]:1337/')).toBe('localhost:1337')
+    setRedTeamScan(true, 'http://localhost:1337/')
+    expect(hostInRedTeamScope('127.0.0.1:1337')).toBe(true)
+    expect(hostInRedTeamScope('127.0.0.1:8090')).toBe(false)
   })
 
   it('scope_add 로 들어온 API 호스트(다른 포트)는 범위 안이 된다', () => {
