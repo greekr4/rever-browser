@@ -19,6 +19,12 @@ describe('redteam-categories classify', () => {
     expect(s).toContain('API1:BOLA/IDOR')
   })
 
+  it('broken_auth 체크는 noauth_probe 를 쓴다 (replay 쿠키-blank 오탐 금지)', () => {
+    const s = checklistFor('GET', 'https://ex.com/health')
+    expect(s).toContain('noauth_probe')
+    expect(s).toContain('API2:Broken Authentication')
+  })
+
   it('uuid 경로도 IDOR 로 본다', () => {
     expect(ids('GET', 'https://ex.com/orders/550e8400-e29b-41d4-a716-446655440000')).toContain('idor')
   })

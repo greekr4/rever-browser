@@ -67,7 +67,7 @@ const CHECKS: Record<VulnId, Omit<VulnCategory, 'id'>> = {
     owasp: 'API2:Broken Authentication',
     severity: 'high',
     check:
-      'replay_request 로 이 요청을 Authorization/Cookie 헤더를 뺀 채 1회 재생한다. 여전히 2xx 로 보호 데이터가 오면 인증 우회.'
+      'noauth_probe({ requestId }) 를 1회 실행한다 — 캡처 요청을 raw 소켓으로 (1) 오너 세션(파티션에서 자동) (2) 쿠키 없이 두 번 보내, 쿠키 없이도 같은 보호 리소스가 오면 인증 우회 확정(high). replay_request 로 Cookie 를 비워도 httpOnly 세션은 credentials:include 로 재첨부되어 "무인증 200" 오탐이 나므로, 반드시 noauth_probe 를 쓴다. loopback/lab 게이트. noauth_probe 가 불가한(비-loopback) 경우에만 replay_request 로 약식 확인하되 확정하지 말 것.'
   },
   idor: {
     owasp: 'API1:BOLA/IDOR',

@@ -92,17 +92,17 @@ describe('tool-profile', () => {
     it('소스 registerTool 이름과 레지스트리 키가 같다', () => {
       const source = sourceToolNames()
       expect(sorted(Object.keys(TOOL_BUCKETS))).toEqual(sorted(source))
-      expect(source.size).toBe(176)
+      expect(source.size).toBe(177)
       expect(source.has('tool_profile_set')).toBe(true)
     })
   })
 
   describe('광고 수', () => {
-    it('browse 84, reverse 118, probe 49이고 예산 120을 넘지 않는다', () => {
+    it('browse 84, reverse 118, probe 50이고 예산 120을 넘지 않는다', () => {
       expect(PROFILE_TOOL_BUDGET).toBe(120)
       expect(advertisedNames('browse')).toHaveLength(84)
       expect(advertisedNames('reverse')).toHaveLength(118)
-      expect(advertisedNames('probe')).toHaveLength(49)
+      expect(advertisedNames('probe')).toHaveLength(50)
       for (const profile of TOOL_PROFILES) {
         expect(() => assertProfileBudget(profile)).not.toThrow()
       }

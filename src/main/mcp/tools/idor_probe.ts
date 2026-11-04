@@ -1,12 +1,47 @@
+import { session } from 'electron'
 import { z } from 'zod'
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
-import { buildRequestSpec, restoreMarker } from '../../repeater'
+import { buildRequestSpec, restoreMarker, type RepeaterRequestSpec } from '../../repeater'
+import { SHARED_PARTITION } from '../../tab-partition'
 import { isLoopbackHost, isLabHost } from '../fence'
 import { getAltSession, setAltSession } from '../redteam-tenants'
 import { ok, err, errorMessage } from '../utils'
 import { buildRawRequest, parseRawResponse, sendRawOverSocket } from './raw_http'
+
+/** The owner's live session: cookies the scan's logged-in partition would send
+ *  to `url` (httpOnly included). Captured XHRs often omit the Cookie header
+ *  (CDP reports httpOnly cookies out-of-band), so this is how a probe gets the
+ *  real owner baseline without the agent threading it in. */
+async function partitionCookieHeader(url: string): Promise<string | null> {
+  try {
+    const cookies = await session.fromPartition(SHARED_PARTITION).cookies.get({ url })
+    if (!cookies.length) return null
+    return cookies.map((c) => `${c.name}=${c.value}`).join('; ')
+  } catch {
+    return null
+  }
+}
+
+interface RawReply {
+  status: number
+  body: string
+  bytes: number
+}
+
+/** Rebuild the captured request over a raw socket with `cookie` (or none) and
+ *  return the parsed response. Raw socket because browser fetch can't override
+ *  the Cookie header (forbidden) nor drop httpOnly cookies (credentials:include
+ *  re-attaches them), which is exactly what these auth tests must control. */
+async function rawReplay(base: RepeaterRequestSpec, u: URL, cookie: string | null): Promise<RawReply> {
+  const host = u.hostname
+  const port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80)
+  const tls = u.protocol === 'https:'
+  const payload = buildRawRequest(base.method, u.pathname + u.search, withCookie(base.headers, cookie), base.body, `${host}:${port}`)
+  const parsed = parseRawResponse(await sendRawOverSocket(host, port, payload, { tls }))
+  return { status: parsed.status, body: parsed.body, bytes: parsed.body.length }
+}
 
 // BOLA / IDOR probe — the one active test for broken object-level authorization,
 // the dominant vuln class on UUID-keyed cookie-auth APIs (an ATS, a SaaS tenant
@@ -80,7 +115,70 @@ export function idorDecision(baseline: IdorReply, noauth: IdorReply, cross: Idor
   return { bola: false, note: `cross-tenant session got ${cross.status}${ok2xx(cross.status) ? ' with a different body' : ''}: the resource appears scoped to its owner.` }
 }
 
+export interface NoauthOutcome {
+  brokenAuth: boolean
+  note: string
+}
+
+/** Broken auth (API2) over a RAW socket, the reliable version of the
+ *  replay-with-cookie-blanked check: replay_request can't drop httpOnly cookies
+ *  (credentials:include re-attaches them) so it reports false "no-auth 200"s.
+ *  Here the no-cookie request is genuinely cookieless; broken auth is confirmed
+ *  only when it returns the SAME protected resource the owner sees. */
+export function noauthDecision(baseline: IdorReply, noauth: IdorReply): NoauthOutcome {
+  const ok2xx = (s: number): boolean => s >= 200 && s < 300
+  if (!ok2xx(baseline.status)) {
+    return { brokenAuth: false, note: `baseline ${baseline.status}: the resource isn't readable even with the owner session — can't assess (bad requestId or no owner session in the partition).` }
+  }
+  if (ok2xx(noauth.status) && sameResource(baseline.body, noauth.body)) {
+    return { brokenAuth: true, note: `the resource is returned with NO cookie (HTTP ${noauth.status}, same body as the authenticated response) — authentication is not enforced. Broken auth (API2) confirmed over a raw socket.` }
+  }
+  return { brokenAuth: false, note: `no-cookie request got ${noauth.status}${ok2xx(noauth.status) ? ' with a different/empty body' : ''}: authentication is enforced (not broken auth).` }
+}
+
 export function registerIdorProbeTools(mcp: McpServer) {
+  mcp.registerTool(
+    'noauth_probe',
+    {
+      description:
+        'Confirm broken authentication (OWASP API2) reliably — use this instead of replay_request-with-cookie-blanked, which CANNOT drop httpOnly session cookies (browser fetch re-attaches them via credentials:include) and so reports false "no-auth 200"s. Replays the captured request twice over a raw socket: with the owner session (baseline, auto-read from the logged-in partition) and with NO cookie. Broken auth is confirmed only when the cookieless request returns the SAME protected resource the owner sees. Gated to loopback / lab hosts. A positive is unauthenticated data access — record high/critical.',
+      inputSchema: {
+        requestId: z.string().describe('A captured authenticated request to a protected resource'),
+        ownerCookie: z.string().optional().describe('Owner Cookie value (defaults to the logged-in partition session)')
+      }
+    },
+    async ({ requestId, ownerCookie }) => {
+      try {
+        const base = restoreMarker(buildRequestSpec(requestId, undefined))
+        let u: URL
+        try {
+          u = new URL(base.url)
+        } catch {
+          return err(`captured request has no valid URL: ${base.url}`)
+        }
+        if (!isLoopbackHost(base.url) && !isLabHost(base.url)) {
+          return err(`noauth_probe sends raw sockets, gated to loopback / lab hosts; ${u.hostname} is neither. Mark it a lab target if you own it.`)
+        }
+        const owner = ownerCookie ?? originalCookie(base.headers) ?? (await partitionCookieHeader(base.url))
+        if (!owner) {
+          return err('no owner session available (capture had no Cookie and the partition has none for this origin) — pass ownerCookie.')
+        }
+        const baseline = { ...(await rawReplay(base, u, owner)), label: 'baseline' as const }
+        const noauth = { ...(await rawReplay(base, u, null)), label: 'noauth' as const }
+        const { brokenAuth, note } = noauthDecision(baseline, noauth)
+        return ok(
+          JSON.stringify(
+            { brokenAuth, note, results: [baseline, noauth].map((r) => ({ label: r.label, status: r.status, bytes: r.bytes })) },
+            null,
+            2
+          )
+        )
+      } catch (e) {
+        return err(errorMessage(e))
+      }
+    }
+  )
+
   mcp.registerTool(
     'redteam_alt_session_set',
     {
@@ -123,25 +221,15 @@ export function registerIdorProbeTools(mcp: McpServer) {
             'no alternate-tenant session: register a 2nd throwaway account, read its cookie (cookie_list), then redteam_alt_session_set({ cookie }) — or pass altCookie here.'
           )
         }
-        const owner = ownerCookie ?? originalCookie(base.headers)
+        const owner = ownerCookie ?? originalCookie(base.headers) ?? (await partitionCookieHeader(base.url))
         if (!owner) {
           return err(
-            'the captured request carries no Cookie header to use as the owner baseline — pass ownerCookie, or capture an authenticated request that includes the session cookie.'
+            'no owner session for the baseline (capture had no Cookie and the partition has none for this origin) — pass ownerCookie.'
           )
         }
-        const host = u.hostname
-        const port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80)
-        const tls = u.protocol === 'https:'
-        const path = u.pathname + u.search
-        const send = async (cookie: string | null): Promise<IdorReply & { bytes: number }> => {
-          const payload = buildRawRequest(base.method, path, withCookie(base.headers, cookie), base.body, `${host}:${port}`)
-          const buf = await sendRawOverSocket(host, port, payload, { tls })
-          const parsed = parseRawResponse(buf)
-          return { label: 'baseline', status: parsed.status, body: parsed.body, bytes: parsed.body.length }
-        }
-        const baseline = { ...(await send(owner)), label: 'baseline' as const }
-        const noauth = { ...(await send(null)), label: 'noauth' as const }
-        const cross = { ...(await send(alt)), label: 'cross' as const }
+        const baseline = { ...(await rawReplay(base, u, owner)), label: 'baseline' as const }
+        const noauth = { ...(await rawReplay(base, u, null)), label: 'noauth' as const }
+        const cross = { ...(await rawReplay(base, u, alt)), label: 'cross' as const }
         const { bola, note } = idorDecision(baseline, noauth, cross)
         return ok(
           JSON.stringify(
