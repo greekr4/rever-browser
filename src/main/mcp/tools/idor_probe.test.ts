@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { withCookie, originalCookie, sameResource, idorDecision, type IdorReply } from './idor_probe'
+import { withCookie, originalCookie, sameResource, idorDecision, noauthDecision, type IdorReply } from './idor_probe'
 
 const reply = (label: IdorReply['label'], status: number, body: string): IdorReply => ({ label, status, body })
 
@@ -92,6 +92,31 @@ describe('idorDecision', () => {
       reply('cross', 200, ownerBody)
     )
     expect(out.bola).toBe(false)
+    expect(out.note).toMatch(/baseline/i)
+  })
+})
+
+describe('noauthDecision', () => {
+  const ownerBody = '{"id":"cdb11ac2-9993-4ac6-bb9d-6959df5228a9","member":{"email":"te@test.com"}}'
+
+  it('쿠키 없이 같은 보호 리소스가 오면 인증 우회 확정', () => {
+    const out = noauthDecision(reply('baseline', 200, ownerBody), reply('noauth', 200, ownerBody))
+    expect(out.brokenAuth).toBe(true)
+  })
+
+  it('쿠키 없으면 401 이면 정상 보호 — 음성 (httpOnly 재첨부 오탐 방지)', () => {
+    const out = noauthDecision(reply('baseline', 200, ownerBody), reply('noauth', 401, '{"message":"Unauthorized"}'))
+    expect(out.brokenAuth).toBe(false)
+  })
+
+  it('무쿠키 200 이지만 빈/다른 본문(session:null 류)이면 음성', () => {
+    const out = noauthDecision(reply('baseline', 200, ownerBody), reply('noauth', 200, '{"session":null}'))
+    expect(out.brokenAuth).toBe(false)
+  })
+
+  it('baseline 이 2xx 아니면 판정 불가', () => {
+    const out = noauthDecision(reply('baseline', 500, 'err'), reply('noauth', 401, 'no'))
+    expect(out.brokenAuth).toBe(false)
     expect(out.note).toMatch(/baseline/i)
   })
 })

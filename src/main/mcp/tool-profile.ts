@@ -190,6 +190,7 @@ export const TOOL_BUCKETS: Record<string, readonly ToolBucket[] | 'core'> = {
   sqli_probe: ['probe'],
   nosqli_probe: ['probe'],
   idor_probe: ['probe'],
+  noauth_probe: ['probe'],
   path_write_probe: ['probe'],
   grpc_call: ['probe'],
   pickle_gadget: ['probe'],
