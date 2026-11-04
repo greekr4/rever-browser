@@ -155,6 +155,23 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
       void applyTheme()
     }
 
+    // A main-frame load can fail transiently — the renderer/GPU process still
+    // warming up right after launch, or a burst of tabs opening at once (the
+    // Red Team scan opens one per page). Those tabs would otherwise sit blank
+    // and a worker inspecting them finds nothing. Retry the load a couple of
+    // times (bounded); ERR_ABORTED (-3) is a superseded navigation, not a
+    // failure, so skip it. A successful finish resets the budget.
+    let failRetries = 0
+    const onFailLoad = (e: Electron.DidFailLoadEvent) => {
+      if (!e.isMainFrame || e.errorCode === -3 || failRetries >= 2) return
+      failRetries++
+      const url = useTabsStore.getState().tabs.find((t) => t.id === tab.id)?.url ?? e.validatedURL
+      if (url) setTimeout(() => wv.loadURL(url).catch(() => {}), failRetries * 700)
+    }
+    const onFinishReset = () => {
+      failRetries = 0
+    }
+
     const unsubTheme = useWebviewThemeStore.subscribe((state, prev) => {
       const currentUrl = useTabsStore.getState().tabs.find((t) => t.id === tab.id)?.url
       const origin = currentUrl ? originFromUrl(currentUrl) : null
@@ -179,6 +196,8 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     wv.addEventListener('dom-ready', onDomReady)
     wv.addEventListener('did-attach', tryAttach)
     wv.addEventListener('did-finish-load', tryAttach)
+    wv.addEventListener('did-finish-load', onFinishReset)
+    wv.addEventListener('did-fail-load', onFailLoad)
     wv.addEventListener('did-navigate', onNavigate)
     wv.addEventListener('did-navigate-in-page', onNavigateInPage)
     wv.addEventListener('page-title-updated', onTitle)
@@ -188,6 +207,8 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
       wv.removeEventListener('dom-ready', onDomReady)
       wv.removeEventListener('did-attach', tryAttach)
       wv.removeEventListener('did-finish-load', tryAttach)
+      wv.removeEventListener('did-finish-load', onFinishReset)
+      wv.removeEventListener('did-fail-load', onFailLoad)
       wv.removeEventListener('did-navigate', onNavigate)
       wv.removeEventListener('did-navigate-in-page', onNavigateInPage)
       wv.removeEventListener('page-title-updated', onTitle)
