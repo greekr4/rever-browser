@@ -488,6 +488,9 @@ export const useScanStore = create<ScanState>((set, get) => ({
     }
     const newAgent = (): ACPChatTransport =>
       new ACPChatTransport({ agentDef: ACP_AGENTS.find((a) => a.id === 'claude-code')! })
+    // Tabs the scan opens itself (the per-page grid) — closed in finally so a
+    // finished scan doesn't leave a pile of tabs behind. finally-scoped.
+    const openedTabs: string[] = []
     try {
       // Phases 1–3 and the export need the reverse toolset; the probe phase
       // (probe/redteam intensity) switches to probe — which only this
@@ -588,6 +591,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
         try {
           const tabId = useTabsStore.getState().addTab(url, { activate: false })
           jobs.push({ url, tabId })
+          openedTabs.push(tabId)
           scanTabs[tabId] = { url, status: 'opening', findings: 0 }
         } catch {}
       }
@@ -754,6 +758,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       setRedTeamScan(false)
       stopRequested = false
       for (const w of workers.splice(0)) void w.reset()
+      for (const id of openedTabs) useTabsStore.getState().closeTab(id)
       abort = null
     }
   }
