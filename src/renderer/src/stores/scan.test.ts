@@ -87,7 +87,7 @@ vi.mock('./i18n', () => ({
 
 vi.mock('@/constants', () => ({ ACP_AGENTS: [{ id: 'claude-code' }] }))
 
-import { useScanStore, cleanReport, scanNotification, mergeQueryEndpoints } from './scan'
+import { useScanStore, cleanReport, scanNotification, mergeQueryEndpoints, workerPrompt, levelLineFor } from './scan'
 
 const TAB_OF = (url: string) => `URL 이 "${url}" 인 탭의 인덱스`
 
@@ -175,12 +175,26 @@ describe('useScanStore 스캔 파이프라인', () => {
     const hidden = state.prompts.filter((p) => p.includes('path_probe({ baseUrl:'))
     expect(hidden).toHaveLength(1)
     expect(hidden[0]).toContain('https://example.com')
+    // 비-loopback 타겟은 봉인 유지 — 에스컬레이션 없음
+    expect(state.prompts.some((p) => p.includes('에스컬레이션 단계'))).toBe(false)
   })
 
   it('readonly/probe 에서는 숨은 경로(path_probe) 스윕을 돌리지 않는다', async () => {
     useScanStore.getState().setIntensity('probe')
     await useScanStore.getState().start()
     expect(state.prompts.some((p) => p.includes('path_probe({ baseUrl:'))).toBe(false)
+  })
+
+  it('일회성 타겟(localhost) redteam 은 에스컬레이션 단계를 돌린다', async () => {
+    useScanStore.setState({ target: 'http://localhost:1337/' })
+    useScanStore.getState().setIntensity('redteam')
+    await useScanStore.getState().start()
+    const esc = state.prompts.filter((p) => p.includes('에스컬레이션 단계'))
+    expect(esc).toHaveLength(1)
+    expect(esc[0]).toContain('최종 임팩트')
+    expect(esc[0]).toContain('tags:["impact"]')
+    expect(state.profileCalls).toEqual(['reverse', 'probe', 'reverse'])
+    expect(useScanStore.getState().phase).toBe('done')
   })
 })
 
@@ -206,5 +220,42 @@ describe('mergeQueryEndpoints', () => {
 
   it('쿼리 없는 링크만 있으면 그대로다', () => {
     expect(mergeQueryEndpoints(['GET http://x/'], ['http://x/about'])).toEqual(['GET http://x/'])
+  })
+})
+
+describe('workerPrompt — 봉인 조건부화', () => {
+  it('실제 타겟(비-loopback)은 파괴적 컨트롤 금지가 그대로다', () => {
+    const p = workerPrompt('https://example.com/a', false, false)
+    expect(p).toContain('buy/pay/delete/결제/삭제/제출 확인 컨트롤 클릭 금지')
+    expect(p).toContain('로그인 페이지는 기록만')
+    expect(p).not.toContain('일회성')
+  })
+
+  it('일회성 타겟(aggressive)은 금지가 풀리고 모든 조작이 허용된다', () => {
+    const p = workerPrompt('http://localhost:1337/a', true, true)
+    expect(p).not.toContain('클릭 금지. 로그인 페이지는 기록만')
+    expect(p).toContain('제출·삭제·결제 컨트롤을 포함한 모든 조작이 허용')
+    // 공통 가드는 유지 — rever 도구만, 다른 탭 금지
+    expect(p).toContain('Terminal/Bash/셸/curl/wget 및 ToolSearch 금지')
+    expect(p).toContain('다른 탭 열기/닫기/선택 금지')
+  })
+})
+
+describe('levelLineFor — 강도 상한', () => {
+  it('probe 는 변경 없는 재생만', () => {
+    expect(levelLineFor('probe', true)).toContain('변경 없이 재생만')
+    expect(levelLineFor('probe', true)).toContain('금지')
+  })
+
+  it('실제 타겟 redteam 은 변형 1개 상한을 유지한다', () => {
+    const line = levelLineFor('redteam', false)
+    expect(line).toContain('변형 요청 최대 1개')
+    expect(line).not.toContain('적응 재시도')
+  })
+
+  it('일회성 타겟 redteam 은 응답 기반 적응 재시도 최대 5회를 허용한다', () => {
+    const line = levelLineFor('redteam', true)
+    expect(line).toContain('최대 5회까지 적응 재시도')
+    expect(line).toContain('워드리스트·대량 열거·레이트리밋 재시도는 여전히 금지')
   })
 })

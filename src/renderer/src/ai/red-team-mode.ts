@@ -29,6 +29,26 @@ export function siteKey(input: string): string {
   }
 }
 
+// Loopback = a disposable target the fence already lets mutate. Mirrors
+// isLoopbackHost in mcp/fence.ts (the renderer cannot import main-process
+// modules), so renderer-side aggression gating matches the fence decision.
+// shortcut: lab-marked non-loopback hosts aren't visible here; extend via IPC when a lab scan needs the unsealed prompts.
+export function isLoopbackHost(url: string): boolean {
+  let hostname: string
+  try {
+    hostname = new URL(url).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+  return (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname === '::1' ||
+    hostname === '[::1]' ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)
+  )
+}
+
 // Same key from a bare host that may carry a port ("localhost:8090").
 function hostKey(hostMaybePort: string): string {
   const m = /^(.+):(\d+)$/.exec(hostMaybePort)
