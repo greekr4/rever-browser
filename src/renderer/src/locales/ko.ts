@@ -300,6 +300,7 @@ export const ko: Record<TKey, string> = {
   'scan.log.probeCollect': '⚡ {mode} 프로브 — 엔드포인트 수집',
   'scan.log.hiddenPaths': '🕵 숨은 경로 탐색 (.env, admin, .git…)',
   'scan.log.probeRun': '⚡ {n}개 엔드포인트 프로브',
+  'scan.log.escalate': '🧨 에스컬레이션 — 확정 취약점 임팩트 증명',
   'scan.log.report': '📝 보고서 작성',
   'scan.log.done': '✅ 완료 — 발견 {n}건',
   'scan.log.stopped': '■ 중지 — 지금까지 발견으로 보고서 작성',

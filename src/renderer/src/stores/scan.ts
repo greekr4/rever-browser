@@ -4,7 +4,7 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 
 import { ACPChatTransport } from '@/ai/acp-transport'
 import { checklistFor } from '@/ai/redteam-categories'
-import { addRedTeamScope, setRedTeamScan, siteKey } from '@/ai/red-team-mode'
+import { addRedTeamScope, setRedTeamScan, siteKey, isLoopbackHost } from '@/ai/red-team-mode'
 import REDTEAM_PROBE_PROMPT from '@/ai/redteam-probe.md?raw'
 import { ACP_AGENTS } from '@/constants'
 import type { TKey } from '@/locales/en'
@@ -301,16 +301,22 @@ function findingsLangLine(): string {
 // The per-tab inspection turn. The worker may DRIVE its own tab (tab-param
 // tools are race-free — refs live in that tab's namespace), which is what
 // makes dynamic exploration (accordions, pagination, XHR triggers) possible.
-function workerPrompt(url: string, crawl: boolean): string {
+// `aggressive` (loopback/disposable target): destructive controls are fair
+// game — the fence already lets mutations through there, so the prompt-side
+// ban would only cost coverage with zero safety gain.
+export function workerPrompt(url: string, crawl: boolean, aggressive = false): string {
   const crawlLine = crawl
     ? `- 먼저 ui_crawl({tab:N}) 를 한 번 호출한다 — 페이지의 모든 버튼/링크를 결정적으로 눌러 숨은 API 를 드러내고 버튼→API 맵을 만든다(펜스가 변이 요청을 204 로 막아 서버는 안전). 반환된 'endpoints discovered' 가 캡처되어 이후 점검 대상에 포함된다. 그 다음 아래를 진행한다.\n`
     : ''
+  const rulesLine = aggressive
+    ? `- 오직 rever 도구만 사용한다. Terminal/Bash/셸/curl/wget 및 ToolSearch 금지(scope 를 우회한다). 다른 탭 열기/닫기/선택 금지. 이 타겟은 일회성(사용자 소유)이므로 제출·삭제·결제 컨트롤을 포함한 모든 조작이 허용된다 — 숨은 API 를 드러내는 버튼은 주저 없이 눌러라.\n`
+    : `- 오직 rever 도구만 사용한다. Terminal/Bash/셸/curl/wget 및 ToolSearch 금지(scope 를 우회한다). 다른 탭 열기/닫기/선택 금지. buy/pay/delete/결제/삭제/제출 확인 컨트롤 클릭 금지. 로그인 페이지는 기록만.\n`
   return (
     `여러 탭이 열려 있다. browser_tabs({action:"list"}) 로 목록을 보고 URL 이 "${url}" 인 탭의 인덱스 N 을 찾는다. 그 탭만 다룬다:\n` +
     crawlLine +
     `- 읽기: list_endpoints({tab:N}), list_requests({tab:N}), 흥미로운 요청은 get_request/get_request_initiator, security_inspect({url:"${url}"})\n` +
     `- 동적 탐색(필요할 때): browser_snapshot({tab:N}) → browser_click/browser_type/browser_navigate 에 같은 tab:N 을 전달한다(아코디언 펼치기, 페이지네이션, 더보기, 검색). ref 는 탭별 네임스페이스라 같은 tab:N 으로만 동작한다.\n` +
-    `- 오직 rever 도구만 사용한다. Terminal/Bash/셸/curl/wget 및 ToolSearch 금지(scope 를 우회한다). 다른 탭 열기/닫기/선택 금지. buy/pay/delete/결제/삭제/제출 확인 컨트롤 클릭 금지. 로그인 페이지는 기록만.\n` +
+    rulesLine +
     `- finding_add 는 소형 템플릿: 한 줄 제목(엔드포인트/이슈), 관측 불릿 3개 이하, 재현 curl 한 줄. 이미 finding_list 에 같은 엔드포인트가 있으면 추가하지 않는다. ${findingsLangLine()}\n` +
     `- 끝나면 발견 개수만 한 줄로 답한다.`
   )
@@ -392,6 +398,19 @@ export function mergeQueryEndpoints(endpoints: string[], links: string[], cap = 
     byPath.set(pathOf(u), cur)
   }
   return [...byPath.values()].flat().slice(0, cap)
+}
+
+// Intensity ladder: probe = unchanged replays + passive inspection; redteam
+// adds mutated/payload requests. On a disposable target the mutation budget
+// becomes ADAPTIVE (bounded): a failed probe may re-aim using what the
+// previous response revealed — that is how a real attacker gets past
+// encoding/context mismatches — while bulk enumeration stays forbidden.
+export function levelLineFor(intensity: ScanIntensity, aggressive: boolean): string {
+  if (intensity === 'probe')
+    return '강도: probe — replay_request 는 캡처된 요청을 변경 없이 재생만 한다. payload_probe/path_probe/crlf_test 금지. security_inspect/scan_secrets/replay_request(변경 없음)만 사용.'
+  return aggressive
+    ? '강도: redteam(일회성 타겟) — 각 체크에서 직전 응답(에러 메시지·반사 형태·상태코드 차이)을 근거로 인코딩/문맥/페이로드를 바꿔 최대 5회까지 적응 재시도할 수 있다. 워드리스트·대량 열거·레이트리밋 재시도는 여전히 금지.'
+    : '강도: redteam — 각 체크마다 변형 요청 최대 1개까지 허용.'
 }
 
 function parseEndpoints(text: string, site: string, cap: number): string[] {
@@ -501,6 +520,10 @@ export const useScanStore = create<ScanState>((set, get) => ({
       abort = new AbortController()
       const signal = abort.signal
       const site = siteKey(target)
+      // Disposable target (loopback — the fence already lets mutations through):
+      // unseal the aggressive prompts (destructive exploration, adaptive
+      // re-probes, escalation). Real targets keep every guard.
+      const aggressive = isLoopbackHost(target)
       // Pin scope to the exact host:port so the server-side scope check is
       // port-specific too (localhost:8080 must not cover :8090).
       const scopeArg = (() => {
@@ -629,8 +652,11 @@ export const useScanStore = create<ScanState>((set, get) => ({
         const w = newAgent()
         workers.push(w)
         try {
-          const { findingAdds } = await runTurnOn(w, workerPrompt(url, intensity === 'redteam'), signal, (e) =>
-            onEv(e, tabId)
+          const { findingAdds } = await runTurnOn(
+            w,
+            workerPrompt(url, intensity === 'redteam', aggressive),
+            signal,
+            (e) => onEv(e, tabId)
           )
           setTab(tabId, { status: 'done', findings: findingAdds })
           set({ findings: get().findings + findingAdds })
@@ -686,12 +712,9 @@ export const useScanStore = create<ScanState>((set, get) => ({
         }
 
         if (endpoints.length) {
-          // Intensity ladder: probe = unchanged replays + passive inspection;
-          // redteam adds one mutated/payload request per endpoint.
-          const levelLine =
-            intensity === 'probe'
-              ? '강도: probe — replay_request 는 캡처된 요청을 변경 없이 재생만 한다. payload_probe/path_probe/crlf_test 금지. security_inspect/scan_secrets/replay_request(변경 없음)만 사용.'
-              : '강도: redteam — 각 체크마다 변형 요청 최대 1개까지 허용.'
+          // Intensity ladder — see levelLineFor. `aggressive` switches the
+          // redteam budget from one mutation to bounded adaptive retries.
+          const levelLine = levelLineFor(intensity, aggressive)
           pushPhase('scan.log.probeRun', { n: endpoints.length })
           await pool(endpoints, Math.min(endpoints.length, MAX_PARALLEL), async (ep) => {
             if (signal.aborted) return
@@ -713,6 +736,33 @@ export const useScanStore = create<ScanState>((set, get) => ({
               void w.reset()
             }
           })
+          workers.splice(0)
+        }
+
+        // Phase 3.7 (redteam, disposable targets only) — ESCALATION. A confirmed
+        // vuln class only becomes an impact when chained: SSTI → read a
+        // file/flag, path write → overwrite a template → RCE, SQLi → extract a
+        // row, BOLA → quote the other tenant's data. The STORE triggers this
+        // phase deterministically; the worker picks candidates from finding_list
+        // and proves impact with the full probe toolset (still loaded here).
+        if (intensity === 'redteam' && aggressive && !signal.aborted) {
+          pushPhase('scan.log.escalate')
+          const w = newAgent()
+          workers.push(w)
+          try {
+            const { findingAdds } = await runTurnOn(
+              w,
+              `에스컬레이션 단계 — 확인된 취약점의 최종 임팩트를 증명한다. 먼저 finding_list(category:"vuln") 로 severity critical/high 인 항목을 최대 5개 고른다(임팩트 태그가 이미 붙은 것은 건너뛴다). 각각에 대해 취약점 종류를 넘어 체인을 실행한다: SSTI 면 템플릿·플래그·환경변수 파일 읽기, 경로 쓰기(path_write)면 템플릿/소스 덮어쓰기 후 렌더 확인, SQLi 면 실제 데이터 한 행 추출(UNION 또는 에러 기반), BOLA 면 타 테넌트 리소스 본문 인용, broken auth 면 인증 없는 접근으로 보호 데이터 확보. 도구는 ssti_probe/replay_request/raw_http/grpc_call/pickle_gadget 등 프로브 프로파일 전부 허용. 이 타겟은 일회성(사용자 소유)이므로 파일 쓰기·삭제를 포함한 파괴적 행동도 허용된다. 임팩트가 증명되면 finding_add(category:"vuln", severity:"critical", tags:["impact"]) 로 원본 finding id 를 evidenceIds 에 넣어 기록하고, 증명에 실패하면 새로 기록하지 않는다. ${findingsLangLine()} 끝나면 증명된 임팩트 개수만 한 줄로 답한다.`,
+              signal,
+              (e) => onEv(e)
+            )
+            if (findingAdds) set({ findings: get().findings + findingAdds })
+          } catch {
+            // Escalation is opportunistic — a failed turn must not lose the
+            // findings the sweep already recorded.
+          } finally {
+            void w.reset()
+          }
           workers.splice(0)
         }
         if (needProbe) await useToolProfileStore.getState().setProfile('reverse')

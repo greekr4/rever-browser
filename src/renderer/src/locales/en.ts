@@ -317,6 +317,7 @@ export const en = {
   'scan.log.probeCollect': '⚡ {mode} probe — collecting endpoints',
   'scan.log.hiddenPaths': '🕵 Hidden-path discovery (.env, admin, .git…)',
   'scan.log.probeRun': '⚡ Probing {n} endpoints',
+  'scan.log.escalate': '🧨 Escalation — proving impact of confirmed vulns',
   'scan.log.report': '📝 Writing report',
   'scan.log.done': '✅ Done — {n} findings',
   'scan.log.stopped': '■ Stopped — writing report from findings so far',
