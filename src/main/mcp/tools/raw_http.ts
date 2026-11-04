@@ -58,6 +58,38 @@ export function parseRawResponse(raw: Buffer): RawResponse {
   return { statusLine: statusLine ?? '', status, headers, body }
 }
 
+/** Open a TCP (or TLS) socket, write `payload` verbatim, and collect the raw
+ *  response bytes. Short responses that never FIN are returned at the timeout. */
+export async function sendRawOverSocket(
+  host: string,
+  port: number,
+  payload: string,
+  opts: { tls?: boolean; timeoutMs?: number } = {}
+): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = []
+    const onConnect = (): void => {
+      socket.write(Buffer.from(payload, 'latin1'))
+    }
+    const socket = opts.tls
+      ? tlsMod.connect({ host, port, rejectUnauthorized: false, servername: host }, onConnect)
+      : net.connect({ host, port }, onConnect)
+    const to = setTimeout(() => {
+      socket.destroy()
+      resolve(Buffer.concat(chunks))
+    }, opts.timeoutMs ?? 8000)
+    socket.on('data', (c: Buffer) => chunks.push(c))
+    socket.on('end', () => {
+      clearTimeout(to)
+      resolve(Buffer.concat(chunks))
+    })
+    socket.on('error', (e) => {
+      clearTimeout(to)
+      reject(e)
+    })
+  })
+}
+
 export function registerRawHttpTools(mcp: McpServer) {
   mcp.registerTool(
     'raw_http',
@@ -85,29 +117,7 @@ export function registerRawHttpTools(mcp: McpServer) {
       }
       try {
         const payload = raw ?? buildRawRequest(method ?? 'GET', path ?? '/', headers ?? {}, body, `${host}:${port}`)
-        const result = await new Promise<Buffer>((resolve, reject) => {
-          const chunks: Buffer[] = []
-          const onConnect = (): void => {
-            socket.write(Buffer.from(payload, 'latin1'))
-          }
-          const socket = tls
-            ? tlsMod.connect({ host, port, rejectUnauthorized: false, servername: host }, onConnect)
-            : net.connect({ host, port }, onConnect)
-          const to = setTimeout(() => {
-            socket.destroy()
-            // Return what we have rather than failing — short responses may not FIN.
-            resolve(Buffer.concat(chunks))
-          }, timeoutMs ?? 8000)
-          socket.on('data', (c: Buffer) => chunks.push(c))
-          socket.on('end', () => {
-            clearTimeout(to)
-            resolve(Buffer.concat(chunks))
-          })
-          socket.on('error', (e) => {
-            clearTimeout(to)
-            reject(e)
-          })
-        })
+        const result = await sendRawOverSocket(host, port, payload, { tls, timeoutMs })
         if (result.length === 0) return err('no response (connection made, nothing returned before timeout)')
         const parsed = parseRawResponse(result)
         return ok(
