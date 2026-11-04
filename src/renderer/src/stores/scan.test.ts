@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
   tabSeq: 0
 }))
 
-// Prompt-driven fake agent: the discovery turn mentions 깊이 2, the endpoint
+// Prompt-driven fake agent: the discovery turn mentions 같은 사이트 링크/경로, the endpoint
 // collector 중복 없이, the export turn finding_export; everything else is a
 // worker/probe turn that records one finding.
 vi.mock('@/ai/acp-transport', () => ({
@@ -31,7 +31,7 @@ vi.mock('@/ai/acp-transport', () => ({
           type: 'text-delta',
           delta: '["GET https://example.com/api/x","GET https://example.com/api/x?a=1"]'
         })
-      } else if (text.includes('깊이 2')) {
+      } else if (text.includes('같은 사이트 링크/경로')) {
         chunks.push({
           type: 'text-delta',
           delta:

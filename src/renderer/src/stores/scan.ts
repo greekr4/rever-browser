@@ -574,12 +574,15 @@ export const useScanStore = create<ScanState>((set, get) => ({
         })
       }
 
-      // Phase 1 — discovery: the agent walks the start page AND follows a few
-      // links (depth 2) to gather a broad same-site link set.
+      // Phase 1 — discovery: collect a same-site link set WITHOUT leaving the
+      // target tab. The agent used to follow 2-3 links by navigating the target
+      // tab in place (depth 2), which yanked the start page away; instead the
+      // links are opened as their own tabs in Phase 2 and the per-tab workers
+      // (Phase 3) go deeper there, so the target tab stays put.
       pushPhase('scan.log.discover', { site })
       const { finalText: linksText } = await runTurnOn(
         transport,
-        `scope_set({ hosts: ["${scopeArg}"] }) 로 범위를 고정하고 browser_navigate("${target.trim()}") 후 browser_snapshot. list_requests 로 이 앱이 호출하는 자체 API 호스트(예: 다른 localhost 포트의 백엔드, api.* 서브도메인)를 확인하면 scope_add 로 범위에 추가한다 — 단 서드파티(분석/광고/CDN)는 추가하지 않는다. list_endpoints 가 없으면 tool_profile_set({ profile: "reverse" }) 먼저. 같은 사이트 링크를 모으되, 대표 링크 2~3개는 browser_navigate 로 들어가 browser_snapshot 해서 그 안의 링크까지(깊이 2) 수집한다. 점검할 만한 페이지를 최대 ${pages}개. 설명 없이 절대경로 URL들의 JSON 배열 한 줄만 출력.`,
+        `scope_set({ hosts: ["${scopeArg}"] }) 로 범위를 고정하고 browser_navigate("${target.trim()}") 후 browser_snapshot. 이후 이 타겟 탭에서는 다른 페이지로 이동하지 말 것 — browser_navigate 로 벗어나지 않는다. 점검할 다른 페이지는 스캔이 각각 새 탭으로 열어 워커가 거기서 더 깊이 탐색한다. list_requests 로 이 앱이 호출하는 자체 API 호스트(예: 다른 localhost 포트의 백엔드, api.* 서브도메인)를 확인하면 scope_add 로 범위에 추가한다 — 단 서드파티(분석/광고/CDN)는 추가하지 않는다. list_endpoints 가 없으면 tool_profile_set({ profile: "reverse" }) 먼저. 랜딩 스냅샷과 list_requests 에 보이는 같은 사이트 링크/경로를 점검할 만한 페이지로 최대 ${pages}개 모은다. 설명 없이 절대경로 URL들의 JSON 배열 한 줄만 출력.`,
         signal,
         (e) => onEv(e)
       )
