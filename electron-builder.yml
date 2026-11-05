@@ -24,6 +24,12 @@ mac:
       arch:
         - arm64
         - x64
+    # Squirrel auto-update on macOS requires a zip artifact; DMG alone is
+    # manual-install only ("ZIP file not provided" in MacUpdater).
+    - target: zip
+      arch:
+        - arm64
+        - x64
   category: public.app-category.developer-tools
   icon: build/icon.icns
   artifactName: Rever-Browser-${version}-${arch}.${ext}
