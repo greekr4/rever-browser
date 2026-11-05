@@ -46,6 +46,7 @@ import {
   listRequests,
   getWsFrames
 } from './traffic-store'
+import { installWsCapture, listWsCaptures, sendWsFrame } from './ws-capture'
 import { getViewport, setViewport, type ViewportMode } from './viewport'
 import {
   repeaterSend,
@@ -1177,6 +1178,13 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('ws:frames', (_event, requestId: string, since?: number, limit?: number) =>
     getWsFrames(requestId, since).slice(-(limit ?? 100))
+  )
+  // WebSocket 송신 (MCP ws_send과 같은 로직 — 사람이 쓰는 UI용)
+  ipcMain.handle('ws:capture-enable', async () => installWsCapture())
+  ipcMain.handle('ws:capture-list', async () => listWsCaptures())
+  ipcMain.handle(
+    'ws:send',
+    (_event, captureId: number, payload: string) => sendWsFrame(captureId, payload, false)
   )
 
   // ── Storage / Cookie editor IPC ───────────────────────────────────────────

@@ -596,7 +596,15 @@ const api = {
   ws: {
     list: (): Promise<StoredRequestSummary[]> => ipcRenderer.invoke('ws:list'),
     frames: (requestId: string, since?: number, limit?: number): Promise<WSFrame[]> =>
-      ipcRenderer.invoke('ws:frames', requestId, since, limit)
+      ipcRenderer.invoke('ws:frames', requestId, since, limit),
+    // 페이지 소켓을 통한 송신 (ws_capture_enable → reload → capture-list → send)
+    captureEnable: (): Promise<{ ok: boolean; message?: string; error?: string }> =>
+      ipcRenderer.invoke('ws:capture-enable'),
+    captureList: (): Promise<
+      Array<{ id: number; url: string; openedAt: number; readyState: number }> | { error: string }
+    > => ipcRenderer.invoke('ws:capture-list'),
+    send: (captureId: number, payload: string): Promise<{ ok: boolean; message?: string; error?: string }> =>
+      ipcRenderer.invoke('ws:send', captureId, payload)
   },
   storage: {
     cookies: (urls?: string[]): Promise<{

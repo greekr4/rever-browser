@@ -2,33 +2,11 @@ import { z } from 'zod'
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
-import { getActiveTarget } from '../../chrome-cdp'
 import { listRequests, getWsFrames, getRequest } from '../../traffic-store'
-import { ok, err, errorMessage } from '../utils'
+import { ok, err } from '../utils'
+import { installWsCapture, listWsCaptures, sendWsFrame } from '../../ws-capture'
 
 const MAX_PAYLOAD_BYTES = 1024
-
-// 재부착 시 중복 등록 방지 — target webContentsId → scriptIdentifier
-const wsCaptureScriptIds = new Map<number, string>()
-
-const WS_CAPTURE_SCRIPT = `(() => {
-  if (window.__revWSCapture) return;
-  const list = [];
-  window.__revWSCapture = list;
-  const OrigWS = window.WebSocket;
-  function Wrapped(url, protocols) {
-    const ws = protocols == null ? new OrigWS(url) : new OrigWS(url, protocols);
-    const entry = { id: list.length, url: String(url), ws, openedAt: Date.now() };
-    list.push(entry);
-    return ws;
-  }
-  Wrapped.prototype = OrigWS.prototype;
-  Wrapped.CONNECTING = OrigWS.CONNECTING;
-  Wrapped.OPEN = OrigWS.OPEN;
-  Wrapped.CLOSING = OrigWS.CLOSING;
-  Wrapped.CLOSED = OrigWS.CLOSED;
-  window.WebSocket = Wrapped;
-})();`
 
 export function registerWebSocketTools(mcp: McpServer) {
   mcp.registerTool(
@@ -99,31 +77,8 @@ export function registerWebSocketTools(mcp: McpServer) {
         'Install a WebSocket constructor wrapper on the active page so future "new WebSocket(...)" calls are tracked. Required before ws_send can target a socket by index. Page must be reloaded for the wrapper to catch pre-existing sockets.'
     },
     async () => {
-      const target = getActiveTarget()
-      if (!target) return err('no active browser target')
-      try {
-        // 이전에 등록한 스크립트가 있으면 제거 (재부착 누수 방지)
-        const wcId = target.wc.id
-        const prevId = wsCaptureScriptIds.get(wcId)
-        if (prevId) {
-          await target.dbg
-            .sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: prevId })
-            .catch(() => {})
-          wsCaptureScriptIds.delete(wcId)
-        }
-        const res = (await target.dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
-          source: WS_CAPTURE_SCRIPT
-        })) as { identifier: string }
-        wsCaptureScriptIds.set(wcId, res.identifier)
-        // Also try to install on current document (will be a no-op if already
-        // there or if document scripts already created sockets via OrigWS).
-        await target.dbg.sendCommand('Runtime.evaluate', {
-          expression: WS_CAPTURE_SCRIPT
-        })
-        return ok('ws-capture installed; reload page to wrap pre-existing sockets')
-      } catch (e) {
-        return err(errorMessage(e))
-      }
+      const r = await installWsCapture()
+      return r.ok ? ok('ws-capture installed; reload page to wrap pre-existing sockets') : err(r.error)
     }
   )
 
@@ -133,17 +88,9 @@ export function registerWebSocketTools(mcp: McpServer) {
       description: 'List WebSocket sockets captured by ws_capture_enable.'
     },
     async () => {
-      const target = getActiveTarget()
-      if (!target) return err('no active browser target')
-      try {
-        const r = (await target.dbg.sendCommand('Runtime.evaluate', {
-          expression: `JSON.stringify((window.__revWSCapture || []).map(e => ({ id: e.id, url: e.url, openedAt: e.openedAt, readyState: e.ws.readyState })))`,
-          returnByValue: true
-        })) as { result: { value?: string } }
-        return ok(r.result.value ?? '[]')
-      } catch (e) {
-        return err(errorMessage(e))
-      }
+      const r = await listWsCaptures()
+      if ('error' in r) return err(r.error)
+      return ok(JSON.stringify(r, null, 2))
     }
   )
 
@@ -159,37 +106,9 @@ export function registerWebSocketTools(mcp: McpServer) {
       }
     },
     async ({ captureId, payload, asBinary }) => {
-      const target = getActiveTarget()
-      if (!target) return err('no active browser target')
-      try {
-        const expr = asBinary
-          ? `(() => {
-              const e = (window.__revWSCapture || [])[${captureId}];
-              if (!e) return 'no-such-capture';
-              if (e.ws.readyState !== 1) return 'not-open:' + e.ws.readyState;
-              const raw = atob(${JSON.stringify(payload)});
-              const buf = new Uint8Array(raw.length);
-              for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
-              e.ws.send(buf);
-              return 'ok';
-            })()`
-          : `(() => {
-              const e = (window.__revWSCapture || [])[${captureId}];
-              if (!e) return 'no-such-capture';
-              if (e.ws.readyState !== 1) return 'not-open:' + e.ws.readyState;
-              e.ws.send(${JSON.stringify(payload)});
-              return 'ok';
-            })()`
-        const r = (await target.dbg.sendCommand('Runtime.evaluate', {
-          expression: expr,
-          returnByValue: true
-        })) as { result: { value?: string } }
-        const v = r.result.value
-        if (v === 'ok') return ok(`sent to ws#${captureId}`)
-        return err(`ws_send failed: ${v}`)
-      } catch (e) {
-        return err(errorMessage(e))
-      }
+      const r = await sendWsFrame(captureId, payload, asBinary ?? false)
+      if (!r.ok) return err(r.error)
+      return ok(r.message)
     }
   )
 }
