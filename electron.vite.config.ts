@@ -9,7 +9,8 @@ export default defineConfig({
       rollupOptions: {
         // node-pty is a native module; it must stay external (its .node binary
         // can't be bundled) and load from node_modules at runtime.
-        external: ['bufferutil', 'utf-8-validate', 'node-pty']
+        // electron-updater is CJS with dynamic requires — bundling breaks it.
+        external: ['bufferutil', 'utf-8-validate', 'node-pty', 'electron-updater']
       }
     },
     resolve: {
