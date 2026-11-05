@@ -99,6 +99,16 @@ export const en = {
   'panel.noWs': 'No WS connections',
   'panel.noFrames': 'No frames',
   'panel.selectConnection': 'Select a connection',
+  'panel.wsSender.title': 'Send frame',
+  'panel.wsSender.enable': 'Capture page sockets',
+  'panel.wsSender.installed': 'Socket capture installed — reload the page to wrap existing sockets',
+  'panel.wsSender.noCaptures': 'No page sockets — enable capture, reload, then send',
+  'panel.wsSender.payload': 'Payload (JSON or text)',
+  'panel.wsSender.send': 'Send',
+  'panel.wsSender.sending': 'Sending…',
+  'panel.wsSender.sent': 'Sent',
+  'panel.wsSender.open': 'open',
+  'panel.wsSender.state': 'state',
   'history.filter': 'Filter by URL or title',
 
   // Traffic
