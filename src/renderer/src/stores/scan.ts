@@ -472,7 +472,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
     stopRequested = true
     for (const w of workers.splice(0)) void w.reset()
     get().pushPhase('scan.log.stopped')
-    set({ currentTool: '중지 — 지금까지 발견으로 보고서 작성 중…' })
+    set({ currentTool: t('scan.status.stopping') })
     try {
       abort?.abort()
     } catch {}
@@ -673,7 +673,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       // manual at every level, by design.
       if (intensity !== 'readonly' && !signal.aborted) {
         pushPhase('scan.log.probeCollect', { mode: intensity })
-        set({ currentTool: 'redteam: 엔드포인트 수집' })
+        set({ currentTool: t('scan.status.collecting') })
         const { finalText: epText } = await runTurnOn(
           transport,
           `finding_list · list_endpoints · list_requests 로 지금까지 기록된 엔드포인트를 중복 없이 모은다(같은 path 는 하나. 단, 쿼리 파라미터가 있는 엔드포인트는 파라미터 이름별 대표 URL 을 쿼리째 유지 — 쿼리가 사라지면 워커의 반사/주입(XSS·SSTI·CMDI) 체크리스트가 아예 생성되지 않는다). HTTP 메서드를 아는 경우 "METHOD URL" 형식으로, 모르면 "GET URL". 최대 30개. 설명 없이 JSON 문자열 배열 한 줄만 출력.`,
