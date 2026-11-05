@@ -44,6 +44,7 @@ export const en = {
   'toolbar.grab': 'Grab an element (screenshot + context → chat & markup)',
   'toolbar.addressPlaceholder': 'https://...',
   'toolbar.theme': 'Theme: {mode} — click to cycle System → Light → Dark',
+  'toolbar.version': 'Rever Browser version',
   'toolbar.theme.dark': 'Dark',
   'toolbar.theme.light': 'White',
   'toolbar.theme.system': 'Com',

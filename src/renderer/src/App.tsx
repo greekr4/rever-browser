@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { version as appVersion } from '../../../package.json'
 
 import { AiActionOverlay } from '@/components/AiActionOverlay'
 import { BookmarkBar } from '@/components/BookmarkBar'
@@ -454,6 +455,12 @@ function App() {
         >
           {lang === 'en' ? 'EN' : '한'}
         </button>
+        <span
+          title={t('toolbar.version')}
+          style={{ flexShrink: 0, marginLeft: 6, marginBottom: 2, fontSize: 10, opacity: 0.55 }}
+        >
+          v{appVersion}
+        </span>
         <button
           className="toolbar-btn"
           type="button"
