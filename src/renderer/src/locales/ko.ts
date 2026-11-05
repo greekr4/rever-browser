@@ -41,6 +41,7 @@ export const ko: Record<TKey, string> = {
   'toolbar.grab': '요소 그랩 (스크린샷 + 컨텍스트 → 채팅·마크업)',
   'toolbar.addressPlaceholder': 'https://...',
   'toolbar.theme': '테마: {mode} — 클릭하면 시스템 → 라이트 → 다크 순환',
+  'toolbar.version': 'Rever Browser 버전',
   'toolbar.theme.dark': '다크',
   'toolbar.theme.light': '화이트',
   'toolbar.theme.system': '컴퓨터',
