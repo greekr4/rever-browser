@@ -1,5 +1,10 @@
 import { app, dialog } from 'electron'
-import { autoUpdater } from 'electron-updater'
+import { createRequire } from 'node:module'
+
+// Main is bundled as ESM ("type": "module"); electron-updater is CJS whose
+// named exports aren't statically detectable, so `import { autoUpdater }`
+// crashes the packaged app at startup (SyntaxError). Load it via require.
+const { autoUpdater } = createRequire(import.meta.url)('electron-updater') as typeof import('electron-updater')
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 const FIRST_CHECK_DELAY_MS = 30_000
