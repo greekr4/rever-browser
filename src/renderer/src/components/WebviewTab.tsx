@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { useHistoryStore } from '@/stores/history'
+import { useT } from '@/stores/i18n'
 import type { Tab } from '@/stores/tabs'
 import { useTabsStore } from '@/stores/tabs'
 import { useScanStore } from '@/stores/scan'
@@ -38,6 +39,7 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
   ref
 ) {
   const wvRef = useRef<Electron.WebviewTag>(null)
+  const tr = useT()
   const updateTab = useTabsStore((s) => s.updateTab)
 
   useImperativeHandle(
@@ -331,12 +333,12 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
               }}
             >
               {scan.status === 'inspecting'
-                ? '● 검사 중'
+                ? tr('scan.tab.scanning')
                 : scan.status === 'done'
-                  ? `✓ 발견 ${scan.findings}`
+                  ? tr('scan.tab.found', { n: scan.findings })
                   : scan.status === 'error'
-                    ? '✕ 오류'
-                    : '… 로딩'}
+                    ? tr('scan.tab.error')
+                    : tr('scan.tab.loading')}
             </span>
           )}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

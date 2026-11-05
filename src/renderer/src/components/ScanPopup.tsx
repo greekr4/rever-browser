@@ -18,18 +18,32 @@ export function ScanPopup() {
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const [placed, setPlaced] = useState(false)
   const drag = useRef<{ dx: number; dy: number } | null>(null)
+  const userMoved = useRef(false)
   const [, tick] = useState(0)
 
-  // Center on first open; seed the target from the active tab if empty.
+  const dockX = (): number => Math.max(20, window.innerWidth - 650)
+
+  // Dock to the right on first open so the tab grid stays visible mid-scan;
+  // the panel is draggable from there.
   useEffect(() => {
     if (!s.visible) return
     if (!placed) {
-      setPos({ x: Math.max(20, window.innerWidth / 2 - 310), y: 90 })
+      setPos({ x: dockX(), y: 90 })
       setPlaced(true)
     }
     if (!s.target) s.setTarget(activeUrl)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.visible])
+
+  // Keep it docked to the right across window resizes (so it never ends up cut
+  // off the right edge) — unless the user has dragged it somewhere themselves.
+  useEffect(() => {
+    const onResize = (): void => {
+      if (!userMoved.current) setPos((p) => ({ x: dockX(), y: p.y }))
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   // Live elapsed clock while running.
   useEffect(() => {
@@ -56,13 +70,13 @@ export function ScanPopup() {
   const [copied, setCopied] = useState(false)
   const [logOpen, setLogOpen] = useState(true)
   const logRef = useRef<HTMLDivElement>(null)
+  // Follow the newest line by default; stop following only once the user
+  // scrolls up to read history (and resume when they scroll back to the bottom).
+  const stick = useRef(true)
 
-  // Auto-scroll the log to the newest line, but only when the user is already
-  // near the bottom — so scrolling up to read history isn't yanked back down.
   useEffect(() => {
     const el = logRef.current
-    if (!el) return
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 60) el.scrollTop = el.scrollHeight
+    if (el && stick.current) el.scrollTop = el.scrollHeight
   }, [s.log.length])
 
   if (!s.visible) return null
@@ -170,7 +184,10 @@ export function ScanPopup() {
     >
       {/* Drag handle / header */}
       <div
-        onMouseDown={(e) => (drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y })}
+        onMouseDown={(e) => {
+          userMoved.current = true
+          drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y }
+        }}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -446,6 +463,10 @@ export function ScanPopup() {
               <div
                 ref={logRef}
                 data-testid="scan-log"
+                onScroll={(e) => {
+                  const el = e.currentTarget
+                  stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+                }}
                 style={{
                   height: 170,
                   overflowY: 'auto',
