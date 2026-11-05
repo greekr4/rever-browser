@@ -67,6 +67,7 @@ import { applyTabProxy, proxyCredentialsForSession, type TabProxyConfig } from '
 import { compileCaptured, executeCli } from './mcp/cli-exec'
 import { formatEvalResult, type EvalReply } from './console-format'
 import { attachDownloads } from './downloads'
+import { initUpdater } from './updater'
 import { registerDownloadsIpc } from './ipc/downloads-ipc'
 import { listMcpTools } from './mcp/bridge'
 import { clearFindingsForSite } from './mcp/tools/findings'
@@ -839,6 +840,7 @@ function installMenu() {
 
 app.whenReady().then(() => {
   installMenu()
+  initUpdater()
 
   // Start the tool server up front rather than on the first agent spawn, and
   // publish its address. The port is OS-assigned, so without this an external

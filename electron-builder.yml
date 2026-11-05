@@ -11,6 +11,13 @@ files:
   - '!**/node_modules/.bin'
 extraMetadata:
   main: out/main/index.js
+# electron-updater reads the generated latest-mac.yml / latest.yml from
+# these GitHub release assets. Auto-update on macOS requires the app to be
+# signed (Squirrel verifies the update's code signature).
+publish:
+  provider: github
+  owner: greekr4
+  repo: rever-browser
 mac:
   target:
     - target: dmg
@@ -20,7 +27,8 @@ mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns
   artifactName: Rever-Browser-${version}-${arch}.${ext}
-  identity: null
+  # identity left unset: electron-builder auto-picks "Developer ID Application"
+  # from the keychain (Squirrel needs it for auto-update).
   darkModeSupport: true
   # http/https + HTML claims make macOS list Rever under
   # System Settings → Desktop & Dock → Default web browser.

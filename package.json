@@ -27,6 +27,7 @@
     "@xterm/xterm": "^6.0.0",
     "ai": "^6",
     "chrome-remote-interface": "^0.33.3",
+    "electron-updater": "^6.8.11",
     "framer-motion": "^12.38.0",
     "node-pty": "^1.1.0",
     "openai": "^6.45.0",
