@@ -55,20 +55,19 @@ Reversing an API in rever-browser is a five-phase loop. The agent moves through 
 
 </div>
 
-## Features
+---
 
-- **Live traffic capture.** Every `Network.*` event from the browsed tab is recorded into a ring buffer. Bodies are fetched lazily, and image/video/font/CSS payloads are skipped to keep it lean.
-- **Pick your agent.** Five agents across four providers: Claude Code and Codex as local ACP binaries, plus Claude, OpenAI, and Grok driven directly through their APIs with your own key. Switch model from one unified picker.
-- **ACP or terminal mode.** Run the structured ACP chat, or drop to a real terminal running the local `claude` CLI with rever's MCP server wired in automatically, so the CLI agent gets the same browser and traffic tools.
-- **Browser automation.** Accessibility snapshots with stable element refs, plus click, hover, type, scroll, drag, canvas draw, clipboard paste, file upload, key press, tab and viewport control, and live screenshots.
-- **Bundle, script & WASM analysis.** Grep, extract, detect the bundler, and deobfuscate captured JavaScript (no re-download) with a `webcrack`-backed deobfuscator; recover original TS/JS from source maps; flag anti-bot "VM" bundles; and disassemble `.wasm` modules to WAT, C-like, or full C. That last part closes the blind spot where request signing is compiled into WebAssembly.
-- **Macros & workflows.** Turn a sequence of tool calls into a named macro that replays deterministically with no LLM in the loop. In-app Macro, Pipeline, and Template editors build these one-click flows, and any captured request exports to a ready-to-run CLI command or Python client.
-- **Grab & markup.** Click any element to capture its screenshot and context (selector, ref, tag, text). The context drops into the chat and the screenshot opens in a markup editor for rectangles, arrows, and freehand notes.
-- **Profiles & cookie import.** Named persistent or incognito profiles, each an isolated cookie/storage jar. Pull a logged-in session from Chrome, Edge, Brave, Arc, Chromium, Vivaldi, Firefox, or Safari.
+## Red Team mode
 
-## Red Team scan
+Point it at a target and it runs the whole offensive sweep on its own — no clicking through it step by step. It **registers a throwaway account and logs in**, discovers the app's pages and API hosts, then opens them as a **grid of tabs it scans in parallel**: each worker drives its own tab — clicking, typing, submitting forms — fires single-shot probes, and logs findings live. A deterministic per-endpoint checklist decides which probe runs where, so coverage doesn't depend on the model's mood. At the end it writes a single findings report (OWASP-style categories, severity, repro).
 
-One click turns the current site into an autonomous, **read-only** security sweep. It discovers the app's pages and API hosts, opens them as parallel background tabs, and runs a sub-agent per tab — then writes a single findings report (OWASP-style categories, severity, repro).
+<div align="center">
+
+<img src="./docs/media/redteam.gif" alt="Red Team mode registers, logs in, and scans a grid of tabs in parallel, driving each one" width="860" />
+
+*Red Team: one target in → register, log in, and scan every page in parallel, with per-tab clicking, typing, and live findings.*
+
+</div>
 
 Three intensities:
 
@@ -76,19 +75,19 @@ Three intensities:
 - **Access** — replay captured requests unchanged + passive security/secret inspection.
 - **Red Team** — adds single-shot mutated probes (payload / path-traversal / CRLF), hidden-path discovery (`.env`, `admin/`, `.git/HEAD`, source maps…), an OWASP category checklist per endpoint, and the exhaustive UI crawl below.
 
-**Exhaustive UI crawl + capture-not-send fence.** At Red Team intensity a deterministic crawler (`ui_crawl`) clicks *every* actionable element once and attributes the request each one fired — so APIs behind unclicked buttons, modals and multi-step forms stop being invisible. A network-layer fence makes it safe: any request that would change server state (`POST`/`PUT`/`PATCH`/`DELETE`, or a logout/revoke path) is captured and answered with a synthetic `204` instead of being sent. The endpoint's shape is recorded; the server is never mutated.
+**Exhaustive UI crawl + capture-not-send fence.** At Red Team intensity a deterministic crawler (`ui_crawl`) clicks *every* actionable element once and attributes the request each one fired — so APIs behind unclicked buttons, modals and multi-step forms stop being invisible. A network-layer fence makes it safe: on your own loopback / lab targets it confirms *real* mutations — SQLi / NoSQLi, SSTI, command injection, BOLA/IDOR, broken auth — so a finding is proven, not guessed; anywhere else, any request that would change server state (`POST`/`PUT`/`PATCH`/`DELETE`, or a logout/revoke path) is answered with a synthetic `204` instead of being sent. The endpoint's shape is recorded; the server is never mutated. Purpose-built probes cover the classes a generic scanner misses: `nosqli_probe` (Mongo/Neo4j operator injection), `idor_probe` (cross-tenant object access), `noauth_probe` (a genuinely cookie-less auth test), `raw_http` (HAProxy `#` path-ACL bypass), plus `grpc_call` and `pickle_gadget`.
 
 Example — the Red Team panel's live activity log and the crawler's button→API map:
 
 ```
-00:03 🎯 Target discovery started — localhost:8080
-00:11 📑 6 pages found → opening tabs
-00:18 🔎 Parallel inspection (6 at once)
+00:03 Target discovery started — localhost:8080
+00:11 6 pages found → opening tabs
+00:18 Parallel inspection (6 at once)
 00:24 [tab3] ui_crawl · elements: 9 — clicked 6, blocked-destructive 2, failed 0, navigated 1, noop 0
-00:31 [tab3] ✓ IDOR on /api/orders/{id} — localhost:8080/orders
-00:52 🕵 Hidden-path discovery (.env, admin, .git…)
-01:20 📝 Writing report
-01:27 ✅ Done — 17 findings
+00:31 [tab3] IDOR on /api/orders/{id} — localhost:8080/orders
+00:52 Hidden-path discovery (.env, admin, .git…)
+01:20 Writing report
+01:27 Done — 17 findings
 ```
 
 ```
@@ -100,6 +99,17 @@ element → API map (tab 3)
 ```
 
 The report exports to Markdown (**Save .md**) or pipes straight into the chat panel (**Send to chat**) for follow-up analysis.
+
+## More features
+
+- **Live traffic capture.** Every `Network.*` event from the browsed tab is recorded into a ring buffer. Bodies are fetched lazily, and image/video/font/CSS payloads are skipped to keep it lean.
+- **Pick your agent.** Five agents across four providers: Claude Code and Codex as local ACP binaries, plus Claude, OpenAI, and Grok driven directly through their APIs with your own key. Switch model from one unified picker.
+- **ACP or terminal mode.** Run the structured ACP chat, or drop to a real terminal running the local `claude` CLI with rever's MCP server wired in automatically, so the CLI agent gets the same browser and traffic tools.
+- **Browser automation.** Accessibility snapshots with stable element refs, plus click, hover, type, scroll, drag, canvas draw, clipboard paste, file upload, key press, tab and viewport control, and live screenshots.
+- **Bundle, script & WASM analysis.** Grep, extract, detect the bundler, and deobfuscate captured JavaScript (no re-download) with a `webcrack`-backed deobfuscator; recover original TS/JS from source maps; flag anti-bot "VM" bundles; and disassemble `.wasm` modules to WAT, C-like, or full C. That last part closes the blind spot where request signing is compiled into WebAssembly.
+- **Macros & workflows.** Turn a sequence of tool calls into a named macro that replays deterministically with no LLM in the loop. In-app Macro, Pipeline, and Template editors build these one-click flows, and any captured request exports to a ready-to-run CLI command or Python client.
+- **Grab & markup.** Click any element to capture its screenshot and context (selector, ref, tag, text). The context drops into the chat and the screenshot opens in a markup editor for rectangles, arrows, and freehand notes.
+- **Profiles & cookie import.** Named persistent or incognito profiles, each an isolated cookie/storage jar. Pull a logged-in session from Chrome, Edge, Brave, Arc, Chromium, Vivaldi, Firefox, or Safari.
 
 ## Token efficiency
 
