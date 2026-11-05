@@ -1,6 +1,5 @@
 import { spawn, type ChildProcessByStdio } from 'node:child_process'
 import { Readable, Writable } from 'node:stream'
-import { delimiter, dirname, isAbsolute } from 'node:path'
 import {
   ClientSideConnection,
   ndJsonStream,
@@ -14,12 +13,15 @@ import {
 import type { WebContents } from 'electron'
 
 import { startMcpServer } from './mcp/server'
-import { extraDirs } from './acp-detect'
 import { modelStateFromSession, type ModelInfo } from './acp-models'
 import { isStaleEmptyTurn } from './acp-turn'
-import { findClaudeCli } from './claude-cli'
 import { fallbackOption } from '../shared/risky-tools'
 import { startTurnPulse } from './providers/turn-pulse'
+
+// agentEnv는 electron을 거의 끌어오지 않는 순수 로직이라 별도 모듈로 분리했다
+// (vitest 직접 임포트용). 기존 임포트 경로(acp-session) 호환을 위해 재수출.
+import { agentEnv } from './agent-env'
+export { agentEnv }
 
 export interface AgentDef {
   id: string
@@ -64,52 +66,6 @@ export function onIdleAcpUpdate(sink: (sessionId: string, n: SessionNotification
 // SessionEntry.lastPromptFailed). The pending user messages are still in the
 // agent's input queue; this just makes the model process them.
 const STALE_TURN_NUDGE = '(continue — answer the previous message)'
-
-// Claude Code CLI가 부모 프로세스에서 물려받은 CLAUDECODE / CLAUDE_CODE_* 변수를
-// 보고 "nested session"으로 판단해 기동을 거부한다 (rever-browser 자체를 Claude
-// Code 세션 안에서 실행한 경우). 에이전트 자식 프로세스는 독립 세션이어야 하므로
-// 해당 변수들을 제거한 env를 만들어 넘긴다.
-export function agentEnv(command: string): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env }
-  // CLAUDE_CODE_EXECUTABLE is not a session marker — it tells claude-agent-acp
-  // which Claude Code binary to spawn, and must survive the scrub below.
-  const isClaudeSessionVar = (name: string): boolean =>
-    name !== 'CLAUDE_CODE_EXECUTABLE' && (name === 'CLAUDECODE' || name.startsWith('CLAUDE_CODE_'))
-  if (process.platform === 'win32') {
-    // Windows는 환경변수 이름이 대소문자를 구분하지 않아 'ClaudeCode' 같은
-    // 변형 표기로도 상속될 수 있다. 대문자로 정규화해 비교한다.
-    for (const key of Object.keys(env)) {
-      if (isClaudeSessionVar(key.toUpperCase())) delete env[key]
-    }
-  } else {
-    for (const key of Object.keys(env)) {
-      if (isClaudeSessionVar(key)) delete env[key]
-    }
-  }
-
-  // Finder에서 실행된 패키지 앱은 로그인 셸의 PATH를 물려받지 못해
-  // `/usr/bin:/bin`만 남는다. 이러면 에이전트 바이너리(절대경로로 넘어옴)의
-  // `#!/usr/bin/env node` shebang이 node를 못 찾아 spawn이 즉시 죽는다.
-  // node는 보통 에이전트 바이너리와 같은 bin/에 있으므로(nvm/volta) 그 디렉터리와
-  // 흔한 설치 위치들을 PATH 앞에 붙여 shebang이 항상 해석되게 한다.
-  // Without this, claude-agent-acp runs the Claude Code CLI bundled in its SDK
-  // dependency (2.1.83 as of acp 0.23.x), which the API refuses for Claude 5
-  // models ("version 2.1.280 or newer is required") and whose `default`
-  // alias is still Opus 4.6. Prefer the user's installed CLI; an explicit
-  // CLAUDE_CODE_EXECUTABLE in the environment always wins.
-  if (!env.CLAUDE_CODE_EXECUTABLE) {
-    const cli = findClaudeCli()
-    if (cli) env.CLAUDE_CODE_EXECUTABLE = cli
-  }
-
-  const prepend: string[] = []
-  if (command && isAbsolute(command)) prepend.push(dirname(command))
-  prepend.push(...extraDirs())
-  const existing = (env.PATH ?? '').split(delimiter).filter(Boolean)
-  const seen = new Set<string>()
-  env.PATH = [...prepend, ...existing].filter((d) => d && !seen.has(d) && seen.add(d)).join(delimiter)
-  return env
-}
 
 export async function spawnAcpSession(
   agentDef: AgentDef,
