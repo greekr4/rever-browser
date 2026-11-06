@@ -6,6 +6,9 @@
   "description": "AI agent browser for web API reverse engineering",
   "license": "MIT",
   "main": "./out/main/index.js",
+  "bin": {
+    "revb": "./bin/revb.mjs"
+  },
   "type": "module",
   "scripts": {
     "postinstall": "bash scripts/patch-electron-name.sh && electron-rebuild -f -w node-pty",

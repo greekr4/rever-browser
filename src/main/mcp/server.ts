@@ -165,7 +165,7 @@ function withActivity(mcp: McpServer, handles: Map<string, ToolToggle>): void {
 
 export function buildMcpServer(opts?: { catalog?: CatalogKind }): McpServer {
   const catalog = opts?.catalog ?? 'full'
-  const mcp = new McpServer({ name: 'rever-traffic', version: '0.1.0' })
+  const mcp = new McpServer({ name: 'rever-traffic', version: app.getVersion() })
   const handles = new Map<string, ToolToggle>()
   withActivity(mcp, handles)
   registerTrafficTools(mcp)
