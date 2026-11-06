@@ -603,8 +603,12 @@ const api = {
     captureList: (): Promise<
       Array<{ id: number; url: string; openedAt: number; readyState: number }> | { error: string }
     > => ipcRenderer.invoke('ws:capture-list'),
-    send: (captureId: number, payload: string): Promise<{ ok: boolean; message?: string; error?: string }> =>
-      ipcRenderer.invoke('ws:send', captureId, payload)
+    send: (
+      captureId: number,
+      payload: string,
+      asBinary?: boolean
+    ): Promise<{ ok: boolean; message?: string; error?: string }> =>
+      ipcRenderer.invoke('ws:send', captureId, payload, asBinary)
   },
   storage: {
     cookies: (urls?: string[]): Promise<{
