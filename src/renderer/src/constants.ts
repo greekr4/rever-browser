@@ -114,7 +114,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
   // version ids). `default` follows the user's own `claude` model setting.
   // Aliases are used instead of version ids so the labels don't drift; the
   // picker reconciles against the live list when the session offers one.
-  { agentId: 'claude-code', modelId: 'default', name: 'Default (your Claude Code setting)' },
+  { agentId: 'claude-code', modelId: 'default', name: 'Default' },
   { agentId: 'claude-code', modelId: 'fable', name: 'Fable' },
   { agentId: 'claude-code', modelId: 'opus', name: 'Opus' },
   { agentId: 'claude-code', modelId: 'sonnet', name: 'Sonnet' },
