@@ -10,6 +10,7 @@ import type {
 import { detectAgents, type AgentProbe } from '../acp-detect'
 import { runAsAgent } from '../chrome-cdp'
 import { probeAgents } from '../agent-probe'
+import { findClaudeCli } from '../claude-cli'
 import { AGENT_CATALOG, catalogAgent } from '../agent-catalog'
 import {
   cancelSession,
@@ -66,7 +67,7 @@ export function registerAcpIpc(): void {
     // (run via the node path the harness passes). Gated behind an env var so it
     // can never affect a normal run; the renderer still only sends an id.
     const fakeScript = process.env.REVER_FAKE_ACP_AGENT
-    if (fakeScript && agent.provider === 'acp') {
+    if (fakeScript && (agent.provider === 'acp' || agent.provider === 'claude-cli')) {
       const node = process.env.REVER_FAKE_ACP_NODE || 'node'
       const scratch = path.join(app.getPath('userData'), 'agent-scratch')
       try {
@@ -74,9 +75,15 @@ export function registerAcpIpc(): void {
       } catch (e) {
         console.warn('[acp:spawn] failed to ensure scratch dir', e)
       }
-      return spawnSession({ id: agent.id, command: node, args: [fakeScript] }, scratch)
+      // The suffix keeps agent-router on the ACP path (it routes 'claude-code' to the CLI provider).
+      return spawnSession({ id: `${agent.id}-fake`, command: node, args: [fakeScript] }, scratch)
     }
     let command = agent.command
+    if (agent.provider === 'claude-cli') {
+      const cli = findClaudeCli()
+      if (!cli) throw new Error('Claude Code CLI not found — install it, then run `claude` once to sign in')
+      command = cli
+    }
     if (agent.provider === 'acp') {
       const [found] = await detectAgents([
         { command: agent.command, fallbackBins: agent.fallbackBins }

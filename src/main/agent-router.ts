@@ -35,6 +35,15 @@ import {
   spawnOpenAiSession
 } from './providers/openai-provider'
 import {
+  cancelClaudeCliSession,
+  getClaudeCliModelState,
+  isClaudeCliSession,
+  killClaudeCliSession,
+  promptClaudeCliSession,
+  setClaudeCliModel,
+  spawnClaudeCliSession
+} from './providers/claude-cli-provider'
+import {
   cancelGlmSession,
   getGlmModelState,
   isGlmSession,
@@ -64,6 +73,8 @@ export async function spawnSession(
   if (agentDef.id === 'openai') return spawnOpenAiSession()
   if (agentDef.id === 'grok') return spawnGrokSession()
   if (agentDef.id === 'glm') return spawnGlmSession()
+  // Claude Code runs as the user's own CLI over stream-json (no ACP adapter).
+  if (agentDef.id === 'claude-code') return spawnClaudeCliSession(agentDef.command, cwd)
   return spawnAcpSession(agentDef, cwd)
 }
 
@@ -84,6 +95,7 @@ export async function promptSession(
     if (isOpenAiSession(sessionId)) return promptOpenAiSession(sessionId, text, tapped)
     if (isGrokSession(sessionId)) return promptGrokSession(sessionId, text, tapped)
     if (isGlmSession(sessionId)) return promptGlmSession(sessionId, text, tapped)
+    if (isClaudeCliSession(sessionId)) return promptClaudeCliSession(sessionId, text, tapped, requestPermission)
     return promptAcpSession(sessionId, text, tapped, requestPermission)
   }
   const res = await route()
@@ -96,6 +108,7 @@ export async function cancelSession(sessionId: string): Promise<void> {
   if (isOpenAiSession(sessionId)) return cancelOpenAiSession(sessionId)
   if (isGrokSession(sessionId)) return cancelGrokSession(sessionId)
   if (isGlmSession(sessionId)) return cancelGlmSession(sessionId)
+  if (isClaudeCliSession(sessionId)) return cancelClaudeCliSession(sessionId)
   return cancelAcpSession(sessionId)
 }
 
@@ -104,6 +117,7 @@ export async function killSession(sessionId: string): Promise<void> {
   if (isOpenAiSession(sessionId)) return killOpenAiSession(sessionId)
   if (isGrokSession(sessionId)) return killGrokSession(sessionId)
   if (isGlmSession(sessionId)) return killGlmSession(sessionId)
+  if (isClaudeCliSession(sessionId)) return killClaudeCliSession(sessionId)
   return killAcpSession(sessionId)
 }
 
@@ -114,6 +128,7 @@ export function sessionModelState(
   if (isOpenAiSession(sessionId)) return getOpenAiModelState(sessionId)
   if (isGrokSession(sessionId)) return getGrokModelState(sessionId)
   if (isGlmSession(sessionId)) return getGlmModelState(sessionId)
+  if (isClaudeCliSession(sessionId)) return getClaudeCliModelState(sessionId)
   return getSessionModelState(sessionId)
 }
 
@@ -122,6 +137,7 @@ export async function setSessionModelRouted(sessionId: string, modelId: string):
   if (isOpenAiSession(sessionId)) return setOpenAiModel(sessionId, modelId)
   if (isGrokSession(sessionId)) return setGrokModel(sessionId, modelId)
   if (isGlmSession(sessionId)) return setGlmModel(sessionId, modelId)
+  if (isClaudeCliSession(sessionId)) return setClaudeCliModel(sessionId, modelId)
   return setSessionModel(sessionId, modelId)
 }
 

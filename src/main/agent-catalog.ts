@@ -6,7 +6,7 @@
 
 export interface CatalogAgent {
   id: string
-  provider: 'acp' | 'anthropic' | 'openai' | 'grok' | 'glm'
+  provider: 'acp' | 'claude-cli' | 'anthropic' | 'openai' | 'grok' | 'glm'
   /** Primary CLI binary to look for on PATH ('' for in-process API providers). */
   command: string
   /** Drop-in forks tried if `command` isn't on PATH. */
@@ -20,13 +20,8 @@ export const AGENT_CATALOG: readonly CatalogAgent[] = [
   { id: 'openai', provider: 'openai', command: '', args: [] },
   { id: 'grok', provider: 'grok', command: '', args: [] },
   { id: 'glm', provider: 'glm', command: '', args: [] },
-  {
-    id: 'claude-code',
-    provider: 'acp',
-    command: 'claude-agent-acp',
-    fallbackBins: ['claude-code-acp'],
-    args: []
-  },
+  // The user's `claude` CLI, driven over stream-json (resolved by findClaudeCli).
+  { id: 'claude-code', provider: 'claude-cli', command: 'claude', args: [] },
   { id: 'codex', provider: 'acp', command: 'codex-acp', args: [] }
 ]
 

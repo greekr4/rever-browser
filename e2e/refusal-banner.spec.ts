@@ -58,6 +58,8 @@ test('provider safety events render a distinct chat banner', async () => {
     for (const lang of ['ko', 'en'] as const) {
       await win.evaluate((l) => {
         localStorage.setItem('rev:agent-onboarded', 'skipped')
+        // The first-run browser-import offer is modal and would block the chat clicks.
+        localStorage.setItem('rev:browser-import-offered', '1')
         localStorage.setItem('rev:lang', l)
       }, lang)
       await win.reload()
