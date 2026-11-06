@@ -4,9 +4,10 @@ import { memo, useEffect, useMemo, useRef, useState, type FormEvent } from 'reac
 import { ACPChatTransport } from '@/ai/acp-transport'
 import { useAcpAutoApprove, setAcpAutoApprove } from '@/ai/acp-permission'
 import { ACP_AGENTS, type ACPAgentID, type CatalogModel } from '@/constants'
-import { ModelPicker } from './ModelPicker'
+import { useAgentModels } from '@/stores/model-catalog'
+import { ChipSelect } from './ChipSelect'
+import { ModelMenu, type MenuModel } from './ModelMenu'
 import { Markdown } from './Markdown'
-import { ProviderIcon } from './ProviderIcon'
 import { ChatHistoryMenu } from './ChatHistoryMenu'
 import { formatOutput } from '@/lib/format-json'
 import { useChatDraft } from '@/stores/chat-draft'
@@ -274,8 +275,12 @@ interface ChatMessageLike {
 
 const MessageItem = memo(function MessageItem({ message }: { message: ChatMessageLike }) {
   return (
-    <div style={{ marginBottom: 16 }} data-testid="chat-message" data-role={message.role}>
-      <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>{message.role}</div>
+    <div
+      style={{ marginBottom: 16 }}
+      className={message.role === 'user' ? 'chat-user-bubble' : undefined}
+      data-testid="chat-message"
+      data-role={message.role}
+    >
       {groupParts(message.parts).map((g) =>
         g.kind === 'text' ? (
           <Markdown key={g.key} text={(g.part as { text: string }).text} />
@@ -302,10 +307,7 @@ const preStyle: React.CSSProperties = {
   wordBreak: 'break-word'
 }
 
-interface ModelEntry {
-  modelId: string
-  name: string
-}
+type ModelEntry = MenuModel
 
 const TOOL_PROFILE_LABEL: Record<ToolProfileId, TKey> = {
   browse: 'tools.profile.browse',
@@ -319,79 +321,44 @@ const TOOL_PROFILE_TIP: Record<ToolProfileId, TKey> = {
 }
 const TOOL_PROFILE_ORDER: readonly ToolProfileId[] = ['browse', 'reverse', 'probe']
 
-// Which company makes the agent's model — shown compactly by the input.
-const AGENT_COMPANY: Record<ACPAgentID, string> = {
-  'claude-code': 'Anthropic',
-  anthropic: 'Anthropic',
-  codex: 'OpenAI',
-  openai: 'OpenAI',
-  grok: 'xAI',
-  glm: 'Z.ai'
-}
-
-function ToolsProfileSegment() {
-  const tr = useT()
-  const profile = useToolProfileStore((s) => s.profile)
-  const setProfile = useToolProfileStore((s) => s.setProfile)
-  return (
-    <span
-      role="group"
-      aria-label={tr('tools.profile.label')}
-      data-testid="tool-profile"
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-    >
-      <span
-        style={{
-          display: 'inline-flex',
-          border: '1px solid var(--border-2)',
-          borderRadius: 4,
-          overflow: 'hidden'
-        }}
-      >
-        {TOOL_PROFILE_ORDER.map((id, index) => {
-          const on = profile === id
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={on}
-              title={tr(TOOL_PROFILE_TIP[id])}
-              data-testid={`tool-profile-${id}`}
-              onClick={() => void setProfile(id)}
-              style={{
-                fontSize: 11,
-                padding: '3px 8px',
-                cursor: 'pointer',
-                border: 'none',
-                borderRight:
-                  index === TOOL_PROFILE_ORDER.length - 1 ? 'none' : '1px solid var(--border-2)',
-                background: on ? 'var(--chip-info-bg)' : 'transparent',
-                color: on ? 'var(--chip-info-text)' : 'inherit'
-              }}
-            >
-              {tr(TOOL_PROFILE_LABEL[id])}
-            </button>
-          )
-        })}
-      </span>
-    </span>
-  )
-}
-
 // Autonomous scan bar above the chat input: URL + page budget + Start. Start
-export function ChatPanel() {
+export interface ChatTabMeta {
+  title: string
+  agentId: ACPAgentID
+  busy: boolean
+}
+
+/**
+ * One chat session. ChatTabs mounts one per tab and hides the inactive ones, so
+ * each keeps its own agent process and stream running.
+ */
+export function ChatPanel({
+  tabId = 'main',
+  active = true,
+  restore = true,
+  onMeta,
+  initialAgent
+}: {
+  /** Agent this tab was opened with (fixed for the tab's life). */
+  initialAgent?: ACPAgentID
+  tabId?: string
+  active?: boolean
+  /** Reopen the most recent saved conversation (only the first tab does). */
+  restore?: boolean
+  onMeta?: (tabId: string, meta: ChatTabMeta) => void
+} = {}) {
   const tr = useT()
   // Restore the most recently used conversation on launch so a reload/restart
   // doesn't drop the last chat. The persist store hydrates synchronously from
   // localStorage, so getState() already has the saved conversations here.
-  const restored = useChatHistory.getState().conversations[0] ?? null
+  const restored = restore ? (useChatHistory.getState().conversations[0] ?? null) : null
 
   // Falls back to the agent picked during first-run onboarding before the
   // hardcoded default, so a machine without claude-agent-acp doesn't land on a
   // dead selection.
   const onboarded = readAgentChoice()
   const [agentId, setAgentId] = useState<ACPAgentID>(
-    restored?.agentId ?? onboarded?.id ?? 'claude-code'
+    initialAgent ?? restored?.agentId ?? onboarded?.id ?? 'claude-code'
   )
   // Absolute path returned by detectAgents(). When set, we pass it to the
   // transport instead of the bare bin name so spawn doesn't depend on the
@@ -404,6 +371,8 @@ export function ChatPanel() {
   // list; reconciled against that list (by id or name) once it loads.
   const [pendingModel, setPendingModel] = useState<CatalogModel | null>(null)
   const [selectedModelName, setSelectedModelName] = useState<string | null>(null)
+  const [effort, setEffort] = useState<string | null>(null)
+  const [fastMode, setFastMode] = useState(false)
   // Set when a model switch is rejected (e.g. an ACP agent that doesn't
   // implement the unstable model-selection extension), so the choice doesn't
   // silently no-op in the UI.
@@ -445,7 +414,7 @@ export function ChatPanel() {
   // (switch agents → fresh chat + torn-down session) and sessionSeq (new /
   // opened conversation) covers every case where we intend to reseed; resolving
   // the binary path must NOT reset the chat, so it stays out of the key.
-  const chatKey = `${agentId}::${sessionSeq}`
+  const chatKey = `${tabId}::${agentId}::${sessionSeq}`
 
   // Tear down the previous ACP session when the agent (and thus transport)
   // changes, so we don't leak the old child process.
@@ -461,6 +430,19 @@ export function ChatPanel() {
     messages: seedMessages
   })
   const busy = status === 'streaming' || status === 'submitted'
+
+  const firstUserText = (() => {
+    const first = messages.find((m) => m.role === 'user')
+    const part = first?.parts.find((p) => p.type === 'text') as { text?: string } | undefined
+    return part?.text?.trim().split('\n')[0] ?? ''
+  })()
+  useEffect(() => {
+    onMeta?.(tabId, {
+      title: firstUserText || (ACP_AGENTS.find((a) => a.id === agentId)?.name ?? agentId),
+      agentId,
+      busy
+    })
+  }, [onMeta, tabId, firstUserText, agentId, busy])
 
   // A turn the agent starts on its own (a background task it said it would
   // wait for just finished) streams into the chat without a new user message.
@@ -499,13 +481,30 @@ export function ChatPanel() {
         setCurrentModel(null)
         return
       }
-      setModels(state.availableModels.map((m) => ({ modelId: m.modelId, name: m.name })))
+      setModels(state.availableModels)
       setCurrentModel(state.currentModelId)
+      setEffort(state.effort ?? null)
+      setFastMode(state.fastMode === true)
     })
     return () => {
       cancelled = true
     }
   }, [status, transport])
+
+  const onChangeOption = async (key: 'effort' | 'fastMode', value: string | boolean) => {
+    const sid = transport.getSessionId()
+    if (!sid) return
+    try {
+      await window.rev.acp.setOption(sid, key, value)
+      const state = await window.rev.acp.modelState(sid)
+      setEffort(state?.effort ?? null)
+      setFastMode(state?.fastMode === true)
+      setModelError(false)
+    } catch (e) {
+      console.error('[acp] setOption failed', e)
+      setModelError(true)
+    }
+  }
 
   const onChangeModel = async (modelId: string) => {
     const sid = transport.getSessionId()
@@ -514,6 +513,9 @@ export function ChatPanel() {
     setModelError(false)
     try {
       await window.rev.acp.setModel(sid, modelId)
+      const state = await window.rev.acp.modelState(sid)
+      setEffort(state?.effort ?? null)
+      setFastMode(state?.fastMode === true)
     } catch (e) {
       console.error('[acp] setModel failed', e)
       setModelError(true)
@@ -552,6 +554,13 @@ export function ChatPanel() {
   }, [pendingModel, models, agentId, currentModel, status, transport])
   const waiting = status === 'submitted'
   const autoApprove = useAcpAutoApprove()
+  // What the composer's model chip shows: the user's pick, else the agent's live model.
+  const modelLabel =
+    selectedModelName ?? models.find((m) => m.modelId === currentModel)?.name ?? currentModel ?? null
+  // Before the session lists its own models, show the agent's live CLI catalog.
+  const catalogModels = useAgentModels(agentId)
+  const toolProfile = useToolProfileStore((s) => s.profile)
+  const setToolProfile = useToolProfileStore((s) => s.setProfile)
   const draftPending = useChatDraft((s) => s.pending)
   const consumeDraft = useChatDraft((s) => s.consume)
 
@@ -593,12 +602,13 @@ export function ChatPanel() {
     setAutoScroll(true)
   }
 
+  // Only the visible tab takes text sent to the chat from elsewhere in the app.
   useEffect(() => {
-    if (draftPending == null) return
+    if (!active || draftPending == null) return
     const text = consumeDraft()
     if (text == null) return
     setInput((prev) => (prev ? `${prev}\n${text}` : text))
-  }, [draftPending, consumeDraft])
+  }, [active, draftPending, consumeDraft])
 
   const isAtBottom = () => {
     const el = scrollRef.current
@@ -661,22 +671,6 @@ export function ChatPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid var(--border-2)' }}>
       <header style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-2)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <ModelPicker
-          agentId={agentId}
-          modelName={selectedModelName}
-          disabled={busy}
-          onSelect={(id, _resolvedPath, modelId, name) => {
-            setSelectedModelName(name)
-            setPendingModel({ agentId: id, modelId, name })
-            // A real agent switch starts a fresh draft (a conversation is bound
-            // to one agent). Same-agent model change keeps the id/chat.
-            if (id === agentId) return
-            currentIdRef.current = null
-            setCurrentId(null)
-            setSeedMessages([])
-            setAgentId(id)
-          }}
-        />
         {modelError && (
           <span
             title={tr('chat.modelSwitchFailed')}
@@ -686,27 +680,6 @@ export function ChatPanel() {
           </span>
         )}
         <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: 12 }}>{status}</span>
-        <ToolsProfileSegment />
-        <button
-          type="button"
-          onClick={() => setAcpAutoApprove(!autoApprove)}
-          title={
-            autoApprove
-              ? 'Tool permissions are auto-approved — click to require manual approval'
-              : 'Tool permissions require manual approval — click to auto-approve'
-          }
-          style={{
-            fontSize: 11,
-            padding: '3px 8px',
-            borderRadius: 4,
-            cursor: 'pointer',
-            background: autoApprove ? 'var(--chip-ok-bg)' : 'var(--chip-warn-bg)',
-            border: `1px solid ${autoApprove ? 'var(--chip-ok-border)' : 'var(--chip-warn-border)'}`,
-            color: autoApprove ? 'var(--chip-ok-text)' : 'var(--chip-warn-text)'
-          }}
-        >
-          {autoApprove ? 'Auto' : 'Manual'}
-        </button>
         <ChatHistoryMenu currentId={currentId} disabled={busy} onOpen={openConversation} />
         <button
           type="button"
@@ -784,39 +757,11 @@ export function ChatPanel() {
         )}
       </div>
 
-      <div
-        data-testid="model-readout"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 5,
-          padding: '7px 12px 3px',
-          fontSize: 11,
-          color: 'var(--text-dim)',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          // The readout + input form are one footer layer, split from the chat
-          // scroll above by this top border + the footer's own background.
-          borderTop: '1px solid var(--border)',
-          background: 'var(--bg-bar)'
-        }}
-      >
-        <ProviderIcon agentId={agentId} size={13} />
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {AGENT_COMPANY[agentId]} ·{' '}
-          {selectedModelName ??
-            models.find((m) => m.modelId === currentModel)?.name ??
-            currentModel ??
-            (ACP_AGENTS.find((a) => a.id === agentId)?.name ?? agentId)}
-        </span>
-      </div>
-
       <form
         onSubmit={onSubmit}
         data-testid="chat-form"
         data-status={status}
-        style={{ display: 'flex', gap: 8, padding: '8px 12px 12px', background: 'var(--bg-bar)', alignItems: 'center' }}
+        className="composer"
       >
         <textarea
           data-testid="chat-input"
@@ -834,40 +779,84 @@ export function ChatPanel() {
           placeholder={tr('chat.placeholder')}
           rows={1}
           style={{
-            flex: 1,
-            padding: '6px 10px',
             resize: 'none',
             lineHeight: '18px',
             maxHeight: INPUT_MAX_HEIGHT,
             // The auto-grow effect flips this to 'auto' once it overflows.
             overflowY: 'hidden',
-            // block, not inline-block — kills the baseline descender gap that
-            // would make the row taller than the buttons next to it.
             display: 'block',
             fontFamily: 'inherit',
-            fontSize: 'inherit',
+            fontSize: 13,
             boxSizing: 'border-box'
           }}
           disabled={busy}
         />
-        {busy && <Spinner />}
-        {busy ? (
-          <button
-            type="button"
-            onClick={() => stop()}
-            style={{
-              background: 'var(--chip-danger-bg)',
-              borderColor: 'var(--chip-danger-border)',
-              color: 'var(--chip-danger-text)'
+        <div className="composer-row">
+          <ChipSelect
+            testId="chat-permission"
+            title={tr('chat.perm.label')}
+            value={autoApprove ? 'auto' : 'manual'}
+            onChange={(v) => setAcpAutoApprove(v === 'auto')}
+            icon={
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            }
+            options={[
+              { value: 'auto', label: tr('chat.perm.auto'), hint: tr('chat.perm.auto.hint') },
+              { value: 'manual', label: tr('chat.perm.manual'), hint: tr('chat.perm.manual.hint') }
+            ]}
+          />
+          <ChipSelect
+            testId="tool-profile"
+            title={tr('tools.profile.label')}
+            value={toolProfile}
+            onChange={(v) => void setToolProfile(v)}
+            icon={
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+              </svg>
+            }
+            options={TOOL_PROFILE_ORDER.map((id) => ({
+              value: id,
+              label: tr(TOOL_PROFILE_LABEL[id]),
+              hint: tr(TOOL_PROFILE_TIP[id]),
+              testId: `tool-profile-${id}`
+            }))}
+          />
+          <span style={{ flex: 1 }} />
+          <ModelMenu
+            agentId={agentId}
+            // Before the session exists, offer the static catalog so a model can be picked up front.
+            models={models.length ? models : catalogModels}
+            currentModelId={currentModel ?? pendingModel?.modelId ?? null}
+            label={modelLabel ?? (ACP_AGENTS.find((a) => a.id === agentId)?.name ?? agentId)}
+            effort={effort}
+            fastMode={fastMode}
+            live={!!transport.getSessionId()}
+            disabled={busy}
+            onModel={(m) => {
+              setSelectedModelName(m.name)
+              setPendingModel({ agentId, modelId: m.modelId, name: m.name })
             }}
-          >
-            Stop
-          </button>
-        ) : (
-          <button type="submit" disabled={!input.trim()}>
-            Send
-          </button>
-        )}
+            onEffort={(level) => void onChangeOption('effort', level)}
+            onFastMode={(on) => void onChangeOption('fastMode', on)}
+          />
+          {busy && <Spinner />}
+          {busy ? (
+            <button type="button" className="composer-send" onClick={() => stop()} title={tr('chat.stop')} aria-label={tr('chat.stop')}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="5" y="5" width="14" height="14" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button type="submit" className="composer-send" disabled={!input.trim()} title={tr('chat.send')} aria-label={tr('chat.send')}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 19V5M5 12l7-7 7 7" />
+              </svg>
+            </button>
+          )}
+        </div>
       </form>
     </div>
   )

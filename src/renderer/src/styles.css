@@ -319,6 +319,128 @@ button:disabled { opacity: 0.5; cursor: default; }
 .chrome-menu-sep { height: 1px; margin: 6px 0; background: var(--border); }
 .chrome-menu-foot { padding: 6px 16px 2px; color: var(--text-dim); font-size: 11px; }
 
+/* Chat composer: one rounded card holding the input and its option chips. */
+.composer {
+  margin: 0 12px 12px;
+  padding: 10px 12px 8px;
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.composer:focus-within { border-color: var(--accent-border); }
+.composer { container-type: inline-size; }
+/* Narrow panel: option chips drop to icon-only (label stays in title/aria-label) so the model name keeps room. */
+@container (max-width: 360px) {
+  .composer-chip.collapsible > span:not([aria-hidden]) { display: none; }
+}
+.composer textarea {
+  border: none;
+  background: transparent;
+  outline: none;
+  padding: 2px 2px;
+  color: var(--text);
+}
+.composer-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+/* Chips shrink (label ellipsis) before the send button is pushed out of the card. */
+.composer-row > * { min-width: 0; }
+.composer-chip {
+  height: 28px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.composer-chip > span { overflow: hidden; text-overflow: ellipsis; }
+.composer-chip > svg, .composer-chip > span[aria-hidden] { flex-shrink: 0; }
+.composer-chip:hover:not(:disabled),
+.composer-chip[aria-expanded='true'] { background: var(--chrome-hover); color: var(--text); }
+.composer-chip.warn { color: var(--chip-warn-text); }
+.composer-menu { position: absolute; bottom: calc(100% + 6px); left: 0; top: auto; min-width: 240px; }
+.composer-menu-item { height: auto; min-height: 40px; padding: 6px 14px; }
+.composer-menu-hint { font-size: 11px; color: var(--text-dim); white-space: normal; }
+.composer-send {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+}
+.composer-send:hover:not(:disabled) { background: var(--text-2); }
+.composer-send:disabled { opacity: 0.3; }
+.chat-user-bubble {
+  width: fit-content;
+  max-width: 85%;
+  margin-left: auto;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--surface-3);
+  overflow-wrap: anywhere;
+}
+.chat-user-bubble .md p:first-child { margin-top: 0; }
+.chat-user-bubble .md p:last-child { margin-bottom: 0; }
+
+/* Composer model menu (one agent's models + effort + fast mode). */
+.model-menu { position: fixed; padding: 6px 0; max-height: 70vh; display: flex; flex-direction: column; }
+.model-menu-search { display: flex; align-items: center; gap: 8px; margin: 2px 8px 6px; padding: 0 10px; height: 32px; border-radius: 8px; background: var(--surface-2); color: var(--text-dim); }
+.model-menu-search input { flex: 1; min-width: 0; border: none; background: transparent; outline: none; color: var(--text); font-size: 13px; padding: 0; }
+.model-menu-list { overflow-y: auto; min-height: 0; padding: 0 6px; }
+.model-menu-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: none; border-radius: 8px; background: transparent; color: var(--text); text-align: left; font-size: 13px; }
+.model-menu-row:hover:not(:disabled), .model-menu-row[aria-checked='true'] { background: var(--chrome-hover); }
+.model-menu-option { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 10px 6px 14px; white-space: nowrap; font-size: 12px; color: var(--text-2); }
+.effort-seg { display: inline-flex; gap: 1px; flex-wrap: nowrap; justify-content: flex-end; }
+.effort-seg button { padding: 3px 6px; white-space: nowrap; border: none; border-radius: 6px; background: transparent; color: var(--text-2); font-size: 12px; }
+.effort-seg button:hover:not(:disabled) { background: var(--chrome-hover); }
+.effort-seg button[aria-checked='true'] { background: var(--surface-3); color: var(--text); font-weight: 600; }
+input.switch { appearance: none; width: 30px; height: 18px; border-radius: 9px; background: var(--border-3); position: relative; cursor: pointer; border: none; margin: 0; }
+input.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+input.switch:checked { background: var(--accent); }
+input.switch:checked::after { left: 14px; }
+input.switch:disabled { opacity: 0.4; cursor: default; }
+
+/* New-tab agent row: name left, status pushed right. */
+.new-tab-agent > span:last-child { margin-left: auto; }
+
+/* Chat session tabs (one agent session each). */
+.chat-tabs { display: flex; align-items: center; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; overflow: hidden; }
+.chat-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 180px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  flex-shrink: 1;
+}
+.chat-tab:hover { background: var(--chrome-hover); }
+.chat-tab[aria-selected='true'] { background: var(--surface-3); color: var(--text); }
+.chat-tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.chat-tab-busy { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; animation: chat-tab-pulse 1s ease-in-out infinite; }
+@keyframes chat-tab-pulse { 50% { opacity: 0.3; } }
+
 /* Proxy popover — keep the focus ring inside each field so it can't overflow
    the popover's rounded edge (fields sit flush against the padding edge). */
 .proxy-popover input,

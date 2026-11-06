@@ -21,7 +21,7 @@ import { CopyToast } from '@/components/CopyToast'
 import { PageEventToast } from '@/components/PageEventToast'
 import { OnboardingModal } from '@/components/OnboardingModal'
 import { BrowserImportModal, useBrowserImport } from '@/components/BrowserImportModal'
-import { ChatPanel } from '@/components/chat/ChatPanel'
+import { ChatTabs } from '@/components/chat/ChatTabs'
 import { TerminalPanel } from '@/components/chat/TerminalPanel'
 import { requestPermissionFromUser } from '@/ai/acp-permission'
 import { normalizeAddress } from '@/lib/url'
@@ -54,6 +54,8 @@ const SHOW_AI_ACTIVITY_OVERLAY = false
 
 // The ⋮ menu's Embedded/External switch is hidden; External mode code stays. Flip to bring it back.
 const SHOW_BROWSER_MODE = false
+// The Chat / Terminal (CLI) switch is hidden: chat now drives the claude CLI itself. TerminalPanel code stays.
+const SHOW_TERMINAL_TAB = false
 
 function App() {
   useCdpEvents()
@@ -735,25 +737,27 @@ function App() {
             ['--chat-w' as never]: `${chat.width}px`
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              gap: 4,
-              padding: '6px 8px',
-              borderBottom: '1px solid var(--border)',
-              flexShrink: 0
-            }}
-          >
-            <AgentModeTab label={t('agent.chat')} active={agentMode === 'acp'} onClick={() => setAgentMode('acp')} />
-            <AgentModeTab label={t('agent.terminal')} active={agentMode === 'cli'} onClick={() => setAgentMode('cli')} />
-          </div>
-          {/* Keep ChatPanel mounted (preserves ACP session) but hidden in CLI
+          {SHOW_TERMINAL_TAB && (
+            <div
+              style={{
+                display: 'flex',
+                gap: 4,
+                padding: '6px 8px',
+                borderBottom: '1px solid var(--border)',
+                flexShrink: 0
+              }}
+            >
+              <AgentModeTab label={t('agent.chat')} active={agentMode === 'acp'} onClick={() => setAgentMode('acp')} />
+              <AgentModeTab label={t('agent.terminal')} active={agentMode === 'cli'} onClick={() => setAgentMode('cli')} />
+            </div>
+          )}
+          {/* Keep the chat tabs mounted (preserves agent sessions) but hidden in CLI
               mode; mount the terminal only while selected so the PTY is killed
               when you switch away. */}
-          <div style={{ flex: 1, minHeight: 0, display: agentMode === 'acp' ? 'flex' : 'none', flexDirection: 'column' }}>
-            <ChatPanel />
+          <div style={{ flex: 1, minHeight: 0, display: agentMode === 'acp' || !SHOW_TERMINAL_TAB ? 'flex' : 'none', flexDirection: 'column' }}>
+            <ChatTabs />
           </div>
-          {agentMode === 'cli' && (
+          {SHOW_TERMINAL_TAB && agentMode === 'cli' && (
             <div style={{ flex: 1, minHeight: 0 }}>
               <TerminalPanel />
             </div>

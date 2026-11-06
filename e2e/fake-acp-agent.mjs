@@ -63,6 +63,17 @@ class FakeAgent {
       return { stopReason: 'end_turn' }
     }
 
+    // A turn with reasoning + one tool call, for screenshots of the work block.
+    if (text.includes('[[E2E:TOOLS]]')) {
+      const up = (update) => this.connection.sessionUpdate({ sessionId: params.sessionId, update })
+      await up({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Check the captured traffic first.' } })
+      await up({ sessionUpdate: 'tool_call', toolCallId: 't1', title: 'mcp__rever-traffic__list_requests', rawInput: { limit: 20 } })
+      await up({ sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'completed', rawOutput: '[{"method":"POST","url":"/api/v3/login"}]' })
+      await say('The login call is **POST /api/v3/login**. It returns an HS256 JWT stored in `localStorage["auth.token"]`.')
+      await flush()
+      return { stopReason: 'end_turn' }
+    }
+
     await say('Hello from the fake ACP agent.')
     await flush()
     return { stopReason: 'end_turn' }

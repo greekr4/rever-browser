@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   ACP_AGENTS,
-  MODEL_CATALOG,
   type ACPAgentDef,
   type ACPAgentID,
   type CatalogModel
 } from '@/constants'
 import type { TKey } from '@/locales/en'
+import { useAllAgentModels } from '@/stores/model-catalog'
 import { useT } from '@/stores/i18n'
 
 import type { AgentHealth, AgentHealthStatus } from '../../../../preload'
@@ -46,9 +46,13 @@ interface ModelPickerProps {
   modelName: string | null
   onSelect: (agentId: ACPAgentID, resolvedPath: string, modelId: string, name: string) => void
   disabled?: boolean
+  /** Render as the chat tabs' "+" button: lists agents only; the model is picked inside the session. */
+  newTab?: boolean
+  /** newTab mode: a ready agent was clicked. */
+  onPickAgent?: (agentId: ACPAgentID) => void
 }
 
-export function ModelPicker({ agentId, modelName, onSelect, disabled }: ModelPickerProps) {
+export function ModelPicker({ agentId, modelName, onSelect, disabled, newTab, onPickAgent }: ModelPickerProps) {
   const tr = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -59,6 +63,18 @@ export function ModelPicker({ agentId, modelName, onSelect, disabled }: ModelPic
   const [copied, setCopied] = useState<string | null>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  // Fixed placement inside the chat column: an absolute popover got clipped by its overflow.
+  const [fixedPos, setFixedPos] = useState<React.CSSProperties | null>(null)
+  const openPicker = (): void => {
+    if (!open && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect()
+      const col = triggerRef.current.closest('aside')?.getBoundingClientRect() ?? { left: 0, right: window.innerWidth }
+      const width = Math.min(320, col.right - col.left - 16)
+      const left = Math.max(col.left + 8, Math.min(r.left, col.right - width - 8))
+      setFixedPos({ position: 'fixed', boxSizing: 'border-box', top: r.bottom + 6, left, width, maxHeight: window.innerHeight - r.bottom - 18 })
+    }
+    setOpen((v) => !v)
+  }
 
   const scan = async () => {
     setLoading(true)
@@ -101,10 +117,11 @@ export function ModelPicker({ agentId, modelName, onSelect, disabled }: ModelPic
 
   // Group the catalog by agent, preserving catalog order, and drop rows the
   // search query doesn't match (by model name or agent name).
+  const catalog = useAllAgentModels()
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase()
     const byAgent = new Map<ACPAgentID, CatalogModel[]>()
-    for (const m of MODEL_CATALOG) {
+    for (const m of catalog) {
       const def = ACP_AGENTS.find((a) => a.id === m.agentId)
       if (!def) continue
       const hit =
@@ -114,11 +131,12 @@ export function ModelPicker({ agentId, modelName, onSelect, disabled }: ModelPic
       list.push(m)
       byAgent.set(m.agentId, list)
     }
-    return ACP_AGENTS.filter((a) => byAgent.has(a.id)).map((a) => ({
-      def: a,
-      models: byAgent.get(a.id) as CatalogModel[]
-    }))
-  }, [query])
+    const ready = (id: string): number => (health[id]?.status === 'ready' ? 0 : 1)
+    // Usable agents first; ones still needing a key or install sink to the bottom (stable within each).
+    return ACP_AGENTS.filter((a) => byAgent.has(a.id))
+      .map((a) => ({ def: a, models: byAgent.get(a.id) as CatalogModel[] }))
+      .sort((x, y) => ready(x.def.id) - ready(y.def.id))
+  }, [query, health, catalog])
 
   const choose = (def: ACPAgentDef, m: CatalogModel) => {
     if (health[def.id]?.status !== 'ready') return
@@ -147,33 +165,57 @@ export function ModelPicker({ agentId, modelName, onSelect, disabled }: ModelPic
 
   return (
     <div style={{ position: 'relative' }}>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        disabled={disabled}
-        style={triggerStyle}
-        title={tr('chat.chooseAgent')}
-      >
-        <span style={iconChip}>
-          <ProviderIcon agentId={selectedDef.id} size={14} fallback={selectedDef.icon} />
-        </span>
-        <span style={{ fontWeight: 500, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {triggerLabel}
-        </span>
-        <span style={{ ...statusDot, background: STATUS_COLOR[selectedStatus] }} />
-        <span style={{ opacity: 0.6, fontSize: 10 }}>▾</span>
-      </button>
+      {newTab ? (
+        <button
+          ref={triggerRef}
+          type="button"
+          className="chrome-icon-btn small"
+          onClick={openPicker}
+          disabled={disabled}
+          aria-expanded={open}
+          title={tr('chat.newTab')}
+          aria-label={tr('chat.newTab')}
+          data-testid="chat-tab-new"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      ) : (
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={openPicker}
+          disabled={disabled}
+          aria-expanded={open}
+          style={triggerStyle}
+          title={tr('chat.chooseAgent')}
+        >
+          <span style={iconChip}>
+            <ProviderIcon agentId={selectedDef.id} size={14} fallback={selectedDef.icon} />
+          </span>
+          <span style={{ fontWeight: 500, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {triggerLabel}
+          </span>
+          <span style={{ ...statusDot, background: STATUS_COLOR[selectedStatus] }} />
+          <span style={{ opacity: 0.6, fontSize: 10 }}>▾</span>
+        </button>
+      )}
 
       {open && (
-        <div ref={popoverRef} style={popoverStyle}>
-          <input
-            autoFocus
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={tr('model.search')}
-            style={searchStyle}
-          />
+        <div
+          ref={popoverRef}
+          style={fixedPos ? { ...popoverStyle, ...fixedPos } : popoverStyle}
+        >
+          {!newTab && (
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={tr('model.search')}
+              style={searchStyle}
+            />
+          )}
           <div style={popoverHeader}>
             <span style={{ fontSize: 11, opacity: 0.6 }}>
               {loading ? tr('onboard.scanning') : tr('onboard.ready', { n: readyCount })}
@@ -188,6 +230,11 @@ export function ModelPicker({ agentId, modelName, onSelect, disabled }: ModelPic
               const statusLabel = h?.auto
                 ? tr('onboard.status.auto')
                 : tr(`onboard.status.${status}` as TKey)
+              // The new-tab list only needs to say which agents can be opened.
+              const statusText =
+                newTab && ready
+                  ? tr('chat.agentConnected')
+                  : `${statusLabel}${h?.plan && h.plan !== 'api-key' ? ` · ${tr('onboard.plan', { plan: h.plan })}` : ''}`
               const hint =
                 status === 'not-installed'
                   ? { title: tr('onboard.installWith'), cmd: def.installHint }
@@ -197,7 +244,17 @@ export function ModelPicker({ agentId, modelName, onSelect, disabled }: ModelPic
 
               return (
                 <div key={def.id}>
-                  <div style={groupHeader}>
+                  {newTab && ready ? (
+                    <button
+                      type="button"
+                      data-testid={`new-tab-agent-${def.id}`}
+                      onClick={() => {
+                        onPickAgent?.(def.id)
+                        setOpen(false)
+                      }}
+                      className="new-tab-agent"
+                      style={{ ...modelRow, ...groupHeader, width: '100%', padding: '8px 8px', justifyContent: 'flex-start' }}
+                    >
                     <span style={groupIcon}>
                       <ProviderIcon agentId={def.id} size={12} fallback={def.icon} />
                     </span>
@@ -205,17 +262,27 @@ export function ModelPicker({ agentId, modelName, onSelect, disabled }: ModelPic
                       {def.name}
                     </span>
                     <span style={{ fontSize: 10, color: STATUS_COLOR[status] }}>
-                      {statusLabel}
-                      {h?.plan && h.plan !== 'api-key'
-                        ? ` · ${tr('onboard.plan', { plan: h.plan })}`
-                        : ''}
+                      {statusText}
                     </span>
-                  </div>
+                    </button>
+                  ) : (
+                    <div style={groupHeader}>
+                    <span style={groupIcon}>
+                      <ProviderIcon agentId={def.id} size={12} fallback={def.icon} />
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.3 }}>
+                      {def.name}
+                    </span>
+                    <span style={{ fontSize: 10, color: STATUS_COLOR[status] }}>
+                      {statusText}
+                    </span>
+                    </div>
+                  )}
 
                   {ready ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    !newTab && <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       {models.map((m) => {
-                        const active = def.id === agentId && m.name === modelName
+                        const active = !newTab && def.id === agentId && m.name === modelName
                         return (
                           <button
                             key={`${def.id}:${m.modelId}`}
@@ -319,6 +386,7 @@ const popoverStyle: React.CSSProperties = {
   width: 'min(320px, calc(var(--chat-w, 100vw) - 24px))',
   maxHeight: '70vh',
   overflowY: 'auto',
+  overflowX: 'hidden',
   background: 'var(--bg-bar)',
   border: '1px solid var(--border)',
   borderRadius: 8,
