@@ -164,6 +164,8 @@ export const ko: Record<TKey, string> = {
   'chat.send': '보내기',
   'chat.stop': '정지',
   'chat.agentConnected': '연결됨',
+  'md.copy': '복사',
+  'md.copied': '복사됨',
   'chat.tabs': '채팅 세션',
   'chat.newTab': '새 세션',
   'chat.closeTab': '세션 닫기 (에이전트 종료)',

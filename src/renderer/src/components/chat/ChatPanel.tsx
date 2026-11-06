@@ -655,7 +655,7 @@ export function ChatPanel({
 
   // Auto-grow the input up to 4 lines; beyond that it scrolls.
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const INPUT_MAX_HEIGHT = 18 * 4 + 14 // 4 lines × line-height + padding + border
+  const INPUT_MAX_HEIGHT = 20 * 4 + 14 // 4 lines × line-height + padding + border
   useEffect(() => {
     const el = inputRef.current
     if (!el) return
@@ -705,7 +705,8 @@ export function ChatPanel({
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          style={{ position: 'absolute', inset: 0, overflowY: 'auto', padding: 12, scrollbarGutter: 'stable' }}
+          className="chat-log"
+          style={{ position: 'absolute', inset: 0, overflowY: 'auto', padding: '14px 16px', scrollbarGutter: 'stable' }}
         >
           {messages.length === 0 && (
             <p style={{ opacity: 0.5 }}>
@@ -780,13 +781,13 @@ export function ChatPanel({
           rows={1}
           style={{
             resize: 'none',
-            lineHeight: '18px',
             maxHeight: INPUT_MAX_HEIGHT,
             // The auto-grow effect flips this to 'auto' once it overflows.
             overflowY: 'hidden',
             display: 'block',
             fontFamily: 'inherit',
-            fontSize: 13,
+            fontSize: 14,
+            lineHeight: '20px',
             boxSizing: 'border-box'
           }}
           disabled={busy}

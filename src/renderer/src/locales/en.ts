@@ -177,6 +177,8 @@ export const en = {
   'chat.send': 'Send',
   'chat.stop': 'Stop',
   'chat.agentConnected': 'Connected',
+  'md.copy': 'Copy',
+  'md.copied': 'Copied',
   'chat.tabs': 'Chat sessions',
   'chat.newTab': 'New session',
   'chat.closeTab': 'Close session (stops its agent)',

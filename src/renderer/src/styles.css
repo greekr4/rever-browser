@@ -539,9 +539,9 @@ input.switch:disabled { opacity: 0.4; cursor: default; }
   color: var(--text-2);
 }
 
+.md-table { overflow-x: auto; margin: 0.4em 0 0.7em; }
 .md table {
   border-collapse: collapse;
-  margin: 0.4em 0 0.7em;
   font-size: 12px;
   width: 100%;
 }
@@ -554,6 +554,46 @@ input.switch:disabled { opacity: 0.4; cursor: default; }
 .md th { background: var(--bg-bar); font-weight: 600; }
 
 .md hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
+
+/* Code block copy button: appears on hover so it never sits on top of the code. */
+.code-block { position: relative; }
+.code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  color: var(--text-2);
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.code-block:hover .code-copy, .code-copy:focus-visible { opacity: 1; }
+
+/* Chat transcript typography: larger, airier than the dense panels that also use .md. */
+.chat-log { font-size: 14px; }
+.chat-log .md { line-height: 1.65; }
+.chat-log .md p { margin: 0 0 0.75em; }
+.chat-log .md h1, .chat-log .md h2, .chat-log .md h3, .chat-log .md h4 { margin: 1.2em 0 0.5em; font-weight: 650; line-height: 1.35; }
+.chat-log .md > :first-child { margin-top: 0; }
+.chat-log .md h1 { font-size: 1.28em; }
+.chat-log .md h2 { font-size: 1.16em; }
+.chat-log .md h3 { font-size: 1.04em; }
+.chat-log .md ul, .chat-log .md ol { margin: 0.35em 0 0.8em; padding-left: 1.3em; }
+.chat-log .md li { margin: 0.3em 0; }
+.chat-log .md li::marker { color: var(--text-dim); }
+.chat-log .md code { font-size: 0.86em; padding: 0.12em 0.4em; border-radius: 5px; }
+.chat-log .md pre { border-radius: 8px; padding: 12px 14px; font-size: 12.5px; line-height: 1.55; margin: 0.6em 0 0.9em; }
+.chat-log .md pre code { font-size: inherit; padding: 0; }
+.chat-log .md-table { border: 1px solid var(--border); border-radius: 8px; margin: 0.6em 0 0.9em; }
+.chat-log .md table { font-size: 13px; }
+.chat-log .md th, .chat-log .md td { border: none; border-bottom: 1px solid var(--border); padding: 7px 10px; }
+.chat-log .md tr:last-child td { border-bottom: none; }
+.chat-log .md th { background: var(--surface-2); color: var(--text-2); font-weight: 600; }
+.chat-log .md blockquote { border-left: 3px solid var(--accent-border); margin: 0.6em 0 0.9em; padding: 0.2em 0 0.2em 0.9em; color: var(--text-2); }
+.chat-log .chat-user-bubble { line-height: 1.55; }
 
 /* Thinking dots */
 .thinking-dot {
