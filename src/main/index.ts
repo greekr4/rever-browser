@@ -15,6 +15,7 @@ import {
 } from './chrome-cdp'
 import { registerStorageIpc } from './ipc/storage-ipc'
 import { registerAcpIpc } from './ipc/acp-ipc'
+import { prewarmCatalogs } from './model-catalog'
 import { registerTerminalIpc } from './ipc/terminal-ipc'
 import { registerDialogIpc } from './ipc/dialog-ipc'
 import { registerExternalIpc } from './ipc/external-ipc'
@@ -1088,6 +1089,8 @@ app.whenReady().then(() => {
   )
 
   registerAcpIpc()
+  // Background: list each CLI agent's current models (no prompt, no tokens).
+  prewarmCatalogs()
 
   ipcMain.handle('picker:start', () => startPicker())
   ipcMain.handle('picker:stop', () => stopPicker())

@@ -11,6 +11,7 @@ import { detectAgents, type AgentProbe } from '../acp-detect'
 import { runAsAgent } from '../chrome-cdp'
 import { probeAgents } from '../agent-probe'
 import { findClaudeCli } from '../claude-cli'
+import { cachedCatalog, refreshCatalog } from '../model-catalog'
 import { AGENT_CATALOG, catalogAgent } from '../agent-catalog'
 import {
   cancelSession,
@@ -164,6 +165,9 @@ export function registerAcpIpc(): void {
     return killSession(sessionId)
   })
   ipcMain.handle('acp:model-state', (_event, sessionId: string) => sessionModelState(sessionId))
+  // Live model lists from the agents' own CLIs (cached on disk, refreshed each launch).
+  ipcMain.handle('models:catalog', (_event, agentId: string) => cachedCatalog(String(agentId)))
+  ipcMain.handle('models:refresh', (_event, agentId: string) => refreshCatalog(String(agentId)))
   ipcMain.handle('acp:set-option', async (_event, sessionId: string, key: unknown, value: unknown) => {
     // Renderer input: accept only the two known keys and their value types.
     if (key === 'effort' && typeof value === 'string') return setSessionOption(sessionId, key, value)
