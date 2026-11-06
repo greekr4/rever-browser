@@ -3,11 +3,13 @@ import { version as appVersion } from '../../../package.json'
 
 import { AiActionOverlay } from '@/components/AiActionOverlay'
 import { BookmarkBar } from '@/components/BookmarkBar'
+import { AppMenu } from '@/components/AppMenu'
 import { BotCheckButton } from '@/components/BotCheckButton'
 import { DetailDrawer } from '@/components/DetailDrawer'
 import { FloatingChips } from '@/components/FloatingChips'
 import { IpBadge } from '@/components/IpBadge'
 import { MarkupEditor } from '@/components/MarkupEditor'
+import { ProfileMenu } from '@/components/ProfileMenu'
 import { ProxyButton } from '@/components/ProxyButton'
 import { ScreencastView } from '@/components/ScreencastView'
 import { TabBar } from '@/components/TabBar'
@@ -49,6 +51,9 @@ const IS_MAC = typeof navigator !== 'undefined' && navigator.userAgent.includes(
 
 // AI activity floating panel (AiActionOverlay) — off for now, code kept intact.
 const SHOW_AI_ACTIVITY_OVERLAY = false
+
+// The ⋮ menu's Embedded/External switch is hidden; External mode code stays. Flip to bring it back.
+const SHOW_BROWSER_MODE = false
 
 function App() {
   useCdpEvents()
@@ -370,6 +375,7 @@ function App() {
       {markupImage && (
         <MarkupEditor imageDataUrl={markupImage} onClose={() => setMarkupImage(null)} />
       )}
+      {/* Chrome-style tab strip: tabs only. Settings live in the toolbar's ⋮ menu. */}
       <div
         style={
           {
@@ -377,8 +383,7 @@ function App() {
             alignItems: 'flex-end',
             height: 40,
             flexShrink: 0,
-            background: 'var(--bg-bar)',
-            borderBottom: '1px solid var(--border)',
+            background: 'var(--chrome-frame)',
             paddingLeft: IS_MAC ? 78 : 8,
             paddingRight: IS_MAC ? 8 : 140,
             WebkitAppRegion: 'drag'
@@ -392,108 +397,6 @@ function App() {
             rever-browser — External Chrome
           </span>
         )}
-        <IpBadge refreshSignal={ipRefresh} />
-        {/* Page (webview) theme, co-located with the app theme. */}
-        {browserMode === 'embedded' && (
-          <button
-            className="toolbar-btn"
-            type="button"
-            onClick={() => {
-              if (activeOrigin) cycleTheme(activeOrigin)
-            }}
-            disabled={!activeOrigin}
-            title={
-              activeOrigin
-                ? `Page theme for ${activeOrigin} — Auto follows the app theme. Click to cycle Auto → Light → Dark`
-                : 'No site loaded'
-            }
-            style={{
-              flexShrink: 0,
-              marginLeft: 8,
-              marginBottom: 2,
-              WebkitAppRegion: 'no-drag',
-              background:
-                activeTheme === 'light' ? '#eee' : activeTheme === 'dark' ? '#222' : undefined,
-              color: activeTheme === 'light' ? '#111' : activeTheme === 'dark' ? '#eee' : undefined,
-              borderColor:
-                activeTheme === 'light' ? '#aaa' : activeTheme === 'dark' ? '#555' : undefined
-            } as React.CSSProperties}
-          >
-            {activeTheme === 'auto' ? 'Auto' : activeTheme === 'light' ? 'Light' : 'Dark'}
-          </button>
-        )}
-        <button
-          className="toolbar-btn"
-          type="button"
-          onClick={() => cycleAppTheme()}
-          title={t('toolbar.theme', { mode: themeMode })}
-          style={
-            {
-              flexShrink: 0,
-              marginLeft: 4,
-              marginBottom: 2,
-              WebkitAppRegion: 'no-drag'
-            } as React.CSSProperties
-          }
-        >
-          <span style={{ fontSize: 11, fontWeight: 500 }}>{t(`toolbar.theme.${themeMode}`)}</span>
-        </button>
-        <button
-          className="toolbar-btn"
-          type="button"
-          onClick={() => setLang(lang === 'en' ? 'ko' : 'en')}
-          title={t('lang.label')}
-          style={
-            {
-              flexShrink: 0,
-              marginLeft: 4,
-              marginBottom: 2,
-              fontSize: 11,
-              WebkitAppRegion: 'no-drag'
-            } as React.CSSProperties
-          }
-        >
-          {lang === 'en' ? 'EN' : '한'}
-        </button>
-        <span
-          title={t('toolbar.version')}
-          style={{ flexShrink: 0, marginLeft: 6, marginBottom: 2, fontSize: 10, opacity: 0.55 }}
-        >
-          v{appVersion}
-        </span>
-        <button
-          className="toolbar-btn"
-          type="button"
-          onClick={() => toggleNotify()}
-          title={notifyEnabled ? t('notify.on') : t('notify.off')}
-          aria-pressed={notifyEnabled}
-          style={
-            {
-              flexShrink: 0,
-              marginLeft: 4,
-              marginBottom: 2,
-              display: 'inline-flex',
-              alignItems: 'center',
-              opacity: notifyEnabled ? 1 : 0.55,
-              WebkitAppRegion: 'no-drag'
-            } as React.CSSProperties
-          }
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-            {!notifyEnabled && <line x1="3" y1="3" x2="21" y2="21" />}
-          </svg>
-        </button>
       </div>
 
       <main style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
@@ -506,79 +409,69 @@ function App() {
             position: 'relative'
           }}
         >
+          {/* Toolbar + bookmark bar read as one surface, like Chrome; the border sits under both. */}
+          <div style={{ background: 'var(--chrome-toolbar)', borderBottom: '1px solid var(--border)' }}>
           <form
             onSubmit={onSubmit}
             style={{
               display: 'flex',
-              gap: 6,
-              padding: '6px 10px',
-              borderBottom: '1px solid var(--border)',
+              gap: 4,
+              padding: '4px 8px',
               alignItems: 'center'
             }}
           >
             {browserMode === 'embedded' && (
               <>
                 <button
-                  className="toolbar-btn"
+                  className="chrome-icon-btn"
                   type="button"
                   onClick={() => activeRef()?.goBack()}
                   title={t('toolbar.back')}
+                  aria-label={t('toolbar.back')}
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M15 18l-6-6 6-6" />
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
                   </svg>
                 </button>
                 <button
-                  className="toolbar-btn"
+                  className="chrome-icon-btn"
                   type="button"
                   onClick={() => activeRef()?.goForward()}
                   title={t('toolbar.forward')}
+                  aria-label={t('toolbar.forward')}
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M9 18l6-6-6-6" />
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M5 12h14M12 5l7 7-7 7" />
                   </svg>
                 </button>
                 <button
-                  className="toolbar-btn"
+                  className="chrome-icon-btn"
                   type="button"
                   onClick={() => activeRef()?.reload(true)}
                   title={t('toolbar.hardReload')}
+                  aria-label={t('toolbar.hardReload')}
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <polyline points="23 4 23 10 17 10" />
                     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                   </svg>
                 </button>
-                <button
-                  className="toolbar-btn"
-                  type="button"
-                  onClick={openViewSource}
-                  disabled={!activeTab || !/^https?:\/\//i.test(activeTab.url)}
-                  title={t('toolbar.viewSource')}
-                  style={{ fontFamily: 'ui-monospace, monospace' }}
-                >
-                  &lt;/&gt;
-                </button>
               </>
             )}
-            {/* Chrome-style: bookmark star lives inside the address field. */}
-            <div style={{ position: 'relative', flex: 1, display: 'flex', minWidth: 0 }}>
+            {/* Chrome-style: pill omnibox with the bookmark star inside. */}
+            <div style={{ position: 'relative', flex: 1, display: 'flex', minWidth: 0, margin: '0 4px' }}>
               <input
                 ref={addressInputRef}
+                className="omnibox"
                 value={urlDraft}
                 onChange={(e) => setUrlDraft(e.target.value)}
                 placeholder={t('toolbar.addressPlaceholder')}
-                style={{
-                  flex: 1,
-                  height: 28,
-                  padding: browserMode === 'embedded' ? '0 32px 0 10px' : '0 10px',
-                  fontFamily: 'ui-monospace, monospace',
-                  boxSizing: 'border-box'
-                }}
+                spellCheck={false}
               />
               {browserMode === 'embedded' && (
                 <button
                   type="button"
+                  className="chrome-icon-btn small"
                   onClick={() => {
                     if (!activeTab) return
                     if (isBookmarked) removeBookmarkByUrl(activeTab.url)
@@ -586,28 +479,11 @@ function App() {
                   }}
                   disabled={!activeTab || !/^https?:\/\//i.test(activeTab.url)}
                   title={isBookmarked ? 'Remove bookmark' : 'Bookmark this page'}
-                  style={
-                    {
-                      position: 'absolute',
-                      right: 6,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: 22,
-                      height: 22,
-                      padding: 0,
-                      border: 'none',
-                      background: 'transparent',
-                      color: 'var(--text-dim)',
-                      cursor: 'pointer'
-                    } as React.CSSProperties
-                  }
+                  style={{ position: 'absolute', right: 3, top: '50%', transform: 'translateY(-50%)' }}
                 >
                   <svg
-                    width="15"
-                    height="15"
+                    width="16"
+                    height="16"
                     viewBox="0 0 24 24"
                     fill={isBookmarked ? 'var(--accent)' : 'none'}
                     stroke={isBookmarked ? 'var(--accent)' : 'currentColor'}
@@ -630,57 +506,80 @@ function App() {
                 }}
               />
             )}
-            <button
-              className="toolbar-btn"
-              type="button"
-              onClick={onToggleViewport}
-              title="Toggle desktop/mobile viewport"
-              style={{
-                background: viewportMode === 'mobile' ? '#244' : undefined,
-                color: viewportMode === 'mobile' ? '#dee' : undefined,
-                borderColor: viewportMode === 'mobile' ? '#377' : undefined
-              }}
-            >
-              {viewportMode === 'mobile' ? t('toolbar.viewport.mobile') : t('toolbar.viewport.desktop')}
-            </button>
-            <div
-              role="group"
-              aria-label="Browser mode"
-              title="Embedded runs pages in the in-app webview; External attaches to a real Chrome window"
-              style={{ display: 'inline-flex', flexShrink: 0 }}
-            >
-              <button
-                className="toolbar-btn"
-                type="button"
-                aria-pressed={browserMode === 'embedded'}
-                onClick={() => setBrowserMode('embedded')}
-                style={{
-                  borderTopRightRadius: 0,
-                  borderBottomRightRadius: 0,
-                  background: browserMode === 'embedded' ? 'var(--accent-soft)' : undefined,
-                  borderColor: browserMode === 'embedded' ? 'var(--accent-border)' : undefined
-                }}
-              >
-                {t('toolbar.embedded')}
+            <IpBadge refreshSignal={ipRefresh} />
+            {viewportMode === 'mobile' && (
+              <button className="chrome-chip" type="button" onClick={onToggleViewport} title={t('menu.viewport')}>
+                {t('toolbar.viewport.mobile')}
               </button>
-              <button
-                className="toolbar-btn"
-                type="button"
-                aria-pressed={browserMode === 'external'}
-                onClick={() => setBrowserMode('external')}
-                style={{
-                  marginLeft: -1,
-                  borderTopLeftRadius: 0,
-                  borderBottomLeftRadius: 0,
-                  background: browserMode === 'external' ? 'var(--accent-soft)' : undefined,
-                  borderColor: browserMode === 'external' ? 'var(--accent-border)' : undefined
-                }}
-              >
-                {t('toolbar.external')}
-              </button>
-            </div>
+            )}
+            {browserMode === 'embedded' && <ProfileMenu />}
+            <AppMenu
+              title={t('menu.title')}
+              footer={`Rever Browser v${appVersion}`}
+              items={[
+                {
+                  label: t('menu.theme'),
+                  hint: t(`menu.theme.${themeMode}`),
+                  title: t('toolbar.theme', { mode: themeMode }),
+                  onClick: () => cycleAppTheme()
+                },
+                ...(browserMode === 'embedded'
+                  ? [
+                      {
+                        label: t('menu.pageTheme'),
+                        hint: activeOrigin
+                          ? t(activeTheme === 'auto' ? 'menu.pageTheme.auto' : `menu.theme.${activeTheme}`)
+                          : undefined,
+                        title: activeOrigin ? `${activeOrigin} — Auto → Light → Dark` : 'No site loaded',
+                        disabled: !activeOrigin,
+                        onClick: () => {
+                          if (activeOrigin) cycleTheme(activeOrigin)
+                        }
+                      }
+                    ]
+                  : []),
+                {
+                  label: t('lang.label'),
+                  hint: lang === 'en' ? 'English' : '한국어',
+                  onClick: () => setLang(lang === 'en' ? 'ko' : 'en')
+                },
+                {
+                  label: t('menu.notifications'),
+                  hint: t(notifyEnabled ? 'menu.on' : 'menu.off'),
+                  onClick: () => toggleNotify()
+                },
+                {
+                  label: t('menu.viewport'),
+                  hint: t(viewportMode === 'mobile' ? 'toolbar.viewport.mobile' : 'toolbar.viewport.desktop'),
+                  sep: true,
+                  onClick: () => void onToggleViewport()
+                },
+                ...(SHOW_BROWSER_MODE
+                  ? [
+                      {
+                        label: t('menu.browserMode'),
+                        hint: t(browserMode === 'embedded' ? 'toolbar.embedded' : 'toolbar.external'),
+                        title: 'Embedded runs pages in the in-app webview; External attaches to a real Chrome window',
+                        onClick: () => setBrowserMode(browserMode === 'embedded' ? 'external' : 'embedded')
+                      }
+                    ]
+                  : []),
+                ...(browserMode === 'embedded'
+                  ? [
+                      {
+                        label: t('menu.viewSource'),
+                        title: t('toolbar.viewSource'),
+                        disabled: !activeTab || !/^https?:\/\//i.test(activeTab.url),
+                        sep: true,
+                        onClick: openViewSource
+                      }
+                    ]
+                  : [])
+              ]}
+            />
           </form>
           {browserMode === 'embedded' && <BookmarkBar />}
+          </div>
           {/* paddingBottom reserves the chip bar's strip so the webview ends
               above it instead of being covered by it. The bar and the slide-up
               panel are absolutely positioned against this box's bottom edge,

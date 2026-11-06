@@ -140,7 +140,7 @@ export function ProxyButton({ tab, onApplied }: Props): React.ReactElement {
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
       <button
-        className="toolbar-btn"
+        className="chrome-chip"
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={!tab}

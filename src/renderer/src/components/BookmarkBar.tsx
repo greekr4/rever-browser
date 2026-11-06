@@ -53,8 +53,7 @@ export function BookmarkBar(): React.JSX.Element | null {
         display: 'flex',
         alignItems: 'center',
         gap: 2,
-        padding: '3px 8px',
-        borderBottom: '1px solid var(--border)',
+        padding: '0 8px 4px',
         overflowX: 'auto',
         flexShrink: 0
       }}

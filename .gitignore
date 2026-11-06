@@ -41,3 +41,4 @@ __pycache__/
 
 # Playwright E2E output
 /test-results/
+test-image/
