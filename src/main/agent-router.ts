@@ -41,6 +41,7 @@ import {
   killClaudeCliSession,
   promptClaudeCliSession,
   setClaudeCliModel,
+  setClaudeCliOption,
   spawnClaudeCliSession
 } from './providers/claude-cli-provider'
 import {
@@ -139,6 +140,12 @@ export async function setSessionModelRouted(sessionId: string, modelId: string):
   if (isGlmSession(sessionId)) return setGlmModel(sessionId, modelId)
   if (isClaudeCliSession(sessionId)) return setClaudeCliModel(sessionId, modelId)
   return setSessionModel(sessionId, modelId)
+}
+
+/** Session options beyond the model. Only the Claude Code CLI session has any today. */
+export async function setSessionOption(sessionId: string, key: 'effort' | 'fastMode', value: string | boolean): Promise<void> {
+  if (isClaudeCliSession(sessionId)) return setClaudeCliOption(sessionId, key, value)
+  throw new Error(`this agent does not support changing ${key}`)
 }
 
 export type { AgentDef }

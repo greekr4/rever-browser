@@ -16,14 +16,17 @@ import {
   claudeCliArgs,
   controlRequest,
   errorResponse,
+  flagSettingsRequest,
   modelState,
+  optionsFromSettings,
   newTranslateState,
   permissionResponse,
   toPermissionRequest,
   translate,
   turnOutcome,
   userMessage,
-  type CliModel
+  type CliModel,
+  type CliOptions
 } from './claude-cli-protocol'
 
 // Drives the user's own `claude` CLI headless over stream-json — no ACP
@@ -54,6 +57,7 @@ interface Entry {
   requestPermission: Permission | null
   models: CliModel[]
   currentModel: string | null
+  options: CliOptions
   state: ReturnType<typeof newTranslateState>
 }
 
@@ -138,6 +142,7 @@ export async function spawnClaudeCliSession(command: string, cwd: string): Promi
     requestPermission: null,
     models: [],
     currentModel: null,
+    options: { effort: null, fastMode: false },
     state: newTranslateState()
   }
 
@@ -177,8 +182,18 @@ export async function spawnClaudeCliSession(command: string, cwd: string): Promi
   const init = await control(entry, { subtype: 'initialize' })
   entry.models = Array.isArray(init.models) ? (init.models as CliModel[]) : []
   entry.currentModel = entry.models.some((m) => m.value === 'default') ? 'default' : (entry.models[0]?.value ?? null)
+  await refreshOptions(entry)
   sessions.set(sessionId, entry)
   return { sessionId }
+}
+
+// Effort depends on the model (a switch can reset it), so re-read what the CLI applied.
+async function refreshOptions(entry: Entry): Promise<void> {
+  try {
+    entry.options = optionsFromSettings(await control(entry, { subtype: 'get_settings' }))
+  } catch (e) {
+    console.warn('[claude-cli] get_settings failed:', e)
+  }
 }
 
 function live(sessionId: string): Entry {
@@ -241,11 +256,19 @@ export async function killClaudeCliSession(sessionId: string): Promise<void> {
 
 export function getClaudeCliModelState(sessionId: string): ReturnType<typeof modelState> | null {
   const entry = sessions.get(sessionId)
-  return entry ? modelState(entry.models, entry.currentModel) : null
+  return entry ? modelState(entry.models, entry.currentModel, entry.options) : null
 }
 
 export async function setClaudeCliModel(sessionId: string, modelId: string): Promise<void> {
   const entry = live(sessionId)
   await control(entry, { subtype: 'set_model', model: modelId })
   entry.currentModel = modelId
+  await refreshOptions(entry)
+}
+
+/** Reasoning effort / fast mode, applied to the running session (no restart). */
+export async function setClaudeCliOption(sessionId: string, key: 'effort' | 'fastMode', value: string | boolean): Promise<void> {
+  const entry = live(sessionId)
+  await control(entry, flagSettingsRequest(key, value))
+  await refreshOptions(entry)
 }

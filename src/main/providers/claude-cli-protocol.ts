@@ -20,6 +20,32 @@ export interface CliModel {
   displayName?: string
   description?: string
   resolvedModel?: string
+  supportedEffortLevels?: string[]
+  supportsFastMode?: boolean
+}
+
+/** Session knobs beyond the model, changed live with apply_flag_settings. */
+export interface CliOptions {
+  effort: string | null
+  fastMode: boolean
+}
+
+/** get_settings response → the effort/fast mode actually in force. */
+export function optionsFromSettings(r: Record<string, any>): CliOptions {
+  return {
+    effort: typeof r?.applied?.effort === 'string' ? r.applied.effort : null,
+    fastMode: r?.effective?.fastMode === true
+  }
+}
+
+/** One option change → the apply_flag_settings request body. */
+export function flagSettingsRequest(key: 'effort' | 'fastMode', value: string | boolean): Record<string, unknown> {
+  if (key === 'effort') {
+    if (typeof value !== 'string') throw new Error('effort must be a level name')
+    return { subtype: 'apply_flag_settings', settings: { effortLevel: value } }
+  }
+  if (typeof value !== 'boolean') throw new Error('fastMode must be true or false')
+  return { subtype: 'apply_flag_settings', settings: { fastMode: value } }
 }
 
 export function claudeCliArgs(opts: { mcpUrl: string; authHeader: string; model?: string | null }): string[] {
@@ -174,9 +200,17 @@ export function errorResponse(requestId: string, error: string): string {
 }
 
 /** initialize's model list → the renderer's model-picker state. */
-export function modelState(models: CliModel[], current: string | null) {
+export function modelState(models: CliModel[], current: string | null, options?: CliOptions) {
   return {
-    availableModels: models.map((m) => ({ modelId: m.value, name: m.displayName ?? m.value, description: m.description ?? null })),
-    currentModelId: current
+    availableModels: models.map((m) => ({
+      modelId: m.value,
+      name: m.displayName ?? m.value,
+      description: m.description ?? null,
+      effortLevels: m.supportedEffortLevels ?? [],
+      supportsFastMode: m.supportsFastMode === true
+    })),
+    currentModelId: current,
+    effort: options?.effort ?? null,
+    fastMode: options?.fastMode ?? false
   }
 }

@@ -18,6 +18,7 @@ import {
   promptSession,
   sessionModelState,
   setSessionModelRouted,
+  setSessionOption,
   spawnSession,
   type AgentDef
 } from '../agent-router'
@@ -163,6 +164,12 @@ export function registerAcpIpc(): void {
     return killSession(sessionId)
   })
   ipcMain.handle('acp:model-state', (_event, sessionId: string) => sessionModelState(sessionId))
+  ipcMain.handle('acp:set-option', async (_event, sessionId: string, key: unknown, value: unknown) => {
+    // Renderer input: accept only the two known keys and their value types.
+    if (key === 'effort' && typeof value === 'string') return setSessionOption(sessionId, key, value)
+    if (key === 'fastMode' && typeof value === 'boolean') return setSessionOption(sessionId, key, value)
+    throw new Error('invalid session option')
+  })
   ipcMain.handle('acp:set-model', async (_event, sessionId: string, modelId: string) =>
     setSessionModelRouted(sessionId, modelId)
   )

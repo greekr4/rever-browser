@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import {
   claudeCliArgs,
+  flagSettingsRequest,
   modelState,
   newTranslateState,
+  optionsFromSettings,
   permissionResponse,
   toPermissionRequest,
   translate,
@@ -96,10 +98,28 @@ describe('권한 왕복', () => {
 })
 
 describe('modelState', () => {
-  it('initialize 모델 목록을 모델 선택기 형식으로 바꾼다', () => {
-    expect(modelState([{ value: 'opus', displayName: 'Opus 5.5', description: 'x' }], 'opus')).toEqual({
-      availableModels: [{ modelId: 'opus', name: 'Opus 5.5', description: 'x' }],
-      currentModelId: 'opus'
+  it('initialize 모델 목록과 현재 추론 수준·빠른 모드를 모델 선택기 형식으로 바꾼다', () => {
+    const models = [{ value: 'opus', displayName: 'Opus 5.5', description: 'x', supportedEffortLevels: ['low', 'high'], supportsFastMode: true }]
+    expect(modelState(models, 'opus', { effort: 'high', fastMode: false })).toEqual({
+      availableModels: [{ modelId: 'opus', name: 'Opus 5.5', description: 'x', effortLevels: ['low', 'high'], supportsFastMode: true }],
+      currentModelId: 'opus',
+      effort: 'high',
+      fastMode: false
     })
+    expect(modelState([{ value: 'haiku' }], null).availableModels[0]).toMatchObject({ effortLevels: [], supportsFastMode: false })
+  })
+})
+
+describe('추론 수준·빠른 모드', () => {
+  it('get_settings 응답에서 실제 적용된 값을 읽는다', () => {
+    expect(optionsFromSettings({ effective: { fastMode: true }, applied: { effort: 'low' } })).toEqual({ effort: 'low', fastMode: true })
+    expect(optionsFromSettings({ applied: { effort: null } })).toEqual({ effort: null, fastMode: false })
+  })
+
+  it('apply_flag_settings 요청을 만들고 잘못된 값은 거부한다', () => {
+    expect(flagSettingsRequest('effort', 'xhigh')).toEqual({ subtype: 'apply_flag_settings', settings: { effortLevel: 'xhigh' } })
+    expect(flagSettingsRequest('fastMode', true)).toEqual({ subtype: 'apply_flag_settings', settings: { fastMode: true } })
+    expect(() => flagSettingsRequest('effort', true)).toThrow()
+    expect(() => flagSettingsRequest('fastMode', 'yes')).toThrow()
   })
 })

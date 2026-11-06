@@ -398,11 +398,22 @@ const api = {
     modelState: (
       sessionId: string
     ): Promise<{
-      availableModels: Array<{ modelId: string; name: string; description?: string | null }>
+      availableModels: Array<{
+        modelId: string
+        name: string
+        description?: string | null
+        /** Reasoning levels this model accepts (Claude Code CLI only). */
+        effortLevels?: string[]
+        supportsFastMode?: boolean
+      }>
       currentModelId: string | null
+      effort?: string | null
+      fastMode?: boolean
     } | null> => ipcRenderer.invoke('acp:model-state', sessionId),
     setModel: (sessionId: string, modelId: string): Promise<void> =>
-      ipcRenderer.invoke('acp:set-model', sessionId, modelId)
+      ipcRenderer.invoke('acp:set-model', sessionId, modelId),
+    setOption: (sessionId: string, key: 'effort' | 'fastMode', value: string | boolean): Promise<void> =>
+      ipcRenderer.invoke('acp:set-option', sessionId, key, value)
   },
   theme: {
     // Keep the native window-controls overlay (Windows/Linux) in sync with the
