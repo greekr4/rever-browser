@@ -1,4 +1,5 @@
 import { useT } from '@/stores/i18n'
+import { matchCaptureForUrl } from '../../../../shared/ws-match'
 
 import { useEffect, useRef, useState } from 'react'
 
@@ -36,6 +37,8 @@ export function WebSocketPanel() {
   const [payload, setPayload] = useState('')
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState<string | null>(null)
+  const payloadRef = useRef<HTMLTextAreaElement>(null)
+  const selectedUrl = connections.find((c) => c.requestId === selectedId)?.url
 
   // Poll page-socket captures for the sender bar
   useEffect(() => {
@@ -64,6 +67,24 @@ export function WebSocketPanel() {
     } finally {
       setSending(false)
     }
+  }
+
+  // 리필레이: 프레임의 연결 URL과 같은 열린 페이지 소켓을 찾아 보낸다.
+  const resend = async (frameUrl: string | undefined, f: WSFrame) => {
+    const cap = matchCaptureForUrl(captures, frameUrl ?? '')
+    if (!cap) {
+      setPayload(f.payloadData)
+      setSendResult(t('panel.wsSender.noSocketMatch'))
+      return
+    }
+    const r = await window.rev.ws.send(cap.id, f.payloadData, f.opcode === 2)
+    setSendResult(r.ok ? t('panel.wsSender.sent') : (r.error ?? 'error'))
+  }
+
+  // 변조: 페이로드를 작성란에 올리고 포커스 — 수정 후 Send로 전송.
+  const editFrame = (f: WSFrame) => {
+    setPayload(f.payloadData)
+    payloadRef.current?.focus()
   }
 
   // Poll WS connection list
@@ -176,8 +197,24 @@ export function WebSocketPanel() {
                 >
                   {f.direction === 'sent' ? '↑' : '↓'}
                 </span>
-                <span style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
+                <span style={{ flex: 1, wordBreak: 'break-all', whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
                   {payload}
+                </span>
+                <span style={{ flexShrink: 0, display: 'flex', gap: 2 }}>
+                  <button
+                    title={t('panel.wsSender.resend')}
+                    onClick={() => void resend(selectedUrl, f)}
+                    style={{ fontSize: 10, padding: '0 4px', cursor: 'pointer' }}
+                  >
+                    ↻
+                  </button>
+                  <button
+                    title={t('panel.wsSender.edit')}
+                    onClick={() => editFrame(f)}
+                    style={{ fontSize: 10, padding: '0 4px', cursor: 'pointer' }}
+                  >
+                    ✎
+                  </button>
                 </span>
               </div>
             )
@@ -216,6 +253,7 @@ export function WebSocketPanel() {
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
             <textarea
+              ref={payloadRef}
               value={payload}
               onChange={(e) => setPayload(e.target.value)}
               placeholder={t('panel.wsSender.payload')}

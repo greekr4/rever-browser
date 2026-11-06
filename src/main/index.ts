@@ -1184,7 +1184,8 @@ app.whenReady().then(() => {
   ipcMain.handle('ws:capture-list', async () => listWsCaptures())
   ipcMain.handle(
     'ws:send',
-    (_event, captureId: number, payload: string) => sendWsFrame(captureId, payload, false)
+    (_event, captureId: number, payload: string, asBinary?: boolean) =>
+      sendWsFrame(captureId, payload, asBinary ?? false)
   )
 
   // ── Storage / Cookie editor IPC ───────────────────────────────────────────

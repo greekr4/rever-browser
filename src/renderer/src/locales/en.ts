@@ -109,6 +109,9 @@ export const en = {
   'panel.wsSender.sent': 'Sent',
   'panel.wsSender.open': 'open',
   'panel.wsSender.state': 'state',
+  'panel.wsSender.resend': 'Resend this frame',
+  'panel.wsSender.edit': 'Edit in the composer',
+  'panel.wsSender.noSocketMatch': 'No open page socket for this connection — enable capture and reload the page, then resend',
   'history.filter': 'Filter by URL or title',
 
   // Traffic

@@ -101,6 +101,9 @@ export const ko: Record<TKey, string> = {
   'panel.wsSender.sent': '전송됨',
   'panel.wsSender.open': '열림',
   'panel.wsSender.state': '상태',
+  'panel.wsSender.resend': '이 프레임 재전송',
+  'panel.wsSender.edit': '작성란에서 편집',
+  'panel.wsSender.noSocketMatch': '이 연결의 열린 페이지 소켓 없음 — 캡처 활성화 후 페이지 새로고침 뒤 재전송',
   'history.filter': 'URL 또는 제목으로 필터',
 
   'traffic.clear': '캡처된 트래픽 지우기',
