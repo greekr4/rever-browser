@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 
 import { TrafficList } from '@/components/network/TrafficList'
 import { ApiMapPanel } from '@/components/panels/ApiMapPanel'
 import { useScanStore } from '@/stores/scan'
+import { useT } from '@/stores/i18n'
+import type { TKey } from '@/locales/en'
 import { useTabsStore } from '@/stores/tabs'
 import { ConsolePanel } from '@/components/panels/ConsolePanel'
 import { CookiesPanel } from '@/components/panels/CookiesPanel'
@@ -19,6 +21,40 @@ import { WorkflowPanel } from '@/workflows'
 import { useWorkflowsStore } from '@/workflows/core/store'
 
 type PanelId = 'traffic' | 'apimap' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history' | 'workflows'
+
+const svg = (...d: string[]): ReactNode => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {d.map((p) => (p.startsWith('c:') ? <circle key={p} {...circle(p)} /> : <path key={p} d={p} />))}
+  </svg>
+)
+// 'c:cx,cy,r' draws a circle; everything else is a path.
+const circle = (p: string): { cx: number; cy: number; r: number } => {
+  const [cx, cy, r] = p.slice(2).split(',').map(Number)
+  return { cx, cy, r }
+}
+
+const ICON: Record<PanelId | 'redteam', ReactNode> = {
+  traffic: svg('M7 4v16', 'M3 8l4-4 4 4', 'M17 20V4', 'M13 16l4 4 4-4'),
+  apimap: svg('M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z', 'M9 3v15', 'M15 6v15'),
+  websocket: svg('M13 2L4 14h8l-1 8 9-12h-8z'),
+  console: svg('M5 17l5-5-5-5', 'M12 19h7'),
+  exceptions: svg('M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z', 'M12 9v4', 'M12 17h.01'),
+  repeater: svg('M17 2l4 4-4 4', 'M3 11V9a3 3 0 0 1 3-3h15', 'M7 22l-4-4 4-4', 'M21 13v2a3 3 0 0 1-3 3H3'),
+  storage: svg('M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z', 'M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6', 'M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'),
+  history: svg('c:12,12,9', 'M12 7v5l3 2'),
+  workflows: svg('c:6,6,2.5', 'c:6,18,2.5', 'c:18,12,2.5', 'M6 8.5v7', 'M8.5 6h3a4 4 0 0 1 4 4v-.5'),
+  redteam: svg('c:12,12,9', 'c:12,12,5', 'c:12,12,1')
+}
+
+// Related panels sit together, split by thin dividers.
+const GROUPS: PanelId[][] = [
+  ['traffic', 'apimap', 'websocket'],
+  ['console', 'exceptions'],
+  ['repeater', 'storage'],
+  ['history', 'workflows']
+]
+
+const fmtCount = (n: number): string => n.toLocaleString('en-US')
 
 interface FloatingChipsProps {
   openPanel: PanelId | null
@@ -120,17 +156,8 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
   const openScan = useScanStore((st) => st.open)
   const activeTabUrl = useTabsStore((st) => st.tabs.find((t) => t.id === st.activeId)?.url ?? '')
 
-  const panelTitle: Record<PanelId, string> = {
-    traffic: 'Traffic',
-    apimap: 'API Map',
-    console: 'Console',
-    exceptions: 'Exceptions',
-    websocket: 'WebSocket',
-    repeater: 'Repeater',
-    storage: 'Storage',
-    history: 'History',
-    workflows: 'Workflows'
-  }
+  const tr = useT()
+  const panelTitle = (id: PanelId): string => tr(`panel.${id}` as TKey)
 
   // Same counts the chip badges show, surfaced in the panel header too.
   const panelCount: Partial<Record<PanelId, number>> = {
@@ -150,71 +177,46 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
   return (
     <>
       {/* Bottom menu bar — full width, fixed at bottom of webview area */}
-      <div className="chip-stack" ref={chipStackRef}>
+      <div className="chip-stack" ref={chipStackRef} role="toolbar" aria-label={tr('panel.bar')}>
+        {GROUPS.map((group, gi) => (
+          <div key={gi} className="chip-group">
+            {gi > 0 && <span className="chip-sep" aria-hidden="true" />}
+            {group.map((id) => {
+              const n = panelCount[id] ?? 0
+              const badge =
+                id === 'repeater'
+                  ? repeaterSourceId
+                    ? n > 0
+                      ? fmtCount(n)
+                      : '•'
+                    : undefined
+                  : id === 'storage' || n === 0
+                    ? undefined
+                    : fmtCount(n)
+              return (
+                <ChipButton
+                  key={id}
+                  icon={ICON[id]}
+                  label={panelTitle(id)}
+                  testId={`chip-${id}`}
+                  active={openPanel === id}
+                  badge={badge}
+                  danger={id === 'exceptions' && n > 0}
+                  onClick={() => toggle(id)}
+                />
+              )
+            })}
+          </div>
+        ))}
+        <span style={{ flex: 1 }} />
+        {/* Red Team starts a scan rather than opening a panel, so it stands apart. */}
         <ChipButton
-          label="Red Team"
+          icon={ICON.redteam}
+          label={tr('panel.redteam')}
+          testId="chip-redteam"
+          action
           active={scanVisible}
           onClick={() => openScan(activeTabUrl)}
-        />
-        <ChipButton
-          label="Traffic"
-          active={openPanel === 'traffic'}
-          badge={trafficCount > 0 ? String(trafficCount) : undefined}
-          onClick={() => toggle('traffic')}
-        />
-        <ChipButton
-          label="API Map"
-          active={openPanel === 'apimap'}
-          badge={apiCount > 0 ? String(apiCount) : undefined}
-          onClick={() => toggle('apimap')}
-        />
-        <ChipButton
-          label="Console"
-          active={openPanel === 'console'}
-          badge={consoleCount > 0 ? String(consoleCount) : undefined}
-          onClick={() => toggle('console')}
-        />
-        <ChipButton
-          label="Exceptions"
-          active={openPanel === 'exceptions'}
-          badge={exceptionCount > 0 ? String(exceptionCount) : undefined}
-          onClick={() => toggle('exceptions')}
-        />
-        <ChipButton
-          label="WebSocket"
-          active={openPanel === 'websocket'}
-          badge={wsCount > 0 ? String(wsCount) : undefined}
-          onClick={() => toggle('websocket')}
-        />
-        <ChipButton
-          label="Repeater"
-          active={openPanel === 'repeater'}
-          badge={
-            repeaterSourceId
-              ? repeaterHistoryLen > 0
-                ? String(repeaterHistoryLen)
-                : '•'
-              : undefined
-          }
-          onClick={() => toggle('repeater')}
-        />
-        <ChipButton
-          label="Storage"
-          active={openPanel === 'storage'}
-          onClick={() => toggle('storage')}
-        />
-        <ChipButton
-          label="History"
-          active={openPanel === 'history'}
-          badge={historyCount > 0 ? String(historyCount) : undefined}
-          onClick={() => toggle('history')}
-        />
-        <ChipButton
-          label="Workflows"
-          testId="chip-workflows"
-          active={openPanel === 'workflows'}
-          badge={workflowCount > 0 ? String(workflowCount) : undefined}
-          onClick={() => toggle('workflows')}
         />
       </div>
 
@@ -241,7 +243,7 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
             {/* Panel header */}
             <div className="chip-panel-header">
               <span className="chip-panel-title">
-                {panelTitle[openPanel]}
+                {panelTitle(openPanel)}
                 {(panelCount[openPanel] ?? 0) > 0 && (
                   <span className="chip-panel-count">{panelCount[openPanel]}</span>
                 )}
@@ -285,25 +287,29 @@ function pointInRect(e: MouseEvent, el: HTMLElement | null): boolean {
 
 interface ChipButtonProps {
   label: string
+  icon: ReactNode
   active: boolean
   badge?: string
+  /** Red count badge (e.g. uncaught exceptions). */
+  danger?: boolean
+  /** Styled as a command (Red Team) rather than a panel tab. */
+  action?: boolean
   testId?: string
   onClick: () => void
 }
 
-function ChipButton({ label, active, badge, testId, onClick }: ChipButtonProps) {
+function ChipButton({ label, icon, active, badge, danger, action, testId, onClick }: ChipButtonProps) {
   return (
     <button
-      className={`chip${active ? ' active' : ''}`}
+      type="button"
+      className={`chip${active ? ' active' : ''}${action ? ' chip-action' : ''}`}
       data-testid={testId}
+      aria-pressed={active}
       onClick={onClick}
     >
+      {icon}
       <span>{label}</span>
-      {badge && (
-        <span className="chip-count" style={{ marginLeft: 4 }}>
-          {badge}
-        </span>
-      )}
+      {badge && <span className={`chip-count${danger ? ' danger' : ''}`}>{badge}</span>}
     </button>
   )
 }
