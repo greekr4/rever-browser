@@ -35,6 +35,8 @@ python3 rever.py browser_navigate '{"url":"https://example.com"}'
 python3 rever.py list_requests
 ```
 
+**Scripts — many steps in one call** (preferred for multi-step work): `node bin/revb.mjs run script.mjs` exposes every tool as a global async function. Read the guide with `node bin/revb.mjs skill` (`--full` adds the live tool catalog).
+
 ## Tool map
 
 - **Browser** — `browser_navigate`, `browser_snapshot` (accessibility tree with `rN` refs), `browser_click`/`browser_type`/`browser_scroll` (by ref), `browser_screenshot`, `browser_evaluate`, `browser_wait_for`, `browser_tabs`.
