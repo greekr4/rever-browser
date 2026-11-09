@@ -2,9 +2,15 @@ import type { ACPAgentID } from '@/constants'
 
 // Real brand marks for the providers, replacing the C/A/O/X letter avatars.
 // Claude surfaces (`claude-code`, `anthropic`) → the Claude sunburst; OpenAI
-// surfaces (`codex`, `openai`) → the OpenAI knot. Grok uses the letter fallback.
+// surfaces (`codex`, `openai`) → the OpenAI knot; `grok` → the Grok mark; `glm` → the Z.ai mark.
+// Grok and Z.ai paths: @lobehub/icons-static-svg 1.102.0 (MIT), grok.svg / zai.svg.
 
 const CLAUDE_CLAY = '#d97757'
+
+const MONO_PATHS: Partial<Record<ACPAgentID, string>> = {
+  grok: 'M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815',
+  glm: 'M12.105 2L9.927 4.953H.653L2.83 2h9.276zM23.254 19.048L21.078 22h-9.242l2.174-2.952h9.244zM24 2L9.264 22H0L14.736 2H24z'
+}
 
 // The Claude mark is a radial burst of tapered blades in alternating long/short
 // lengths around a small solid core. Generated (rather than a hand-copied path)
@@ -54,7 +60,8 @@ interface ProviderIconProps {
 
 export function ProviderIcon({ agentId, size = 16, fallback }: ProviderIconProps) {
   if (CLAUDE_AGENTS.has(agentId)) return <ClaudeSpark size={size} />
-  if (OPENAI_AGENTS.has(agentId)) {
+  const mono = OPENAI_AGENTS.has(agentId) ? OPENAI_PATH : MONO_PATHS[agentId]
+  if (mono) {
     return (
       <svg
         width={size}
@@ -64,7 +71,7 @@ export function ProviderIcon({ agentId, size = 16, fallback }: ProviderIconProps
         aria-hidden="true"
         style={{ display: 'block' }}
       >
-        <path d={OPENAI_PATH} />
+        <path d={mono} fillRule={MONO_PATHS[agentId] ? "evenodd" : undefined} />
       </svg>
     )
   }

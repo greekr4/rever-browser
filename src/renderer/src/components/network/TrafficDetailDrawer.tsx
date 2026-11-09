@@ -73,34 +73,21 @@ export function TrafficDetailDrawer({
         }}
       >
         <strong>{tr('drawer.request')}</strong>
-        <button onClick={onSendToChat} style={{ fontSize: 11 }}>
-          Send to chat
+        <button onClick={onSendToChat}>
+          {tr('drawer.sendToChat')}
         </button>
-        <button onClick={onClose} style={{ marginLeft: 'auto', fontSize: 11 }}>
+        <button className="btn-ghost btn-icon" onClick={onClose} style={{ marginLeft: 'auto' }} aria-label={tr('common.close')}>
           ✕
         </button>
       </header>
 
-      <nav
-        style={{
-          display: 'flex',
-          borderBottom: '1px solid var(--border)',
-          fontSize: 12
-        }}
-      >
+      <nav className="seg" style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
         {(['overview', 'headers', 'body'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            style={{
-              flex: 1,
-              padding: '6px 8px',
-              border: 'none',
-              borderRadius: 0,
-              background: tab === t ? 'var(--surface)' : 'transparent',
-              color: tab === t ? 'var(--text)' : 'var(--text-dim)',
-              borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent'
-            }}
+            aria-pressed={tab === t}
+            style={{ flex: 1, padding: '6px 8px 4px' }}
           >
             {t}
           </button>

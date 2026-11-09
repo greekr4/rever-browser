@@ -67,12 +67,14 @@ export function CookiesPanel() {
   return (
     <div style={{ padding: 10, fontSize: 12, color: 'var(--text-2)', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}>
+        <div className="seg">
         <SectionTab label={t('cookies.tab.cookies')} count={cookies.length} active={section === 'cookies'} onClick={() => setSection('cookies')} />
         <SectionTab label={t('cookies.tab.local')} count={Object.keys(local).length} active={section === 'local'} onClick={() => setSection('local')} />
         <SectionTab label={t('cookies.tab.session')} count={Object.keys(session).length} active={section === 'session'} onClick={() => setSection('session')} />
+        </div>
         <div style={{ flex: 1 }} />
         <span style={{ opacity: 0.55, marginRight: 6 }}>{origin}</span>
-        <button onClick={() => void refresh()} title={t('cookies.refresh')}>↻</button>
+        <button className="btn-ghost btn-icon" onClick={() => void refresh()} title={t('cookies.refresh')} aria-label={t('cookies.refresh')}>↻</button>
       </div>
 
       {section === 'cookies' && (
@@ -114,15 +116,7 @@ export function CookiesPanel() {
               const r = await window.rev.storage.persistenceSnapshot()
               setSticky((s) => ({ ...s, snapshotCount: r.snapshotCount }))
             }}
-            style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border-2)',
-              color: 'var(--text-2)',
-              padding: '3px 9px',
-              borderRadius: 3,
-              fontSize: 10,
-              cursor: 'pointer'
-            }}
+
             title="Dump session cookies to disk immediately"
           >
             Snapshot now
@@ -198,15 +192,7 @@ export function CookiesPanel() {
                   await window.rev.dialog.clearHistory()
                   setDialog((d) => ({ ...d, history: [] }))
                 }}
-                style={{
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border-2)',
-                  color: 'var(--text-2)',
-                  padding: '3px 9px',
-                  borderRadius: 3,
-                  fontSize: 10,
-                  cursor: 'pointer'
-                }}
+
               >
                 clear
               </button>
@@ -287,9 +273,10 @@ export function CookiesPanel() {
                   </Td>
                   <Td>{c.expires ? new Date(c.expires * 1000).toISOString().slice(0, 16).replace('T', ' ') : 'session'}</Td>
                   <Td>
-                    <button onClick={() => setEditCookie({ ...c })} style={btnStyle}>✎</button>
+                    <button className="btn-ghost btn-icon" onClick={() => setEditCookie({ ...c })} aria-label={t('common.edit')}>✎</button>
                     <button
-                      style={btnStyle}
+                      className="btn-danger btn-icon"
+                      aria-label={t('common.delete')}
                       onClick={async () => {
                         await window.rev.storage.cookieDelete({
                           name: c.name,
@@ -344,9 +331,10 @@ export function CookiesPanel() {
                     )}
                   </Td>
                   <Td>
-                    <button style={btnStyle} onClick={() => setEditing({ key: k, value: v })}>✎</button>
+                    <button className="btn-ghost btn-icon" onClick={() => setEditing({ key: k, value: v })} aria-label={t('common.edit')}>✎</button>
                     <button
-                      style={btnStyle}
+                      className="btn-danger btn-icon"
+                      aria-label={t('common.delete')}
                       onClick={async () => {
                         if (section === 'local') await window.rev.storage.localDelete(k)
                         else await window.rev.storage.sessionDelete(k)
@@ -375,7 +363,6 @@ export function CookiesPanel() {
                 path: '/'
               })
             }
-            style={addBtn}
           >
             + cookie
           </button>
@@ -396,7 +383,7 @@ export function CookiesPanel() {
                   style={{ ...addInput, flex: 1 }}
                 />
                 <button
-                  style={addBtn}
+                  className="btn-primary"
                   onClick={async () => {
                     if (!adding.key) return
                     if (section === 'local') await window.rev.storage.localSet(adding.key, adding.value)
@@ -407,11 +394,11 @@ export function CookiesPanel() {
                 >
                   add
                 </button>
-                <button style={addBtn} onClick={() => setAdding(null)}>×</button>
+                <button className="btn-ghost btn-icon" onClick={() => setAdding(null)} aria-label={t('common.cancel')}>×</button>
               </>
             ) : (
               <>
-                <button onClick={() => setAdding({ key: '', value: '' })} style={addBtn}>
+                <button onClick={() => setAdding({ key: '', value: '' })}>
                   + {section === 'local' ? 'localStorage' : 'sessionStorage'} entry
                 </button>
                 <button
@@ -421,7 +408,7 @@ export function CookiesPanel() {
                     else await window.rev.storage.sessionClear()
                     await refresh()
                   }}
-                  style={addBtn}
+                  className="btn-danger"
                 >
                   clear all
                 </button>
@@ -464,6 +451,7 @@ function CookieEditor({
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
+  const t = useT()
   const [c, setC] = useState<CookieRow>(initial)
   return (
     <div
@@ -519,9 +507,9 @@ function CookieEditor({
           </label>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 14 }}>
-          <button onClick={onClose} style={btnStyle}>Cancel</button>
+          <button className="btn-ghost" onClick={onClose}>{t('common.cancel')}</button>
           <button
-            style={{ ...btnStyle, background: 'var(--accent-soft)', borderColor: 'var(--accent-border)' }}
+            className="btn-primary"
             onClick={async () => {
               await window.rev.storage.cookieSet({
                 name: c.name,
@@ -655,7 +643,7 @@ function BrowserImportBar() {
         style={{ ...addInput, flex: 1, minWidth: 160 }}
         title={t('cookies.domainsTitle')}
       />
-      <button onClick={() => void run()} disabled={busy} style={addBtn} title="Decrypt and inject into the active tab's session (may ask for Keychain access)">
+      <button onClick={() => void run()} disabled={busy} title="Decrypt and inject into the active tab's session (may ask for Keychain access)">
         {busy ? t('cookies.importing') : t('cookies.import')}
       </button>
       {result && (
@@ -678,19 +666,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function SectionTab({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        background: active ? 'var(--accent-soft)' : 'var(--surface)',
-        border: '1px solid ' + (active ? 'var(--accent-border)' : 'var(--border-2)'),
-        color: 'var(--text-2)',
-        padding: '4px 10px',
-        borderRadius: 4,
-        fontSize: 11,
-        cursor: 'pointer'
-      }}
-    >
-      {label} <span style={{ opacity: 0.55, marginLeft: 4 }}>{count}</span>
+    <button onClick={onClick} aria-pressed={active}>
+      {label} <span style={{ opacity: 0.6 }}>{count}</span>
     </button>
   )
 }
@@ -714,7 +691,5 @@ const tableStyle: React.CSSProperties = { width: '100%', borderCollapse: 'collap
 const theadStyle: React.CSSProperties = { position: 'sticky', top: 0, background: 'var(--bg-bar)' }
 const trStyle: React.CSSProperties = {}
 const valStyle: React.CSSProperties = { background: 'var(--bg)', padding: '1px 4px', borderRadius: 2, wordBreak: 'break-all', cursor: 'text', display: 'inline-block', maxWidth: '100%' }
-const btnStyle: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border-2)', color: 'var(--text-2)', padding: '2px 6px', borderRadius: 3, fontSize: 10, cursor: 'pointer', marginLeft: 3 }
-const addBtn: React.CSSProperties = { ...btnStyle, padding: '4px 10px', fontSize: 11 }
 const addInput: React.CSSProperties = { background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-2)', padding: '4px 6px', fontSize: 11, borderRadius: 3, fontFamily: 'ui-monospace, monospace' }
 const editorInput: React.CSSProperties = { width: '100%', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border-2)', padding: '4px 8px', fontFamily: 'ui-monospace, monospace', fontSize: 11, borderRadius: 3, boxSizing: 'border-box' }

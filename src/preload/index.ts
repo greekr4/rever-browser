@@ -6,6 +6,12 @@ import type { DownloadRecord } from '../main/downloads'
 
 export type { PageEvent, DownloadRecord }
 
+/** A live model list read from an agent's own CLI (src/main/model-catalog.ts). */
+export interface ModelCatalog {
+  models: Array<{ modelId: string; name: string; description?: string | null; effortLevels?: string[]; supportsFastMode?: boolean }>
+  fetchedAt: string
+}
+
 import type {
   RequestPermissionRequest,
   RequestPermissionResponse
@@ -398,11 +404,32 @@ const api = {
     modelState: (
       sessionId: string
     ): Promise<{
-      availableModels: Array<{ modelId: string; name: string; description?: string | null }>
+      availableModels: Array<{
+        modelId: string
+        name: string
+        description?: string | null
+        /** Reasoning levels this model accepts (Claude Code CLI only). */
+        effortLevels?: string[]
+        supportsFastMode?: boolean
+      }>
       currentModelId: string | null
+      effort?: string | null
+      fastMode?: boolean
     } | null> => ipcRenderer.invoke('acp:model-state', sessionId),
     setModel: (sessionId: string, modelId: string): Promise<void> =>
-      ipcRenderer.invoke('acp:set-model', sessionId, modelId)
+      ipcRenderer.invoke('acp:set-model', sessionId, modelId),
+    setOption: (sessionId: string, key: 'effort' | 'fastMode', value: string | boolean): Promise<void> =>
+      ipcRenderer.invoke('acp:set-option', sessionId, key, value)
+  },
+  models: {
+    /** Cached live model list for an agent (from its own CLI), or null if never listed. */
+    catalog: (agentId: string): Promise<ModelCatalog | null> => ipcRenderer.invoke('models:catalog', agentId),
+    refresh: (agentId: string): Promise<ModelCatalog | null> => ipcRenderer.invoke('models:refresh', agentId),
+    onUpdated: (cb: (agentId: string, catalog: ModelCatalog) => void): (() => void) => {
+      const listener = (_e: Electron.IpcRendererEvent, agentId: string, catalog: ModelCatalog): void => cb(agentId, catalog)
+      ipcRenderer.on('models:updated', listener)
+      return () => ipcRenderer.removeListener('models:updated', listener)
+    }
   },
   theme: {
     // Keep the native window-controls overlay (Windows/Linux) in sync with the

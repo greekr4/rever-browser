@@ -84,7 +84,7 @@ export function WorkflowPanel(): React.ReactElement {
               data-testid="workflow-save"
               onClick={save}
               disabled={!draft.name.trim()}
-              style={{ background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }}
+              className="btn-primary"
             >
               Save
             </button>
@@ -168,7 +168,6 @@ export function WorkflowPanel(): React.ReactElement {
                     type="button"
                     onClick={() => void runFromList(kind, w)}
                     disabled={busy}
-                    style={{ background: 'var(--accent-soft)', borderColor: 'var(--accent-border)', color: 'var(--accent-text)' }}
                   >
                     {busy ? 'Running…' : kind.actionLabel ?? 'Run'}
                   </button>
@@ -229,8 +228,8 @@ export function WorkflowPanel(): React.ReactElement {
               {pendingDelete.name || 'Untitled'}
             </div>
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => setConfirmId(null)}>
-                Cancel
+              <button type="button" className="btn-ghost" onClick={() => setConfirmId(null)}>
+                {tr('common.cancel')}
               </button>
               <button
                 type="button"
@@ -239,13 +238,9 @@ export function WorkflowPanel(): React.ReactElement {
                   remove(pendingDelete.id)
                   setConfirmId(null)
                 }}
-                style={{
-                  background: 'var(--chip-danger-bg)',
-                  borderColor: 'var(--chip-danger-border)',
-                  color: 'var(--chip-danger-text)'
-                }}
+                className="btn-danger"
               >
-                Delete
+                {tr('common.delete')}
               </button>
             </div>
           </div>

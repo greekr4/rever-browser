@@ -166,6 +166,30 @@ export function WebSocketPanel() {
 
       {/* Right: frames + sender */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* Toolbar on top, same as the other panels: which page socket to send through. */}
+        <div className="panel-toolbar">
+          <select
+            value={captureId ?? ''}
+            onChange={(e) => setCaptureId(e.target.value === '' ? null : Number(e.target.value))}
+            aria-label={t('panel.wsSender.title')}
+            style={{ flex: 1, minWidth: 0, fontSize: 11, padding: '2px 4px' }}
+          >
+            {captures.length === 0 && <option value="">{t('panel.wsSender.noCaptures')}</option>}
+            {captures.map((c) => (
+              <option key={c.id} value={c.id}>
+                #{c.id} {safeHost(c.url)} ({c.readyState === 1 ? t('panel.wsSender.open') : `${t('panel.wsSender.state')} ${c.readyState}`})
+              </option>
+            ))}
+          </select>
+          {sendResult && (
+            <span title={sendResult} style={{ maxWidth: '40%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-dim)' }}>
+              {sendResult}
+            </span>
+          )}
+          <button onClick={() => void enableCapture()} style={{ whiteSpace: 'nowrap' }}>
+            {t('panel.wsSender.enable')}
+          </button>
+        </div>
         <div style={{ flex: 1, overflowY: 'auto', fontFamily: 'ui-monospace, monospace', fontSize: 11, scrollbarGutter: 'stable' }}>
           {frames.length === 0 && selectedId && (
             <div className="panel-empty">{t('panel.noFrames')}</div>
@@ -204,14 +228,14 @@ export function WebSocketPanel() {
                   <button
                     title={t('panel.wsSender.resend')}
                     onClick={() => void resend(selectedUrl, f)}
-                    style={{ fontSize: 10, padding: '0 4px', cursor: 'pointer' }}
+                    className="btn-ghost btn-icon"
                   >
                     ↻
                   </button>
                   <button
                     title={t('panel.wsSender.edit')}
                     onClick={() => editFrame(f)}
-                    style={{ fontSize: 10, padding: '0 4px', cursor: 'pointer' }}
+                    className="btn-ghost btn-icon"
                   >
                     ✎
                   </button>
@@ -222,55 +246,43 @@ export function WebSocketPanel() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Sender bar — sends through the page's own socket (auth preserved) */}
-        <div
-          style={{
-            borderTop: '1px solid var(--border)',
-            padding: 6,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-            fontFamily: 'ui-monospace, monospace',
-            fontSize: 11
-          }}
-        >
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <select
-              value={captureId ?? ''}
-              onChange={(e) => setCaptureId(e.target.value === '' ? null : Number(e.target.value))}
-              style={{ flex: 1, minWidth: 0, fontSize: 11 }}
-            >
-              {captures.length === 0 && <option value="">{t('panel.wsSender.noCaptures')}</option>}
-              {captures.map((c) => (
-                <option key={c.id} value={c.id}>
-                  #{c.id} {safeHost(c.url)} ({c.readyState === 1 ? t('panel.wsSender.open') : `${t('panel.wsSender.state')} ${c.readyState}`})
-                </option>
-              ))}
-            </select>
-            <button onClick={() => void enableCapture()} style={{ fontSize: 10, whiteSpace: 'nowrap' }}>
-              {t('panel.wsSender.enable')}
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <textarea
-              ref={payloadRef}
-              value={payload}
-              onChange={(e) => setPayload(e.target.value)}
-              placeholder={t('panel.wsSender.payload')}
-              rows={2}
-              style={{ flex: 1, minWidth: 0, resize: 'vertical', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}
-            />
-            <button
-              onClick={() => void send()}
-              disabled={captureId == null || !payload || sending}
-              style={{ fontSize: 10, alignSelf: 'stretch' }}
-            >
-              {sending ? t('panel.wsSender.sending') : t('panel.wsSender.send')}
-            </button>
-          </div>
-          {sendResult && (
-            <div style={{ fontSize: 10, opacity: 0.7, wordBreak: 'break-all' }}>{sendResult}</div>
-          )}
+        {/* Composer — like the Console input: Enter sends through the page's own socket (auth preserved) */}
+        <div style={{ display: 'flex', borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
+          <textarea
+            ref={payloadRef}
+            value={payload}
+            onChange={(e) => setPayload(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                if (captureId != null && payload && !sending) void send()
+              }
+            }}
+            placeholder={t('panel.wsSender.payload')}
+            aria-label={t('panel.wsSender.payload')}
+            spellCheck={false}
+            rows={Math.min(6, payload.split('\n').length)}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              resize: 'none',
+              border: 'none',
+              padding: '4px 10px',
+              fontFamily: 'ui-monospace, monospace',
+              fontSize: 11,
+              background: 'transparent',
+              color: 'var(--text)',
+              outline: 'none'
+            }}
+          />
+          <button
+            onClick={() => void send()}
+            disabled={captureId == null || !payload || sending}
+            className="btn-primary"
+            style={{ margin: 4, alignSelf: 'flex-end' }}
+          >
+            {sending ? t('panel.wsSender.sending') : t('panel.wsSender.send')}
+          </button>
         </div>
       </div>
     </div>

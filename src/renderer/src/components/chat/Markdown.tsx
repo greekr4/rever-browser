@@ -2,7 +2,10 @@ import { memo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { useT } from '@/stores/i18n'
+
 function CodeBlock({ children }: { children?: React.ReactNode }) {
+  const tr = useT()
   const [copied, setCopied] = useState(false)
   const ref = useRef<HTMLPreElement>(null)
   const onCopy = async () => {
@@ -14,25 +17,9 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
     } catch {}
   }
   return (
-    <div style={{ position: 'relative' }}>
-      <button
-        type="button"
-        onClick={onCopy}
-        style={{
-          position: 'absolute',
-          top: 6,
-          right: 6,
-          padding: '2px 8px',
-          fontSize: 11,
-          background: 'var(--surface)',
-          border: '1px solid var(--border-2)',
-          color: 'var(--text-2)',
-          borderRadius: 4,
-          cursor: 'pointer',
-          opacity: 0.85
-        }}
-      >
-        {copied ? 'copied' : 'copy'}
+    <div className="code-block">
+      <button type="button" className="code-copy" onClick={onCopy}>
+        {copied ? tr('md.copied') : tr('md.copy')}
       </button>
       <pre ref={ref}>{children}</pre>
     </div>
@@ -40,7 +27,13 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
 }
 
 const MD_COMPONENTS = {
-  pre: ({ children }: { children?: React.ReactNode }) => <CodeBlock>{children}</CodeBlock>
+  pre: ({ children }: { children?: React.ReactNode }) => <CodeBlock>{children}</CodeBlock>,
+  // Wide tables scroll inside their own box instead of running past the panel edge.
+  table: ({ children }: { children?: React.ReactNode }) => (
+    <div className="md-table">
+      <table>{children}</table>
+    </div>
+  )
 }
 
 export const Markdown = memo(function Markdown({ text, dim }: { text: string; dim?: boolean }) {

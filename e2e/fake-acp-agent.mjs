@@ -63,11 +63,53 @@ class FakeAgent {
       return { stopReason: 'end_turn' }
     }
 
+    // Mixed Korean markdown, for typography screenshots.
+    if (text.includes('[[E2E:RICH]]')) {
+      await say(RICH_ANSWER)
+      await flush()
+      return { stopReason: 'end_turn' }
+    }
+
+    // A turn with reasoning + one tool call, for screenshots of the work block.
+    if (text.includes('[[E2E:TOOLS]]')) {
+      const up = (update) => this.connection.sessionUpdate({ sessionId: params.sessionId, update })
+      await up({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Check the captured traffic first.' } })
+      await up({ sessionUpdate: 'tool_call', toolCallId: 't1', title: 'mcp__rever-traffic__list_requests', rawInput: { limit: 20 } })
+      await up({ sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'completed', rawOutput: '[{"method":"POST","url":"/api/v3/login"}]' })
+      await say('The login call is **POST /api/v3/login**. It returns an HS256 JWT stored in `localStorage["auth.token"]`.')
+      await flush()
+      return { stopReason: 'end_turn' }
+    }
+
     await say('Hello from the fake ACP agent.')
     await flush()
     return { stopReason: 'end_turn' }
   }
 }
+
+const RICH_ANSWER = `## 로그인 흐름 분석
+
+\`POST /api/v3/login\` 요청이 HS256 JWT를 돌려주고, 클라이언트는 이를 \`localStorage["auth.token"]\`에 저장합니다. 이후 모든 API 호출에는 **x-signature** 헤더가 붙습니다.
+
+### 서명 방식
+- 알고리즘: HMAC-SHA256
+- 입력: \`METHOD\\nPATH\\nBODY\\nTIMESTAMP\`
+- 키: 번들에 하드코딩됨 (\`s3cr3t-signing-key\`)
+
+| 엔드포인트 | 메서드 | 인증 | 비고 |
+|---|---|---|---|
+| /api/v3/login | POST | 없음 | JWT 발급 |
+| /api/v3/items | GET | 서명 | 페이지네이션 |
+| /api/v3/admin/keys | GET | 서명 | 페이지 코드에 없음 |
+
+\`\`\`js
+const sig = await hmac(key, \`\${method}\\n\${path}\\n\${body}\\n\${ts}\`)
+headers['x-signature'] = sig
+\`\`\`
+
+> 서명 키가 클라이언트에 있으므로 재전송 시 직접 다시 서명할 수 있습니다.
+
+다음 단계로 \`/api/v3/admin/keys\`에 서명된 요청을 보내 권한 검사가 있는지 확인해 보는 것을 권합니다.`
 
 const input = Writable.toWeb(process.stdout)
 const output = Readable.toWeb(process.stdin)

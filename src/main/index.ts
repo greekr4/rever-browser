@@ -15,6 +15,7 @@ import {
 } from './chrome-cdp'
 import { registerStorageIpc } from './ipc/storage-ipc'
 import { registerAcpIpc } from './ipc/acp-ipc'
+import { prewarmCatalogs } from './model-catalog'
 import { registerTerminalIpc } from './ipc/terminal-ipc'
 import { registerDialogIpc } from './ipc/dialog-ipc'
 import { registerExternalIpc } from './ipc/external-ipc'
@@ -185,7 +186,11 @@ function createWindow() {
     // Initial overlay follows the OS scheme; the renderer corrects it to the
     // stored theme on mount via the 'theme:set-titlebar' IPC below.
     ...(process.platform === 'darwin'
-      ? { titleBarStyle: 'hiddenInset' as const }
+      ? {
+          titleBarStyle: 'hiddenInset' as const,
+          // Centre the lights on the tab labels (y≈23 in the 40px strip), as Chrome does.
+          trafficLightPosition: { x: 12, y: 17 }
+        }
       : {
           titleBarStyle: 'hidden' as const,
           titleBarOverlay: nativeTheme.shouldUseDarkColors
@@ -1088,6 +1093,8 @@ app.whenReady().then(() => {
   )
 
   registerAcpIpc()
+  // Background: list each CLI agent's current models (no prompt, no tokens).
+  prewarmCatalogs()
 
   ipcMain.handle('picker:start', () => startPicker())
   ipcMain.handle('picker:stop', () => stopPicker())

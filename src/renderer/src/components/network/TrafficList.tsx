@@ -143,10 +143,10 @@ export function TrafficList() {
               clear()
               void window.rev.traffic.clear()
             }}
-            style={{ marginLeft: 'auto', fontSize: 11 }}
+            style={{ marginLeft: 'auto' }}
             title={tr('traffic.clear')}
           >
-            Clear
+            {tr('common.clear')}
           </button>
         </div>
         <input
@@ -155,20 +155,14 @@ export function TrafficList() {
           placeholder={tr('traffic.filter')}
           style={{ padding: '4px 8px', fontSize: 11 }}
         />
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="seg" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
           {QUICK_TYPES.map((t) => {
             const active = typeFilter.has(t)
             return (
               <button
                 key={t}
                 onClick={() => toggleType(t)}
-                style={{
-                  padding: '2px 8px',
-                  fontSize: 10,
-                  borderRadius: 10,
-                  background: active ? 'var(--accent-soft)' : 'var(--surface)',
-                  borderColor: active ? 'var(--accent-border)' : 'var(--border-2)'
-                }}
+                aria-pressed={active}
               >
                 {t}
               </button>
@@ -268,7 +262,7 @@ export function TrafficList() {
           }}
         >
           <strong>{selected.size} selected</strong>
-          <button onClick={onAskAbout} style={{ marginLeft: 'auto' }}>
+          <button className="btn-primary" onClick={onAskAbout} style={{ marginLeft: 'auto' }}>
             Ask about
           </button>
           <button onClick={clearSelection}>{tr('common.clear')}</button>
@@ -341,7 +335,8 @@ const TrafficRow = memo(function TrafficRow({
         <button
           onClick={() => void sendToRepeater(e.requestId)}
           title={sendTitle}
-          style={{ fontSize: 10, padding: '1px 6px', lineHeight: 1.2 }}
+          className="btn-ghost"
+          style={{ padding: '0 5px', fontSize: 11 }}
         >
           ↻R
         </button>

@@ -194,16 +194,38 @@ input, select {
   border-radius: 4px;
 }
 
+/* ── Buttons: design system D (DevTools-dense) ───────────────────
+   A plain <button> is the secondary action (filled grey). Add one class to
+   change its role; don't restyle buttons inline.
+   .btn-ghost   quiet (no fill until hover)   .btn-primary  main action
+   .btn-danger  destructive                   .btn-icon     icon only
+   .btn-toggle  on/off via aria-pressed       .seg          group, active = underline */
 button {
   background: var(--surface-3);
   color: var(--text);
-  border: 1px solid var(--border-2);
+  border: none;
   border-radius: 4px;
-  padding: 4px 10px;
+  padding: 3px 8px;
+  font-size: 12px;
+  line-height: 16px;
   cursor: pointer;
 }
 button:hover:not(:disabled) { background: var(--border-2); }
-button:disabled { opacity: 0.5; cursor: default; }
+button:disabled { opacity: 0.42; cursor: default; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.btn-ghost { background: transparent; color: var(--text-2); }
+.btn-ghost:hover:not(:disabled) { background: var(--chrome-hover); color: var(--text); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
+.btn-danger { background: transparent; color: var(--status-error); }
+.btn-danger:hover:not(:disabled) { background: var(--chip-danger-bg); }
+.btn-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; padding: 3px; }
+.btn-toggle[aria-pressed='true'] { background: var(--accent-soft); color: var(--accent-text); }
+.seg { display: inline-flex; gap: 2px; }
+.seg > button { background: transparent; color: var(--text-dim); border-radius: 0; border-bottom: 2px solid transparent; padding: 3px 6px 1px; }
+.seg > button:hover:not(:disabled) { background: transparent; color: var(--text); }
+.seg > button[aria-pressed='true'] { color: var(--text); border-bottom-color: var(--accent); }
 
 /* Unified toolbar button — applied to every nav-bar button so icon-only
    and text buttons share the same height/padding regardless of label. */
@@ -319,6 +341,128 @@ button:disabled { opacity: 0.5; cursor: default; }
 .chrome-menu-sep { height: 1px; margin: 6px 0; background: var(--border); }
 .chrome-menu-foot { padding: 6px 16px 2px; color: var(--text-dim); font-size: 11px; }
 
+/* Chat composer: one rounded card holding the input and its option chips. */
+.composer {
+  margin: 0 12px 12px;
+  padding: 10px 12px 8px;
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.composer:focus-within { border-color: var(--accent-border); }
+.composer { container-type: inline-size; }
+/* Narrow panel: option chips drop to icon-only (label stays in title/aria-label) so the model name keeps room. */
+@container (max-width: 360px) {
+  .composer-chip.collapsible > span:not([aria-hidden]) { display: none; }
+}
+.composer textarea {
+  border: none;
+  background: transparent;
+  outline: none;
+  padding: 2px 2px;
+  color: var(--text);
+}
+.composer-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+/* Chips shrink (label ellipsis) before the send button is pushed out of the card. */
+.composer-row > * { min-width: 0; }
+.composer-chip {
+  height: 28px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.composer-chip > span { overflow: hidden; text-overflow: ellipsis; }
+.composer-chip > svg, .composer-chip > span[aria-hidden] { flex-shrink: 0; }
+.composer-chip:hover:not(:disabled),
+.composer-chip[aria-expanded='true'] { background: var(--chrome-hover); color: var(--text); }
+.composer-chip.warn { color: var(--chip-warn-text); }
+.composer-menu { position: absolute; bottom: calc(100% + 6px); left: 0; top: auto; min-width: 240px; }
+.composer-menu-item { height: auto; min-height: 40px; padding: 6px 14px; }
+.composer-menu-hint { font-size: 11px; color: var(--text-dim); white-space: normal; }
+.composer-send {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+}
+.composer-send:hover:not(:disabled) { background: var(--text-2); }
+.composer-send:disabled { opacity: 0.3; }
+.chat-user-bubble {
+  width: fit-content;
+  max-width: 85%;
+  margin-left: auto;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--surface-3);
+  overflow-wrap: anywhere;
+}
+.chat-user-bubble .md p:first-child { margin-top: 0; }
+.chat-user-bubble .md p:last-child { margin-bottom: 0; }
+
+/* Composer model menu (one agent's models + effort + fast mode). */
+.model-menu { position: fixed; padding: 6px 0; max-height: 70vh; display: flex; flex-direction: column; }
+.model-menu-search { display: flex; align-items: center; gap: 8px; margin: 2px 8px 6px; padding: 0 10px; height: 32px; border-radius: 8px; background: var(--surface-2); color: var(--text-dim); }
+.model-menu-search input { flex: 1; min-width: 0; border: none; background: transparent; outline: none; color: var(--text); font-size: 13px; padding: 0; }
+.model-menu-list { overflow-y: auto; min-height: 0; padding: 0 6px; }
+.model-menu-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: none; border-radius: 8px; background: transparent; color: var(--text); text-align: left; font-size: 13px; }
+.model-menu-row:hover:not(:disabled), .model-menu-row[aria-checked='true'] { background: var(--chrome-hover); }
+.model-menu-option { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 10px 6px 14px; white-space: nowrap; font-size: 12px; color: var(--text-2); }
+.effort-seg { display: inline-flex; gap: 1px; flex-wrap: nowrap; justify-content: flex-end; }
+.effort-seg button { padding: 3px 6px; white-space: nowrap; border: none; border-radius: 6px; background: transparent; color: var(--text-2); font-size: 12px; }
+.effort-seg button:hover:not(:disabled) { background: var(--chrome-hover); }
+.effort-seg button[aria-checked='true'] { background: var(--surface-3); color: var(--text); font-weight: 600; }
+input.switch { appearance: none; width: 30px; height: 18px; border-radius: 9px; background: var(--border-3); position: relative; cursor: pointer; border: none; margin: 0; }
+input.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+input.switch:checked { background: var(--accent); }
+input.switch:checked::after { left: 14px; }
+input.switch:disabled { opacity: 0.4; cursor: default; }
+
+/* New-tab agent row: name left, status pushed right. */
+.new-tab-agent > span:last-child { margin-left: auto; }
+
+/* Chat session tabs (one agent session each). */
+.chat-tabs { display: flex; align-items: center; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; overflow: hidden; }
+.chat-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 180px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  flex-shrink: 1;
+}
+.chat-tab:hover { background: var(--chrome-hover); }
+.chat-tab[aria-selected='true'] { background: var(--surface-3); color: var(--text); }
+.chat-tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.chat-tab-busy { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; animation: chat-tab-pulse 1s ease-in-out infinite; }
+@keyframes chat-tab-pulse { 50% { opacity: 0.3; } }
+
 /* Proxy popover — keep the focus ring inside each field so it can't overflow
    the popover's rounded edge (fields sit flush against the padding edge). */
 .proxy-popover input,
@@ -417,9 +561,9 @@ button:disabled { opacity: 0.5; cursor: default; }
   color: var(--text-2);
 }
 
+.md-table { overflow-x: auto; margin: 0.4em 0 0.7em; }
 .md table {
   border-collapse: collapse;
-  margin: 0.4em 0 0.7em;
   font-size: 12px;
   width: 100%;
 }
@@ -432,6 +576,46 @@ button:disabled { opacity: 0.5; cursor: default; }
 .md th { background: var(--bg-bar); font-weight: 600; }
 
 .md hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
+
+/* Code block copy button: appears on hover so it never sits on top of the code. */
+.code-block { position: relative; }
+.code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  color: var(--text-2);
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.code-block:hover .code-copy, .code-copy:focus-visible { opacity: 1; }
+
+/* Chat transcript typography: larger, airier than the dense panels that also use .md. */
+.chat-log { font-size: 14px; }
+.chat-log .md { line-height: 1.65; }
+.chat-log .md p { margin: 0 0 0.75em; }
+.chat-log .md h1, .chat-log .md h2, .chat-log .md h3, .chat-log .md h4 { margin: 1.2em 0 0.5em; font-weight: 650; line-height: 1.35; }
+.chat-log .md > :first-child { margin-top: 0; }
+.chat-log .md h1 { font-size: 1.28em; }
+.chat-log .md h2 { font-size: 1.16em; }
+.chat-log .md h3 { font-size: 1.04em; }
+.chat-log .md ul, .chat-log .md ol { margin: 0.35em 0 0.8em; padding-left: 1.3em; }
+.chat-log .md li { margin: 0.3em 0; }
+.chat-log .md li::marker { color: var(--text-dim); }
+.chat-log .md code { font-size: 0.86em; padding: 0.12em 0.4em; border-radius: 5px; }
+.chat-log .md pre { border-radius: 8px; padding: 12px 14px; font-size: 12.5px; line-height: 1.55; margin: 0.6em 0 0.9em; }
+.chat-log .md pre code { font-size: inherit; padding: 0; }
+.chat-log .md-table { border: 1px solid var(--border); border-radius: 8px; margin: 0.6em 0 0.9em; }
+.chat-log .md table { font-size: 13px; }
+.chat-log .md th, .chat-log .md td { border: none; border-bottom: 1px solid var(--border); padding: 7px 10px; }
+.chat-log .md tr:last-child td { border-bottom: none; }
+.chat-log .md th { background: var(--surface-2); color: var(--text-2); font-weight: 600; }
+.chat-log .md blockquote { border-left: 3px solid var(--accent-border); margin: 0.6em 0 0.9em; padding: 0.2em 0 0.2em 0.9em; color: var(--text-2); }
+.chat-log .chat-user-bubble { line-height: 1.55; }
 
 /* Thinking dots */
 .thinking-dot {
@@ -633,38 +817,60 @@ body.resizing webview { pointer-events: none; }
 
 .chip-stack::-webkit-scrollbar { height: 0; }
 
+.chip-group { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.chip-sep { width: 1px; height: 16px; margin: 0 8px; background: var(--border-2); flex-shrink: 0; }
+
 .chip {
+  position: relative;
   height: 28px;
-  padding: 0 12px;
-  border-radius: 6px;
+  padding: 0 10px 0 9px;
+  border-radius: 7px;
   background: transparent;
   border: 1px solid transparent;
-  color: var(--text-2);
-  font-size: 12px;
+  color: var(--text-dim);
+  font-size: 12.5px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
-
-.chip:hover:not(:disabled) {
-  background: var(--glass-hover);
-  color: var(--text);
+.chip svg { flex-shrink: 0; opacity: 0.85; }
+.chip:hover:not(:disabled) { background: var(--glass-hover, var(--chrome-hover)); color: var(--text); }
+/* No weight change: a bolder label is wider and nudges every tab to its right. */
+.chip.active { background: var(--glass-hover, var(--chrome-hover)); color: var(--text); }
+/* The open panel's tab gets an accent bar on the bar's top edge, joining it to the panel above. */
+.chip.active::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: 9px;
+  right: 9px;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--accent);
 }
-
-.chip.active {
-  background: var(--accent-soft);
-  border-color: var(--accent-border);
-  color: var(--text);
-}
-
 .chip-count {
+  min-width: 18px;
+  height: 17px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  opacity: 0.7;
 }
+.chip-count.danger { background: var(--chip-danger-bg); color: var(--chip-danger-text); }
+.chip-action { border-color: var(--border-2); color: var(--text-2); }
+.chip-action svg { color: var(--status-error); opacity: 1; }
+.chip-action.active::before { display: none; }
 
 /* ── Bottom slide panel — sits above the 40px bottom menu bar ──── */
 .chip-panel-bottom {

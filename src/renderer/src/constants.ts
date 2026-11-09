@@ -16,7 +16,7 @@ export interface ACPAgentDef {
    * 'openai', 'grok', and 'glm' call their APIs directly in-process and are
    * gated on an API key instead of a PATH binary.
    */
-  provider?: 'acp' | 'anthropic' | 'openai' | 'grok' | 'glm'
+  provider?: 'acp' | 'claude-cli' | 'anthropic' | 'openai' | 'grok' | 'glm'
   /** Short hint shown in the picker when the binary isn't found. */
   installHint: string
   /** Command that signs the user in, shown when the binary is installed but unauthenticated. */
@@ -70,12 +70,12 @@ export const ACP_AGENTS: ACPAgentDef[] = [
   {
     id: 'claude-code',
     name: 'Claude Code',
-    command: 'claude-agent-acp',
-    fallbackBins: ['claude-code-acp'],
+    command: 'claude',
     args: [],
     acpSupported: true,
-    provider: 'acp',
-    installHint: 'npm i -g @agentclientprotocol/claude-agent-acp',
+    // Driven directly over stream-json (src/main/providers/claude-cli-provider.ts).
+    provider: 'claude-cli',
+    installHint: 'npm i -g @anthropic-ai/claude-code',
     loginHint: 'claude login',
     icon: 'C'
   },

@@ -1,31 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { ACP_AGENTS } from '@/constants'
+import { ProviderIcon } from './ProviderIcon'
 import { useChatHistory } from '@/stores/chat-history'
 
-import { useT } from '@/stores/i18n'
+import { useI18nStore, useT } from '@/stores/i18n'
 interface ChatHistoryMenuProps {
   currentId: string | null
   onOpen: (id: string) => void
   disabled?: boolean
 }
 
-function relativeTime(ts: number): string {
-  const diff = Date.now() - ts
-  const min = Math.floor(diff / 60_000)
-  if (min < 1) return 'just now'
-  if (min < 60) return `${min}m ago`
-  const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr}h ago`
-  const day = Math.floor(hr / 24)
-  if (day < 7) return `${day}d ago`
-  const week = Math.floor(day / 7)
-  return `${week}w ago`
+function relativeTime(ts: number, lang: string): string {
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto', style: 'short' })
+  const min = Math.round((ts - Date.now()) / 60_000)
+  if (min === 0) return rtf.format(0, 'second') // "now" — 0 minutes reads oddly in Korean
+  if (min > -60) return rtf.format(min, 'minute')
+  const hr = Math.round(min / 60)
+  if (hr > -24) return rtf.format(hr, 'hour')
+  const day = Math.round(hr / 24)
+  return day > -7 ? rtf.format(day, 'day') : rtf.format(Math.round(day / 7), 'week')
 }
 
-function agentIcon(id: string): string {
-  return ACP_AGENTS.find((a) => a.id === id)?.icon ?? '?'
-}
 
 /**
  * Dropdown listing saved conversations, newest first. Clicking a row opens it;
@@ -34,10 +30,23 @@ function agentIcon(id: string): string {
 export function ChatHistoryMenu({ currentId, onOpen, disabled }: ChatHistoryMenuProps) {
   const tr = useT()
   const [open, setOpen] = useState(false)
+  const lang = useI18nStore((s) => s.lang)
   const conversations = useChatHistory((s) => s.conversations)
   const remove = useChatHistory((s) => s.remove)
   const popoverRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  // Fixed and clamped to the chat column: an absolute popover hanging left of the button got clipped.
+  const [pos, setPos] = useState<React.CSSProperties>({})
+  const toggle = (): void => {
+    if (!open && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect()
+      const col = triggerRef.current.closest('aside')?.getBoundingClientRect() ?? { left: 0, right: window.innerWidth }
+      const width = Math.min(320, col.right - col.left - 16)
+      const left = Math.max(col.left + 8, Math.min(r.right - width, col.right - width - 8))
+      setPos({ top: r.bottom + 6, left, width })
+    }
+    setOpen((v) => !v)
+  }
 
   useEffect(() => {
     if (!open) return
@@ -55,9 +64,10 @@ export function ChatHistoryMenu({ currentId, onOpen, disabled }: ChatHistoryMenu
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         disabled={disabled}
-        style={triggerStyle}
+        className="btn-ghost"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
         title={tr('chat.historyTitle')}
       >
         <span>{tr('chat.history')}</span>
@@ -66,10 +76,10 @@ export function ChatHistoryMenu({ currentId, onOpen, disabled }: ChatHistoryMenu
       </button>
 
       {open && (
-        <div ref={popoverRef} style={popoverStyle}>
+        <div ref={popoverRef} style={{ ...popoverStyle, ...pos }}>
           <header style={popoverHeader}>
             <strong style={{ fontSize: 12 }}>{tr('chat.history')}</strong>
-            <span style={{ fontSize: 11, opacity: 0.6 }}>{conversations.length} saved</span>
+            <span style={{ fontSize: 11, opacity: 0.6 }}>{tr('chat.historySaved', { n: conversations.length })}</span>
           </header>
           {conversations.length === 0 ? (
             <p style={{ fontSize: 11, opacity: 0.5, padding: '8px 4px', margin: 0 }}>
@@ -94,16 +104,19 @@ export function ChatHistoryMenu({ currentId, onOpen, disabled }: ChatHistoryMenu
                       style={rowMainStyle}
                       title={c.title}
                     >
-                      <span style={iconChip}>{agentIcon(c.agentId)}</span>
+                      <span style={iconChip} title={ACP_AGENTS.find((a) => a.id === c.agentId)?.name}>
+                        <ProviderIcon agentId={c.agentId} size={14} fallback={ACP_AGENTS.find((a) => a.id === c.agentId)?.icon ?? '?'} />
+                      </span>
                       <span style={rowTextStyle}>
                         <span style={rowTitleStyle}>{c.title}</span>
-                        <span style={rowMetaStyle}>{relativeTime(c.updatedAt)}</span>
+                        <span style={rowMetaStyle}>{relativeTime(c.updatedAt, lang)}</span>
                       </span>
                     </button>
                     <button
                       type="button"
                       onClick={() => remove(c.id)}
-                      style={deleteStyle}
+                      className="btn-danger btn-icon"
+                      style={{ flexShrink: 0, alignSelf: 'center', marginRight: 4, fontSize: 15 }}
                       title={tr('chat.deleteConversation')}
                       aria-label={tr('chat.deleteConversation')}
                     >
@@ -120,25 +133,10 @@ export function ChatHistoryMenu({ currentId, onOpen, disabled }: ChatHistoryMenu
   )
 }
 
-const triggerStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 4,
-  padding: '3px 8px',
-  background: 'var(--bg-bar)',
-  border: '1px solid var(--border-2)',
-  borderRadius: 4,
-  color: 'var(--text-2)',
-  cursor: 'pointer',
-  fontSize: 11
-}
-
 const popoverStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 'calc(100% + 6px)',
-  right: 0,
+  position: 'fixed',
+  boxSizing: 'border-box',
   zIndex: 50,
-  width: 'min(320px, calc(var(--chat-w, 100vw) - 24px))',
   maxHeight: '70vh',
   overflowY: 'auto',
   background: 'var(--bg-bar)',
@@ -219,14 +217,3 @@ const rowMetaStyle: React.CSSProperties = {
   opacity: 0.5
 }
 
-const deleteStyle: React.CSSProperties = {
-  flexShrink: 0,
-  width: 28,
-  background: 'transparent',
-  border: 'none',
-  borderLeft: '1px solid var(--border)',
-  color: 'var(--status-error)',
-  cursor: 'pointer',
-  fontSize: 16,
-  lineHeight: 1
-}

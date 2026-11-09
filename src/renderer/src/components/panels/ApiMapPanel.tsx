@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 
+import { useT } from '@/stores/i18n'
 import { useTrafficStore } from '@/stores/traffic'
 import type { ApiEndpoint } from '@/types/traffic'
 
@@ -61,6 +62,7 @@ const CX = W / 2
 const CY = H / 2
 
 export function ApiMapPanel() {
+  const t = useT()
   const endpointMap = useTrafficStore((s) => s.endpoints)
   const entries = useTrafficStore((s) => s.entries)
   const openDetail = useTrafficStore((s) => s.openDetail)
@@ -171,8 +173,8 @@ export function ApiMapPanel() {
         </select>
 
         {host && hosts.length > 1 && (
-          <button onClick={() => setFocus(null)} style={{ fontSize: 11, padding: '2px 8px' }}>
-            ← all hosts
+          <button className="btn-ghost" onClick={() => setFocus(null)}>
+            {t('panel.allHosts')}
           </button>
         )}
 

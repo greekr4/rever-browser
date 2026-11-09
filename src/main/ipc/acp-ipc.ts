@@ -10,6 +10,8 @@ import type {
 import { detectAgents, type AgentProbe } from '../acp-detect'
 import { runAsAgent } from '../chrome-cdp'
 import { probeAgents } from '../agent-probe'
+import { findClaudeCli } from '../claude-cli'
+import { cachedCatalog, refreshCatalog } from '../model-catalog'
 import { AGENT_CATALOG, catalogAgent } from '../agent-catalog'
 import {
   cancelSession,
@@ -17,6 +19,7 @@ import {
   promptSession,
   sessionModelState,
   setSessionModelRouted,
+  setSessionOption,
   spawnSession,
   type AgentDef
 } from '../agent-router'
@@ -66,7 +69,7 @@ export function registerAcpIpc(): void {
     // (run via the node path the harness passes). Gated behind an env var so it
     // can never affect a normal run; the renderer still only sends an id.
     const fakeScript = process.env.REVER_FAKE_ACP_AGENT
-    if (fakeScript && agent.provider === 'acp') {
+    if (fakeScript && (agent.provider === 'acp' || agent.provider === 'claude-cli')) {
       const node = process.env.REVER_FAKE_ACP_NODE || 'node'
       const scratch = path.join(app.getPath('userData'), 'agent-scratch')
       try {
@@ -74,9 +77,15 @@ export function registerAcpIpc(): void {
       } catch (e) {
         console.warn('[acp:spawn] failed to ensure scratch dir', e)
       }
-      return spawnSession({ id: agent.id, command: node, args: [fakeScript] }, scratch)
+      // The suffix keeps agent-router on the ACP path (it routes 'claude-code' to the CLI provider).
+      return spawnSession({ id: `${agent.id}-fake`, command: node, args: [fakeScript] }, scratch)
     }
     let command = agent.command
+    if (agent.provider === 'claude-cli') {
+      const cli = findClaudeCli()
+      if (!cli) throw new Error('Claude Code CLI not found — install it, then run `claude` once to sign in')
+      command = cli
+    }
     if (agent.provider === 'acp') {
       const [found] = await detectAgents([
         { command: agent.command, fallbackBins: agent.fallbackBins }
@@ -156,6 +165,15 @@ export function registerAcpIpc(): void {
     return killSession(sessionId)
   })
   ipcMain.handle('acp:model-state', (_event, sessionId: string) => sessionModelState(sessionId))
+  // Live model lists from the agents' own CLIs (cached on disk, refreshed each launch).
+  ipcMain.handle('models:catalog', (_event, agentId: string) => cachedCatalog(String(agentId)))
+  ipcMain.handle('models:refresh', (_event, agentId: string) => refreshCatalog(String(agentId)))
+  ipcMain.handle('acp:set-option', async (_event, sessionId: string, key: unknown, value: unknown) => {
+    // Renderer input: accept only the two known keys and their value types.
+    if (key === 'effort' && typeof value === 'string') return setSessionOption(sessionId, key, value)
+    if (key === 'fastMode' && typeof value === 'boolean') return setSessionOption(sessionId, key, value)
+    throw new Error('invalid session option')
+  })
   ipcMain.handle('acp:set-model', async (_event, sessionId: string, modelId: string) =>
     setSessionModelRouted(sessionId, modelId)
   )

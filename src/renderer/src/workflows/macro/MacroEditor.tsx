@@ -394,15 +394,15 @@ export function MacroEditor({ workflow, onChange }: WorkflowEditorProps): React.
         }}
       >
         {running ? (
-          <button type="button" onClick={cancel} style={{ background: 'var(--surface-3)' }}>
-            Stop
+          <button type="button" onClick={cancel}>
+            {tr('common.stop')}
           </button>
         ) : (
           <button
             type="button"
             onClick={run}
             disabled={data.steps.length === 0}
-            style={{ background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }}
+            className="btn-primary"
           >
             ▶ Run macro
           </button>

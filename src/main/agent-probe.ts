@@ -14,6 +14,7 @@ import { agentEnv } from './acp-session'
 import { detectAgents } from './acp-detect'
 import { detectAgentLogins, type LoginAgentId, type LoginInfo } from './agent-login'
 import { GROK_PLAN, resolveGrokCredential } from './grok-login'
+import { findClaudeCli } from './claude-cli'
 import { GLM_BASE_URL } from './providers/glm-provider'
 import { XAI_BASE_URL } from './providers/grok-models'
 import { getApiKey } from './settings'
@@ -33,7 +34,7 @@ export type AgentStatus =
 
 export interface AgentProbeDef {
   id: string
-  provider?: 'acp' | 'anthropic' | 'openai' | 'grok' | 'glm'
+  provider?: 'acp' | 'claude-cli' | 'anthropic' | 'openai' | 'grok' | 'glm'
   command: string
   fallbackBins?: string[]
 }
@@ -224,6 +225,15 @@ async function probeAcp(
   return { ...base, status: 'ready', detail: null, auto: true }
 }
 
+// The CLI itself is the agent: installed + signed in is all it needs.
+function probeClaudeCli(def: AgentProbeDef, login: LoginInfo): AgentHealth {
+  const resolvedPath = findClaudeCli()
+  const base = { id: def.id, resolvedPath, auto: false, plan: login.plan }
+  if (!resolvedPath) return { ...base, status: 'not-installed', detail: null, plan: null }
+  if (!login.loggedIn) return { ...base, status: 'needs-login', detail: null }
+  return { ...base, status: 'ready', detail: null, auto: true }
+}
+
 /**
  * Probe every agent in `defs` concurrently. PATH detection and login detection
  * each run once and are shared across the entries.
@@ -244,6 +254,7 @@ export async function probeAgents(defs: AgentProbeDef[]): Promise<AgentHealth[]>
       if (def.provider === 'grok') return probeGrok()
       if (def.provider === 'glm') return probeGlm()
       const login = logins[def.id as LoginAgentId] ?? noLogin
+      if (def.provider === 'claude-cli') return probeClaudeCli(def, login)
       return probeAcp(def, paths.get(def.command) ?? null, login)
     })
   )

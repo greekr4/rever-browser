@@ -2,7 +2,7 @@
 // Placeholders use {name} and are filled by the t() helper.
 export const en = {
   // Agent pane
-  'agent.chat': 'Chat (ACP)',
+  'agent.chat': 'Chat',
   'agent.terminal': 'Terminal (CLI)',
 
   // Terminal (CLI) onboarding
@@ -93,6 +93,7 @@ export const en = {
   'common.delete': 'Delete',
   'common.remove': 'Remove',
   'common.stop': 'Stop',
+  'common.close': 'Close',
   'common.clear': 'Clear',
   'common.moveUp': 'Move up',
   'common.moveDown': 'Move down',
@@ -138,6 +139,7 @@ export const en = {
   'traffic.sendToRepeater': 'Send to Repeater',
 
   // Traffic detail drawer
+  'drawer.sendToChat': 'Send to chat',
   'drawer.request': 'Request',
   'drawer.response': 'Response',
   'drawer.queryParams': 'Query params',
@@ -154,6 +156,10 @@ export const en = {
 
   // Repeater
   'repeater.empty': 'In Traffic, click the "↻R" (Send to Repeater) button on a request row to load it here.',
+  'repeater.send': 'Send',
+  'repeater.sending': 'Sending…',
+  'repeater.addHeader': '+ Add',
+  'repeater.restore': 'Restore',
   'repeater.removeHeader': 'Remove header',
 
   // Chat
@@ -169,6 +175,35 @@ export const en = {
     'The model provider’s safeguard flagged this request once and the session continued on a fallback model. The answer may differ from usual — if it looks incomplete, rephrase with clear context about your authorized task.',
   'chat.modelSwitchFailed': 'This agent did not accept the model switch',
   'chat.newConversation': 'Start a new conversation (kills the current agent session)',
+  'chat.perm.label': 'Tool permissions',
+  'chat.perm.auto': 'Auto-approve',
+  'chat.perm.auto.hint': 'Runs tools without asking. Risky ones (fuzzing, non-GET replays) still ask.',
+  'chat.perm.manual': 'Ask every time',
+  'chat.perm.manual.hint': 'Approve each tool call before it runs.',
+  'chat.send': 'Send',
+  'chat.stop': 'Stop',
+  'chat.agentConnected': 'Connected',
+  'md.copy': 'Copy',
+  'md.copied': 'Copied',
+  'panel.allHosts': '← All hosts',
+  'panel.bar': 'Panels',
+  'panel.traffic': 'Traffic',
+  'panel.apimap': 'API Map',
+  'panel.websocket': 'WebSocket',
+  'panel.console': 'Console',
+  'panel.exceptions': 'Exceptions',
+  'panel.repeater': 'Repeater',
+  'panel.storage': 'Storage',
+  'panel.history': 'History',
+  'panel.workflows': 'Workflows',
+  'panel.redteam': 'Red Team',
+  'chat.historySaved': '{n} saved',
+  'chat.newShort': '+ New',
+  'chat.jumpLatest': '↓ Jump to latest',
+  'chat.tabs': 'Chat sessions',
+  'chat.newTab': 'New session',
+  'chat.closeTab': 'Close session (stops its agent)',
+  'chat.tabBusy': 'Working',
   'chat.placeholder': 'Type a message…',
   'chat.historyTitle': 'Conversation history',
   'chat.history': 'History',
@@ -203,6 +238,15 @@ export const en = {
   'onboard.ready': '{n} ready',
   'onboard.use': 'Use',
   'onboard.inUse': 'In use',
+  'model.chipTitle': 'Model and reasoning',
+  'model.effort': 'Reasoning',
+  'model.effort.low': 'Low',
+  'model.effort.medium': 'Medium',
+  'model.effort.high': 'High',
+  'model.effort.xhigh': 'Very high',
+  'model.effort.max': 'Max',
+  'model.fastMode': 'Fast mode',
+  'model.optionsAfterStart': 'Available once the session has started — send a message first.',
   'model.search': 'Search models…',
   'model.noMatch': 'No models match',
   'onboard.skip': 'Skip for now',
