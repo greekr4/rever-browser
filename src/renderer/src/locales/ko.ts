@@ -86,6 +86,7 @@ export const ko: Record<TKey, string> = {
   'common.delete': '삭제',
   'common.remove': '제거',
   'common.stop': '중지',
+  'common.close': '닫기',
   'common.clear': '지우기',
   'common.moveUp': '위로',
   'common.moveDown': '아래로',
@@ -128,6 +129,7 @@ export const ko: Record<TKey, string> = {
   'traffic.size': '크기',
   'traffic.sendToRepeater': '리피터로 보내기',
 
+  'drawer.sendToChat': '채팅으로 보내기',
   'drawer.request': '요청',
   'drawer.response': '응답',
   'drawer.queryParams': '쿼리 파라미터',
@@ -142,6 +144,10 @@ export const ko: Record<TKey, string> = {
   'json.more': '… 외 {n}개',
 
   'repeater.empty': 'Traffic에서 요청 행의 "↻R"(리피터로 보내기) 버튼을 눌러 여기로 불러오세요.',
+  'repeater.send': '보내기',
+  'repeater.sending': '보내는 중…',
+  'repeater.addHeader': '+ 추가',
+  'repeater.restore': '복원',
   'repeater.removeHeader': '헤더 제거',
 
   'chat.input': '입력',
@@ -166,6 +172,7 @@ export const ko: Record<TKey, string> = {
   'chat.agentConnected': '연결됨',
   'md.copy': '복사',
   'md.copied': '복사됨',
+  'panel.allHosts': '← 전체 호스트',
   'panel.bar': '패널',
   'panel.traffic': '트래픽',
   'panel.apimap': 'API 맵',
@@ -178,6 +185,8 @@ export const ko: Record<TKey, string> = {
   'panel.workflows': '워크플로',
   'panel.redteam': '레드팀',
   'chat.historySaved': '{n}개 저장됨',
+  'chat.newShort': '+ 새 대화',
+  'chat.jumpLatest': '↓ 최신으로',
   'chat.tabs': '채팅 세션',
   'chat.newTab': '새 세션',
   'chat.closeTab': '세션 닫기 (에이전트 종료)',

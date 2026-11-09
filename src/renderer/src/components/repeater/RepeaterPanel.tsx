@@ -58,12 +58,10 @@ export function RepeaterPanel() {
         >
           {sourceLabel}
         </span>
-        <button onClick={() => void send()} disabled={loading} style={{ fontSize: 11 }}>
-          {loading ? 'Sending…' : 'Send'}
+        <button className="btn-primary" onClick={() => void send()} disabled={loading}>
+          {loading ? tr('repeater.sending') : tr('repeater.send')}
         </button>
-        <button onClick={clear} style={{ fontSize: 11 }}>
-          Clear
-        </button>
+        <button onClick={clear}>{tr('common.clear')}</button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
@@ -188,8 +186,8 @@ function RequestEditor({ active, onChange }: EditorProps) {
           }}
         >
           Headers ({headerEntries.length})
-          <button onClick={addHeader} style={{ marginLeft: 'auto', fontSize: 10 }}>
-            + add
+          <button className="btn-ghost" onClick={addHeader} style={{ marginLeft: 'auto' }}>
+            {tr('repeater.addHeader')}
           </button>
         </div>
         <table
@@ -233,7 +231,8 @@ function RequestEditor({ active, onChange }: EditorProps) {
                   <button
                     onClick={() => removeHeader(idx)}
                     title={tr('repeater.removeHeader')}
-                    style={{ padding: '2px 6px', fontSize: 11, lineHeight: 1 }}
+                    aria-label={tr('repeater.removeHeader')}
+                    className="btn-danger btn-icon"
                   >
                     ×
                   </button>
@@ -369,6 +368,7 @@ interface HistoryStripProps {
 }
 
 function HistoryStrip({ history, onRestore }: HistoryStripProps) {
+  const tr = useT()
   return (
     <div
       style={{
@@ -411,8 +411,8 @@ function HistoryStrip({ history, onRestore }: HistoryStripProps) {
           >
             {h.request.url}
           </span>
-          <button onClick={() => onRestore(i)} style={{ fontSize: 10 }}>
-            Restore
+          <button className="btn-ghost" onClick={() => onRestore(i)}>
+            {tr('repeater.restore')}
           </button>
         </div>
       ))}

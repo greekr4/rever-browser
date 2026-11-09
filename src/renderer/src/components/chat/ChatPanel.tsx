@@ -233,18 +233,8 @@ function WorkGroup({ parts }: { parts: AnyPart[] }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        style={{
-          display: 'inline-flex',
-          gap: 6,
-          alignItems: 'center',
-          padding: '2px 10px',
-          fontSize: 11,
-          background: 'transparent',
-          border: '1px solid var(--border)',
-          borderRadius: 12,
-          color: 'var(--text-dim)',
-          cursor: 'pointer'
-        }}
+        className="btn-ghost"
+        style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 11 }}
       >
         <span>{open ? '▾' : '▸'}</span>
         <span>{summary || 'work'}</span>
@@ -686,18 +676,9 @@ export function ChatPanel({
           onClick={onNewChat}
           title={tr('chat.newConversation')}
           data-testid="chat-new"
-          style={{
-            fontSize: 11,
-            padding: '3px 8px',
-            background: 'var(--chip-info-bg)',
-            border: '1px solid var(--chip-info-border)',
-            color: 'var(--chip-info-text)',
-            borderRadius: 4,
-            cursor: 'pointer'
-          }}
           disabled={messages.length === 0 && !busy}
         >
-          + New
+          {tr('chat.newShort')}
         </button>
       </header>
 
@@ -739,21 +720,9 @@ export function ChatPanel({
               setAutoScroll(true)
               scrollToBottom('smooth')
             }}
-            style={{
-              position: 'absolute',
-              right: 12,
-              bottom: 12,
-              padding: '6px 10px',
-              borderRadius: 16,
-              border: '1px solid var(--border-3)',
-              background: 'var(--surface)',
-              color: 'var(--text)',
-              fontSize: 12,
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
-            }}
+            style={{ position: 'absolute', right: 12, bottom: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}
           >
-            ↓ jump to latest
+            {tr('chat.jumpLatest')}
           </button>
         )}
       </div>

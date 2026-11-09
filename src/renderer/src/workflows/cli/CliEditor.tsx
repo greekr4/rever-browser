@@ -254,10 +254,9 @@ export function CliEditor({ workflow, onChange }: WorkflowEditorProps): React.Re
             data-testid="cli-command"
             data-name={item.name}
             onClick={() => setActive(item.name)}
-            style={{
-              textAlign: 'left',
-              borderColor: item.name === command?.name ? 'var(--accent)' : undefined
-            }}
+            className="btn-toggle"
+            aria-pressed={item.name === command?.name}
+            style={{ textAlign: 'left' }}
           >
             {item.name} · {item.method} {item.path} · {item.effect}
           </button>

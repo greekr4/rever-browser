@@ -78,10 +78,9 @@ export function HistoryPanel() {
             if (!confirm('Clear all history?')) return
             clear()
           }}
-          style={btnStyle}
           disabled={entries.length === 0}
         >
-          Clear
+          {t('common.clear')}
         </button>
       </div>
 
@@ -237,12 +236,3 @@ function hostnameOf(url: string): string {
   }
 }
 
-const btnStyle: React.CSSProperties = {
-  background: 'var(--surface)',
-  border: '1px solid var(--border-2)',
-  color: 'var(--text-2)',
-  padding: '4px 10px',
-  borderRadius: 3,
-  fontSize: 11,
-  cursor: 'pointer'
-}

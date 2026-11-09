@@ -93,6 +93,7 @@ export const en = {
   'common.delete': 'Delete',
   'common.remove': 'Remove',
   'common.stop': 'Stop',
+  'common.close': 'Close',
   'common.clear': 'Clear',
   'common.moveUp': 'Move up',
   'common.moveDown': 'Move down',
@@ -138,6 +139,7 @@ export const en = {
   'traffic.sendToRepeater': 'Send to Repeater',
 
   // Traffic detail drawer
+  'drawer.sendToChat': 'Send to chat',
   'drawer.request': 'Request',
   'drawer.response': 'Response',
   'drawer.queryParams': 'Query params',
@@ -154,6 +156,10 @@ export const en = {
 
   // Repeater
   'repeater.empty': 'In Traffic, click the "↻R" (Send to Repeater) button on a request row to load it here.',
+  'repeater.send': 'Send',
+  'repeater.sending': 'Sending…',
+  'repeater.addHeader': '+ Add',
+  'repeater.restore': 'Restore',
   'repeater.removeHeader': 'Remove header',
 
   // Chat
@@ -179,6 +185,7 @@ export const en = {
   'chat.agentConnected': 'Connected',
   'md.copy': 'Copy',
   'md.copied': 'Copied',
+  'panel.allHosts': '← All hosts',
   'panel.bar': 'Panels',
   'panel.traffic': 'Traffic',
   'panel.apimap': 'API Map',
@@ -191,6 +198,8 @@ export const en = {
   'panel.workflows': 'Workflows',
   'panel.redteam': 'Red Team',
   'chat.historySaved': '{n} saved',
+  'chat.newShort': '+ New',
+  'chat.jumpLatest': '↓ Jump to latest',
   'chat.tabs': 'Chat sessions',
   'chat.newTab': 'New session',
   'chat.closeTab': 'Close session (stops its agent)',

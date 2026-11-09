@@ -194,16 +194,38 @@ input, select {
   border-radius: 4px;
 }
 
+/* ── Buttons: design system D (DevTools-dense) ───────────────────
+   A plain <button> is the secondary action (filled grey). Add one class to
+   change its role; don't restyle buttons inline.
+   .btn-ghost   quiet (no fill until hover)   .btn-primary  main action
+   .btn-danger  destructive                   .btn-icon     icon only
+   .btn-toggle  on/off via aria-pressed       .seg          group, active = underline */
 button {
   background: var(--surface-3);
   color: var(--text);
-  border: 1px solid var(--border-2);
+  border: none;
   border-radius: 4px;
-  padding: 4px 10px;
+  padding: 3px 8px;
+  font-size: 12px;
+  line-height: 16px;
   cursor: pointer;
 }
 button:hover:not(:disabled) { background: var(--border-2); }
-button:disabled { opacity: 0.5; cursor: default; }
+button:disabled { opacity: 0.42; cursor: default; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.btn-ghost { background: transparent; color: var(--text-2); }
+.btn-ghost:hover:not(:disabled) { background: var(--chrome-hover); color: var(--text); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
+.btn-danger { background: transparent; color: var(--status-error); }
+.btn-danger:hover:not(:disabled) { background: var(--chip-danger-bg); }
+.btn-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; padding: 3px; }
+.btn-toggle[aria-pressed='true'] { background: var(--accent-soft); color: var(--accent-text); }
+.seg { display: inline-flex; gap: 2px; }
+.seg > button { background: transparent; color: var(--text-dim); border-radius: 0; border-bottom: 2px solid transparent; padding: 3px 6px 1px; }
+.seg > button:hover:not(:disabled) { background: transparent; color: var(--text); }
+.seg > button[aria-pressed='true'] { color: var(--text); border-bottom-color: var(--accent); }
 
 /* Unified toolbar button — applied to every nav-bar button so icon-only
    and text buttons share the same height/padding regardless of label. */
@@ -817,7 +839,8 @@ body.resizing webview { pointer-events: none; }
 }
 .chip svg { flex-shrink: 0; opacity: 0.85; }
 .chip:hover:not(:disabled) { background: var(--glass-hover, var(--chrome-hover)); color: var(--text); }
-.chip.active { background: var(--glass-hover, var(--chrome-hover)); color: var(--text); font-weight: 500; }
+/* No weight change: a bolder label is wider and nudges every tab to its right. */
+.chip.active { background: var(--glass-hover, var(--chrome-hover)); color: var(--text); }
 /* The open panel's tab gets an accent bar on the bar's top edge, joining it to the panel above. */
 .chip.active::before {
   content: '';

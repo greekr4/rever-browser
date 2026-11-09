@@ -309,13 +309,13 @@ export function PipelineEditor({ workflow, onChange }: WorkflowEditorProps): Rea
 
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {running ? (
-          <button type="button" onClick={cancel} style={{ background: 'var(--surface-3)' }}>{tr('common.stop')}</button>
+          <button type="button" onClick={cancel}>{tr('common.stop')}</button>
         ) : (
           <button
             type="button"
             onClick={run}
             disabled={data.nodes.length === 0}
-            style={{ background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }}
+            className="btn-primary"
           >
             ▶ Run pipeline
           </button>

@@ -89,9 +89,8 @@ export function ConsolePanel() {
       <div className="panel-toolbar" style={{ justifyContent: 'flex-end' }}>
         <button
           onClick={() => void handleClear()}
-          style={{ fontSize: 11, padding: '2px 8px' }}
         >
-          Clear
+          {t('common.clear')}
         </button>
       </div>
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', fontFamily: 'ui-monospace, monospace', fontSize: 11, scrollbarGutter: 'stable' }}>

@@ -46,6 +46,24 @@ test('하단 패널 탭 줄을 캡처하고 열고 닫기를 확인한다', asyn
     await win.screenshot({ path: path.join(SHOTS, `chip-bar-open-${TAG}.png`), clip: { x: box.x, y: box.y - 220, width: Math.min(box.width, 1100), height: 220 + box.height } })
     await traffic.click()
     await expect(win.locator('.chip-panel-bottom')).toHaveCount(0)
+
+    // No layout shift: opening any panel leaves every tab where it was.
+    const xs = (): Promise<number[]> => bar.locator('.chip').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().x)))
+    const before = await xs()
+    for (const id of ['traffic', 'websocket', 'console', 'workflows']) {
+      await win.getByTestId(`chip-${id}`).click()
+      // While switching, the outgoing panel is still animating out; the newest one is last.
+      await expect(win.locator('.chip-panel-bottom').last()).toBeVisible()
+      expect(await xs()).toEqual(before)
+      if (id === 'websocket') {
+        // Same shape as the other panels: toolbar on top, composer at the bottom.
+        await expect(win.locator('.chip-panel-content .panel-toolbar select').last()).toBeVisible()
+        await win.waitForTimeout(700) // let the slide-up animation settle
+        const pb = (await win.locator('.chip-panel-bottom').last().boundingBox())!
+        await win.screenshot({ path: path.join(SHOTS, `ws-panel-${TAG}.png`), clip: { x: pb.x, y: pb.y, width: pb.width, height: pb.height + 40 } })
+      }
+      // Next iteration switches straight to another panel, as a user would.
+    }
   } finally {
     await app.close()
     fs.rmSync(userData, { recursive: true, force: true })
