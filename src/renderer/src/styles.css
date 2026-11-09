@@ -84,6 +84,11 @@
   --json-bool: #d8a0ff;
   --json-null: #909090;
   --json-punct: #808080;
+  /* Chrome-style browser frame: tab strip < toolbar/active tab < omnibox. */
+  --chrome-frame: #1b1c1e;
+  --chrome-toolbar: #2a2b2e;
+  --chrome-omnibox: #1b1c1e;
+  --chrome-hover: rgba(255, 255, 255, 0.1);
 }
 
 :root[data-theme='light'] {
@@ -129,6 +134,10 @@
   --proxy-tab-border: #dcc9f0;
   --proxy-tab-text: #6b3fa8;
   --proxy-tab-dot: #8a55d4;
+  --chrome-frame: #dfe3e8;
+  --chrome-toolbar: #ffffff;
+  --chrome-omnibox: #e9eef6;
+  --chrome-hover: rgba(0, 0, 0, 0.07);
   /* Darkened to clear 4.5:1 against --surface (#ffffff); the dark-theme
      pastels above sit near 1.3:1 on white and are effectively invisible. */
   --status-error: #c62828;
@@ -210,6 +219,105 @@ button:disabled { opacity: 0.5; cursor: default; }
   white-space: nowrap;
   box-sizing: border-box;
 }
+
+/* Chrome-style frame controls: borderless round icon buttons, flat chips,
+   the pill omnibox and the ⋮ menu. */
+.chrome-icon-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-2);
+  -webkit-app-region: no-drag;
+}
+.chrome-icon-btn:hover:not(:disabled),
+.chrome-icon-btn[aria-expanded='true'] { background: var(--chrome-hover); }
+.chrome-icon-btn.small { width: 28px; height: 28px; }
+.chrome-chip {
+  height: 28px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+.chrome-chip:hover:not(:disabled) { background: var(--chrome-hover); }
+.omnibox {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 36px 0 16px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 17px;
+  background: var(--chrome-omnibox);
+  color: var(--text);
+  font-size: 14px;
+}
+.omnibox:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--chrome-toolbar);
+}
+.chrome-tab:hover { background: var(--chrome-hover); }
+.chrome-tab-close {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+}
+.chrome-tab-close:hover:not(:disabled) { background: var(--chrome-hover); color: var(--text); }
+.chrome-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 260px;
+  padding: 6px 0;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px var(--shadow, rgba(0, 0, 0, 0.4));
+  font-size: 13px;
+}
+.chrome-menu-item {
+  width: 100%;
+  height: 32px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: 13px;
+}
+.chrome-menu-item:hover:not(:disabled) { background: var(--chrome-hover); }
+.chrome-menu-item .hint { margin-left: auto; color: var(--text-dim); font-size: 12px; }
+.chrome-menu-sep { height: 1px; margin: 6px 0; background: var(--border); }
+.chrome-menu-foot { padding: 6px 16px 2px; color: var(--text-dim); font-size: 11px; }
 
 /* Proxy popover — keep the focus ring inside each field so it can't overflow
    the popover's rounded edge (fields sit flush against the padding edge). */

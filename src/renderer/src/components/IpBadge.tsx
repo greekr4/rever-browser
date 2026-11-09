@@ -53,7 +53,7 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
   // re-check is a right-click.
   return (
     <button
-      className="toolbar-btn"
+      className="chrome-chip"
       type="button"
       onClick={toggleHidden}
       onContextMenu={(e) => {
@@ -65,16 +65,8 @@ export function IpBadge({ refreshSignal }: Props): React.ReactElement {
       }
       style={
         {
-          display: 'flex',
-          alignItems: 'center',
-          gap: 5,
-          flexShrink: 0,
-          marginLeft: 8,
-          marginBottom: 2,
           fontFamily: 'ui-monospace, monospace',
-          fontSize: 11,
-          color: 'var(--text-dim)',
-          WebkitAppRegion: 'no-drag'
+          fontSize: 11
         } as React.CSSProperties
       }
     >
