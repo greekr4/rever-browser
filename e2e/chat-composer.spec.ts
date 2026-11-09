@@ -116,6 +116,38 @@ test('채팅 패널: 대화와 입력창을 캡처하고 기본 동작을 확인
     await shotPanel(win, `chat-model-menu-${TAG}.png`)
     await win.keyboard.press('Escape')
 
+    // History menu stays inside the chat column (an absolute popover used to get clipped on the left).
+    await win.locator('[role=tabpanel]:visible').getByRole('button', { name: /^기록/ }).click()
+    const hist = win.getByText(/개 저장됨/)
+    await expect(hist).toBeVisible()
+    const hb = (await hist.locator('xpath=ancestor::div[1]/..').boundingBox())!
+    const col = (await win.locator('aside').boundingBox())!
+    expect(hb.x).toBeGreaterThanOrEqual(col.x)
+    expect(hb.x + hb.width).toBeLessThanOrEqual(col.x + col.width)
+    await shotPanel(win, `chat-history-${TAG}.png`)
+    await win.locator('[role=tabpanel]:visible').getByRole('button', { name: /^기록/ }).click()
+
+    // Saved conversations from every provider show that provider's real mark, not a letter.
+    await win.evaluate(() => {
+      const raw = JSON.parse(localStorage.getItem('rev:chat-history') ?? '{"state":{"conversations":[]},"version":0}')
+      const now = Date.now()
+      const seed = ['codex', 'grok', 'glm', 'anthropic', 'openai'].map((agentId, i) => ({
+        id: `seed-${agentId}`, agentId, title: `${agentId} 대화`, messages: [], createdAt: now - (i + 1) * 3_600_000, updatedAt: now - (i + 1) * 3_600_000
+      }))
+      raw.state.conversations = [...raw.state.conversations, ...seed]
+      localStorage.setItem('rev:chat-history', JSON.stringify(raw))
+    })
+    await win.reload()
+    win = await mainWindow(app)
+    await win.locator('[role=tabpanel]:visible').getByRole('button', { name: /^기록/ }).click()
+    const rows = win.getByText(/^(codex|grok|glm|anthropic|openai) 대화$/)
+    await expect(rows).toHaveCount(5)
+    for (const agent of ['Codex', 'Grok', 'GLM']) {
+      await expect(win.locator(`span[title^="${agent}"] svg`).first()).toBeVisible()
+    }
+    await shotPanel(win, `chat-history-icons-${TAG}.png`)
+    await win.locator('[role=tabpanel]:visible').getByRole('button', { name: /^기록/ }).click()
+
     // Session tabs: a second tab is its own conversation; the first keeps its own.
     const tabs = win.getByTestId('chat-tab')
     await expect(tabs).toHaveCount(1)

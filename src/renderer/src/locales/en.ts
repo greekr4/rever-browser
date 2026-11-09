@@ -190,6 +190,7 @@ export const en = {
   'panel.history': 'History',
   'panel.workflows': 'Workflows',
   'panel.redteam': 'Red Team',
+  'chat.historySaved': '{n} saved',
   'chat.tabs': 'Chat sessions',
   'chat.newTab': 'New session',
   'chat.closeTab': 'Close session (stops its agent)',

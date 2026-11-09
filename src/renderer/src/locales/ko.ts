@@ -177,6 +177,7 @@ export const ko: Record<TKey, string> = {
   'panel.history': '기록',
   'panel.workflows': '워크플로',
   'panel.redteam': '레드팀',
+  'chat.historySaved': '{n}개 저장됨',
   'chat.tabs': '채팅 세션',
   'chat.newTab': '새 세션',
   'chat.closeTab': '세션 닫기 (에이전트 종료)',
