@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { VISUALIZER_INIT_SCRIPT } from './mcp/visualizer'
-import { clearOopifs, registerOopif, unregisterOopif } from './mcp/oopif'
+import { clearOopifs, listOopifSessions, registerOopif, unregisterOopif } from './mcp/oopif'
 import {
   getRequest,
   upsertRequest,
@@ -866,16 +866,23 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
       method === 'Network.webSocketWillSendHandshakeRequest' ||
       method === 'Network.webSocketHandshakeResponseReceived'
     ) {
-      // Update timestamp only — URL was captured by webSocketCreated
-      const p = params as { requestId: string }
-      upsertRequest({ requestId: p.requestId, resourceType: 'WebSocket' })
+      // URL was captured by webSocketCreated. The handshake headers are kept so a
+      // reconnect can offer the same subprotocols from the same frame (ws-capture.ts).
+      const p = params as {
+        requestId: string
+        request?: { headers?: Record<string, string> }
+        response?: { requestHeaders?: Record<string, string> }
+      }
+      const requestHeaders = p.response?.requestHeaders ?? p.request?.headers
+      upsertRequest({ requestId: p.requestId, resourceType: 'WebSocket', ...(requestHeaders ? { requestHeaders } : {}) })
     } else if (method === 'Network.webSocketFrameSent') {
       const p = params as WebSocketFrameParams
       appendWsFrame(p.requestId, {
         direction: 'sent',
         opcode: p.response.opcode,
         payloadData: p.response.payloadData,
-        timestamp: p.timestamp,
+        // Epoch ms, the unit every reader pages by; p.timestamp is CDP monotonic seconds.
+        timestamp: Date.now(),
         mask: p.response.mask
       })
     } else if (method === 'Network.webSocketFrameReceived') {
@@ -884,7 +891,8 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
         direction: 'received',
         opcode: p.response.opcode,
         payloadData: p.response.payloadData,
-        timestamp: p.timestamp,
+        // Epoch ms, the unit every reader pages by; p.timestamp is CDP monotonic seconds.
+        timestamp: Date.now(),
         mask: p.response.mask
       })
     } else if (method === 'Runtime.consoleAPICalled') {
@@ -996,6 +1004,11 @@ export function attachCdpCapture(targetId: number, sink: WebContents): boolean {
       unregisterOopif(targetId, (params as { sessionId: string }).sessionId)
     } else if (method === 'Overlay.inspectNodeRequested') {
       inspectNodeHandler?.((params as { backendNodeId: number }).backendNodeId)
+    } else if (method === 'Target.targetInfoChanged') {
+      // An iframe attaches before it navigates, so its URL only arrives here.
+      const info = (params as { targetInfo: { targetId: string; url: string } }).targetInfo
+      const frame = listOopifSessions(targetId).find((o) => o.frameId === info.targetId)
+      if (frame) frame.url = info.url
     } else if (method === 'Debugger.scriptParsed') {
       const p = params as { scriptId: string; url: string }
       recordScript(targetId, sessionId, p.scriptId, p.url)

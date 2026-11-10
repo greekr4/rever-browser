@@ -1,5 +1,4 @@
 import { useT } from '@/stores/i18n'
-import { matchCaptureForUrl } from '../../../../shared/ws-match'
 
 import { useEffect, useRef, useState } from 'react'
 
@@ -16,11 +15,19 @@ interface WSFrame {
   timestamp: number
 }
 
-interface WsCapture {
-  id: number
-  url: string
-  openedAt: number
-  readyState: number
+/** Which sockets are still open in the page (or a cross-site iframe), refreshed every 2s. */
+export function useLiveSockets(): Array<{ url: string; readyState: number; frame: string }> {
+  const [liveSockets, setLiveSockets] = useState<Array<{ url: string; readyState: number; frame: string }>>([])
+  useEffect(() => {
+    const poll = async () => {
+      const r = await window.rev.ws.sockets()
+      if (Array.isArray(r)) setLiveSockets(r)
+    }
+    void poll()
+    const id = setInterval(() => void poll(), 2000)
+    return () => clearInterval(id)
+  }, [])
+  return liveSockets
 }
 
 export function WebSocketPanel() {
@@ -31,54 +38,42 @@ export function WebSocketPanel() {
   const frameLastTsRef = useRef<number>(0)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // ── 송신 (페이지 소켓 재사용) ──
-  const [captures, setCaptures] = useState<WsCapture[]>([])
-  const [captureId, setCaptureId] = useState<number | null>(null)
+  // ── 송신: 페이지가 이미 연 소켓을 메모리에서 찾아 그 소켓으로 보낸다 ──
   const [payload, setPayload] = useState('')
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState<string | null>(null)
+  const liveSockets = useLiveSockets()
   const payloadRef = useRef<HTMLTextAreaElement>(null)
   const selectedUrl = connections.find((c) => c.requestId === selectedId)?.url
+  const live = liveSockets.find((w) => w.url === selectedUrl && w.readyState === 1)
 
-  // Poll page-socket captures for the sender bar
-  useEffect(() => {
-    const poll = async () => {
-      const r = await window.rev.ws.captureList()
-      if (!Array.isArray(r)) return
-      setCaptures(r)
-      setCaptureId((prev) => (prev != null && r.some((c) => c.id === prev) ? prev : r.find((c) => c.readyState === 1)?.id ?? r[0]?.id ?? null))
-    }
-    void poll()
-    const id = setInterval(() => void poll(), 2000)
-    return () => clearInterval(id)
-  }, [])
-
-  const enableCapture = async () => {
-    const r = await window.rev.ws.captureEnable()
-    setSendResult(r.ok ? t('panel.wsSender.installed') : (r.error ?? 'error'))
-  }
-
-  const send = async () => {
-    if (captureId == null || !payload || sending) return
+  const sendOn = async (url: string, data: string, asBinary = false) => {
     setSending(true)
     try {
-      const r = await window.rev.ws.send(captureId, payload)
-      setSendResult(r.ok ? t('panel.wsSender.sent') : (r.error ?? 'error'))
+      // 열린 소켓이 없으면 페이지가 같은 URL로 다시 연 뒤 보낸다.
+      const reconnect = !liveSockets.some((w) => w.url === url && w.readyState === 1)
+      const r = await window.rev.ws.send(url, data, asBinary, reconnect)
+      setSendResult(r.ok ? t(r.reconnected ? 'panel.wsSender.reconnectSent' : 'panel.wsSender.sent') : (r.error ?? 'error'))
+      if (r.reconnected) {
+        // 재연결은 새 연결(새 requestId)이다 — 응답이 보이도록 그 연결로 옮긴다. 목록은 최신순.
+        const list = await window.rev.ws.list()
+        setConnections(list.map((c) => ({ requestId: c.requestId, url: c.url, startedAt: c.startedAt })))
+        setSelectedId(list.find((c) => c.url === url)?.requestId ?? selectedId)
+      }
     } finally {
       setSending(false)
     }
   }
 
-  // 리필레이: 프레임의 연결 URL과 같은 열린 페이지 소켓을 찾아 보낸다.
+  const send = async () => {
+    if (!selectedUrl || !payload || sending) return
+    await sendOn(selectedUrl, payload)
+  }
+
+  // 재전송: 그 프레임이 오간 연결의 소켓으로 같은 내용을 다시 보낸다.
   const resend = async (frameUrl: string | undefined, f: WSFrame) => {
-    const cap = matchCaptureForUrl(captures, frameUrl ?? '')
-    if (!cap) {
-      setPayload(f.payloadData)
-      setSendResult(t('panel.wsSender.noSocketMatch'))
-      return
-    }
-    const r = await window.rev.ws.send(cap.id, f.payloadData, f.opcode === 2)
-    setSendResult(r.ok ? t('panel.wsSender.sent') : (r.error ?? 'error'))
+    if (!frameUrl) return
+    await sendOn(frameUrl, f.payloadData, f.opcode === 2)
   }
 
   // 변조: 페이로드를 작성란에 올리고 포커스 — 수정 후 Send로 전송.
@@ -120,8 +115,10 @@ export function WebSocketPanel() {
       if (next.length > 0) {
         frameLastTsRef.current = next[next.length - 1].timestamp + 1
         setFrames((prev) => [...prev, ...next])
+        // Scroll only the frame list; scrollIntoView would also move every ancestor.
         requestAnimationFrame(() => {
-          bottomRef.current?.scrollIntoView({ block: 'end' })
+          const list = bottomRef.current?.parentElement
+          if (list) list.scrollTop = list.scrollHeight
         })
       }
     }
@@ -159,7 +156,8 @@ export function WebSocketPanel() {
               wordBreak: 'break-all'
             }}
           >
-            {new URL(c.url).hostname}
+            {/* host + path + query: two sockets on one host (a page and its chat widget) must stay distinguishable */}
+            {connLabel(c.url)}
           </div>
         ))}
       </div>
@@ -168,27 +166,20 @@ export function WebSocketPanel() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {/* Toolbar on top, same as the other panels: which page socket to send through. */}
         <div className="panel-toolbar">
-          <select
-            value={captureId ?? ''}
-            onChange={(e) => setCaptureId(e.target.value === '' ? null : Number(e.target.value))}
-            aria-label={t('panel.wsSender.title')}
-            style={{ flex: 1, minWidth: 0, fontSize: 11, padding: '2px 4px' }}
-          >
-            {captures.length === 0 && <option value="">{t('panel.wsSender.noCaptures')}</option>}
-            {captures.map((c) => (
-              <option key={c.id} value={c.id}>
-                #{c.id} {safeHost(c.url)} ({c.readyState === 1 ? t('panel.wsSender.open') : `${t('panel.wsSender.state')} ${c.readyState}`})
-              </option>
-            ))}
-          </select>
+          <span style={{ color: 'var(--text-dim)', flexShrink: 0 }}>{t('panel.wsSender.target')}</span>
+          <code title={selectedUrl} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {selectedUrl ?? '—'}
+          </code>
+          {selectedUrl && (
+            <span style={{ flexShrink: 0, color: live ? 'var(--status-ok)' : 'var(--text-dim)' }} data-testid="ws-live">
+              {live ? (live.frame === 'page' ? t('panel.wsSender.live') : t('panel.wsSender.liveFrame')) : t('panel.wsSender.noLive')}
+            </span>
+          )}
           {sendResult && (
-            <span title={sendResult} style={{ maxWidth: '40%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-dim)' }}>
+            <span title={sendResult} style={{ maxWidth: '35%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-dim)' }}>
               {sendResult}
             </span>
           )}
-          <button onClick={() => void enableCapture()} style={{ whiteSpace: 'nowrap' }}>
-            {t('panel.wsSender.enable')}
-          </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', fontFamily: 'ui-monospace, monospace', fontSize: 11, scrollbarGutter: 'stable' }}>
           {frames.length === 0 && selectedId && (
@@ -255,7 +246,7 @@ export function WebSocketPanel() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()
-                if (captureId != null && payload && !sending) void send()
+                if (selectedUrl && payload && !sending) void send()
               }
             }}
             placeholder={t('panel.wsSender.payload')}
@@ -277,11 +268,12 @@ export function WebSocketPanel() {
           />
           <button
             onClick={() => void send()}
-            disabled={captureId == null || !payload || sending}
+            disabled={!selectedUrl || !payload || sending}
             className="btn-primary"
             style={{ margin: 4, alignSelf: 'flex-end' }}
+            data-testid="ws-send"
           >
-            {sending ? t('panel.wsSender.sending') : t('panel.wsSender.send')}
+            {sending ? t('panel.wsSender.sending') : t(live ? 'panel.wsSender.send' : 'panel.wsSender.reconnectSend')}
           </button>
         </div>
       </div>
@@ -289,9 +281,10 @@ export function WebSocketPanel() {
   )
 }
 
-function safeHost(url: string): string {
+export function connLabel(url: string): string {
   try {
-    return new URL(url).hostname
+    const u = new URL(url)
+    return u.host + u.pathname + u.search
   } catch {
     return url
   }

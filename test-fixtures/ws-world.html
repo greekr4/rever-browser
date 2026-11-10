@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>rever ws world fixture</title>
+<style>
+  body { font: 13px/1.5 -apple-system, system-ui, sans-serif; margin: 0; padding: 18px; background: #0f1220; color: #e8e8f0; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .lead { color: #9aa0b8; margin: 0 0 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 360px; gap: 14px; }
+  .card { background: #171b2e; border: 1px solid #2a3050; border-radius: 10px; padding: 12px; }
+  .card h2 { font-size: 13px; margin: 0 0 6px; color: #8fb3ff; }
+  .expect { font-size: 12px; color: #c8cce0; background: #1e2440; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+  code { background: #262c4a; padding: 1px 4px; border-radius: 4px; }
+  .world { position: relative; height: 180px; border-radius: 8px; background: radial-gradient(circle at 50% 40%, #243063, #12162a); overflow: hidden; }
+  .avatar { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #5ee0a0; box-shadow: 0 0 12px #5ee0a0; transition: left .4s, top .4s; }
+  .status { font-weight: 700; } .pass { color: #5ee0a0; } .wait { color: #f0c060; }
+  #log { font: 11px ui-monospace, monospace; height: 120px; overflow: auto; background: #0b0e1a; border-radius: 6px; padding: 6px; margin-top: 8px; color: #9aa0b8; }
+  iframe { width: 100%; height: 300px; border: 1px solid #2a3050; border-radius: 8px; background: #fff; }
+</style>
+</head>
+<body>
+<h1>rever WS world — metaverse-style socket fixture</h1>
+<p class="lead">The page opens its WebSocket on load, before any tool can hook it — like a game or metaverse client that streams position updates. The chat widget on the right is a <b>cross-site iframe</b> (localhost:8778) with its own socket, like a channel.io widget.</p>
+<div class="grid">
+  <div class="card">
+    <h2>A. World socket (page)</h2>
+    <div class="expect">Expected: in Rever's WebSocket panel pick <code>ws://127.0.0.1:8779/ws?room=lobby</code>, send <code>{"type":"chat","text":"rever"}</code>. The server echoes it and this group shows <b>PASS</b>.</div>
+    <div class="world" id="world"><div class="avatar" id="me"></div></div>
+    <p>Socket: <span id="state">connecting…</span> · moves sent: <span id="moves">0</span> · Status: <span id="status" class="status wait">WAIT</span></p>
+    <p>Last foreign echo: <code id="last">—</code></p>
+    <div id="log"></div>
+  </div>
+  <div class="card">
+    <h2>B. Chat widget socket (cross-site iframe)</h2>
+    <div class="expect">Expected: pick <code>ws://127.0.0.1:8779/ws?widget=chat</code>, send anything. The widget shows <b>PASS</b>.</div>
+    <iframe src="http://localhost:8778/ws-chat-widget.html" title="chat widget"></iframe>
+  </div>
+</div>
+<script>
+  // Opened at load, before any tool can wrap the WebSocket constructor.
+  const ws = new WebSocket('ws://127.0.0.1:8779/ws?room=lobby')
+  const mine = new Set()
+  const log = (s) => { const el = document.getElementById('log'); el.textContent += s + '\n'; el.scrollTop = el.scrollHeight }
+  const send = (obj) => { const s = JSON.stringify(obj); mine.add(s); ws.send(s) }
+  let moves = 0, x = 50, y = 50
+  ws.onopen = () => {
+    document.getElementById('state').textContent = 'open'
+    send({ type: 'join', name: 'player-1' })
+    setInterval(() => {
+      x = Math.max(5, Math.min(95, x + (Math.random() * 20 - 10)))
+      y = Math.max(5, Math.min(90, y + (Math.random() * 20 - 10)))
+      const me = document.getElementById('me'); me.style.left = x + '%'; me.style.top = y + '%'
+      send({ type: 'move', x: Math.round(x), y: Math.round(y) })
+      document.getElementById('moves').textContent = ++moves
+    }, 1500)
+  }
+  ws.onclose = () => { document.getElementById('state').textContent = 'closed' }
+  ws.onmessage = (e) => {
+    log('↓ ' + e.data)
+    let m; try { m = JSON.parse(e.data) } catch { return }
+    // An echo of something this page did not send came from outside the page.
+    if (m.type === 'echo' && !mine.has(m.received)) {
+      document.getElementById('last').textContent = m.received
+      const st = document.getElementById('status'); st.textContent = 'PASS'; st.className = 'status pass'
+    }
+  }
+</script>
+</body>
+</html>

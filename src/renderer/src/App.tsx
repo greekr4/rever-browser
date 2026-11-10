@@ -42,7 +42,7 @@ import { useViewportStore } from '@/stores/viewport'
 import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 import { handleAgentRequest } from '@/workflows/core/agent-bridge'
 
-type PanelId = 'traffic' | 'apimap' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history' | 'workflows'
+type PanelId = 'traffic' | 'apimap' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'wsrepeater' | 'storage' | 'history' | 'workflows'
 
 // macOS insets its traffic lights over the top-left of our bar; Windows/Linux
 // draw min/max/close as an overlay on the top-right. Reserve space on the

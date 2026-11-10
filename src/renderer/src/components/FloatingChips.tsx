@@ -13,6 +13,7 @@ import { ExceptionsPanel } from '@/components/panels/ExceptionsPanel'
 import { HistoryPanel } from '@/components/panels/HistoryPanel'
 import { WebSocketPanel } from '@/components/panels/WebSocketPanel'
 import { RepeaterPanel } from '@/components/repeater/RepeaterPanel'
+import { WsRepeaterPanel } from '@/components/repeater/WsRepeaterPanel'
 import { useResizable } from '@/hooks/use-resizable'
 import { useHistoryStore } from '@/stores/history'
 import { useRepeaterStore } from '@/stores/repeater'
@@ -20,7 +21,7 @@ import { useTrafficStore } from '@/stores/traffic'
 import { WorkflowPanel } from '@/workflows'
 import { useWorkflowsStore } from '@/workflows/core/store'
 
-type PanelId = 'traffic' | 'apimap' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history' | 'workflows'
+type PanelId = 'traffic' | 'apimap' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'wsrepeater' | 'storage' | 'history' | 'workflows'
 
 const svg = (...d: string[]): ReactNode => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -40,6 +41,8 @@ const ICON: Record<PanelId | 'redteam', ReactNode> = {
   console: svg('M5 17l5-5-5-5', 'M12 19h7'),
   exceptions: svg('M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z', 'M12 9v4', 'M12 17h.01'),
   repeater: svg('M17 2l4 4-4 4', 'M3 11V9a3 3 0 0 1 3-3h15', 'M7 22l-4-4 4-4', 'M21 13v2a3 3 0 0 1-3 3H3'),
+  // The repeater's return arrow under a WebSocket bolt.
+  wsrepeater: svg('M13 2L6 11h6l-1 5 7-9h-6z', 'M7 23l-4-4 4-4', 'M21 14v2a3 3 0 0 1-3 3H3'),
   storage: svg('M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z', 'M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6', 'M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'),
   history: svg('c:12,12,9', 'M12 7v5l3 2'),
   workflows: svg('c:6,6,2.5', 'c:6,18,2.5', 'c:18,12,2.5', 'M6 8.5v7', 'M8.5 6h3a4 4 0 0 1 4 4v-.5'),
@@ -50,7 +53,7 @@ const ICON: Record<PanelId | 'redteam', ReactNode> = {
 const GROUPS: PanelId[][] = [
   ['traffic', 'apimap', 'websocket'],
   ['console', 'exceptions'],
-  ['repeater', 'storage'],
+  ['repeater', 'wsrepeater', 'storage'],
   ['history', 'workflows']
 ]
 
@@ -267,6 +270,7 @@ export function FloatingChips({ openPanel, setOpenPanel }: FloatingChipsProps) {
               {openPanel === 'exceptions' && <ExceptionsPanel />}
               {openPanel === 'websocket' && <WebSocketPanel />}
               {openPanel === 'repeater' && <RepeaterPanel />}
+              {openPanel === 'wsrepeater' && <WsRepeaterPanel />}
               {openPanel === 'storage' && <CookiesPanel />}
               {openPanel === 'history' && <HistoryPanel />}
               {openPanel === 'workflows' && <WorkflowPanel />}

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>rever ws chat widget</title>
+<style>
+  body { font: 12px/1.5 -apple-system, system-ui, sans-serif; margin: 0; padding: 10px; color: #222; }
+  .bubble { background: #eef2ff; border-radius: 10px; padding: 6px 9px; margin: 4px 0; }
+  .status { font-weight: 700; } .pass { color: #1f7a34; } .wait { color: #a06a00; }
+  code { background: #f0f0f4; padding: 1px 4px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<b>Support chat</b> · socket: <span id="state">connecting…</span><br>
+Status: <span id="status" class="status wait">WAIT</span> · last foreign echo: <code id="last">—</code>
+<div id="msgs"></div>
+<script>
+  // Its own socket inside a cross-site frame (a separate renderer process).
+  const ws = new WebSocket('ws://127.0.0.1:8779/ws?widget=chat')
+  const mine = new Set()
+  ws.onopen = () => {
+    document.getElementById('state').textContent = 'open'
+    const hi = JSON.stringify({ type: 'hello', widget: 'chat' }); mine.add(hi); ws.send(hi)
+    setInterval(() => { const hb = JSON.stringify({ type: 'heartbeat' }); mine.add(hb); ws.send(hb) }, 5000)
+  }
+  ws.onmessage = (e) => {
+    let m; try { m = JSON.parse(e.data) } catch { return }
+    if (m.type === 'echo' && !mine.has(m.received)) {
+      document.getElementById('last').textContent = m.received
+      const st = document.getElementById('status'); st.textContent = 'PASS'; st.className = 'status pass'
+      const b = document.createElement('div'); b.className = 'bubble'; b.textContent = m.received; document.getElementById('msgs').appendChild(b)
+    }
+  }
+</script>
+</body>
+</html>

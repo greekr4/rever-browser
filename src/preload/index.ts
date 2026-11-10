@@ -624,18 +624,17 @@ const api = {
     list: (): Promise<StoredRequestSummary[]> => ipcRenderer.invoke('ws:list'),
     frames: (requestId: string, since?: number, limit?: number): Promise<WSFrame[]> =>
       ipcRenderer.invoke('ws:frames', requestId, since, limit),
-    // 페이지 소켓을 통한 송신 (ws_capture_enable → reload → capture-list → send)
-    captureEnable: (): Promise<{ ok: boolean; message?: string; error?: string }> =>
-      ipcRenderer.invoke('ws:capture-enable'),
-    captureList: (): Promise<
-      Array<{ id: number; url: string; openedAt: number; readyState: number }> | { error: string }
-    > => ipcRenderer.invoke('ws:capture-list'),
+    // 페이지가 이미 연 소켓(페이지 + 다른 사이트 iframe)을 메모리에서 찾아 그대로 쓴다.
+    sockets: (): Promise<Array<{ url: string; readyState: number; frame: string }> | { error: string }> =>
+      ipcRenderer.invoke('ws:sockets'),
     send: (
-      captureId: number,
+      url: string,
       payload: string,
-      asBinary?: boolean
-    ): Promise<{ ok: boolean; message?: string; error?: string }> =>
-      ipcRenderer.invoke('ws:send', captureId, payload, asBinary)
+      asBinary?: boolean,
+      // true: 소켓이 닫혀 있으면 페이지에서 같은 URL로 다시 연 뒤 보낸다.
+      reconnect?: boolean
+    ): Promise<{ ok: boolean; message?: string; error?: string; reconnected?: boolean }> =>
+      ipcRenderer.invoke('ws:send', url, payload, asBinary, reconnect)
   },
   storage: {
     cookies: (urls?: string[]): Promise<{
