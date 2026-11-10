@@ -47,6 +47,18 @@ test('하단 패널 탭 줄을 캡처하고 열고 닫기를 확인한다', asyn
     await traffic.click()
     await expect(win.locator('.chip-panel-bottom')).toHaveCount(0)
 
+    // The app shell is never scrollable, even from code: an overflowing panel
+    // plus scrollIntoView used to drag the whole window up.
+    const shifted = await win.evaluate(() => {
+      const d = document.createElement('div')
+      d.style.cssText = 'position:absolute;left:0;top:1500px;width:10px;height:10px'
+      document.querySelector('.chip-stack')!.parentElement!.appendChild(d)
+      d.scrollIntoView({ block: 'end' })
+      d.remove()
+      return document.getElementById('root')!.scrollTop + document.body.scrollTop + document.documentElement.scrollTop
+    })
+    expect(shifted).toBe(0)
+
     // No layout shift: opening any panel leaves every tab where it was.
     const xs = (): Promise<number[]> => bar.locator('.chip').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().x)))
     const before = await xs()
@@ -57,7 +69,7 @@ test('하단 패널 탭 줄을 캡처하고 열고 닫기를 확인한다', asyn
       expect(await xs()).toEqual(before)
       if (id === 'websocket') {
         // Same shape as the other panels: toolbar on top, composer at the bottom.
-        await expect(win.locator('.chip-panel-content .panel-toolbar select').last()).toBeVisible()
+        await expect(win.locator('.chip-panel-content .panel-toolbar').last()).toContainText(/Send to|보낼 곳/)
         await win.waitForTimeout(700) // let the slide-up animation settle
         const pb = (await win.locator('.chip-panel-bottom').last().boundingBox())!
         await win.screenshot({ path: path.join(SHOTS, `ws-panel-${TAG}.png`), clip: { x: pb.x, y: pb.y, width: pb.width, height: pb.height + 40 } })

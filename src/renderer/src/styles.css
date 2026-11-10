@@ -170,7 +170,9 @@ html, body, #root {
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
-  overflow: hidden;
+  /* clip, not hidden: a hidden box is still scrollable from code, so a
+     scrollIntoView/focus during a panel's slide-in dragged the whole app up. */
+  overflow: clip;
   overscroll-behavior: none;
 }
 
