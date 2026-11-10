@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 import { listRequests, getWsFrames, getRequest } from '../../traffic-store'
 import { ok, err } from '../utils'
-import { installWsCapture, listWsCaptures, sendWsFrame } from '../../ws-capture'
+import { installWsCapture, listPageSockets, sendWsByUrl, sendWsFrame } from '../../ws-capture'
 
 const MAX_PAYLOAD_BYTES = 1024
 
@@ -74,7 +74,7 @@ export function registerWebSocketTools(mcp: McpServer) {
     'ws_capture_enable',
     {
       description:
-        'Install a WebSocket constructor wrapper on the active page so future "new WebSocket(...)" calls are tracked. Required before ws_send can target a socket by index. Page must be reloaded for the wrapper to catch pre-existing sockets.'
+        'Legacy: install a WebSocket constructor wrapper (needs a page reload). Only needed for ws_send by captureId — ws_send with url reaches already-open sockets without it.'
     },
     async () => {
       const r = await installWsCapture()
@@ -85,10 +85,11 @@ export function registerWebSocketTools(mcp: McpServer) {
   mcp.registerTool(
     'ws_capture_list',
     {
-      description: 'List WebSocket sockets captured by ws_capture_enable.'
+      description:
+        "List the page's live WebSockets — in the page and in cross-site iframes — found directly in memory. No setup or reload needed. Use a url from here with ws_send."
     },
     async () => {
-      const r = await listWsCaptures()
+      const r = await listPageSockets()
       if ('error' in r) return err(r.error)
       return ok(JSON.stringify(r, null, 2))
     }
@@ -98,15 +99,18 @@ export function registerWebSocketTools(mcp: McpServer) {
     'ws_send',
     {
       description:
-        'Send a frame on a captured WebSocket. Use ws_capture_enable first (and reload), then ws_capture_list to find the captureId. Payload is sent as a UTF-8 string. For binary, base64-encode the bytes and set asBinary=true.',
+        "Send a frame on the page's own live WebSocket (auth and session preserved). Pass url (from ws_capture_list or list_websockets) — works on sockets the page already opened, including in cross-site iframes, with no setup. Payload is sent as a UTF-8 string; for binary, base64-encode the bytes and set asBinary=true. If the socket has closed, reconnect=true reopens it from the page (same URL, subprotocols, cookies and origin) and sends on the new connection, which shows up in list_websockets under a new requestId. captureId is the legacy path after ws_capture_enable.",
       inputSchema: {
-        captureId: z.number().int().nonnegative().describe('id from ws_capture_list'),
+        url: z.string().optional().describe('Socket URL, e.g. wss://host/socket?room=1'),
+        captureId: z.number().int().nonnegative().optional().describe('Legacy: id from the ws_capture_enable wrapper'),
         payload: z.string().describe('Message payload (text or base64 when asBinary=true)'),
-        asBinary: z.boolean().optional().describe('Treat payload as base64-encoded bytes')
+        asBinary: z.boolean().optional().describe('Treat payload as base64-encoded bytes'),
+        reconnect: z.boolean().optional().describe('With url: if the socket has closed, reopen it from the page and send on the new connection')
       }
     },
-    async ({ captureId, payload, asBinary }) => {
-      const r = await sendWsFrame(captureId, payload, asBinary ?? false)
+    async ({ url, captureId, payload, asBinary, reconnect }) => {
+      if (url == null && captureId == null) return err('pass url (preferred) or captureId')
+      const r = url != null ? await sendWsByUrl(url, payload, asBinary ?? false, reconnect ?? false) : await sendWsFrame(captureId!, payload, asBinary ?? false)
       if (!r.ok) return err(r.error)
       return ok(r.message)
     }

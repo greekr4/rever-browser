@@ -47,7 +47,7 @@ import {
   listRequests,
   getWsFrames
 } from './traffic-store'
-import { installWsCapture, listWsCaptures, sendWsFrame } from './ws-capture'
+import { listPageSockets, sendWsByUrl } from './ws-capture'
 import { getViewport, setViewport, type ViewportMode } from './viewport'
 import {
   repeaterSend,
@@ -1186,14 +1186,14 @@ app.whenReady().then(() => {
   ipcMain.handle('ws:frames', (_event, requestId: string, since?: number, limit?: number) =>
     getWsFrames(requestId, since).slice(-(limit ?? 100))
   )
-  // WebSocket 송신 (MCP ws_send과 같은 로직 — 사람이 쓰는 UI용)
-  ipcMain.handle('ws:capture-enable', async () => installWsCapture())
-  ipcMain.handle('ws:capture-list', async () => listWsCaptures())
-  ipcMain.handle(
-    'ws:send',
-    (_event, captureId: number, payload: string, asBinary?: boolean) =>
-      sendWsFrame(captureId, payload, asBinary ?? false)
-  )
+  // WebSocket 송신: 페이지가 이미 연 소켓을 메모리에서 찾아 그 소켓으로 보낸다 (훅·새로고침 불필요).
+  ipcMain.handle('ws:sockets', async () => listPageSockets())
+  ipcMain.handle('ws:send', (_event, url: unknown, payload: unknown, asBinary?: unknown, reconnect?: unknown) => {
+    if (typeof url !== 'string' || typeof payload !== 'string') {
+      return { ok: false, error: 'ws:send needs a socket URL and a string payload' }
+    }
+    return sendWsByUrl(url, payload, asBinary === true, reconnect === true)
+  })
 
   // ── Storage / Cookie editor IPC ───────────────────────────────────────────
   registerStorageIpc()

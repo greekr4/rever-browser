@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>rever ws game fixture</title>
+<style>
+  body { font: 13px/1.5 -apple-system, system-ui, sans-serif; margin: 0; padding: 18px; background: #0f1220; color: #e8e8f0; }
+  h1 { font-size: 17px; margin: 0 0 4px; }
+  .lead { color: #9aa0b8; margin: 0 0 14px; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  .card { min-width: 0; background: #171b2e; border: 1px solid #2a3050; border-radius: 10px; padding: 12px; }
+  .card h2 { font-size: 13px; margin: 0 0 6px; color: #8fb3ff; }
+  .expect { font-size: 12px; color: #c8cce0; background: #1e2440; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+  code { background: #262c4a; padding: 1px 4px; border-radius: 4px; }
+  .world { position: relative; height: 180px; border-radius: 8px; background: radial-gradient(circle at 50% 40%, #243063, #12162a); overflow: hidden; }
+  .avatar { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #5ee0a0; box-shadow: 0 0 12px #5ee0a0; transition: left .4s, top .4s; }
+  .status { font-weight: 700; } .pass { color: #5ee0a0; } .wait { color: #f0c060; }
+  #log { overflow-wrap: anywhere; font: 11px ui-monospace, monospace; height: 120px; overflow: auto; background: #0b0e1a; border-radius: 6px; padding: 6px; margin-top: 8px; color: #9aa0b8; }
+  iframe { width: 100%; height: 300px; border: 1px solid #2a3050; border-radius: 8px; background: #fff; }
+</style>
+</head>
+<body>
+<h1>rever WS game — a world whose server enforces rules</h1>
+<p class="lead">Like a metaverse client: the page opens its socket on load and the <b>server</b> owns every position. Tamper with frames from Rever and watch what the server accepts or rejects. Ground truth: <code>test-fixtures/api-target/world.ts</code>.</p>
+<div class="grid">
+  <div class="card">
+    <h2>A. World socket (page) — <code>ws://127.0.0.1:8779/world?room=lobby</code></h2>
+    <p class="lead" style="margin:0 0 6px">The server owns positions: the page only draws what it confirms. Send these from Rever's WebSocket panel on this connection:</p>
+    <div class="expect">A1 chat — <code>{"type":"chat","text":"rever"}</code> → shows in the chat line, status <b>PASS</b>: <span id="s-chat" class="status wait">WAIT</span></div>
+    <div class="expect">A2 tampered move — <code>{"type":"move","x":30,"y":11111}</code> → server answers <b>out_of_bounds</b> and snaps you back: <span id="s-bounds" class="status wait">WAIT</span></div>
+    <div class="expect">A3 hidden teleport — <code>{"type":"teleport","x":95,"y":5}</code> (not in this page's code) → your dot jumps to the top-right: <span id="s-tp" class="status wait">WAIT</span></div>
+    <div class="world" id="world"></div>
+    <p>Socket: <span id="state">connecting…</span> · me: <code id="me-id">—</code> at <code id="me-pos">—</code> · moves sent: <span id="moves">0</span></p>
+    <p>Chat: <code id="chat">—</code></p>
+    <div id="log"></div>
+  </div>
+</div>
+<script>
+  // Opened at load, before any tool can wrap the WebSocket constructor.
+  const ws = new WebSocket('ws://127.0.0.1:8779/world?room=lobby')
+  const mine = new Set()
+  const dots = new Map()
+  let myId = null, me = { x: 50, y: 50 }, moves = 0
+  const $ = (id) => document.getElementById(id)
+  const pass = (id, text) => { const el = $(id); el.textContent = text; el.className = 'status pass' }
+  const log = (s, bad) => { const el = $('log'); const line = document.createElement('div'); line.textContent = s; if (bad) line.style.color = '#ff7b7b'; el.appendChild(line); el.scrollTop = el.scrollHeight }
+  const send = (obj) => { const s = JSON.stringify(obj); mine.add(s); ws.send(s) }
+  const draw = (p) => {
+    let d = dots.get(p.id)
+    if (!d) { d = document.createElement('div'); d.className = 'avatar'; d.title = p.name; $('world').appendChild(d); dots.set(p.id, d) }
+    if (p.id !== myId) { d.style.background = '#a78bfa'; d.style.boxShadow = '0 0 10px #a78bfa' }
+    // Off-map positions are drawn at the edge so a teleport outside the map stays visible.
+    d.style.left = Math.max(0, Math.min(97, p.x)) + '%'; d.style.top = Math.max(0, Math.min(92, p.y)) + '%'
+  }
+  ws.onopen = () => { $('state').textContent = 'open'; send({ type: 'join', name: 'player-1' }) }
+  ws.onclose = () => { $('state').textContent = 'closed' }
+  ws.onmessage = (e) => {
+    let m; try { m = JSON.parse(e.data) } catch { return }
+    if (m.type !== 'pos' || m.id === myId || m.via) log('↓ ' + e.data, m.type === 'error')
+    if (m.type === 'welcome') { myId = m.id; $('me-id').textContent = m.id; m.players.forEach(draw) }
+    if (m.type === 'pos') {
+      draw(m)
+      if (m.id === myId) { me = { x: m.x, y: m.y }; $('me-pos').textContent = m.x + ',' + m.y }
+      if (m.id === myId && m.via === 'teleport') pass('s-tp', 'FOUND — teleport accepted with no checks')
+    }
+    if (m.type === 'leave') { dots.get(m.id)?.remove(); dots.delete(m.id) }
+    if (m.type === 'chat') {
+      $('chat').textContent = m.name + ': ' + m.text
+      if (m.id === myId && !mine.has(JSON.stringify({ type: 'chat', text: m.text }))) pass('s-chat', 'PASS')
+    }
+    if (m.type === 'error' && m.code === 'out_of_bounds') pass('s-bounds', 'REJECTED — server validates bounds')
+  }
+  // The page walks on its own with small, valid steps from the server-confirmed position.
+  setInterval(() => {
+    if (ws.readyState !== 1 || !myId) return
+    const step = () => Math.round(Math.random() * 12 - 6)
+    send({ type: 'move', x: Math.max(0, Math.min(100, me.x + step())), y: Math.max(0, Math.min(100, me.y + step())) })
+    $('moves').textContent = ++moves
+  }, 1500)
+</script>
+</body>
+</html>

@@ -331,7 +331,8 @@ export async function attachExternalCdp(port: number, sink: WebContents): Promis
       direction: 'sent',
       opcode: p.response.opcode,
       payloadData: p.response.payloadData,
-      timestamp: p.timestamp,
+      // Epoch ms, the unit every reader pages by; p.timestamp is CDP monotonic seconds.
+      timestamp: Date.now(),
       mask: p.response.mask
     })
   })
@@ -341,7 +342,8 @@ export async function attachExternalCdp(port: number, sink: WebContents): Promis
       direction: 'received',
       opcode: p.response.opcode,
       payloadData: p.response.payloadData,
-      timestamp: p.timestamp,
+      // Epoch ms, the unit every reader pages by; p.timestamp is CDP monotonic seconds.
+      timestamp: Date.now(),
       mask: p.response.mask
     })
   })

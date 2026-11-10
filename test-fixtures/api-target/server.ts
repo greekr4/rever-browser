@@ -20,7 +20,11 @@
  *   Hidden route       /api/v3/admin/keys      (referenced by no page code)
  *   Reflects CRLF      /api/v3/echo?name=      (unsanitised header write)
  *   Path traversal     /api/v3/file?p=         (serves ./public/<p>)
+ *   WS echo            /ws                     (echoes every frame back)
+ *   WS game world      /world                  (rules + hidden teleport — see world.ts)
  */
+
+import { startBots, worldClose, worldMessage, worldOpen } from './world'
 
 const PORT = 8779
 const HMAC_KEY = 's3cr3t-signing-key'
@@ -101,15 +105,15 @@ const ITEMS = Array.from({ length: 47 }, (_, i) => ({
   secret: i === 41 ? 'flag{deep-pagination}' : null
 }))
 
-Bun.serve({
+const server = Bun.serve<{ path: string; playerId?: string }>({
   port: PORT,
   async fetch(req, server) {
     const url = new URL(req.url)
     const p = url.pathname
     const body = req.method === 'POST' || req.method === 'PUT' ? await req.text() : ''
 
-    if (p === '/ws') {
-      if (server.upgrade(req)) return undefined as unknown as Response
+    if (p === '/ws' || p === '/world') {
+      if (server.upgrade(req, { data: { path: p } })) return undefined as unknown as Response
       return new Response('expected websocket', { status: 400 })
     }
 
@@ -209,14 +213,20 @@ Bun.serve({
 
   websocket: {
     open(ws) {
+      if (ws.data.path === '/world') return worldOpen(ws)
       ws.send(JSON.stringify({ type: 'hello', server: 'rever-fixture', ts: Date.now() }))
       ws.subscribe('ticks')
     },
     message(ws, msg) {
+      if (ws.data.path === '/world') return worldMessage(ws, msg)
       ws.send(JSON.stringify({ type: 'echo', received: String(msg) }))
     },
-    close() {}
+    close(ws) {
+      if (ws.data.path === '/world') worldClose(ws)
+    }
   }
 })
+
+startBots((topic, msg) => server.publish(topic, msg))
 
 console.log(`api-target listening on http://127.0.0.1:${PORT}`)
