@@ -1,0 +1,3 @@
+# Shebang scripts must keep LF: a CRLF checkout breaks `#!` (and vitest can't parse bin/revb.mjs).
+*.mjs text eol=lf
+*.sh text eol=lf

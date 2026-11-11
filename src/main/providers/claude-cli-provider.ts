@@ -10,6 +10,7 @@ import type {
 
 import { agentEnv } from '../agent-env'
 import { startMcpServer } from '../mcp/server'
+import { shellSafeSpawn } from '../win-shell'
 import { fallbackOption } from '../../shared/risky-tools'
 import { startTurnPulse } from './turn-pulse'
 import {
@@ -124,11 +125,14 @@ function onMessage(entry: Entry, sessionId: string, msg: Record<string, any>): v
 
 export async function spawnClaudeCliSession(command: string, cwd: string): Promise<{ sessionId: string }> {
   const mcp = await startMcpServer()
-  const child = spawn(command, claudeCliArgs({ mcpUrl: mcp.url, authHeader: mcp.authHeader }), {
+  // shellSafeSpawn quotes for cmd.exe on Windows: the empty --setting-sources
+  // value and the --mcp-config JSON are otherwise dropped/mangled there.
+  const launch = shellSafeSpawn(command, claudeCliArgs({ mcpUrl: mcp.url, authHeader: mcp.authHeader }))
+  const child = spawn(launch.command, launch.args, {
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: agentEnv(command),
-    shell: process.platform === 'win32'
+    shell: launch.shell
   }) as Child
   const sessionId = PREFIX + randomUUID()
   const entry: Entry = {

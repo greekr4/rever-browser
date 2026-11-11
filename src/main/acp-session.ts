@@ -21,6 +21,7 @@ import { startTurnPulse } from './providers/turn-pulse'
 // agentEnv는 electron을 거의 끌어오지 않는 순수 로직이라 별도 모듈로 분리했다
 // (vitest 직접 임포트용). 기존 임포트 경로(acp-session) 호환을 위해 재수출.
 import { agentEnv } from './agent-env'
+import { shellSafeSpawn } from './win-shell'
 export { agentEnv }
 
 export interface AgentDef {
@@ -76,11 +77,13 @@ export async function spawnAcpSession(
   // (throws EINVAL). Setting shell on Windows lets the resolved absolute
   // path execute cleanly. On POSIX the binary is a real executable / JS
   // shebang, so we leave shell off to avoid quoting surprises.
-  const child = spawn(agentDef.command, agentDef.args, {
+  // shellSafeSpawn quotes each arg for cmd.exe so they survive the shell.
+  const launch = shellSafeSpawn(agentDef.command, agentDef.args)
+  const child = spawn(launch.command, launch.args, {
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: agentEnv(agentDef.command),
-    shell: process.platform === 'win32'
+    shell: launch.shell
   }) as ChildProcessByStdio<Writable, Readable, Readable>
 
   child.stderr.on('data', (buf: Buffer) => {

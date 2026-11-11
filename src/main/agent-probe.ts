@@ -15,6 +15,7 @@ import { detectAgents } from './acp-detect'
 import { detectAgentLogins, type LoginAgentId, type LoginInfo } from './agent-login'
 import { GROK_PLAN, resolveGrokCredential } from './grok-login'
 import { findClaudeCli } from './claude-cli'
+import { shellSafeSpawn } from './win-shell'
 import { GLM_BASE_URL } from './providers/glm-provider'
 import { XAI_BASE_URL } from './providers/grok-models'
 import { getApiKey } from './settings'
@@ -71,10 +72,11 @@ function message(e: unknown): string {
 async function handshake(command: string): Promise<{ ok: true } | { ok: false; detail: string }> {
   let child: ChildProcessByStdio<Writable, Readable, Readable> | null = null
   try {
-    child = spawn(command, [], {
+    const launch = shellSafeSpawn(command, [])
+    child = spawn(launch.command, launch.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: agentEnv(command),
-      shell: process.platform === 'win32'
+      shell: launch.shell
     }) as ChildProcessByStdio<Writable, Readable, Readable>
   } catch (e) {
     return { ok: false, detail: message(e) }

@@ -26,13 +26,15 @@ const MAX_PAGES = 200 // 12M chars; the server keeps at most 20M across all resu
 /** Electron's userData for this app, computed the way src/main/index.ts does. */
 export function userDataDir(env = process.env, platform = process.platform, home = os.homedir()) {
   if (env.REVER_USER_DATA_DIR) return env.REVER_USER_DATA_DIR
+  // Join with the target platform's separator, not the host's.
+  const join = platform === 'win32' ? path.win32.join : path.posix.join
   const appData =
     platform === 'darwin'
-      ? path.join(home, 'Library', 'Application Support')
+      ? join(home, 'Library', 'Application Support')
       : platform === 'win32'
-        ? env.APPDATA || path.join(home, 'AppData', 'Roaming')
-        : env.XDG_CONFIG_HOME || path.join(home, '.config')
-  return path.join(appData, 'rever-browser')
+        ? env.APPDATA || join(home, 'AppData', 'Roaming')
+        : env.XDG_CONFIG_HOME || join(home, '.config')
+  return join(appData, 'rever-browser')
 }
 
 /**
