@@ -1,6 +1,7 @@
-import { ipcMain } from 'electron'
+import { ipcMain, session } from 'electron'
 
 import { getActiveTarget } from '../chrome-cdp'
+import { SHARED_PARTITION } from '../tab-partition'
 
 // Cookie / localStorage / sessionStorage editor IPC, driven by the storage
 // panel. Extracted from the index.ts `whenReady` block; it needs nothing from
@@ -55,6 +56,25 @@ export function registerStorageIpc(): void {
       return true
     }
   )
+
+  // Clear every cookie the target host would receive, from the shared partition.
+  // A scan reuses the browser's cookie jar; cookies are host- not port-scoped, so
+  // a `session`/`ats_token` left by another localhost app is sent to the target
+  // and can break it (Flask-Session 500s unpickling a foreign JWT) or skew the
+  // auth baseline. Called at scan start for a clean run. Uses the Electron
+  // session API (not CDP) so it works before the target tab has attached.
+  ipcMain.handle('storage:clear-site-cookies', async (_event, url: string): Promise<number> => {
+    const ses = session.fromPartition(SHARED_PARTITION)
+    const cookies = await ses.cookies.get({ url }).catch(() => [])
+    let cleared = 0
+    for (const c of cookies) {
+      await ses.cookies.remove(url, c.name).then(
+        () => cleared++,
+        () => {}
+      )
+    }
+    return cleared
+  })
 
   for (const kind of ['local', 'session'] as const) {
     const storage = `${kind}Storage`
