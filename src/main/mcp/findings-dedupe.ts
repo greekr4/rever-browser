@@ -27,13 +27,19 @@ export function isScanNoise(f: { status: string; tags: string[] }): boolean {
   return f.status === 'false_positive' || f.tags.some((t) => t.toLowerCase() === 'negative')
 }
 
+// Canonicalise a path for keying: collapse duplicate slashes and strip the
+// trailing one. The `//get_ticket` vs `/get_ticket` of an ACL-bypass write-up is
+// the SAME endpoint for dedup (the raw form stays in the body); without this the
+// bypass's own double-slash scatters the key across restatements.
+const canonPath = (p: string): string => p.replace(/\/{2,}/g, '/').replace(/\/+$/, '') || '/'
+
 /** host(:port)+path of the first URL in the text, or first bare-path form. */
 function hostPathOf(text: string): string | null {
   const url = text.match(/https?:\/\/[^\s`)\]"'<>]+/i)
   if (url) {
     try {
       const u = new URL(url[0])
-      return `${u.hostname.toLowerCase()}${u.port ? `:${u.port}` : ''}${u.pathname.replace(/\/+$/, '') || '/'}`
+      return `${u.hostname.toLowerCase()}${u.port ? `:${u.port}` : ''}${canonPath(u.pathname)}`
     } catch {
       return null
     }
@@ -43,7 +49,7 @@ function hostPathOf(text: string): string | null {
   // still lands on the same key as the full-URL form.
   const bare = text.match(/(?:^|[\s(`"'])(\/[A-Za-z0-9\-_./]{2,})/)
   if (!bare) return null
-  const path = bare[1].replace(/\/+$/, '') || '/'
+  const path = canonPath(bare[1])
   const domain = text.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i)
   return domain ? `${domain[1].toLowerCase()}${path}` : path
 }
