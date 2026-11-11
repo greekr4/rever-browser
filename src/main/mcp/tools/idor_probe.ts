@@ -91,9 +91,22 @@ export function sameResource(a: string, b: string): boolean {
 }
 
 export interface IdorReply {
-  label: 'baseline' | 'noauth' | 'cross'
+  label: 'baseline' | 'noauth' | 'cross' | 'bogus'
   status: number
   body: string
+}
+
+/** Same cookie names, garbage values — the negative control for broken auth:
+ *  an app that validates sessions rejects this; one that ignores identity
+ *  (public-by-design) serves the resource anyway. */
+export function bogusCookie(owner: string): string {
+  return owner
+    .split(';')
+    .map((p) => {
+      const i = p.indexOf('=')
+      return i < 0 ? p : `${p.slice(0, i).trim()}=reverbogus0`
+    })
+    .join('; ')
 }
 
 export interface IdorOutcome {
@@ -125,15 +138,25 @@ export interface NoauthOutcome {
  *  (credentials:include re-attaches them) so it reports false "no-auth 200"s.
  *  Here the no-cookie request is genuinely cookieless; broken auth is confirmed
  *  only when it returns the SAME protected resource the owner sees. */
-export function noauthDecision(baseline: IdorReply, noauth: IdorReply): NoauthOutcome {
+export function noauthDecision(baseline: IdorReply, noauth: IdorReply, bogus: IdorReply): NoauthOutcome {
   const ok2xx = (s: number): boolean => s >= 200 && s < 300
   if (!ok2xx(baseline.status)) {
     return { brokenAuth: false, note: `baseline ${baseline.status}: the resource isn't readable even with the owner session — can't assess (bad requestId or no owner session in the partition).` }
   }
-  if (ok2xx(noauth.status) && sameResource(baseline.body, noauth.body)) {
-    return { brokenAuth: true, note: `the resource is returned with NO cookie (HTTP ${noauth.status}, same body as the authenticated response) — authentication is not enforced. Broken auth (API2) confirmed over a raw socket.` }
+  if (!(ok2xx(noauth.status) && sameResource(baseline.body, noauth.body))) {
+    return { brokenAuth: false, note: `no-cookie request got ${noauth.status}${ok2xx(noauth.status) ? ' with a different/empty body' : ''}: authentication is enforced (not broken auth).` }
   }
-  return { brokenAuth: false, note: `no-cookie request got ${noauth.status}${ok2xx(noauth.status) ? ' with a different/empty body' : ''}: authentication is enforced (not broken auth).` }
+  // No-cookie returns the protected resource. Negative control: a GARBAGE cookie
+  // must be DENIED. If the garbage cookie is served the SAME resource, the endpoint
+  // ignores identity entirely = PUBLIC-by-design (a CTF mail viewer, a taxonomy) —
+  // "served with no cookie" alone can't tell that from broken auth, so don't confirm.
+  if (ok2xx(bogus.status) && sameResource(baseline.body, bogus.body)) {
+    return {
+      brokenAuth: false,
+      note: `served identically with NO cookie AND a garbage cookie (HTTP ${noauth.status}/${bogus.status}) — the endpoint ignores identity, consistent with PUBLIC-BY-DESIGN, not proven broken auth. Record as candidate (category:endpoint/info) and confirm whether it is meant to be public; a genuine broken-auth leak returns owner-specific data a wrong identity is denied.`
+    }
+  }
+  return { brokenAuth: true, note: `the resource is returned with NO cookie (HTTP ${noauth.status}, same body as the owner) while a GARBAGE cookie is rejected (${bogus.status}) — the server enforces sessions on this path but the no-cookie request bypasses it. Broken auth (API2) confirmed over a raw socket.` }
 }
 
 export function registerIdorProbeTools(mcp: McpServer) {
@@ -141,7 +164,7 @@ export function registerIdorProbeTools(mcp: McpServer) {
     'noauth_probe',
     {
       description:
-        'Confirm broken authentication (OWASP API2) reliably — use this instead of replay_request-with-cookie-blanked, which CANNOT drop httpOnly session cookies (browser fetch re-attaches them via credentials:include) and so reports false "no-auth 200"s. Replays the captured request twice over a raw socket: with the owner session (baseline, auto-read from the logged-in partition) and with NO cookie. Broken auth is confirmed only when the cookieless request returns the SAME protected resource the owner sees. Gated to loopback / lab hosts. A positive is unauthenticated data access — record high/critical.',
+        'Confirm broken authentication (OWASP API2) reliably — use this instead of replay_request-with-cookie-blanked, which CANNOT drop httpOnly session cookies (browser fetch re-attaches them via credentials:include) and so reports false "no-auth 200"s. Replays the captured request three ways over a raw socket: owner session (baseline, auto-read from the logged-in partition), NO cookie, and a GARBAGE cookie (negative control). Broken auth is confirmed only when the cookieless request returns the SAME protected resource AND the garbage cookie is denied — if the garbage cookie is served the same resource, the endpoint ignores identity (public-by-design, e.g. a shared viewer or taxonomy) and is NOT confirmed. Gated to loopback / lab hosts. A positive is unauthenticated data access — record high/critical; a public-by-design result is a candidate, not a vuln.',
       inputSchema: {
         requestId: z.string().describe('A captured authenticated request to a protected resource'),
         ownerCookie: z.string().optional().describe('Owner Cookie value (defaults to the logged-in partition session)')
@@ -165,10 +188,13 @@ export function registerIdorProbeTools(mcp: McpServer) {
         }
         const baseline = { ...(await rawReplay(base, u, owner)), label: 'baseline' as const }
         const noauth = { ...(await rawReplay(base, u, null)), label: 'noauth' as const }
-        const { brokenAuth, note } = noauthDecision(baseline, noauth)
+        // Negative control: same cookie names, garbage values. A real protected
+        // resource denies this; a public-by-design one serves it anyway.
+        const bogus = { ...(await rawReplay(base, u, bogusCookie(owner))), label: 'bogus' as const }
+        const { brokenAuth, note } = noauthDecision(baseline, noauth, bogus)
         return ok(
           JSON.stringify(
-            { brokenAuth, note, results: [baseline, noauth].map((r) => ({ label: r.label, status: r.status, bytes: r.bytes })) },
+            { brokenAuth, note, results: [baseline, noauth, bogus].map((r) => ({ label: r.label, status: r.status, bytes: r.bytes })) },
             null,
             2
           )
