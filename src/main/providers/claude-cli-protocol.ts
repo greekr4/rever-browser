@@ -69,6 +69,12 @@ export function claudeCliArgs(opts: { mcpUrl: string; authHeader: string; model?
     // Same isolation the ACP path used (settingSources: []): no user hooks or settings.
     // Not --bare: that skips the keychain, which is where the subscription login lives.
     '--setting-sources', '',
+    // No nested sub-agents: this app drives one tab per session, and a Task
+    // sub-agent runs in its own context without that tab's CDP/ref state, so it
+    // can't usefully help — in the Red Team scan its only effect was workers
+    // burning 180-420s on a nested agent. Disallowing an absent tool is a no-op,
+    // so this is safe even if the built-in name ever changes.
+    '--disallowed-tools', 'Task',
     '--permission-mode', 'manual',
     // Route every permission prompt to us as a can_use_tool control_request.
     '--permission-prompt-tool', 'stdio',

@@ -26,6 +26,11 @@ describe('claudeCliArgs', () => {
     expect(args).not.toContain('--model')
     expect(claudeCliArgs({ mcpUrl: 'u', authHeader: 'a', model: 'opus' }).slice(-2)).toEqual(['--model', 'opus'])
   })
+
+  it('중첩 하위 에이전트(Task) 도구를 차단한다', () => {
+    const args = claudeCliArgs({ mcpUrl: 'u', authHeader: 'a' })
+    expect(args.join(' ')).toContain('--disallowed-tools Task')
+  })
 })
 
 describe('translate', () => {

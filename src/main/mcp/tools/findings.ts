@@ -43,13 +43,30 @@ const SEVERITY_LABEL: Record<Severity, string> = {
   low: '🟢 low',
   info: 'ℹ️ info'
 }
-const CATEGORY_ORDER: Category[] = ['endpoint', 'auth', 'vuln', 'secret', 'other']
 const CATEGORY_LABEL: Record<Category, string> = {
   endpoint: 'API Endpoints',
   auth: 'Auth Flow',
   vuln: 'Vulnerabilities',
   secret: 'Secrets / Keys',
   other: 'Other'
+}
+
+/**
+ * Redact PII before a finding is stored or rendered. The body is free text a
+ * worker wrote and workers mask inconsistently (one scan masked an applicant
+ * email, the next pasted it raw into the report), so enforce it deterministically.
+ * Emails and KR phone numbers only — a Korean name can't be told from ordinary
+ * Korean prose without mangling the whole report. Idempotent: already-masked
+ * values carry no digits/`@`-run to re-hit.
+ */
+export function maskPii(text: string): string {
+  if (!text) return text
+  return text
+    .replace(
+      /([A-Za-z0-9._%+-]{1,2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g,
+      (_m, head: string, domain: string) => `${head}****${domain}`
+    )
+    .replace(/\b0\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}\b/g, (m) => `${/^0\d{1,2}/.exec(m)![0]}-****-****`)
 }
 
 const STORE_FILE = 'findings.json'
@@ -115,6 +132,22 @@ export function clearFindingsForSite(url: string): number {
   return removed
 }
 
+export type ReportBucket = 'confirmed' | 'candidate' | 'recon'
+
+/**
+ * Where a finding belongs in the report. A read-only, capture-not-send scan
+ * can rarely *prove* a claim, so most findings are suspicions, not facts —
+ * presenting them all as "findings" is what makes the report read as noise.
+ * - recon: endpoint inventory, info-level notes, and accepted-risk items are
+ *   attack-surface mapping, never headline vulns.
+ * - confirmed: only `validated` (≥2 independent evidence) issues are stated as fact.
+ * - candidate: everything else is unproven and must be verified before acting.
+ */
+export function reportBucket(f: Pick<Finding, 'category' | 'severity' | 'status'>): ReportBucket {
+  if (f.category === 'endpoint' || f.severity === 'info' || f.status === 'accepted_risk') return 'recon'
+  return f.status === 'validated' ? 'confirmed' : 'candidate'
+}
+
 function renderMarkdown(all: Finding[], scopeNote?: string): string {
   // Parallel tab workers each record the same public endpoint; the export is
   // the one place that can merge them deterministically, whatever the workers
@@ -126,44 +159,51 @@ function renderMarkdown(all: Finding[], scopeNote?: string): string {
   lines.push('# Reversing Session Findings', '')
   if (scopeNote) lines.push(`_site: ${scopeNote}_`, '')
 
-  // Summary block: one glance, then details.
-  const counts = new Map<Category, Partial<Record<Severity, number>>>()
-  for (const f of list) {
-    const bySev = counts.get(f.category) ?? {}
-    bySev[f.severity] = (bySev[f.severity] ?? 0) + 1
-    counts.set(f.category, bySev)
-  }
-  lines.push('| Category | Critical | High | Medium | Low | Info |', '|---|---|---|---|---|---|')
-  for (const cat of CATEGORY_ORDER) {
-    const bySev = counts.get(cat)
-    if (!bySev) continue
-    const cells = (['critical', 'high', 'medium', 'low', 'info'] as Severity[]).map(
-      (s) => String(bySev[s] ?? 0)
-    )
-    lines.push(`| ${CATEGORY_LABEL[cat]} | ${cells.join(' | ')} |`)
-  }
+  const buckets: Record<ReportBucket, Finding[]> = { confirmed: [], candidate: [], recon: [] }
+  for (const f of list) buckets[reportBucket(f)].push(f)
+  const bySev = (a: Finding, b: Finding): number =>
+    SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || b.createdAt - a.createdAt
+
+  // Honest glance: confirmed facts vs suspicions vs inventory — not a flat count.
   lines.push(
-    '',
-    `_${list.length} unique finding${list.length === 1 ? '' : 's'}${mergedAway ? `, ${mergedAway} duplicate report${mergedAway === 1 ? '' : 's'} merged` : ''}_`,
+    `**${buckets.confirmed.length} confirmed · ${buckets.candidate.length} to verify · ${buckets.recon.length} recon**` +
+      (mergedAway ? ` _(${mergedAway} duplicate report${mergedAway === 1 ? '' : 's'} merged)_` : ''),
     ''
   )
 
-  for (const cat of CATEGORY_ORDER) {
-    const inCat = list
-      .filter((f) => f.category === cat)
-      .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || b.createdAt - a.createdAt)
-    if (inCat.length === 0) continue
-    lines.push(`## ${CATEGORY_LABEL[cat]} (${inCat.length})`, '')
-    for (const f of inCat) {
-      lines.push(`### ${f.title}`)
-      const meta = [SEVERITY_LABEL[f.severity], `status: ${f.status}`]
-      if (f.tags.length) meta.push(`tags: ${f.tags.join(', ')}`)
-      if (f.requestId) meta.push(`request: \`${f.requestId}\``)
-      lines.push(`_${meta.join(' · ')}_`, '')
-      lines.push(f.body.trim(), '')
-      if (f.evidenceIds.length) lines.push(`**Evidence:** ${f.evidenceIds.map((e) => `\`${e}\``).join(', ')}`, '')
-      if (f.reproCommand) lines.push('**Repro:**', '```', f.reproCommand.trim(), '```', '')
+  const detail = (f: Finding): void => {
+    // Backstop: findings stored before masking (or imported) are masked here too.
+    lines.push(`### ${maskPii(f.title)}`)
+    const meta = [SEVERITY_LABEL[f.severity], CATEGORY_LABEL[f.category], `status: ${f.status}`]
+    if (f.tags.length) meta.push(`tags: ${f.tags.join(', ')}`)
+    if (f.requestId) meta.push(`request: \`${f.requestId}\``)
+    lines.push(`_${meta.join(' · ')}_`, '')
+    lines.push(maskPii(f.body).trim(), '')
+    if (f.evidenceIds.length) lines.push(`**Evidence:** ${f.evidenceIds.map((e) => `\`${e}\``).join(', ')}`, '')
+    if (f.reproCommand) lines.push('**Repro:**', '```', maskPii(f.reproCommand).trim(), '```', '')
+  }
+
+  if (buckets.confirmed.length) {
+    lines.push(`## Confirmed (${buckets.confirmed.length})`, '')
+    for (const f of buckets.confirmed.sort(bySev)) detail(f)
+  }
+  if (buckets.candidate.length) {
+    lines.push(
+      `## Needs verification (${buckets.candidate.length})`,
+      '',
+      '_Unproven — this read-only scan could not confirm these. Check the code or a live request before acting; absence of a client-side control is not proof of a server-side one._',
+      ''
+    )
+    for (const f of buckets.candidate.sort(bySev)) detail(f)
+  }
+  if (buckets.recon.length) {
+    // Inventory, not vulnerabilities — one compact line each so it doesn't bury the findings above.
+    lines.push(`## Attack surface & recon (${buckets.recon.length})`, '')
+    for (const f of buckets.recon.sort(bySev)) {
+      const ev = f.evidenceIds[0] ? ` · \`${f.evidenceIds[0]}\`` : ''
+      lines.push(`- **${maskPii(f.title)}** _(${SEVERITY_LABEL[f.severity]}, ${CATEGORY_LABEL[f.category]})_${ev}`)
     }
+    lines.push('')
   }
   return lines.join('\n')
 }
@@ -244,13 +284,14 @@ export function registerFindingTools(mcp: McpServer) {
       }
       const f: Finding = {
         id: randomUUID(),
-        title,
+        // Mask PII at the source so it never lands on disk, not just in the report.
+        title: maskPii(title),
         severity,
         category,
-        body,
+        body: maskPii(body),
         requestId,
         evidenceIds,
-        reproCommand,
+        reproCommand: reproCommand ? maskPii(reproCommand) : undefined,
         status: effectiveStatus,
         tags,
         origin: originOf(getActiveTarget()?.wc.getURL()),
@@ -291,7 +332,7 @@ export function registerFindingTools(mcp: McpServer) {
     'finding_export',
     {
       description:
-        'Render findings as a structured Markdown report grouped by category (endpoints / auth / vulns / secrets) and ordered by severity — the session deliverable. Defaults to the current page\'s site so one scan\'s report is not polluted by findings from other targets; pass site=<url> when no tab is active (e.g. from a finished scan), or all=true for every finding in the store.',
+        'Render findings as a structured Markdown report — the session deliverable. Split into Confirmed (validated facts), Needs verification (unproven suspicions to check before acting), and Attack surface & recon (endpoint inventory, compact). Defaults to the current page\'s site so one scan\'s report is not polluted by findings from other targets; pass site=<url> when no tab is active (e.g. from a finished scan), or all=true for every finding in the store.',
       inputSchema: {
         site: z.string().optional().describe('URL of the scanned site — use when the page/tab is gone so the report stays scoped'),
         all: z.boolean().optional().describe('Include findings from every site, not just the current page\'s')

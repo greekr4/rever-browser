@@ -71,7 +71,8 @@ const VULN_CLASS_PATTERNS: [string, RegExp][] = [
   ['crlf', /\bcrlf\b|header.?inject/i],
   ['redirect', /open.?redirect/i],
   ['pathwrite', /arbitrary.?file.?write|path.?travers|file.?write/i],
-  ['headers', /security.?header|missing[^\n]*headers?\b|\bcsp\b|content.?security|hsts|x.?frame|nosniff|clickjack/i],
+  ['headers', /security[\s\w-]{0,20}?headers?\b|missing[^\n]*headers?\b|response[\s-]?header|header[\s-]?posture|\bcsp\b|content.?security|hsts|x.?frame|nosniff|clickjack/i],
+  ['cors', /\bcors\b|wildcard.?origin|access.?control.?allow.?origin|\bacao\b/i],
   ['csrf', /\bcsrf\b|cross.?site.?request.?forgery|state.?chang|content.?injection|content.?spoof/i],
   ['xss', /\bxss\b|cross.?site.?script/i],
   ['auth', /broken.?auth|auth.?bypass|unauth/i],
@@ -112,8 +113,15 @@ export function vulnKeyOf(
   if (!cls) return null
   const ep = hostPathOf(`${f.title}\n${f.body}`)
   if (!ep) return null
+  // Host-wide issues (no security headers, wildcard CORS) are a property of the
+  // server, not one route — workers report them once per endpoint they touch.
+  // Key by host alone so N endpoints collapse to one (merge keeps max severity,
+  // so a real CORS-on-login medium isn't lost in an asset-CORS low).
+  if (HOST_WIDE_CLASSES.has(cls)) return `vulnlike|${cls}|${ep.split('/')[0] || ep}`
   return `vulnlike|${cls}|${ep}|${vulnParamOf(f.title)}`
 }
+
+const HOST_WIDE_CLASSES = new Set(['headers', 'cors'])
 
 /**
  * Merge findings that share a key (endpoint inventory: host+path; vuln claims:
