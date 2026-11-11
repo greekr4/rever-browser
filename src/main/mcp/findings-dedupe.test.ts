@@ -47,6 +47,43 @@ describe('endpointKeyOf', () => {
   })
 })
 
+describe('vulnKeyOf — 호스트 전역 이슈는 경로 무시', () => {
+  const vk = (over: Partial<DedupableFinding> & Pick<DedupableFinding, 'title' | 'body'>): string | null =>
+    vulnKeyOf(f({ category: 'vuln', ...over }))
+
+  it('보안 헤더 부재는 엔드포인트가 달라도 호스트로 한 키에 모인다', () => {
+    const a = vk({ title: 'Missing security headers (CSP/HSTS) on GET /api/v3/profile', body: 'http://127.0.0.1:8779/api/v3/profile' })
+    const b = vk({ title: 'Security response headers absent on /api/v3/items', body: 'http://127.0.0.1:8779/api/v3/items' })
+    expect(a).toBe('vulnlike|headers|127.0.0.1:8779')
+    expect(a).toBe(b)
+  })
+
+  it('와일드카드 CORS 도 클래스가 잡혀 호스트 단위로 모인다', () => {
+    const a = vk({ title: 'Wildcard CORS (ACAO: *) on /api/v3/login', body: 'http://127.0.0.1:8779/api/v3/login' })
+    const b = vk({ title: 'Wildcard CORS on authenticated /api/v3/profile', body: 'http://127.0.0.1:8779/api/v3/profile' })
+    expect(a).toBe('vulnlike|cors|127.0.0.1:8779')
+    expect(a).toBe(b)
+  })
+
+  it('엔드포인트별 취약점(LFI 등)은 경로가 다르면 그대로 분리된다', () => {
+    const a = vk({ title: 'Path traversal (LFI) on GET /api/v3/file', body: 'http://127.0.0.1:8779/api/v3/file' })
+    const b = vk({ title: 'Reflected XSS on /api/v3/echo', body: 'http://127.0.0.1:8779/api/v3/echo' })
+    expect(a).not.toBe(b)
+    expect(a).toContain('/api/v3/file')
+  })
+
+  it('호스트 전역 병합은 최고 심각도를 지킨다 (로그인 CORS medium 이 asset CORS low 에 묻히지 않음)', () => {
+    const list = [
+      f({ category: 'vuln', title: 'Wildcard CORS on static /assets/app.js', body: 'http://127.0.0.1:8779/assets/app.js', severity: 'low' }),
+      f({ category: 'vuln', title: 'Wildcard CORS on /api/v3/login lets any origin read the admin token', body: 'http://127.0.0.1:8779/api/v3/login — longer body wins primary', severity: 'medium' })
+    ]
+    const { merged, mergedAway } = mergeDuplicateEndpoints(list)
+    expect(mergedAway).toBe(1)
+    expect(merged).toHaveLength(1)
+    expect(merged[0].severity).toBe('medium')
+  })
+})
+
 describe('mergeDuplicateEndpoints', () => {
   it('같은 엔드포인트 3개를 1개로 병합하고 근거는 합친다', () => {
     const list = [
