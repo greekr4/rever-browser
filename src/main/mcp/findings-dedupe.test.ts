@@ -288,3 +288,12 @@ describe('mergeDuplicateEndpoints — evidence-based dedup (LockTalk cross-bucke
     expect(merged).toHaveLength(2)
   })
 })
+
+describe('vulnKeyOf — path canonicalization (double-slash bypass)', () => {
+  it('//get_ticket 와 /get_ticket 는 같은 엔드포인트 키 (우회의 // 가 키를 분산시키지 않음)', () => {
+    const a = vulnKeyOf(f({ category: 'vuln', title: 'HAProxy ACL bypass reaches http://h:1337//api/v1/get_ticket', body: '' }))
+    const b = vulnKeyOf(f({ category: 'vuln', title: 'HAProxy ACL bypass reaches http://h:1337/api/v1/get_ticket', body: '' }))
+    expect(a).toBe(b)
+    expect(a).toContain('/api/v1/get_ticket')
+  })
+})
