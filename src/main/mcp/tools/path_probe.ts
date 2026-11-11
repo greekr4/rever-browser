@@ -42,6 +42,23 @@ const DEFAULT_WORDLIST = [
   'info.php',
   'test.php',
   'debug.php',
+  // Ops / dev / health — unlinked endpoints a link-crawl never finds; often the
+  // entry point for SSRF/debug (e.g. a /healthcheck?url= that curls an arg).
+  'healthcheck',
+  'healthcheck-dev',
+  'health',
+  'healthz',
+  'livez',
+  'readyz',
+  'status',
+  'metrics',
+  'actuator',
+  'actuator/health',
+  'debug',
+  'api',
+  'api/health',
+  'internal',
+  'dev',
   // Common admin paths
   'admin/',
   'administrator/',
@@ -57,6 +74,19 @@ const DEFAULT_WORDLIST = [
   'security.txt',
   '.well-known/security.txt'
 ]
+
+/**
+ * A probed path is interesting when its response differs from the app's "absent"
+ * baseline (a random nonexistent path). This surfaces not just 2xx but an authed
+ * 400 (`/healthcheck` wanting a param) or a proxy 403 (`/healthcheck-dev` behind
+ * an ACL) on an unlinked endpoint — the entry point a link-crawl misses. Falls
+ * back to the plain 2xx/3xx heuristic when the baseline probe itself failed.
+ */
+export function isInterestingStatus(status: number, baselineStatus: number): boolean {
+  if (status === 0) return false
+  if (baselineStatus > 0) return status !== baselineStatus
+  return status >= 200 && status < 400 && status !== 301 && status !== 302
+}
 
 const LFI_TEMPLATES = [
   // php://filter source disclosure variants
@@ -116,6 +146,24 @@ export function registerPathProbeTools(mcp: McpServer) {
           interesting: boolean
         }> = []
 
+        // Learn the "absent" response (404 on most apps, or a login 302/403 on a
+        // gated one) so a real hidden path is one whose status differs from it.
+        const probeStatus = async (u: string): Promise<number> => {
+          const target = getActiveTarget()
+          if (!target) return 0
+          try {
+            const r = (await target.dbg.sendCommand('Runtime.evaluate', {
+              expression: `(async()=>{try{const r=await fetch(${JSON.stringify(u)},{credentials:'include',redirect:'manual'});await r.arrayBuffer();return r.status}catch(e){return 0}})()`,
+              awaitPromise: true,
+              returnByValue: true
+            })) as { result: { value: number } }
+            return r.result.value
+          } catch {
+            return 0
+          }
+        }
+        const baselineStatus = await probeStatus(base + `__rever_absent_${Math.random().toString(36).slice(2)}`)
+
         const deadline = Date.now() + 120_000
         async function worker() {
           while (queue.length > 0) {
@@ -139,7 +187,7 @@ export function registerPathProbeTools(mcp: McpServer) {
                 returnByValue: true
               })) as { result: { value: { status: number; length: number; ct: string } } }
               const v = r.result.value
-              const interesting = v.status >= 200 && v.status < 400 && v.status !== 301 && v.status !== 302
+              const interesting = isInterestingStatus(v.status, baselineStatus)
               results.push({
                 url: u,
                 status: v.status,
