@@ -318,6 +318,7 @@ export function workerPrompt(url: string, crawl: boolean, aggressive = false): s
     `- 동적 탐색(필요할 때): browser_snapshot({tab:N}) → browser_click/browser_type/browser_navigate 에 같은 tab:N 을 전달한다(아코디언 펼치기, 페이지네이션, 더보기, 검색). ref 는 탭별 네임스페이스라 같은 tab:N 으로만 동작한다.\n` +
     rulesLine +
     `- finding_add 는 소형 템플릿: 한 줄 제목(엔드포인트/이슈), 관측 불릿 3개 이하, 재현 curl 한 줄. 이미 finding_list 에 같은 엔드포인트가 있으면 추가하지 않는다. ${findingsLangLine()}\n` +
+    `- 정밀도 규칙(중요): ①클라이언트에 보호장치(rate limit·검증 등)가 "안 보인다"는 이유만으로 서버 취약점을 기록하지 않는다 — 실제로 재현/실증했을 때만 category:"vuln". ②단순 엔드포인트·인증흐름 목록은 category:"endpoint" 로만 적는다(정찰 자료, vuln 아님). vuln/secret 은 실증했거나 명백한 오설정일 때만. ③"공개가 설계상 정상/취약 아님" 같은 음성 결론은 기록하지 않는다. ④실증 못 했으면 status 는 candidate 로 두고 본문에 "미확인: ~ 검증 필요"라고 적는다(validated 는 독립 증거 2개 이상일 때만).\n` +
     `- 끝나면 발견 개수만 한 줄로 답한다.`
   )
 }
