@@ -667,6 +667,10 @@ const api = {
       domain?: string
       path?: string
     }): Promise<boolean> => ipcRenderer.invoke('storage:cookie-delete', params),
+    // Clear every cookie the target host would receive (shared partition) — a
+    // clean cookie baseline for a scan; returns how many were removed.
+    clearSiteCookies: (url: string): Promise<number> =>
+      ipcRenderer.invoke('storage:clear-site-cookies', url),
     localGet: (): Promise<Record<string, string>> => ipcRenderer.invoke('storage:local-get'),
     localSet: (key: string, value: string): Promise<boolean> =>
       ipcRenderer.invoke('storage:local-set', key, value),
