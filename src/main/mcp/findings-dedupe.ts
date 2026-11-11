@@ -75,6 +75,8 @@ const VULN_CLASS_PATTERNS: [string, RegExp][] = [
   ['cors', /\bcors\b|wildcard.?origin|access.?control.?allow.?origin|\bacao\b/i],
   ['csrf', /\bcsrf\b|cross.?site.?request.?forgery|state.?chang|content.?injection|content.?spoof/i],
   ['xss', /\bxss\b|cross.?site.?script/i],
+  ['accesscontrol', /\bacl\b|access.?control|path.?normaliz|path.?confus|proxy.?(deny|bypass)|haproxy|deny.?rule/i],
+  ['jwt', /\bjwt\b|token.?forge|\bjws\b|alg.?confusion|python_jwt|jwcrypto/i],
   ['auth', /broken.?auth|auth.?bypass|unauth/i],
   ['secret', /\bsecret\b|api.?key|credential|token.?leak/i]
 ]
@@ -129,44 +131,72 @@ const HOST_WIDE_CLASSES = new Set(['headers', 'cors'])
  * union, highest severity wins, earliest createdAt keeps. Everything else
  * passes through untouched. Order is preserved (first occurrence position).
  */
+function absorbFinding<T extends DedupableFinding>(prev: T, f: T): T {
+  const [primary, absorbed] = f.body.length > prev.body.length ? [f, prev] : [prev, f]
+  return {
+    ...primary,
+    severity:
+      SEVERITY_RANK[primary.severity] >= SEVERITY_RANK[absorbed.severity] ? primary.severity : absorbed.severity,
+    status: primary.status === 'validated' || absorbed.status === 'validated' ? 'validated' : primary.status,
+    tags: [...new Set([...primary.tags, ...absorbed.tags])],
+    evidenceIds: [
+      ...new Set([
+        ...primary.evidenceIds,
+        ...absorbed.evidenceIds,
+        ...(primary.requestId ? [primary.requestId] : []),
+        ...(absorbed.requestId ? [absorbed.requestId] : [])
+      ])
+    ].slice(0, 12),
+    createdAt: Math.min(primary.createdAt, absorbed.createdAt)
+  }
+}
+
+const evidenceIdsOf = (f: DedupableFinding): string[] => [...(f.requestId ? [f.requestId] : []), ...f.evidenceIds]
+
+// Two findings are DIFFERENT claims only when both carry a known, distinct vuln
+// class — then a shared evidence id (a request both cite) must not merge them
+// (e.g. an ACL bypass and a JWT forgery that both reference /get_ticket).
+function classConflict(a: DedupableFinding, b: DedupableFinding): boolean {
+  const ca = vulnClassOf(a)
+  const cb = vulnClassOf(b)
+  return ca !== null && cb !== null && ca !== cb
+}
+
 export function mergeDuplicateEndpoints<T extends DedupableFinding>(list: T[]): { merged: T[]; mergedAway: number } {
-  const byKey = new Map<string, T>()
-  const out: T[] = []
+  const reps: T[] = []
+  const byKey = new Map<string, number>()
+  const byEvidence = new Map<string, number>() // requestId/evidenceId → rep index
+
+  const indexRep = (idx: number): void => {
+    const rep = reps[idx]
+    const key = endpointKeyOf(rep) ?? vulnKeyOf(rep)
+    if (key !== null) byKey.set(key, idx)
+    // Evidence index is the fallback signal for vuln-like findings only; endpoint
+    // inventory already dedups by host+path and must not absorb a vuln.
+    if (rep.category !== 'endpoint') for (const e of evidenceIdsOf(rep)) if (!byEvidence.has(e)) byEvidence.set(e, idx)
+  }
+
   for (const f of list) {
     const key = endpointKeyOf(f) ?? vulnKeyOf(f)
-    if (!key) {
-      out.push(f)
-      continue
+    let idx = key !== null ? byKey.get(key) ?? -1 : -1
+    // Fallback: a vuln-like finding sharing a request/evidence id with an earlier
+    // one is the same claim restated — unless they are distinctly classed.
+    if (idx < 0 && f.category !== 'endpoint') {
+      for (const e of evidenceIdsOf(f)) {
+        const cand = byEvidence.get(e)
+        if (cand !== undefined && !classConflict(reps[cand], f)) {
+          idx = cand
+          break
+        }
+      }
     }
-    const prev = byKey.get(key)
-    if (!prev) {
-      byKey.set(key, f)
-      out.push(f)
-      continue
+    if (idx < 0) {
+      reps.push(f)
+      indexRep(reps.length - 1)
+    } else {
+      reps[idx] = absorbFinding(reps[idx], f)
+      indexRep(idx)
     }
-    // Absorb: the richer body wins as primary; the other's evidence joins it.
-    const [primary, absorbed] = f.body.length > prev.body.length ? [f, prev] : [prev, f]
-    const mergedResult: T = {
-      ...primary,
-      severity:
-        SEVERITY_RANK[primary.severity] >= SEVERITY_RANK[absorbed.severity]
-          ? primary.severity
-          : absorbed.severity,
-      status: primary.status === 'validated' || absorbed.status === 'validated' ? 'validated' : primary.status,
-      tags: [...new Set([...primary.tags, ...absorbed.tags])],
-      evidenceIds: [
-        ...new Set([
-          ...primary.evidenceIds,
-          ...absorbed.evidenceIds,
-          ...(absorbed.requestId ? [absorbed.requestId] : [])
-        ])
-      ].slice(0, 12),
-      createdAt: Math.min(primary.createdAt, absorbed.createdAt)
-    }
-    // The merged entry becomes the group's representative so a third duplicate
-    // absorbs IT, not the stale original it replaced.
-    byKey.set(key, mergedResult)
-    out[out.indexOf(prev)] = mergedResult
   }
-  return { merged: out, mergedAway: list.length - out.length }
+  return { merged: reps, mergedAway: list.length - reps.length }
 }
