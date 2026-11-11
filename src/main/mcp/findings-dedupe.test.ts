@@ -248,3 +248,43 @@ describe('isScanNoise', () => {
     expect(isScanNoise({ status: 'validated', tags: ['sqli'] })).toBe(false)
   })
 })
+
+describe('mergeDuplicateEndpoints — evidence-based dedup (LockTalk cross-bucket dupes)', () => {
+  it('같은 requestId 를 공유하는 같은-클래스 재진술은 하나로 합친다', () => {
+    const list = [
+      f({ category: 'vuln', title: 'Proxy deny-rule bypass on /api/v1/get_ticket (// prefix)', body: 'ACL bypass via //', severity: 'medium', status: 'validated', requestId: '75207.72', tags: ['access-control-bypass'] }),
+      f({ category: 'vuln', title: 'HAProxy ACL bypass: double-slash reaches /api/v1/get_ticket', body: 'same // technique, longer body so it becomes primary', severity: 'low', status: 'candidate', evidenceIds: ['75207.72'], tags: ['haproxy'] })
+    ]
+    const { merged, mergedAway } = mergeDuplicateEndpoints(list)
+    expect(mergedAway).toBe(1)
+    expect(merged).toHaveLength(1)
+    expect(merged[0].severity).toBe('medium')
+    expect(merged[0].status).toBe('validated')
+  })
+
+  it('같은 requestId 라도 서로 다른 알려진 클래스면 합치지 않는다 (ACL 우회 ≠ JWT 위조)', () => {
+    const list = [
+      f({ category: 'vuln', title: 'HAProxy ACL bypass reaches /api/v1/get_ticket', body: 'access-control bypass', severity: 'medium', requestId: '75207.72' }),
+      f({ category: 'vuln', title: 'python_jwt token forgery (CVE-2022-39227) on /api/v1/flag', body: 'JWS confusion forges admin', severity: 'critical', evidenceIds: ['75207.72'] })
+    ]
+    const { merged, mergedAway } = mergeDuplicateEndpoints(list)
+    expect(mergedAway).toBe(0)
+    expect(merged).toHaveLength(2)
+  })
+
+  it('새 클래스: ACL/path-normalization 과 JWT-forgery 를 인식한다', () => {
+    const acl = vulnKeyOf(f({ category: 'vuln', title: 'Proxy deny-rule bypass (path normalization) on http://h/api/v1/get_ticket', body: '' }))
+    const jwt = vulnKeyOf(f({ category: 'vuln', title: 'python_jwt token forgery on http://h/api/v1/flag', body: '' }))
+    expect(acl).toContain('|accesscontrol|')
+    expect(jwt).toContain('|jwt|')
+  })
+
+  it('엔드포인트 인벤토리는 vuln 과 evidence 를 공유해도 흡수되지 않는다', () => {
+    const list = [
+      f({ category: 'vuln', title: 'JWT forgery on http://h/api/v1/flag', body: 'x', requestId: '9.1', severity: 'high' }),
+      f({ category: 'endpoint', title: 'http://h/api/v1/flag — JWT-protected flag endpoint', body: 'inventory', evidenceIds: ['9.1'] })
+    ]
+    const { merged } = mergeDuplicateEndpoints(list)
+    expect(merged).toHaveLength(2)
+  })
+})
