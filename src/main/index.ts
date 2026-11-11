@@ -875,6 +875,13 @@ app.whenReady().then(() => {
     createdSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
     createdSession.setPermissionCheckHandler(() => false)
     attachDownloads(createdSession)
+    // Accept self-signed certs for loopback targets (a local HTTPS dev app or
+    // CTF challenge) — the same trust boundary the network fence grants. This
+    // covers every request in the session (fetch/XHR/subresource), which the
+    // app-level 'certificate-error' event alone misses. 0 = trust, -3 = default.
+    createdSession.setCertificateVerifyProc((req, callback) => {
+      callback(isLoopbackHost(`https://${req.hostname}`) ? 0 : -3)
+    })
   })
 
   // Webviews have their own webContents, so keys pressed while the page has
