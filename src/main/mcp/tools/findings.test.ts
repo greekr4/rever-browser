@@ -1,6 +1,31 @@
 import { describe, expect, it } from 'vitest'
 
-import { reportBucket } from './findings'
+import { reportBucket, maskPii } from './findings'
+
+// The report is a deliverable; applicant PII must never reach it. One scan
+// pasted real emails/phones into the body (regression), so masking is enforced
+// deterministically rather than left to the worker.
+describe('maskPii', () => {
+  it('이메일은 앞 2글자 + 도메인만 남긴다 (실제 유출값)', () => {
+    expect(maskPii('email rnjstnfls00@naver.com here')).toBe('email rn****@naver.com here')
+    expect(maskPii('greekr3@nate.com')).toBe('gr****@nate.com')
+  })
+
+  it('한국 전화번호를 가린다 (하이픈/무하이픈/지역번호)', () => {
+    expect(maskPii('phone 010-1234-5678')).toBe('phone 010-****-****')
+    expect(maskPii('01012345678')).toBe('010-****-****')
+    expect(maskPii('02-123-4567')).toBe('02-****-****')
+  })
+
+  it('이미 가려진 값은 다시 건드리지 않는다 (멱등)', () => {
+    const once = maskPii('uo****@naver.com 010-****-****')
+    expect(maskPii(once)).toBe(once)
+  })
+
+  it('이메일이 아닌 평문·UUID·epoch 는 그대로 둔다', () => {
+    expect(maskPii('GET /v1/ats/jobs/d5f67a7e-1 at 1794360739')).toBe('GET /v1/ats/jobs/d5f67a7e-1 at 1794360739')
+  })
+})
 
 // reportBucket decides whether a finding is a confirmed fact, an unproven
 // suspicion to verify, or attack-surface inventory — the split that keeps a

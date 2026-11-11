@@ -51,6 +51,24 @@ const CATEGORY_LABEL: Record<Category, string> = {
   other: 'Other'
 }
 
+/**
+ * Redact PII before a finding is stored or rendered. The body is free text a
+ * worker wrote and workers mask inconsistently (one scan masked an applicant
+ * email, the next pasted it raw into the report), so enforce it deterministically.
+ * Emails and KR phone numbers only — a Korean name can't be told from ordinary
+ * Korean prose without mangling the whole report. Idempotent: already-masked
+ * values carry no digits/`@`-run to re-hit.
+ */
+export function maskPii(text: string): string {
+  if (!text) return text
+  return text
+    .replace(
+      /([A-Za-z0-9._%+-]{1,2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g,
+      (_m, head: string, domain: string) => `${head}****${domain}`
+    )
+    .replace(/\b0\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}\b/g, (m) => `${/^0\d{1,2}/.exec(m)![0]}-****-****`)
+}
+
 const STORE_FILE = 'findings.json'
 const findings = new Map<string, Finding>()
 let loaded = false
@@ -154,14 +172,15 @@ function renderMarkdown(all: Finding[], scopeNote?: string): string {
   )
 
   const detail = (f: Finding): void => {
-    lines.push(`### ${f.title}`)
+    // Backstop: findings stored before masking (or imported) are masked here too.
+    lines.push(`### ${maskPii(f.title)}`)
     const meta = [SEVERITY_LABEL[f.severity], CATEGORY_LABEL[f.category], `status: ${f.status}`]
     if (f.tags.length) meta.push(`tags: ${f.tags.join(', ')}`)
     if (f.requestId) meta.push(`request: \`${f.requestId}\``)
     lines.push(`_${meta.join(' · ')}_`, '')
-    lines.push(f.body.trim(), '')
+    lines.push(maskPii(f.body).trim(), '')
     if (f.evidenceIds.length) lines.push(`**Evidence:** ${f.evidenceIds.map((e) => `\`${e}\``).join(', ')}`, '')
-    if (f.reproCommand) lines.push('**Repro:**', '```', f.reproCommand.trim(), '```', '')
+    if (f.reproCommand) lines.push('**Repro:**', '```', maskPii(f.reproCommand).trim(), '```', '')
   }
 
   if (buckets.confirmed.length) {
@@ -182,7 +201,7 @@ function renderMarkdown(all: Finding[], scopeNote?: string): string {
     lines.push(`## Attack surface & recon (${buckets.recon.length})`, '')
     for (const f of buckets.recon.sort(bySev)) {
       const ev = f.evidenceIds[0] ? ` · \`${f.evidenceIds[0]}\`` : ''
-      lines.push(`- **${f.title}** _(${SEVERITY_LABEL[f.severity]}, ${CATEGORY_LABEL[f.category]})_${ev}`)
+      lines.push(`- **${maskPii(f.title)}** _(${SEVERITY_LABEL[f.severity]}, ${CATEGORY_LABEL[f.category]})_${ev}`)
     }
     lines.push('')
   }
@@ -265,13 +284,14 @@ export function registerFindingTools(mcp: McpServer) {
       }
       const f: Finding = {
         id: randomUUID(),
-        title,
+        // Mask PII at the source so it never lands on disk, not just in the report.
+        title: maskPii(title),
         severity,
         category,
-        body,
+        body: maskPii(body),
         requestId,
         evidenceIds,
-        reproCommand,
+        reproCommand: reproCommand ? maskPii(reproCommand) : undefined,
         status: effectiveStatus,
         tags,
         origin: originOf(getActiveTarget()?.wc.getURL()),
