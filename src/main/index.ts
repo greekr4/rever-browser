@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { startMcpServer } from './mcp/server'
+import { isLoopbackHost } from './mcp/fence'
 import { refForBackendNodeId } from './mcp/snapshot'
 import {
   attachCdpCapture,
@@ -889,6 +890,19 @@ app.whenReady().then(() => {
       if (!mainWindow) return
       buildPageContextMenu(contents, params).popup({ window: mainWindow })
     })
+  })
+
+  // Accept self-signed certs for loopback targets only — a local HTTPS dev app
+  // or CTF challenge (https://127.0.0.1) is your own machine, the same trust
+  // boundary the network fence already grants loopback. Any other host keeps
+  // Electron's default verification (reject invalid certs).
+  app.on('certificate-error', (event, _webContents, url, _error, _cert, callback) => {
+    if (isLoopbackHost(url)) {
+      event.preventDefault()
+      callback(true)
+    } else {
+      callback(false)
+    }
   })
 
   // Answer per-tab proxy 407 challenges. Site (non-proxy) auth is left to
