@@ -158,7 +158,13 @@ fn main() {
                 Err(error) => (false, error.to_string()),
             }
         };
-        for krate in ["rever-core", "rever-scope", "rever-formats", "rever-agent"] {
+        for krate in [
+            "rever-core",
+            "rever-scope",
+            "rever-formats",
+            "rever-agent",
+            "rever",
+        ] {
             let (ok, detail) = cargo(&["test", "-p", krate]);
             checks.push((format!("{krate} unit tests pass"), ok, detail));
         }

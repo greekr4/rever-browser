@@ -6932,6 +6932,8 @@ dependencies = [
  "serde_json",
  "servo",
  "servo-net",
+ "sys-locale",
+ "unicode-segmentation",
  "url",
 ]
 
