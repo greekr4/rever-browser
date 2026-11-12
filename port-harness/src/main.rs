@@ -158,8 +158,10 @@ fn main() {
                 Err(error) => (false, error.to_string()),
             }
         };
-        let (ok, detail) = cargo(&["test", "-p", "rever-core"]);
-        checks.push(("core logic unit tests pass".into(), ok, detail));
+        for krate in ["rever-core", "rever-scope", "rever-formats", "rever-agent"] {
+            let (ok, detail) = cargo(&["test", "-p", krate]);
+            checks.push((format!("{krate} unit tests pass"), ok, detail));
+        }
         let (ok, detail) = cargo(&["build", "-p", "rever"]);
         checks.push(("app builds (GPUI + Servo in one binary)".into(), ok, detail));
         if ok {

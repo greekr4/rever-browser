@@ -6948,14 +6948,18 @@ name = "rever-core"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "regex",
  "serde",
  "serde_json",
+ "url",
 ]
 
 [[package]]
 name = "rever-formats"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
+ "indexmap 2.14.2",
  "serde",
  "serde_json",
 ]
@@ -6964,8 +6968,10 @@ dependencies = [
 name = "rever-scope"
 version = "0.0.0"
 dependencies = [
+ "regex",
  "serde",
  "serde_json",
+ "url",
 ]
 
 [[package]]
