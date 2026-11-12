@@ -33,6 +33,39 @@ fn main() -> Result<(), Box<dyn Error>> {
         .install_default()
         .expect("Failed to install crypto provider");
 
+    // Patched servo-net only (see vendor/servo-net/tap.rs): bodies the embedding API does not expose.
+    net::tap::set_network_tap(|event| {
+        let preview =
+            |body: &[u8]| String::from_utf8_lossy(&body[..body.len().min(80)]).into_owned();
+        match event {
+            net::tap::NetworkTapEvent::Request {
+                url,
+                method,
+                headers,
+                body,
+            } => println!(
+                "{{\"type\":\"tap-request\",\"method\":{:?},\"url\":{:?},\"headers\":{},\"bodyBytes\":{},\"body\":{:?}}}",
+                method.as_str(),
+                url.as_str(),
+                headers.len(),
+                body.len(),
+                preview(&body)
+            ),
+            net::tap::NetworkTapEvent::Response {
+                url,
+                status,
+                headers,
+                body,
+            } => println!(
+                "{{\"type\":\"tap-response\",\"status\":{status},\"url\":{:?},\"headers\":{},\"bodyBytes\":{},\"body\":{:?}}}",
+                url.as_str(),
+                headers.len(),
+                body.len(),
+                preview(&body)
+            ),
+        }
+    });
+
     let url = Url::parse(
         &std::env::args()
             .nth(1)

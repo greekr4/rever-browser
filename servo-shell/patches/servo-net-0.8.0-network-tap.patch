@@ -1,0 +1,91 @@
+diff --color -ruN -x Cargo.lock -x .cargo-ok a/http_loader.rs b/http_loader.rs
+--- a/http_loader.rs	2006-07-24 10:21:28
++++ b/http_loader.rs	2026-11-12 16:14:22
+@@ -657,6 +657,8 @@
+ 
+     let host = request.uri().host().unwrap_or("").to_owned();
+     let override_manager = context.state.override_manager.clone();
++    let (tap_url, tap_method, tap_headers, tap_bytes) =
++        (url.clone(), method.clone(), headers.clone(), devtools_bytes.clone());
+     #[cfg(feature = "devtools")]
+     let (request_id, pipeline_id, closure_url, method, send_start, headers) = (
+         request_id.map(|value| value.to_owned()),
+@@ -679,6 +681,12 @@
+         .request(request)
+         .and_then(move |res| {
+             // TODO(#21271) response_start: immediately after receiving first byte of response
++            crate::tap::emit(crate::tap::NetworkTapEvent::Request {
++                url: tap_url,
++                method: tap_method,
++                headers: tap_headers,
++                body: tap_bytes.lock().clone(),
++            });
+             #[cfg(feature = "devtools")]
+             let msg = if let Some(request_id) = request_id {
+                 let send_end = CrossProcessInstant::now();
+@@ -2422,8 +2430,17 @@
+                 // If devtools is disabled avoid cloning, since the result would
+                 // be unused anyway.
+                 #[cfg(feature = "devtools")]
+-                let devtools_response_body =
+-                    devtools_chan.is_some().then(|| completed_body.clone());
++                let devtools_response_body = (devtools_chan.is_some() || crate::tap::active())
++                    .then(|| completed_body.clone());
++                #[cfg(feature = "devtools")]
++                if let Some(body) = &devtools_response_body {
++                    crate::tap::emit(crate::tap::NetworkTapEvent::Response {
++                        url: devtools_request.url(),
++                        status: status.raw_code(),
++                        headers: headers.clone(),
++                        body: body.clone(),
++                    });
++                }
+                 *body = ResponseBody::Done(completed_body);
+                 #[cfg(feature = "devtools")]
+                 send_response_values_to_devtools(
+diff --color -ruN -x Cargo.lock -x .cargo-ok a/lib.rs b/lib.rs
+--- a/lib.rs	2006-07-24 10:21:28
++++ b/lib.rs	2026-11-12 16:14:22
+@@ -23,6 +23,7 @@
+ pub mod request_interceptor;
+ pub mod resource_thread;
+ pub mod subresource_integrity;
++pub mod tap;
+ #[cfg(feature = "test-util")]
+ pub mod test_util;
+ mod websocket_loader;
+diff --color -ruN -x Cargo.lock -x .cargo-ok a/tap.rs b/tap.rs
+--- a/tap.rs	1970-01-01 09:00:00
++++ b/tap.rs	2026-11-12 16:14:22
+@@ -0,0 +1,31 @@
++/* rever patch (not upstream): hand request and response bodies to the embedder
++ * in-process. The network threads live in the embedder's process, so a
++ * process-wide callback is enough for a proof of concept. */
++
++use std::sync::OnceLock;
++
++use http::{HeaderMap, Method};
++use servo_url::ServoUrl;
++
++pub enum NetworkTapEvent {
++    Request { url: ServoUrl, method: Method, headers: HeaderMap, body: Vec<u8> },
++    Response { url: ServoUrl, status: u16, headers: HeaderMap, body: Vec<u8> },
++}
++
++type Tap = Box<dyn Fn(NetworkTapEvent) + Send + Sync>;
++static TAP: OnceLock<Tap> = OnceLock::new();
++
++/// Install the callback once, before the first page load. It runs on network threads.
++pub fn set_network_tap(tap: impl Fn(NetworkTapEvent) + Send + Sync + 'static) {
++    let _ = TAP.set(Box::new(tap));
++}
++
++pub(crate) fn active() -> bool {
++    TAP.get().is_some()
++}
++
++pub(crate) fn emit(event: NetworkTapEvent) {
++    if let Some(tap) = TAP.get() {
++        tap(event);
++    }
++}

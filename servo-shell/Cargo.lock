@@ -4861,6 +4861,7 @@ dependencies = [
  "euclid",
  "rustls",
  "servo",
+ "servo-net",
  "url",
  "winit",
 ]
@@ -6223,8 +6224,6 @@ dependencies = [
 [[package]]
 name = "servo-net"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e274e25650db0dacd2a290d13f51effd12735c17d5448403c2c77fea530e034d"
 dependencies = [
  "async-compression",
  "async-recursion",
