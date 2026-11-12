@@ -4858,10 +4858,14 @@ dependencies = [
 name = "rever-servo-shell"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "euclid",
+ "image",
  "rustls",
+ "serde_json",
  "servo",
  "servo-net",
+ "tungstenite",
  "url",
  "winit",
 ]

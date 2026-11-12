@@ -88,12 +88,15 @@ export async function launchExternalChrome(): Promise<{ port: number; pid: numbe
     }
   }
 
-  const chromePath = findChromeBinary()
+  // REVER_SERVO_SHELL=<path to servo-shell binary> swaps Chrome for the Servo
+  // shell, which serves the CDP subset external-cdp.ts uses (servo-shell/src/cdp.rs).
+  const servoShell = process.env.REVER_SERVO_SHELL
+  const chromePath = servoShell ?? findChromeBinary()
   const port = await findFreePort(9222)
   const profileDir = join(app.getPath('userData'), 'external-chrome-profile')
   mkdirSync(profileDir, { recursive: true })
 
-  const args = [
+  const args = servoShell ? [`--cdp-port=${port}`, 'about:blank'] : [
     `--remote-debugging-port=${port}`,
     `--user-data-dir=${profileDir}`,
     '--no-first-run',

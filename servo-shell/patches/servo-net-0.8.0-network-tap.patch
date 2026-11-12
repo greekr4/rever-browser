@@ -1,29 +1,39 @@
-diff --color -ruN -x Cargo.lock -x .cargo-ok a/http_loader.rs b/http_loader.rs
+diff --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/http_loader.rs b/http_loader.rs
 --- a/http_loader.rs	2006-07-24 10:21:28
-+++ b/http_loader.rs	2026-11-12 16:14:22
-@@ -657,6 +657,8 @@
- 
++++ b/http_loader.rs	2026-11-12 16:20:16
+@@ -658,6 +658,15 @@
      let host = request.uri().host().unwrap_or("").to_owned();
      let override_manager = context.state.override_manager.clone();
-+    let (tap_url, tap_method, tap_headers, tap_bytes) =
-+        (url.clone(), method.clone(), headers.clone(), devtools_bytes.clone());
      #[cfg(feature = "devtools")]
++    let (tap_id, tap_url, tap_method, tap_headers, tap_bytes, tap_destination) = (
++        request_id.map(|id| id.to_string()).unwrap_or_default(),
++        url.clone(),
++        method.clone(),
++        headers.clone(),
++        devtools_bytes.clone(),
++        format!("{destination:?}"),
++    );
++    #[cfg(feature = "devtools")]
      let (request_id, pipeline_id, closure_url, method, send_start, headers) = (
          request_id.map(|value| value.to_owned()),
-@@ -679,6 +681,12 @@
-         .request(request)
+         pipeline_id,
+@@ -680,6 +689,15 @@
          .and_then(move |res| {
              // TODO(#21271) response_start: immediately after receiving first byte of response
+             #[cfg(feature = "devtools")]
 +            crate::tap::emit(crate::tap::NetworkTapEvent::Request {
++                id: tap_id,
 +                url: tap_url,
 +                method: tap_method,
 +                headers: tap_headers,
 +                body: tap_bytes.lock().clone(),
++                destination: tap_destination,
 +            });
-             #[cfg(feature = "devtools")]
++            #[cfg(feature = "devtools")]
              let msg = if let Some(request_id) = request_id {
                  let send_end = CrossProcessInstant::now();
-@@ -2422,8 +2430,17 @@
+                 if let Some(pipeline_id) = pipeline_id {
+@@ -2422,8 +2440,18 @@
                  // If devtools is disabled avoid cloning, since the result would
                  // be unused anyway.
                  #[cfg(feature = "devtools")]
@@ -34,6 +44,7 @@ diff --color -ruN -x Cargo.lock -x .cargo-ok a/http_loader.rs b/http_loader.rs
 +                #[cfg(feature = "devtools")]
 +                if let Some(body) = &devtools_response_body {
 +                    crate::tap::emit(crate::tap::NetworkTapEvent::Response {
++                        id: devtools_request.id.0.to_string(),
 +                        url: devtools_request.url(),
 +                        status: status.raw_code(),
 +                        headers: headers.clone(),
@@ -43,9 +54,9 @@ diff --color -ruN -x Cargo.lock -x .cargo-ok a/http_loader.rs b/http_loader.rs
                  *body = ResponseBody::Done(completed_body);
                  #[cfg(feature = "devtools")]
                  send_response_values_to_devtools(
-diff --color -ruN -x Cargo.lock -x .cargo-ok a/lib.rs b/lib.rs
+diff --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/lib.rs b/lib.rs
 --- a/lib.rs	2006-07-24 10:21:28
-+++ b/lib.rs	2026-11-12 16:14:22
++++ b/lib.rs	2026-11-12 16:15:51
 @@ -23,6 +23,7 @@
  pub mod request_interceptor;
  pub mod resource_thread;
@@ -54,10 +65,10 @@ diff --color -ruN -x Cargo.lock -x .cargo-ok a/lib.rs b/lib.rs
  #[cfg(feature = "test-util")]
  pub mod test_util;
  mod websocket_loader;
-diff --color -ruN -x Cargo.lock -x .cargo-ok a/tap.rs b/tap.rs
+diff --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/tap.rs b/tap.rs
 --- a/tap.rs	1970-01-01 09:00:00
-+++ b/tap.rs	2026-11-12 16:14:22
-@@ -0,0 +1,31 @@
++++ b/tap.rs	2026-11-12 16:20:16
+@@ -0,0 +1,40 @@
 +/* rever patch (not upstream): hand request and response bodies to the embedder
 + * in-process. The network threads live in the embedder's process, so a
 + * process-wide callback is enough for a proof of concept. */
@@ -67,9 +78,18 @@ diff --color -ruN -x Cargo.lock -x .cargo-ok a/tap.rs b/tap.rs
 +use http::{HeaderMap, Method};
 +use servo_url::ServoUrl;
 +
++/// `id` is the fetch's request id, shared by a request and its response.
 +pub enum NetworkTapEvent {
-+    Request { url: ServoUrl, method: Method, headers: HeaderMap, body: Vec<u8> },
-+    Response { url: ServoUrl, status: u16, headers: HeaderMap, body: Vec<u8> },
++    Request {
++        id: String,
++        url: ServoUrl,
++        method: Method,
++        headers: HeaderMap,
++        body: Vec<u8>,
++        /// Debug name of the fetch destination ("Document", "Script", "None" for XHR/fetch, ...).
++        destination: String,
++    },
++    Response { id: String, url: ServoUrl, status: u16, headers: HeaderMap, body: Vec<u8> },
 +}
 +
 +type Tap = Box<dyn Fn(NetworkTapEvent) + Send + Sync>;
