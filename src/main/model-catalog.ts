@@ -6,6 +6,7 @@ import { app, BrowserWindow } from 'electron'
 
 import { detectAgents } from './acp-detect'
 import { agentEnv } from './agent-env'
+import { shellSafeSpawn } from './win-shell'
 import { findClaudeCli } from './claude-cli'
 import {
   claudeModelsFromInit,
@@ -47,7 +48,8 @@ function converse<T>(
   onLine: (msg: Record<string, any>, send: (o: unknown) => void) => T | undefined
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'ignore'], env: agentEnv(command), shell: process.platform === 'win32' })
+    const launch = shellSafeSpawn(command, args)
+    const child = spawn(launch.command, launch.args, { stdio: ['pipe', 'pipe', 'ignore'], env: agentEnv(command), shell: launch.shell })
     const done = (fn: () => void): void => {
       clearTimeout(timer)
       child.kill()

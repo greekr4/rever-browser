@@ -7,7 +7,7 @@
 // CLAUDE_CODE_EXECUTABLE for the path it spawns, so we point it at the real CLI.
 
 import { accessSync, constants } from 'node:fs'
-import { delimiter, join } from 'node:path'
+import { delimiter, posix, win32 } from 'node:path'
 import { platform } from 'node:os'
 
 import { extraDirs } from './acp-detect'
@@ -24,6 +24,7 @@ export function pickClaudeCli(
   windows: boolean = isWindows
 ): string | null {
   const names = windows ? ['claude.exe', 'claude.cmd', 'claude'] : ['claude']
+  const join = windows ? win32.join : posix.join
   for (const dir of dirs) {
     if (!dir) continue
     for (const name of names) {
