@@ -32,10 +32,16 @@ fn main() {
     let run_checks = !std::env::args().any(|arg| arg == "--no-run");
 
     let ts_files = files_under(&root.join("src"), &["ts", "tsx"]);
-    let rust_files: Vec<PathBuf> = ["rever", "rever-core"]
-        .iter()
-        .flat_map(|krate| files_under(&root.join(krate).join("src"), &["rs"]))
-        .collect();
+    let rust_files: Vec<PathBuf> = [
+        "rever",
+        "rever-agent",
+        "rever-core",
+        "rever-formats",
+        "rever-scope",
+    ]
+    .iter()
+    .flat_map(|krate| files_under(&root.join(krate).join("src"), &["rs"]))
+    .collect();
     let rust_sources: Vec<String> = rust_files
         .iter()
         .filter_map(|path| fs::read_to_string(path).ok())

@@ -2,7 +2,15 @@
 # is the earlier winit spike that also serves CDP for the Electron app's external mode.
 [workspace]
 resolver = "3"
-members = ["port-harness", "rever", "rever-core", "servo-shell"]
+members = [
+    "port-harness",
+    "rever",
+    "rever-agent",
+    "rever-core",
+    "rever-formats",
+    "rever-scope",
+    "servo-shell",
+]
 
 # Patched crates; scripts/apply-rust-patches.sh recreates vendor/ from patches/.
 [patch.crates-io]
