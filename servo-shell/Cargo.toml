@@ -1,0 +1,13 @@
+[package]
+name = "rever-servo-shell"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Spike: can a Servo-embedded shell give rever the hooks it gets from CDP today?"
+
+[dependencies]
+servo = "=0.8.0"
+winit = "0.30.13"
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "logging", "std", "tls12"] }
+euclid = "0.22"
+url = "2.5"
