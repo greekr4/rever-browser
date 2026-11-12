@@ -1,0 +1,14 @@
+diff --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml	2006-07-24 10:21:28
++++ b/Cargo.toml	2026-11-12 16:52:58
+@@ -122,7 +122,9 @@
+ version = "5.0"
+ 
+ [target.'cfg(not(any(target_family = "windows", target_os = "macos", target_os = "ios")))'.dependencies.freetype-sys]
+-version = "0.20"
++# rever patch: Servo links freetype through freetype-sys 0.23, and Cargo allows one
++# `links = "freetype"` crate per graph. Only non-Apple, non-Windows targets use this.
++version = "0.23"
+ 
+ [target.'cfg(not(any(target_family = "windows", target_os = "macos", target_os = "ios", target_arch = "wasm32", target_env = "ohos")))'.dependencies.yeslogic-fontconfig-sys]
+ version = "6.0"

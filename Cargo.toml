@@ -1,0 +1,17 @@
+# Rust workspace for the Electron-free rever: `rever` is the GPUI app, `servo-shell`
+# is the earlier winit spike that also serves CDP for the Electron app's external mode.
+[workspace]
+resolver = "3"
+members = ["port-harness", "rever", "rever-core", "servo-shell"]
+
+# Patched crates; scripts/apply-rust-patches.sh recreates vendor/ from patches/.
+[patch.crates-io]
+# Network tap: hands request and response bodies to the embedder.
+servo-net = { path = "vendor/servo-net" }
+# One freetype-sys version for both GPUI and Servo.
+zed-font-kit = { path = "vendor/zed-font-kit" }
+# Without log's serde key-value feature, which breaks Servo's CSS engine at compile time.
+gpui = { path = "vendor/gpui" }
+gpui_http_client = { path = "vendor/gpui_http_client" }
+gpui_sum_tree = { path = "vendor/gpui_sum_tree" }
+gpui_util = { path = "vendor/gpui_util" }

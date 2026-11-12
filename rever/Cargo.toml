@@ -1,0 +1,22 @@
+[package]
+name = "rever"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "rever: an AI-agent browser for reverse-engineering web APIs (Rust + GPUI + Servo)"
+
+[dependencies]
+rever-core = { path = "../rever-core" }
+# runtime_shaders: compile Metal shaders at startup instead of at build time, so a build
+# does not need Xcode's separately downloaded Metal toolchain.
+gpui = { version = "0.2.2", features = ["runtime_shaders"] }
+servo = "=0.8.0"
+# The patched servo-net (see the workspace Cargo.toml): its tap carries request and response bodies.
+net = { package = "servo-net", version = "=0.8.0" }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "logging", "std", "tls12"] }
+dpi = "0.1"
+euclid = "0.22"
+url = "2.5"
+futures = "0.3"
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde_json = "1"

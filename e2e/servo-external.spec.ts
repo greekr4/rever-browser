@@ -9,8 +9,8 @@ import { test, expect, _electron as electron, type Page } from '@playwright/test
 import { ROOT } from './fixtures'
 
 // External-browser mode with the Servo shell in place of Chrome. Build it first:
-//   cd servo-shell && ./apply-patches.sh && cargo build
-const SHELL = path.join(ROOT, 'servo-shell/target/debug/rever-servo-shell')
+//   scripts/apply-rust-patches.sh && cargo build -p rever-servo-shell
+const SHELL = path.join(ROOT, 'target/debug/rever-servo-shell')
 const SHOTS = path.join(ROOT, 'test-image')
 
 const PAGE = `<!doctype html><title>servo external fixture</title><h1>servo external fixture</h1>

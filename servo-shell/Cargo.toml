@@ -17,6 +17,3 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 # Patch-route experiment: lets the shell install the tap added in vendor/servo-net.
 net = { package = "servo-net", version = "=0.8.0" }
-
-[patch.crates-io]
-servo-net = { path = "vendor/servo-net" }
