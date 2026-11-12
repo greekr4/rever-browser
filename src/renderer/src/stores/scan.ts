@@ -486,7 +486,13 @@ export const useScanStore = create<ScanState>((set, get) => ({
     // distinguish two apps sharing an origin (e.g. a new challenge deployed on
     // the same localhost port) — drop this site's old findings before scanning.
     // (window is renderer-only; the headless store tests skip this wipe.)
-    if (typeof window !== 'undefined') await window.rev.findings.clearSite(target)
+    if (typeof window !== 'undefined') {
+      await window.rev.findings.clearSite(target)
+      // Clean cookie baseline: a leftover session/JWT cookie from another
+      // localhost app (cookies are host- not port-scoped) is sent to the target
+      // and can 500 it or skew the auth bootstrap. Clear the target host first.
+      await window.rev.storage.clearSiteCookies(target).catch(() => 0)
+    }
     const { pushLog, pushPhase } = get()
     // Feed the activity log + the status line from each agent turn. tabId is
     // passed by the per-tab workers so the log can show which tab acted.
