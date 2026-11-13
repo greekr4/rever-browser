@@ -7069,8 +7069,25 @@ dependencies = [
  "image",
  "rever-agent",
  "rever-core",
+ "rever-formats",
+ "rever-mcp",
+ "rever-tool-profile",
  "rever-tools-api",
+ "rever-tools-automation",
+ "rever-tools-debug",
+ "rever-tools-inspect",
+ "rever-tools-page",
+ "rever-tools-redteam",
+ "rever-tools-scripts",
+ "rever-tools-traffic",
+ "rever-ui-console",
+ "rever-ui-history",
  "rever-ui-kit",
+ "rever-ui-markdown",
+ "rever-ui-menus",
+ "rever-ui-state",
+ "rever-ui-traffic",
+ "rever-ui-websocket",
  "rustls",
  "serde_json",
  "servo",
@@ -7227,20 +7244,33 @@ dependencies = [
 name = "rever-tools-automation"
 version = "0.0.0"
 dependencies = [
+ "regex",
+ "reqwest",
+ "rever-cli-spec",
  "rever-core",
+ "rever-scope",
+ "rever-tool-profile",
  "rever-tools-api",
  "serde",
  "serde_json",
+ "tokio",
+ "url",
 ]
 
 [[package]]
 name = "rever-tools-debug"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
+ "reqwest",
  "rever-core",
+ "rever-formats",
+ "rever-scope",
  "rever-tools-api",
  "serde",
  "serde_json",
+ "tokio",
+ "uuid 1.29.2",
 ]
 
 [[package]]
@@ -7293,10 +7323,14 @@ dependencies = [
 name = "rever-tools-redteam"
 version = "0.0.0"
 dependencies = [
+ "regex",
  "rever-core",
+ "rever-scope",
  "rever-tools-api",
  "serde",
  "serde_json",
+ "tokio",
+ "uuid 1.29.2",
 ]
 
 [[package]]
@@ -7331,6 +7365,43 @@ dependencies = [
  "serde_json",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "rever-ui-apimap"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+ "rever-analysis",
+ "rever-core",
+ "rever-ui-kit",
+]
+
+[[package]]
+name = "rever-ui-chat"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+ "rever-agent",
+ "rever-chat-core",
+ "rever-core",
+ "rever-tool-profile",
+ "rever-ui-kit",
+ "rever-ui-menus",
+ "rever-ui-state",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rever-ui-chrome"
+version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "gpui",
+ "image",
+ "rever-ui-kit",
+ "rever-ui-state",
 ]
 
 [[package]]
@@ -7393,9 +7464,61 @@ dependencies = [
 ]
 
 [[package]]
+name = "rever-ui-repeater"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+ "rever-core",
+ "rever-ui-kit",
+ "rever-ui-menus",
+ "rever-ui-state",
+ "rever-ui-traffic",
+ "rever-ui-websocket",
+ "serde",
+ "serde_json",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "rever-ui-scan"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+ "rever-core",
+ "rever-ui-kit",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rever-ui-setup"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+ "rever-ui-kit",
+ "rever-ui-menus",
+ "rever-ui-state",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rever-ui-state"
 version = "0.0.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
+name = "rever-ui-storage"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "gpui",
+ "rever-core",
+ "rever-ui-kit",
  "serde",
  "serde_json",
  "url",
@@ -7420,6 +7543,22 @@ dependencies = [
  "gpui",
  "rever-core",
  "rever-ui-kit",
+ "serde",
+ "serde_json",
+ "unicode-segmentation",
+ "url",
+]
+
+[[package]]
+name = "rever-ui-workflows"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+ "regex",
+ "rever-cli-spec",
+ "rever-core",
+ "rever-ui-kit",
+ "rever-ui-state",
  "serde",
  "serde_json",
  "unicode-segmentation",
@@ -10897,12 +11036,17 @@ version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cfcf7e2740e6fc6d4d688b4ef00650406bb94adf4731e43c096c3a19fe40840"
 dependencies = [
+ "async-compression",
  "bitflags 2.13.2",
  "bytes",
+ "futures-core",
  "futures-util",
  "http",
  "http-body",
+ "http-body-util",
  "pin-project-lite",
+ "tokio",
+ "tokio-util",
  "tower",
  "tower-layer",
  "tower-service",
