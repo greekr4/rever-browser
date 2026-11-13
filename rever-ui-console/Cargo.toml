@@ -9,9 +9,17 @@ description = "The console and exceptions panels"
 gpui = { workspace = true }
 rever-ui-kit = { path = "../rever-ui-kit" }
 rever-core = { path = "../rever-core" }
+rever-formats = { path = "../rever-formats" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# preserve_order: JSON.stringify prints a stack trace's keys in the order CDP sent them.
+serde_json = { version = "1", features = ["preserve_order"] }
+# Local time of day for the row timestamps (toLocaleTimeString).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [[example]]
 name = "preview_console"
 path = "examples/preview.rs"
+
+[dev-dependencies]
+# TestAppContext: the key handling (Enter, Shift+Enter, history) is tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }

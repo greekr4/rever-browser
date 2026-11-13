@@ -10,7 +10,13 @@ gpui = { workspace = true }
 rever-ui-kit = { path = "../rever-ui-kit" }
 rever-core = { path = "../rever-core" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# float_roundtrip: numbers must parse to the same double JSON.parse gives.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+url = "2"
+
+[dev-dependencies]
+# TestAppContext: clicks, keys and drags are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
 
 [[example]]
 name = "preview_traffic"

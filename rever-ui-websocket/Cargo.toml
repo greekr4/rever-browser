@@ -11,6 +11,14 @@ rever-ui-kit = { path = "../rever-ui-kit" }
 rever-core = { path = "../rever-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# `new URL()` for the connection labels.
+url = "2"
+# Cursor movement by grapheme in the composer, as the kit's text field does.
+unicode-segmentation = "1"
+
+[dev-dependencies]
+# TestAppContext: clicks and keys (Enter, Shift+Enter, arrows) are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
 
 [[example]]
 name = "preview_websocket"

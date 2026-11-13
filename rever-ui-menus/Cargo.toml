@@ -12,6 +12,10 @@ rever-core = { path = "../rever-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+[dev-dependencies]
+# TestAppContext: clicks, Esc, outside presses and the dismiss timers are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
+
 [[example]]
 name = "preview_menus"
 path = "examples/preview.rs"

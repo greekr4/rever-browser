@@ -11,6 +11,14 @@ rever-ui-kit = { path = "../rever-ui-kit" }
 rever-core = { path = "../rever-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# `new URL(url).hostname` for favicons and title fallbacks.
+url = "2"
+# Local calendar day and wall-clock time of a visit (`Date#getDate`, `toTimeString`).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[dev-dependencies]
+# TestAppContext: clicks, hover and the Clear prompt are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
 
 [[example]]
 name = "preview_history"

@@ -7,4 +7,8 @@ description = "Interface state stores (tabs, settings, drafts) ported from src/r
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# preserve_order: JSON.parse keeps key order, which the pretty-printer must show.
+# float_roundtrip: a re-printed number has to be the double JSON.parse would have read.
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+# WHATWG URL parsing, standing in for JavaScript's `new URL()`.
+url = "2"
