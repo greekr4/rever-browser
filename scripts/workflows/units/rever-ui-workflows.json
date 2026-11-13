@@ -1,0 +1,22 @@
+{
+  "crate": "rever-ui-workflows",
+  "files": [
+    "src/renderer/src/workflows/index.ts",
+    "src/renderer/src/workflows/core/types.ts",
+    "src/renderer/src/workflows/core/store.ts",
+    "src/renderer/src/workflows/core/registry.ts",
+    "src/renderer/src/workflows/core/agent-bridge.ts",
+    "src/renderer/src/workflows/core/WorkflowPanel.tsx",
+    "src/renderer/src/workflows/macro/index.ts",
+    "src/renderer/src/workflows/macro/MacroEditor.tsx",
+    "src/renderer/src/workflows/pipeline/types.ts",
+    "src/renderer/src/workflows/pipeline/resolve.ts",
+    "src/renderer/src/workflows/pipeline/index.ts",
+    "src/renderer/src/workflows/pipeline/PipelineEditor.tsx",
+    "src/renderer/src/workflows/cli/index.ts",
+    "src/renderer/src/workflows/cli/CliEditor.tsx",
+    "src/renderer/src/workflows/template/index.ts",
+    "src/renderer/src/workflows/template/TemplateEditor.tsx"
+  ],
+  "notes": "GPUI PANEL with several editors. The target UI framework is GPUI 0.2.2 (Zed's framework), not React, and you have no training knowledge of its exact API. Before writing, read: the finished panel crates as worked examples (rever-ui-traffic, rever-ui-menus, rever-ui-history: their src and examples/preview.rs show how views, listeners, hover, scrolling, text fields, theme, strings and previews are done here), every file in rever-ui-kit/src, and vendor/gpui/src/elements/*.rs plus vendor/gpui/examples/*.rs for exact method names. Port the non-visual parts first as plain Rust with Korean-named unit tests (types, the store with its persistence key and JSON shape behind rever-ui-state's Storage trait, the registry of workflow kinds, pipeline step resolution, and agent-bridge.ts, which turns a workflow into chat prompts and tool calls), then the views implementing gpui::Render: the workflow list panel and the macro, pipeline, CLI and template editors, reproducing layout, sizes, colors and behaviors (create, rename, delete, reorder steps, edit fields, run). Already ported logic to use as path dependencies: rever-cli-spec (the CLI command spec), rever-tool-profile (macro guard), rever-ui-state (Storage, format_json). Things the React code does over IPC (`window.rev.*`: running a macro, compiling or running a saved CLI command, listing tools) go behind one trait in this crate the host implements later; the preview supplies a fake. Running a workflow through the chat is emitted as a GPUI event carrying the prompt. For multi-line fields, rever_ui_kit's TextInput is single-line: write the small multi-line editor you need in this crate, modeled on rever-ui-kit/src/text_input.rs. Colors and sizes come from src/renderer/src/styles.css (tokens in rever_ui_kit::theme::Theme; define a missing one locally and list it). User-facing strings go through `rever_ui_kit::i18n::Lang::t(key)` with the keys the TSX uses. A file gets the `Port of` marker only when its behaviors are all there. Preview: fill examples/preview.rs so `cargo run -p rever-ui-workflows --example preview_workflows` shows the panel with one workflow of each kind and an editor open (an environment variable may choose which editor); capture with `scripts/capture-window.sh preview_workflows /tmp/preview_workflows.png`, read the PNG, compare with the TSX, fix what is off. Do not bring windows to the front, do not capture the screen any other way, do not run the `rever` app, and never run cargo without `-p` (other crates in the workspace are mid-edit)."
+}

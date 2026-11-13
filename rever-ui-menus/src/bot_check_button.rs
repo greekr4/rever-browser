@@ -247,6 +247,8 @@ impl Render for BotCheckButton {
             .text_color(theme.text)
             .whitespace_nowrap()
             .cursor_pointer()
+            // The button floats over the page, which must not take its presses.
+            .occlude()
             .hover(move |style| style.bg(hover).shadow(Vec::new()))
             .tooltip(tooltip(look.lang.t("botcheck.triggerTitle"), &tokens))
             .on_click(cx.listener(|this, _, _, cx| this.set_open(!this.open, cx)))
@@ -436,6 +438,16 @@ mod view_tests {
             cx.debug_bounds("botcheck-trigger").unwrap().size.height,
             px(28.0)
         );
+    }
+
+    #[gpui::test]
+    fn 버튼을_누른_것은_아래에_깔린_페이지로_가지_않는다(
+        cx: &mut TestAppContext,
+    ) {
+        let (button, _, presses, cx) = button(cx);
+        click("botcheck-trigger", cx);
+        assert!(is_open(&button, cx));
+        assert_eq!(presses.get(), 0);
     }
 
     #[gpui::test]

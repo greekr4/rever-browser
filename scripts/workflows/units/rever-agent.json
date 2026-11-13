@@ -1,0 +1,12 @@
+{
+  "crate": "rever-agent",
+  "files": [
+    "src/main/acp-detect.ts",
+    "src/main/claude-cli.ts",
+    "src/main/agent-env.ts",
+    "src/main/agent-login.ts",
+    "src/main/grok-login.ts",
+    "src/main/skill-install.ts"
+  ],
+  "notes": "This crate already contains ported modules (claude_cli_protocol, acp_models, acp_turn, grok_models, turn_pulse, model_catalog_parse, win_shell): keep them and their tests working, add the new modules next to them. These files touch the filesystem, environment and child processes: keep the pure decision logic in functions that take their inputs as arguments (directories to search, an is-executable predicate, environment lookups) as the TypeScript already does for testing, and make the thin wrappers call them with the real environment."
+}

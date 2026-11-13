@@ -1,0 +1,7 @@
+{
+  "crate": "rever-tools-api",
+  "files": [
+    "src/main/mcp/utils.ts"
+  ],
+  "notes": "Put the port in rever-tools-api/src/utils.rs and declare it from lib.rs. Do not add anything else to this crate: the tool trait will be added to other files of it later by someone else."
+}

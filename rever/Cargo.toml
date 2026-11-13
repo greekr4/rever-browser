@@ -11,6 +11,15 @@ rever-agent = { path = "../rever-agent" }
 rever-tools-api = { path = "../rever-tools-api" }
 gpui = { workspace = true }
 rever-ui-kit = { path = "../rever-ui-kit" }
+rever-ui-state = { path = "../rever-ui-state" }
+rever-ui-traffic = { path = "../rever-ui-traffic" }
+rever-ui-console = { path = "../rever-ui-console" }
+rever-ui-websocket = { path = "../rever-ui-websocket" }
+rever-ui-history = { path = "../rever-ui-history" }
+rever-ui-markdown = { path = "../rever-ui-markdown" }
+rever-ui-menus = { path = "../rever-ui-menus" }
+# EvalReply: the shape the console panel takes a script result in.
+rever-formats = { path = "../rever-formats" }
 servo = "=0.8.0"
 # The patched servo-net (see the workspace Cargo.toml): its tap carries request and response bodies.
 net = { package = "servo-net", version = "=0.8.0" }
