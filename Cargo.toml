@@ -7,6 +7,7 @@ members = [
     "rever",
     "rever-agent",
     "rever-analysis",
+    "rever-chat-core",
     "rever-cli-spec",
     "rever-core",
     "rever-formats",
@@ -14,7 +15,14 @@ members = [
     "rever-scope",
     "rever-tool-profile",
     "rever-tools-api",
+    "rever-ui-console",
+    "rever-ui-history",
     "rever-ui-kit",
+    "rever-ui-markdown",
+    "rever-ui-menus",
+    "rever-ui-state",
+    "rever-ui-traffic",
+    "rever-ui-websocket",
     "servo-shell",
 ]
 
