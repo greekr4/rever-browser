@@ -7089,6 +7089,7 @@ dependencies = [
 name = "rever-tools-api"
 version = "0.0.0"
 dependencies = [
+ "rever-core",
  "serde",
  "serde_json",
 ]

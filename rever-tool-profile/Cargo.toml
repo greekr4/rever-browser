@@ -7,7 +7,7 @@ description = "Tool profiles, risky-tool rules and per-provider tool limits, por
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 # The shell-command patterns that gate curl/wget and inline HTTP scripts.
 regex = "1"
 # WHATWG URL parsing, standing in for JavaScript's `new URL()`.

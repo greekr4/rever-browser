@@ -7,7 +7,7 @@ description = "Red Team scope, fence and findings logic, ported from src/main/mc
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 # Linear-time matching for the patterns run over agent-written finding text.
 regex = "1"
 # WHATWG URL parsing, standing in for JavaScript's `new URL()`.

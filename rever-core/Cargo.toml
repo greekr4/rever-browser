@@ -7,7 +7,7 @@ description = "rever's engine-independent logic (traffic store, analysis), porte
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 base64 = "0.22"
 regex = "1"
 url = "2"
