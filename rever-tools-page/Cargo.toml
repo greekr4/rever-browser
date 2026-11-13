@@ -10,3 +10,10 @@ rever-tools-api = { path = "../rever-tools-api" }
 rever-core = { path = "../rever-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# The host glob of an injection snippet is a JavaScript regex in the TypeScript.
+regex = "1"
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }

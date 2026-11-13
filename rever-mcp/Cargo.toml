@@ -8,5 +8,20 @@ description = "The MCP server: serves registered tools over streamable HTTP and 
 [dependencies]
 rever-tools-api = { path = "../rever-tools-api" }
 rever-core = { path = "../rever-core" }
+# Profile rules, catalog header modes and the follow-catalog diff.
+rever-tool-profile = { path = "../rever-tool-profile" }
+# The scope-off note appended to active-attack tool results.
+rever-scope = { path = "../rever-scope" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# The official MCP SDK: protocol, sessions and the streamable HTTP transport.
+rmcp = { version = "~3.9", default-features = false, features = ["server", "transport-streamable-http-server"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync"] }
+# WHATWG URL parsing, standing in for JavaScript's `new URL()` on the Origin header.
+url = "2"
+# The bearer token's random bytes.
+getrandom = "0.3"
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking"] }
