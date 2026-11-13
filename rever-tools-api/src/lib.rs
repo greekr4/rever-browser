@@ -1,3 +1,4 @@
-//! What every MCP tool builds on: result helpers now, the tool trait next
+//! What every MCP tool builds on: the tool contract and result helpers.
 
+pub mod tool;
 pub mod utils;
