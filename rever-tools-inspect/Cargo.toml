@@ -8,5 +8,28 @@ description = "MCP tools that decode and inspect: protobuf, tokens, GraphQL, aut
 [dependencies]
 rever-tools-api = { path = "../rever-tools-api" }
 rever-core = { path = "../rever-core" }
+# protobuf_decode
+rever-formats = { path = "../rever-formats" }
+# token_decode and codegen
+rever-analysis = { path = "../rever-analysis" }
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+# preserve_order: tool output lists keys in the order the TypeScript wrote them.
+# float_roundtrip: JSON.parse rounds a decimal to the nearest double; without
+# this a re-printed number can be one unit off.
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+regex = "1"
+# `new URL(origin).host`
+url = "2"
+base64 = "0.22"
+# Node's createHash / createHmac algorithms.
+md-5 = "0.10"
+sha1 = "0.10"
+sha2 = "0.10"
+hmac = "0.12"
+# randomUUID
+uuid = { version = "1", features = ["v4"] }
+# graphql_introspect's outbound POST (Node's fetch in the TypeScript).
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
