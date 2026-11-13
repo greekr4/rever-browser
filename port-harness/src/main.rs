@@ -2,6 +2,7 @@
 //!
 //!   cargo run -p port-harness            # full run: inventory, coverage, behavior checks
 //!   cargo run -p port-harness -- --no-run  # inventory and coverage only (no build, no app launch)
+//!   cargo run -p port-harness -- --app-only  # skip the per-crate unit tests (other work is mid-edit)
 //!
 //! Coverage is read from the sources, not from a hand-kept list:
 //!   * a Rust file counts as the port of a TypeScript file when it says
@@ -15,13 +16,15 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
 /// Stands in for the Claude Code CLI: streams a reply, asks to run a tool, and reports
 /// whether the app allowed or rejected it. No model is called.
 const FAKE_CLAUDE: &str = r#"#!/bin/sh
+answers=0
 while IFS= read -r line; do
   case "$line" in
     *'"type":"user"'*)
@@ -30,8 +33,14 @@ while IFS= read -r line; do
       ;;
     *'"type":"control_response"'*)
       case "$line" in *'"behavior":"deny"'*) verdict=rejected ;; *) verdict=allowed ;; esac
-      printf '%s\n' "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"reply, tool $verdict\"}}}"
-      printf '%s\n' '{"type":"result","subtype":"success","stop_reason":"end_turn"}'
+      answers=$((answers + 1))
+      if [ "$answers" -eq 1 ]; then
+        shell=$verdict
+        printf '%s\n' '{"type":"control_request","request_id":"p2","request":{"subtype":"can_use_tool","tool_name":"mcp__rever-traffic__list_requests","input":{}}}'
+      else
+        printf '%s\n' "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"reply, shell $shell, own tool $verdict\"}}}"
+        printf '%s\n' '{"type":"result","subtype":"success","stop_reason":"end_turn"}'
+      fi
       ;;
   esac
 done
@@ -39,7 +48,7 @@ done
 
 const FIXTURE_PAGE: &str = "<!doctype html><title>port harness fixture</title><h1>port harness fixture</h1>\
 <p style=\"color:#b00;background:#eef\">colored text so the frame is not one flat color</p>\
-<script>fetch('/api/items').then(function (r) { return r.json() });\
+<script>localStorage.setItem('harness-key', 'harness-value');fetch('/api/items').then(function (r) { return r.json() });\
 var x = new XMLHttpRequest(); x.open('POST', '/api/login'); x.send('user=rever&pass=servo')</script>";
 
 fn main() {
@@ -182,7 +191,8 @@ fn main() {
                 Err(error) => (false, error.to_string()),
             }
         };
-        for krate in &crates {
+        let app_only = std::env::args().any(|arg| arg == "--app-only");
+        for krate in crates.iter().filter(|_| !app_only) {
             let (ok, detail) = cargo(&["test", "-p", krate.as_str()]);
             checks.push((format!("{krate} unit tests pass"), ok, detail));
         }
@@ -267,13 +277,42 @@ fn app_checks(root: &Path) -> Vec<(String, bool, String)> {
         use std::os::unix::fs::PermissionsExt;
         let _ = fs::set_permissions(&fake_claude, fs::Permissions::from_mode(0o755));
     }
-    let launched = Command::new(root.join("target/debug/rever"))
+    let user_data = out_dir.join("user-data");
+    let child = Command::new(root.join("target/debug/rever"))
         .env("REVER_CLAUDE_CLI", &fake_claude)
-        .env("REVER_USER_DATA_DIR", out_dir.join("user-data"))
+        .env("REVER_USER_DATA_DIR", &user_data)
         .arg("--say=hello")
         .arg(format!("--self-check={}", out_dir.display()))
         .arg(format!("http://127.0.0.1:{port}/"))
-        .output();
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+    // While the app is up (it quits by itself after 8 seconds), call its MCP server the
+    // way an outside agent does: through the endpoint file and scripts/mcp-call.py.
+    let mcp = |tool: &str| {
+        Command::new("python3")
+            .arg(root.join("scripts/mcp-call.py"))
+            .arg(tool)
+            .env("REVER_USER_DATA_DIR", &user_data)
+            .output()
+            .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+            .unwrap_or_default()
+    };
+    let endpoint = user_data.join("mcp-endpoint.json");
+    for _ in 0..40 {
+        if endpoint.exists() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    // The fixture's fetch and XHR need a moment to be captured.
+    std::thread::sleep(Duration::from_secs(3));
+    let (mcp_tools, mcp_requests, mcp_storage) = (
+        mcp("--list"),
+        mcp("list_requests"),
+        mcp("local_storage_get"),
+    );
+    let launched = child.and_then(|mut child| child.wait());
     let state: Value = fs::read_to_string(out_dir.join("state.json"))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
@@ -292,10 +331,10 @@ fn app_checks(root: &Path) -> Vec<(String, bool, String)> {
     vec![
         (
             "app launches and exits cleanly from --self-check".into(),
-            launched.as_ref().is_ok_and(|out| out.status.success()) && !state.is_null(),
+            launched.as_ref().is_ok_and(|status| status.success()) && !state.is_null(),
             launched.as_ref().map_or_else(
                 |e| e.to_string(),
-                |out| format!("exit {:?}", out.status.code()),
+                |status| format!("exit {:?}", status.code()),
             ),
         ),
         (
@@ -347,11 +386,21 @@ fn app_checks(root: &Path) -> Vec<(String, bool, String)> {
             format!("chat = {}", Value::Array(chat.clone())),
         ),
         (
-            "tool requests from the agent are rejected (no permission prompt yet)".into(),
+            "the agent may call the app's own MCP tools; a shell request is rejected".into(),
             chat.get(1)
                 .and_then(|line| line["text"].as_str())
-                .is_some_and(|text| text.ends_with("tool rejected")),
+                .is_some_and(|text| text.ends_with("shell rejected, own tool allowed")),
             String::new(),
+        ),
+        (
+            "MCP server answers an outside client with the captured requests".into(),
+            mcp_requests.contains("/api/items") && mcp_requests.contains("/api/login"),
+            format!("{} tools listed", mcp_tools.lines().count()),
+        ),
+        (
+            "an MCP tool reaches the page (localStorage read through the engine)".into(),
+            mcp_storage.contains("harness-key") && mcp_storage.contains("harness-value"),
+            mcp_storage.chars().take(120).collect(),
         ),
     ]
 }
