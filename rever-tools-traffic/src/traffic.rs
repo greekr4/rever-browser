@@ -756,7 +756,7 @@ mod tests {
         .await
         .unwrap();
         assert!(
-            paged.starts_with("{\n  \"requestId\": \"big\","),
+            paged.starts_with("{\n  \"url\": \"https://a.test/list\","),
             "{}",
             &paged[..40]
         );

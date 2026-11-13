@@ -261,6 +261,8 @@ fn to_entry(raw: &Value, request_id: String) -> Option<StoredRequest> {
             .unwrap_or_else(|| guess_resource_type(mime_type))
             .to_owned(),
         started_at,
+        // shortcut: a fractional HAR `time` is floored to whole ms (the TypeScript keeps
+        // `...012.5`); make the store's timestamps f64 if sub-ms import timing ever matters.
         completed_at: non_negative(raw.get("time")).map(|time| (started_at as f64 + time) as u64),
         status: response
             .and_then(|response| response.get("status")?.as_u64())

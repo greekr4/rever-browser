@@ -7143,6 +7143,7 @@ name = "rever-core"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "indexmap 2.14.2",
  "regex",
  "serde",
  "serde_json",

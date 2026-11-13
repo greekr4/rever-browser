@@ -9,5 +9,6 @@ description = "rever's engine-independent logic (traffic store, analysis), porte
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 base64 = "0.22"
+indexmap = { version = "2", features = ["serde"] }
 regex = "1"
 url = "2"

@@ -6,7 +6,7 @@
 //! "now" is passed in. Body sizes are counted in UTF-16 code units, as
 //! JavaScript's `string.length` does, so the limits cut where the TypeScript cuts.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -25,7 +25,9 @@ pub const MAX_EXCEPTIONS: usize = 200;
 pub const MAX_IMPORTED: usize = 5_000;
 pub const MAX_PENDING_EXTRA_RESPONSE_HEADERS: usize = 1000;
 
-pub type Headers = BTreeMap<String, String>;
+/// Capture order, like the JavaScript object it replaces: setting a name that
+/// is already there keeps its place.
+pub type Headers = indexmap::IndexMap<String, String>;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,13 +41,14 @@ pub struct CallFrame {
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoredRequest {
-    pub request_id: String,
+    // Field order is the TypeScript's key order; paged tool output cuts by it.
     pub url: String,
     pub host: String,
     pub method: String,
     pub resource_type: String,
     /// Epoch milliseconds.
     pub started_at: u64,
+    pub request_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -866,6 +869,23 @@ mod tests {
         );
         let headers = Headers::from([("Content-Type".into(), "Text/HTML; charset=utf-8".into())]);
         assert_eq!(mime_of(&headers), "text/html");
+    }
+
+    #[test]
+    fn 헤더는_캡처_순서로_직렬화되고_필드는_타입스크립트_순서를_따른다() {
+        let mut store = TrafficStore::default();
+        store.upsert(
+            RequestPatch {
+                started_at: Some(1),
+                request_headers: Some(headers([("b", "1"), ("a", "2"), ("b", "3")])),
+                ..request("r", "https://a.test/", "GET")
+            },
+            NOW,
+        );
+        assert_eq!(
+            serde_json::to_string(store.get("r").unwrap()).unwrap(),
+            r#"{"url":"https://a.test/","host":"a.test","method":"GET","resourceType":"Other","startedAt":1,"requestId":"r","requestHeaders":{"b":"3","a":"2"}}"#
+        );
     }
 
     #[test]

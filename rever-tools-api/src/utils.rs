@@ -5,8 +5,10 @@
 //! JavaScript it replaces: the agent pages with the numbers printed in the
 //! footers, so they must mean the same thing on both sides.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::fmt::Display;
+
+use rever_core::traffic::Headers;
 
 use serde::Serialize;
 
@@ -52,11 +54,11 @@ pub fn error_message(e: impl Display) -> String {
 // override value of "" as "remove this header" — the credential-strip idiom
 // security scans rely on.
 pub fn merge_replay_headers(
-    captured: Option<&BTreeMap<String, String>>,
+    captured: Option<&Headers>,
     cookie_header: &str,
-    override_headers: Option<&BTreeMap<String, String>>,
-) -> BTreeMap<String, String> {
-    let mut out = BTreeMap::new();
+    override_headers: Option<&Headers>,
+) -> Headers {
+    let mut out = Headers::new();
     for (k, v) in captured.into_iter().flatten() {
         out.insert(k.to_lowercase(), v.clone());
     }
@@ -271,8 +273,9 @@ impl ResultStore {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::BTreeMap;
 
-    fn headers(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+    fn headers(pairs: &[(&str, &str)]) -> Headers {
         pairs
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))

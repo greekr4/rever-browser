@@ -8,6 +8,8 @@
 //! the TypeScript sent. `replay_request` needs no engine: it sends its own request.
 
 use std::collections::BTreeMap;
+
+use rever_core::traffic::Headers;
 use std::collections::btree_map::Entry;
 use std::sync::{Arc, Mutex};
 
@@ -540,9 +542,8 @@ struct ReplayOverrides {
 }
 
 /// Override headers under lowercase names, folded in the order given: when both
-/// "Cookie" and "cookie" are sent, the later one wins, as in the TypeScript. The
-/// merge only sees sorted names and could not tell which came last.
-fn fold_override_headers(headers: &serde_json::Map<String, Value>) -> BTreeMap<String, String> {
+/// "Cookie" and "cookie" are sent, the later one wins, as in the TypeScript.
+fn fold_override_headers(headers: &serde_json::Map<String, Value>) -> Headers {
     headers
         .iter()
         .filter_map(|(name, value)| Some((name.to_lowercase(), value.as_str()?.to_owned())))
@@ -677,7 +678,7 @@ fn is_token(text: &str) -> bool {
 async fn node_fetch(
     url: &str,
     method: &str,
-    headers: &BTreeMap<String, String>,
+    headers: &Headers,
     body: &str,
 ) -> Result<Fetched, String> {
     let fetch_failed = || "fetch failed".to_owned();
@@ -1490,7 +1491,7 @@ mod tests {
         let (browser, context) = cookie_context(&[("sid", "abc"), ("theme", "dark")]);
         let url = format!("{origin}/api/items?x=1");
         let mut patch = capture(&context, "req-1", &url, "POST");
-        patch.request_headers = Some(BTreeMap::from([
+        patch.request_headers = Some(Headers::from([
             ("Authorization".to_owned(), "Bearer t".to_owned()),
             ("Content-Type".to_owned(), "application/json".to_owned()),
             ("Cookie".to_owned(), "stale=1".to_owned()),
@@ -1536,7 +1537,7 @@ mod tests {
         let (origin, request) = serve_once(http_response("200 OK", &[], b"fine"));
         let (browser, context) = cookie_context(&[("sid", "abc")]);
         let mut patch = capture(&context, "req-1", "https://captured.test/old", "GET");
-        patch.request_headers = Some(BTreeMap::from([
+        patch.request_headers = Some(Headers::from([
             ("authorization".to_owned(), "Bearer t".to_owned()),
             ("user-agent".to_owned(), "Mozilla/5.0".to_owned()),
             (
@@ -1809,7 +1810,7 @@ mod tests {
         assert_eq!(kept.get("cookie").map(String::as_str), Some("x=1"));
         assert_eq!(
             folded(json!({ "X-A": "1", "x-a": "2", "X-a": "3" })),
-            BTreeMap::from([
+            Headers::from([
                 ("cookie".to_owned(), "sid=1".to_owned()),
                 ("x-a".to_owned(), "3".to_owned())
             ])

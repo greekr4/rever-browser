@@ -666,8 +666,8 @@ mod tests {
 
 s = requests.Session()
 s.headers.update({
-    "Authorization": "Bear…7890 (33 chars)",
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
+    "Authorization": "Bear…7890 (33 chars)"
 })
 s.cookies.update({
     "SESSIONID": "abcd…7890 (16 chars)",
@@ -685,7 +685,7 @@ print(resp.status_code, resp.text[:500])"#
             },
         );
         assert!(httpx.starts_with("import httpx\n\ns = httpx.Client()\n"));
-        assert!(httpx.contains(r#""Authorization": "Bearer supersecrettoken1234567890","#));
+        assert!(httpx.contains(r#""Authorization": "Bearer supersecrettoken1234567890""#));
     }
 
     #[test]
@@ -694,8 +694,8 @@ print(resp.status_code, resp.text[:500])"#
         assert_eq!(
             generate_code(&json_post(&h), &opts(CodegenLang::Curl)),
             r#"curl -X POST 'https://api.example.com/v3/order' \
-  -H 'Authorization: Bear…7890 (33 chars)' \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bear…7890 (33 chars)' \
   -b 'SESSIONID=abcd…7890 (16 chars); theme=dark' \
   --data-raw '{"item":"x","qty":2}'"#
         );
@@ -709,8 +709,8 @@ print(resp.status_code, resp.text[:500])"#
             r#"const res = await fetch("https://api.example.com/v3/order", {
   method: "POST",
   headers: {
-    "Authorization": "Bear…7890 (33 chars)",
     "Content-Type": "application/json",
+    "Authorization": "Bear…7890 (33 chars)",
     "Cookie": "SESSIONID=abcd…7890 (16 chars); theme=dark"
   },
   credentials: 'include',
@@ -770,7 +770,7 @@ console.log(res.status, await res.text())"#
             serde_json::to_string(&build_request_ir(&json_post(&h))).unwrap(),
             concat!(
                 r#"{"method":"POST","url":"https://api.example.com/v3/order","#,
-                r#""headers":{"Authorization":"Bearer supersecrettoken1234567890","Content-Type":"application/json"},"#,
+                r#""headers":{"Content-Type":"application/json","Authorization":"Bearer supersecrettoken1234567890"},"#,
                 r#""cookies":{"SESSIONID":"abcdef1234567890","theme":"dark"},"#,
                 r#""body":"{\"item\":\"x\",\"qty\":2}","bodyType":"json"}"#
             )
