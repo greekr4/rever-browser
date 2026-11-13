@@ -1,0 +1,357 @@
+[
+  {
+    "name": "cli_arm",
+    "args": {
+      "action": "pause"
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_arm: [\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"start\",\n      \"stop\",\n      \"list\"\n    ],\n    \"path\": [\n      \"action\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"start\\\"|\\\"stop\\\"|\\\"list\\\"\"\n  }\n]"
+  },
+  {
+    "name": "cli_arm",
+    "args": {},
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_arm: [\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"start\",\n      \"stop\",\n      \"list\"\n    ],\n    \"path\": [\n      \"action\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"start\\\"|\\\"stop\\\"|\\\"list\\\"\"\n  }\n]"
+  },
+  {
+    "name": "get_macro",
+    "args": {},
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool get_macro: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"id\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"
+  },
+  {
+    "name": "get_macro",
+    "args": {
+      "id": 5
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool get_macro: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"id\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  }\n]"
+  },
+  {
+    "name": "get_macro",
+    "args": {
+      "id": null
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool get_macro: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"id\"\n    ],\n    \"message\": \"Invalid input: expected string, received null\"\n  }\n]"
+  },
+  {
+    "name": "create_macro",
+    "args": {
+      "name": "x",
+      "steps": [
+        {
+          "tool": 1,
+          "input": "no",
+          "delay": "a"
+        },
+        "str"
+      ]
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool create_macro: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\",\n      0,\n      \"tool\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"expected\": \"record\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\",\n      0,\n      \"input\"\n    ],\n    \"message\": \"Invalid input: expected record, received string\"\n  },\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\",\n      0,\n      \"delay\"\n    ],\n    \"message\": \"Invalid input: expected number, received string\"\n  },\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\",\n      1\n    ],\n    \"message\": \"Invalid input: expected object, received string\"\n  }\n]"
+  },
+  {
+    "name": "create_macro",
+    "args": {
+      "name": "x",
+      "steps": "no",
+      "vars": 3
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool create_macro: [\n  {\n    \"expected\": \"array\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\"\n    ],\n    \"message\": \"Invalid input: expected array, received string\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"vars\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  }\n]"
+  },
+  {
+    "name": "remove_macro_steps",
+    "args": {
+      "id": "a",
+      "indexes": [
+        1.5,
+        -1,
+        "x",
+        100000000000000000000
+      ]
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool remove_macro_steps: [\n  {\n    \"expected\": \"int\",\n    \"format\": \"safeint\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"indexes\",\n      0\n    ],\n    \"message\": \"Invalid input: expected int, received number\"\n  },\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_small\",\n    \"minimum\": 0,\n    \"inclusive\": true,\n    \"path\": [\n      \"indexes\",\n      1\n    ],\n    \"message\": \"Too small: expected number to be >=0\"\n  },\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"indexes\",\n      2\n    ],\n    \"message\": \"Invalid input: expected number, received string\"\n  },\n  {\n    \"code\": \"too_big\",\n    \"maximum\": 9007199254740991,\n    \"note\": \"Integers must be within the safe integer range.\",\n    \"origin\": \"int\",\n    \"inclusive\": true,\n    \"path\": [\n      \"indexes\",\n      3\n    ],\n    \"message\": \"Too big: expected int to be <=9007199254740991\"\n  }\n]"
+  },
+  {
+    "name": "cli_compile",
+    "args": {
+      "requestIds": []
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_compile: [\n  {\n    \"origin\": \"array\",\n    \"code\": \"too_small\",\n    \"minimum\": 1,\n    \"inclusive\": true,\n    \"path\": [\n      \"requestIds\"\n    ],\n    \"message\": \"Too small: expected array to have >=1 items\"\n  }\n]"
+  },
+  {
+    "name": "cli_compile",
+    "args": {
+      "requestIds": [
+        "1"
+      ],
+      "names": {
+        "a": 1
+      },
+      "extract": {
+        "selector": "s",
+        "limit": 21,
+        "fields": []
+      }
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_compile: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"names\",\n      \"a\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 20,\n    \"inclusive\": true,\n    \"path\": [\n      \"extract\",\n      \"limit\"\n    ],\n    \"message\": \"Too big: expected number to be <=20\"\n  },\n  {\n    \"origin\": \"array\",\n    \"code\": \"too_small\",\n    \"minimum\": 1,\n    \"inclusive\": true,\n    \"path\": [\n      \"extract\",\n      \"fields\"\n    ],\n    \"message\": \"Too small: expected array to have >=1 items\"\n  }\n]"
+  },
+  {
+    "name": "cli_compile",
+    "args": {
+      "requestIds": [
+        "1"
+      ],
+      "extract": {
+        "selector": "s",
+        "limit": 0.5,
+        "fields": [
+          {
+            "name": 1
+          },
+          {},
+          {},
+          {},
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_compile: [\n  {\n    \"expected\": \"int\",\n    \"format\": \"safeint\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"limit\"\n    ],\n    \"message\": \"Invalid input: expected int, received number\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\",\n      0,\n      \"name\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\",\n      1,\n      \"name\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\",\n      2,\n      \"name\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\",\n      3,\n      \"name\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\",\n      4,\n      \"name\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\",\n      5,\n      \"name\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\",\n      6,\n      \"name\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  },\n  {\n    \"origin\": \"array\",\n    \"code\": \"too_big\",\n    \"maximum\": 6,\n    \"inclusive\": true,\n    \"path\": [\n      \"extract\",\n      \"fields\"\n    ],\n    \"message\": \"Too big: expected array to have <=6 items\"\n  }\n]"
+  },
+  {
+    "name": "cli_run",
+    "args": {
+      "id": "a",
+      "command": "b",
+      "inputs": {
+        "q": 1
+      },
+      "extract": "x"
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_run: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"inputs\",\n      \"q\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\"\n    ],\n    \"message\": \"Invalid input: expected object, received string\"\n  }\n]"
+  },
+  {
+    "name": "cli_writes",
+    "args": {
+      "id": "a",
+      "enabled": "yes"
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_writes: [\n  {\n    \"expected\": \"boolean\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"enabled\"\n    ],\n    \"message\": \"Invalid input: expected boolean, received string\"\n  }\n]"
+  },
+  {
+    "name": "cli_run",
+    "args": {
+      "id": "a",
+      "command": "b",
+      "inputs": null
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_run: [\n  {\n    \"expected\": \"record\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"inputs\"\n    ],\n    \"message\": \"Invalid input: expected record, received null\"\n  }\n]"
+  },
+  {
+    "name": "cli_run",
+    "args": {
+      "id": "a",
+      "command": "b",
+      "inputs": []
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_run: [\n  {\n    \"expected\": \"record\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"inputs\"\n    ],\n    \"message\": \"Invalid input: expected record, received array\"\n  }\n]"
+  },
+  {
+    "name": "cli_compile",
+    "args": {
+      "requestIds": [
+        "1"
+      ],
+      "extract": {
+        "selector": "s",
+        "limit": 0,
+        "fields": [
+          {
+            "name": "a"
+          }
+        ]
+      }
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_compile: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_small\",\n    \"minimum\": 1,\n    \"inclusive\": true,\n    \"path\": [\n      \"extract\",\n      \"limit\"\n    ],\n    \"message\": \"Too small: expected number to be >=1\"\n  }\n]"
+  },
+  {
+    "name": "remove_macro_steps",
+    "args": {
+      "id": "a",
+      "indexes": [
+        -100000000000000000000,
+        -1.5
+      ]
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool remove_macro_steps: [\n  {\n    \"code\": \"too_small\",\n    \"minimum\": -9007199254740991,\n    \"note\": \"Integers must be within the safe integer range.\",\n    \"origin\": \"int\",\n    \"inclusive\": true,\n    \"path\": [\n      \"indexes\",\n      0\n    ],\n    \"message\": \"Too small: expected int to be >=-9007199254740991\"\n  },\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_small\",\n    \"minimum\": 0,\n    \"inclusive\": true,\n    \"path\": [\n      \"indexes\",\n      0\n    ],\n    \"message\": \"Too small: expected number to be >=0\"\n  },\n  {\n    \"expected\": \"int\",\n    \"format\": \"safeint\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"indexes\",\n      1\n    ],\n    \"message\": \"Invalid input: expected int, received number\"\n  }\n]"
+  },
+  {
+    "name": "cli_run",
+    "args": {
+      "id": "a",
+      "command": "b",
+      "extract": {
+        "selector": "s",
+        "limit": 100000000000000000000,
+        "fields": [
+          {
+            "name": "a",
+            "selector": 5,
+            "attr": null
+          },
+          7,
+          null
+        ]
+      }
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_run: [\n  {\n    \"code\": \"too_big\",\n    \"maximum\": 9007199254740991,\n    \"note\": \"Integers must be within the safe integer range.\",\n    \"origin\": \"int\",\n    \"inclusive\": true,\n    \"path\": [\n      \"extract\",\n      \"limit\"\n    ],\n    \"message\": \"Too big: expected int to be <=9007199254740991\"\n  },\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 20,\n    \"inclusive\": true,\n    \"path\": [\n      \"extract\",\n      \"limit\"\n    ],\n    \"message\": \"Too big: expected number to be <=20\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\",\n      0,\n      \"selector\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\",\n      0,\n      \"attr\"\n    ],\n    \"message\": \"Invalid input: expected string, received null\"\n  },\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\",\n      1\n    ],\n    \"message\": \"Invalid input: expected object, received number\"\n  },\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\",\n      2\n    ],\n    \"message\": \"Invalid input: expected object, received null\"\n  }\n]"
+  },
+  {
+    "name": "cli_run",
+    "args": {
+      "id": "a",
+      "command": "b",
+      "extract": {
+        "selector": "s",
+        "limit": -100000000000000000000,
+        "fields": "x"
+      }
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_run: [\n  {\n    \"code\": \"too_small\",\n    \"minimum\": -9007199254740991,\n    \"note\": \"Integers must be within the safe integer range.\",\n    \"origin\": \"int\",\n    \"inclusive\": true,\n    \"path\": [\n      \"extract\",\n      \"limit\"\n    ],\n    \"message\": \"Too small: expected int to be >=-9007199254740991\"\n  },\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_small\",\n    \"minimum\": 1,\n    \"inclusive\": true,\n    \"path\": [\n      \"extract\",\n      \"limit\"\n    ],\n    \"message\": \"Too small: expected number to be >=1\"\n  },\n  {\n    \"expected\": \"array\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\",\n      \"fields\"\n    ],\n    \"message\": \"Invalid input: expected array, received string\"\n  }\n]"
+  },
+  {
+    "name": "cli_run",
+    "args": {
+      "id": "a",
+      "command": "b",
+      "extract": null
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_run: [\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\"\n    ],\n    \"message\": \"Invalid input: expected object, received null\"\n  }\n]"
+  },
+  {
+    "name": "cli_run",
+    "args": {
+      "id": "a",
+      "command": "b",
+      "extract": []
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_run: [\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"extract\"\n    ],\n    \"message\": \"Invalid input: expected object, received array\"\n  }\n]"
+  },
+  {
+    "name": "create_macro",
+    "args": {
+      "name": "x",
+      "steps": [
+        {
+          "tool": "t",
+          "input": null
+        },
+        {
+          "tool": "t",
+          "input": []
+        },
+        {
+          "tool": "t",
+          "waitFor": 1,
+          "waitTimeout": true,
+          "saveAs": {}
+        },
+        null,
+        []
+      ]
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool create_macro: [\n  {\n    \"expected\": \"record\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\",\n      0,\n      \"input\"\n    ],\n    \"message\": \"Invalid input: expected record, received null\"\n  },\n  {\n    \"expected\": \"record\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\",\n      1,\n      \"input\"\n    ],\n    \"message\": \"Invalid input: expected record, received array\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\",\n      2,\n      \"waitFor\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\",\n      2,\n      \"waitTimeout\"\n    ],\n    \"message\": \"Invalid input: expected number, received boolean\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\",\n      2,\n      \"saveAs\"\n    ],\n    \"message\": \"Invalid input: expected string, received object\"\n  },\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\",\n      3\n    ],\n    \"message\": \"Invalid input: expected object, received null\"\n  },\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\",\n      4\n    ],\n    \"message\": \"Invalid input: expected object, received array\"\n  }\n]"
+  },
+  {
+    "name": "update_macro",
+    "args": {
+      "id": "a",
+      "name": null,
+      "description": 1,
+      "steps": null
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool update_macro: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"name\"\n    ],\n    \"message\": \"Invalid input: expected string, received null\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"description\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"expected\": \"array\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"steps\"\n    ],\n    \"message\": \"Invalid input: expected array, received null\"\n  }\n]"
+  },
+  {
+    "name": "run_macro",
+    "args": {
+      "vars": {}
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool run_macro: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"id\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"vars\"\n    ],\n    \"message\": \"Invalid input: expected string, received object\"\n  }\n]"
+  },
+  {
+    "name": "cli_compile",
+    "args": {
+      "requestIds": [
+        1,
+        null
+      ],
+      "name": 1,
+      "site": 2,
+      "title": 3,
+      "baseUrl": 4,
+      "names": "x"
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_compile: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"requestIds\",\n      0\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"requestIds\",\n      1\n    ],\n    \"message\": \"Invalid input: expected string, received null\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"name\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"site\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"title\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"baseUrl\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"expected\": \"record\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"names\"\n    ],\n    \"message\": \"Invalid input: expected record, received string\"\n  }\n]"
+  },
+  {
+    "name": "cli_compile",
+    "args": {
+      "requestIds": "x"
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_compile: [\n  {\n    \"expected\": \"array\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"requestIds\"\n    ],\n    \"message\": \"Invalid input: expected array, received string\"\n  }\n]"
+  },
+  {
+    "name": "cli_writes",
+    "args": {},
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_writes: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"id\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  },\n  {\n    \"expected\": \"boolean\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"enabled\"\n    ],\n    \"message\": \"Invalid input: expected boolean, received undefined\"\n  }\n]"
+  },
+  {
+    "name": "cli_describe",
+    "args": {
+      "id": "a",
+      "command": 5
+    },
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_describe: [\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"command\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  }\n]"
+  },
+  {
+    "name": "get_macro",
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool get_macro: [\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [],\n    \"message\": \"Invalid input: expected object, received undefined\"\n  }\n]"
+  },
+  {
+    "name": "run_macro",
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool run_macro: [\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [],\n    \"message\": \"Invalid input: expected object, received undefined\"\n  }\n]"
+  },
+  {
+    "name": "cli_arm",
+    "isError": true,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool cli_arm: [\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [],\n    \"message\": \"Invalid input: expected object, received undefined\"\n  }\n]"
+  }
+]
