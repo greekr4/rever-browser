@@ -8,8 +8,9 @@ use std::sync::Arc;
 use dpi::PhysicalSize;
 use image::RgbaImage;
 use servo::{
-    ConsoleLogLevel, DeviceIntRect, DeviceIntSize, EventLoopWaker, InputEvent, RenderingContext,
-    Servo, ServoBuilder, SoftwareRenderingContext, WebView, WebViewBuilder, WebViewDelegate,
+    ConsoleLogLevel, DeviceIntRect, DeviceIntSize, EventLoopWaker, InputEvent, JSValue,
+    RenderingContext, Servo, ServoBuilder, SoftwareRenderingContext, UserContentManager,
+    UserScript, WebView, WebViewBuilder, WebViewDelegate,
 };
 use url::Url;
 
@@ -75,6 +76,7 @@ struct Page {
     id: TabId,
     webview: WebView,
     context: Rc<SoftwareRenderingContext>,
+    scripts: Rc<UserContentManager>,
 }
 
 pub struct Engine {
@@ -111,7 +113,9 @@ impl Engine {
         );
         let id = TabId(self.next_id);
         self.next_id += 1;
+        let scripts = Rc::new(UserContentManager::new(&self.servo));
         let webview = WebViewBuilder::new(&self.servo, context.clone())
+            .user_content_manager(scripts.clone())
             .url(url)
             .hidpi_scale_factor(euclid::Scale::new(self.scale))
             .delegate(Rc::new(Delegate {
@@ -123,6 +127,7 @@ impl Engine {
             id,
             webview,
             context,
+            scripts,
         });
         Ok(id)
     }
@@ -184,6 +189,29 @@ impl Engine {
     pub fn reload(&self, id: TabId) {
         if let Some(page) = self.page(id) {
             page.webview.reload();
+        }
+    }
+
+    /// Evaluate JavaScript in the tab; `done` runs later, on the main thread.
+    pub fn evaluate(
+        &self,
+        id: TabId,
+        script: String,
+        done: impl FnOnce(Result<JSValue, String>) + 'static,
+    ) {
+        match self.page(id) {
+            Some(page) => page.webview.evaluate_javascript(script, move |result| {
+                done(result.map_err(|error| format!("{error:?}")))
+            }),
+            None => done(Err("the tab is closed".to_owned())),
+        }
+    }
+
+    /// Run `source` in every new document of the tab, before the page's own scripts.
+    pub fn add_init_script(&self, id: TabId, source: String) {
+        if let Some(page) = self.page(id) {
+            page.scripts
+                .add_script(Rc::new(UserScript::new(source, None)));
         }
     }
 

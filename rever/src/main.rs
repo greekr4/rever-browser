@@ -10,6 +10,7 @@
 //! page, bottom panel, chip bar on the left; the chat panel on the right.
 
 mod agent;
+mod bridge;
 mod engine;
 
 use std::cell::Cell;
@@ -23,7 +24,7 @@ use dpi::PhysicalSize;
 use engine::{Engine, EngineEvent, TabId};
 use euclid::Point2D;
 use futures::StreamExt;
-use futures::channel::mpsc::UnboundedSender;
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use gpui::{
     AnyElement, App, Application, Bounds, ClickEvent, Context, Corners, Div, Entity, FocusHandle,
     Focusable, FontWeight, KeyDownEvent, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent,
@@ -37,6 +38,7 @@ use rever_core::address::normalize_address;
 use rever_core::input::w3c_key_name;
 use rever_core::paths::user_data_dir;
 use rever_core::traffic::{self, Headers, ListFilter, RequestPatch, TrafficStore};
+use rever_tools_api::tool::PageInfo;
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::text_input::{self, Submitted, TextInput};
 use rever_ui_kit::theme::{Theme, ThemeMode};
@@ -179,8 +181,15 @@ struct Browser {
     /// The Claude Code CLI, started with the first chat message.
     agent: Option<AgentSession>,
     agent_busy: bool,
+    /// How many init scripts tools have added; the count is the next script's id.
+    init_scripts: u32,
     /// Wakes `pump` from other threads.
     wake: UnboundedSender<()>,
+    /// Requests from MCP tools, answered in `pump`.
+    tool_commands: UnboundedReceiver<bridge::Command>,
+    /// What tools hold to reach this window's page.
+    #[expect(dead_code, reason = "handed to the MCP server once it is wired in")]
+    tool_browser: Arc<bridge::AppBrowser>,
     page_focus: FocusHandle,
     lang: Lang,
     theme_mode: ThemeMode,
@@ -200,6 +209,8 @@ impl Browser {
         let lang = Lang::detect();
         let (wake, mut woken) = futures::channel::mpsc::unbounded::<()>();
         let agent_wake = wake.clone();
+        let (tool_tx, tool_commands) = futures::channel::mpsc::unbounded();
+        let tool_browser = Arc::new(bridge::AppBrowser::new(tool_tx, wake.clone()));
         let traffic = Arc::new(Mutex::new(TrafficStore::default()));
         {
             let (store, wake) = (traffic.clone(), wake.clone());
@@ -284,7 +295,10 @@ impl Browser {
             traffic,
             agent: None,
             agent_busy: false,
+            init_scripts: 0,
             wake: agent_wake,
+            tool_commands,
+            tool_browser,
             page_focus: cx.focus_handle(),
             lang,
             theme_mode: ThemeMode::from_env(),
@@ -330,6 +344,7 @@ impl Browser {
             self.capture(window);
         }
         self.pump_agent();
+        self.run_tool_commands(window);
         cx.notify();
     }
 
@@ -474,6 +489,84 @@ impl Browser {
             text: String::new(),
         });
         Ok(())
+    }
+
+    /// Answer what MCP tools asked of the page since the last pump.
+    fn run_tool_commands(&mut self, window: &mut Window) {
+        use bridge::Command;
+        let scale = f64::from(window.scale_factor());
+        while let Ok(command) = self.tool_commands.try_recv() {
+            let tab = self.active_id();
+            match command {
+                Command::Page(answer) => {
+                    let active = &self.tabs[self.active];
+                    let _ = answer.send(Ok(PageInfo {
+                        url: active.url.clone(),
+                        title: active.title.to_string(),
+                    }));
+                }
+                Command::Navigate(url, answer) => {
+                    let loaded = Url::parse(&normalize_address(&url))
+                        .map(|url| self.engine.load(tab, url))
+                        .map_err(|error| format!("invalid URL: {error}"));
+                    let _ = answer.send(loaded);
+                }
+                Command::Back(answer) => {
+                    self.engine.back(tab);
+                    let _ = answer.send(Ok(()));
+                }
+                Command::Forward(answer) => {
+                    self.engine.forward(tab);
+                    let _ = answer.send(Ok(()));
+                }
+                Command::Reload(answer) => {
+                    self.engine.reload(tab);
+                    let _ = answer.send(Ok(()));
+                }
+                Command::Evaluate(script, answer) => {
+                    self.engine.evaluate(tab, script, move |result| {
+                        let _ = answer.send(result.map(|value| bridge::js_to_json(&value)));
+                    })
+                }
+                Command::Screenshot(answer) => {
+                    let png = self
+                        .engine
+                        .frame(tab)
+                        .ok_or_else(|| "the page has not been painted yet".to_owned())
+                        .and_then(|image| {
+                            let mut bytes = Vec::new();
+                            image
+                                .write_to(
+                                    &mut std::io::Cursor::new(&mut bytes),
+                                    image::ImageFormat::Png,
+                                )
+                                .map(|_| bytes)
+                                .map_err(|error| error.to_string())
+                        });
+                    let _ = answer.send(png);
+                }
+                Command::Input(input, answer) => {
+                    for event in bridge::input_events(&input, scale) {
+                        self.engine.input(tab, event);
+                    }
+                    let _ = answer.send(Ok(()));
+                }
+                Command::Viewport(answer) => {
+                    let size = self.engine.size(tab).map(|size| {
+                        (
+                            (f64::from(size.width) / scale).round() as u32,
+                            (f64::from(size.height) / scale).round() as u32,
+                        )
+                    });
+                    let _ = answer.send(size.ok_or_else(|| "the tab is closed".to_owned()));
+                }
+                Command::AddInitScript(source, answer) => {
+                    self.engine.add_init_script(tab, source);
+                    self.init_scripts += 1;
+                    let _ = answer.send(Ok(self.init_scripts.to_string()));
+                }
+            }
+        }
     }
 
     /// Apply what the agent said since the last pump.

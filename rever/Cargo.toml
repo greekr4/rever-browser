@@ -8,6 +8,7 @@ description = "rever: an AI-agent browser for reverse-engineering web APIs (Rust
 [dependencies]
 rever-core = { path = "../rever-core" }
 rever-agent = { path = "../rever-agent" }
+rever-tools-api = { path = "../rever-tools-api" }
 gpui = { workspace = true }
 rever-ui-kit = { path = "../rever-ui-kit" }
 servo = "=0.8.0"
