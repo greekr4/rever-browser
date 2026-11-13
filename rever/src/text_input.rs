@@ -340,6 +340,8 @@ impl EntityInputHandler for TextInput {
             .map(|range_utf16| self.range_from_utf16(range_utf16))
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
+        // A stale range must never reach the slicing below: that is a crash.
+        let range = clamp_range(&self.content, range);
 
         self.content =
             (self.content[0..range.start].to_owned() + new_text + &self.content[range.end..])
@@ -362,6 +364,8 @@ impl EntityInputHandler for TextInput {
             .map(|range_utf16| self.range_from_utf16(range_utf16))
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
+        // A stale range must never reach the slicing below: that is a crash.
+        let range = clamp_range(&self.content, range);
 
         self.content =
             (self.content[0..range.start].to_owned() + new_text + &self.content[range.end..])
@@ -371,11 +375,7 @@ impl EntityInputHandler for TextInput {
         } else {
             self.marked_range = None;
         }
-        self.selected_range = new_selected_range_utf16
-            .as_ref()
-            .map(|range_utf16| self.range_from_utf16(range_utf16))
-            .map(|new_range| new_range.start + range.start..new_range.end + range.end)
-            .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
+        self.selected_range = marked_selection(range.start, new_text, new_selected_range_utf16);
 
         cx.notify();
     }
@@ -633,6 +633,71 @@ impl Render for TextInput {
 impl Focusable for TextInput {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
+    }
+}
+
+/// Clamp a byte range into `text`, on character boundaries.
+fn clamp_range(text: &str, range: Range<usize>) -> Range<usize> {
+    let floor = |mut index: usize| {
+        index = index.min(text.len());
+        while !text.is_char_boundary(index) {
+            index -= 1;
+        }
+        index
+    };
+    let start = floor(range.start);
+    start..floor(range.end).max(start)
+}
+
+/// Where the selection lands after the IME replaced a range with `new_text`. The IME's
+/// offsets are UTF-16 and relative to `new_text`, which starts at byte `start`.
+///
+/// The GPUI example this file comes from added the replaced range's *end* to the
+/// selection's end: deleting a Hangul syllable mid-composition left a selection past
+/// the end of the text, and the next keystroke crashed.
+fn marked_selection(
+    start: usize,
+    new_text: &str,
+    selected_utf16: Option<Range<usize>>,
+) -> Range<usize> {
+    let byte_offset = |utf16_offset: usize| {
+        let mut utf16_count = 0;
+        for (byte, ch) in new_text.char_indices() {
+            if utf16_count >= utf16_offset {
+                return byte;
+            }
+            utf16_count += ch.len_utf16();
+        }
+        new_text.len()
+    };
+    match selected_utf16 {
+        Some(selected) => start + byte_offset(selected.start)..start + byte_offset(selected.end),
+        None => start + new_text.len()..start + new_text.len(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 조합_중인_한글을_지워도_선택_범위가_글자_밖으로_나가지_않는다() {
+        // "ㅎ"(3바이트)을 조합하다 지우면 IME가 빈 문자열과 선택 0..0을 보낸다.
+        assert_eq!(marked_selection(0, "", Some(0..0)), 0..0);
+        // 조합 글자가 바뀔 때: "하" 뒤에 커서(UTF-16 1) → 바이트 3.
+        assert_eq!(marked_selection(0, "하", Some(1..1)), 3..3);
+        // 앞에 이미 글자가 있을 때는 그 뒤부터 센다.
+        assert_eq!(marked_selection(6, "한", Some(1..1)), 9..9);
+        assert_eq!(marked_selection(6, "한", None), 9..9);
+    }
+
+    #[test]
+    fn 낡은_범위는_글자_경계_안으로_잘라낸다() {
+        assert_eq!(clamp_range("", 0..3), 0..0);
+        assert_eq!(clamp_range("한", 3..6), 3..3);
+        // 글자 중간(바이트 1)은 앞 경계로 내린다.
+        assert_eq!(clamp_range("한글", 1..4), 0..3);
+        assert_eq!(clamp_range("abc", 1..2), 1..2);
     }
 }
 
