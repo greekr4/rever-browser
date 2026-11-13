@@ -5,6 +5,7 @@ pub mod acp_models;
 pub mod acp_turn;
 pub mod agent_env;
 pub mod agent_login;
+pub mod agent_probe;
 pub mod claude_cli;
 pub mod claude_cli_protocol;
 pub mod grok_login;
