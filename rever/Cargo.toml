@@ -7,6 +7,7 @@ description = "rever: an AI-agent browser for reverse-engineering web APIs (Rust
 
 [dependencies]
 rever-core = { path = "../rever-core" }
+rever-agent = { path = "../rever-agent" }
 # runtime_shaders: compile Metal shaders at startup instead of at build time, so a build
 # does not need Xcode's separately downloaded Metal toolchain.
 gpui = { version = "0.2.2", features = ["runtime_shaders"] }

@@ -4,5 +4,6 @@
 pub mod address;
 pub mod har_import;
 pub mod input;
+pub mod paths;
 pub mod secret_scan;
 pub mod traffic;

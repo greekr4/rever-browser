@@ -6927,6 +6927,7 @@ dependencies = [
  "futures",
  "gpui",
  "image",
+ "rever-agent",
  "rever-core",
  "rustls",
  "serde_json",

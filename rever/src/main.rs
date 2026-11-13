@@ -1,13 +1,15 @@
 //! rever: a GPUI interface around Servo page views.
 //!
-//! Usage: rever [--panel=NAME] [--self-check=DIR] [URL]
+//! Usage: rever [--panel=NAME] [--say=TEXT] [--self-check=DIR] [URL]
 //!   --panel=NAME      start with a bottom panel open (traffic, console, ...).
+//!   --say=TEXT        send a chat message 2 seconds after start (port harness).
 //!   --self-check=DIR  after 8 seconds write DIR/frame.png (the page as handed to the
 //!                     interface) and DIR/state.json, then quit. Used by the port harness.
 //!
 //! Layout mirrors the Electron app's `src/renderer/src/App.tsx`: tab strip, toolbar,
 //! page, bottom panel, chip bar on the left; the chat panel on the right.
 
+mod agent;
 mod engine;
 mod i18n;
 mod icons;
@@ -21,10 +23,12 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use agent::{AgentEvent, AgentSession};
 use dpi::PhysicalSize;
 use engine::{Engine, EngineEvent, TabId};
 use euclid::Point2D;
 use futures::StreamExt;
+use futures::channel::mpsc::UnboundedSender;
 use gpui::{
     AnyElement, App, Application, Bounds, ClickEvent, Context, Corners, Div, Entity, FocusHandle,
     Focusable, FontWeight, KeyDownEvent, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent,
@@ -37,6 +41,7 @@ use image::{Frame, RgbaImage};
 use net::tap::NetworkTapEvent;
 use rever_core::address::normalize_address;
 use rever_core::input::w3c_key_name;
+use rever_core::paths::user_data_dir;
 use rever_core::traffic::{self, Headers, ListFilter, RequestPatch, TrafficStore};
 use servo::{
     Code, InputEvent, Key, KeyState, KeyboardEvent, Location, Modifiers, MouseButtonAction,
@@ -152,7 +157,16 @@ struct Tab {
 
 struct ChatLine {
     from_user: bool,
-    text: SharedString,
+    text: String,
+}
+
+/// What the command line asked for.
+struct Launch {
+    url: Url,
+    open_panel: Option<&'static str>,
+    self_check: Option<String>,
+    /// A chat message to send shortly after start (port harness).
+    say: Option<String>,
 }
 
 struct Browser {
@@ -167,6 +181,11 @@ struct Browser {
     /// Where the page was laid out last, in window coordinates. Written during paint.
     page_bounds: Rc<Cell<Bounds<Pixels>>>,
     traffic: Arc<Mutex<TrafficStore>>,
+    /// The Claude Code CLI, started with the first chat message.
+    agent: Option<AgentSession>,
+    agent_busy: bool,
+    /// Wakes `pump` from other threads.
+    wake: UnboundedSender<()>,
     page_focus: FocusHandle,
     lang: Lang,
     theme_mode: ThemeMode,
@@ -176,15 +195,16 @@ struct Browser {
 }
 
 impl Browser {
-    fn new(
-        url: Url,
-        open_panel: Option<&'static str>,
-        self_check: Option<String>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    fn new(launch: Launch, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let Launch {
+            url,
+            open_panel,
+            self_check,
+            say,
+        } = launch;
         let lang = Lang::detect();
         let (wake, mut woken) = futures::channel::mpsc::unbounded::<()>();
+        let agent_wake = wake.clone();
         let traffic = Arc::new(Mutex::new(TrafficStore::default()));
         {
             let (store, wake) = (traffic.clone(), wake.clone());
@@ -228,6 +248,14 @@ impl Browser {
             .detach();
         }
 
+        if let Some(text) = say {
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(Duration::from_secs(2)).await;
+                let _ = this.update(cx, |this, cx| this.send_chat(&text, cx));
+            })
+            .detach();
+        }
+
         let address = cx.new(|cx| {
             let mut input = TextInput::new(lang.t("toolbar.addressPlaceholder"), cx);
             input.set_text(url.to_string(), cx);
@@ -259,6 +287,9 @@ impl Browser {
             console: Vec::new(),
             page_bounds: Rc::new(Cell::new(Bounds::default())),
             traffic,
+            agent: None,
+            agent_busy: false,
+            wake: agent_wake,
             page_focus: cx.focus_handle(),
             lang,
             theme_mode: ThemeMode::from_env(),
@@ -303,6 +334,7 @@ impl Browser {
         if frame_ready {
             self.capture(window);
         }
+        self.pump_agent();
         cx.notify();
     }
 
@@ -405,19 +437,77 @@ impl Browser {
 
     fn send_chat(&mut self, text: &str, cx: &mut Context<Self>) {
         let text = text.trim();
-        if text.is_empty() {
+        // One turn at a time, as the Electron composer does while a turn is streaming.
+        if text.is_empty() || self.agent_busy {
             return;
         }
         self.chat.push(ChatLine {
             from_user: true,
-            text: text.to_owned().into(),
-        });
-        self.chat.push(ChatLine {
-            from_user: false,
-            text: self.lang.t("port.agentNotYet").into(),
+            text: text.to_owned(),
         });
         self.composer.update(cx, |input, cx| input.set_text("", cx));
+        if let Err(error) = self.start_turn(text) {
+            self.agent = None;
+            self.chat.push(ChatLine {
+                from_user: false,
+                text: format!("⚠ {}: {error}", self.lang.t("chat.turnFailed")),
+            });
+        }
         cx.notify();
+    }
+
+    /// Start the CLI if needed and hand it the prompt.
+    fn start_turn(&mut self, text: &str) -> Result<(), String> {
+        if self.agent.is_none() {
+            // The same sandbox folder the Electron app gives its agents.
+            let home = std::env::var("HOME").unwrap_or_default();
+            let scratch =
+                user_data_dir(|name| std::env::var(name).ok(), std::env::consts::OS, &home)
+                    .join("agent-scratch");
+            let wake = self.wake.clone();
+            self.agent = Some(AgentSession::spawn(&scratch, move || {
+                let _ = wake.unbounded_send(());
+            })?);
+        }
+        let agent = self.agent.as_mut().ok_or("no agent session")?;
+        agent
+            .send(text)
+            .map_err(|error| format!("Claude Code CLI is not accepting input: {error}"))?;
+        self.agent_busy = true;
+        self.chat.push(ChatLine {
+            from_user: false,
+            text: String::new(),
+        });
+        Ok(())
+    }
+
+    /// Apply what the agent said since the last pump.
+    fn pump_agent(&mut self) {
+        let Some(agent) = self.agent.as_mut() else {
+            return;
+        };
+        for event in agent.drain() {
+            match event {
+                AgentEvent::Text(text) => {
+                    if let Some(line) = self.chat.last_mut().filter(|line| !line.from_user) {
+                        line.text.push_str(&text);
+                    }
+                }
+                AgentEvent::Done => self.agent_busy = false,
+                AgentEvent::Failed(error) => {
+                    // A failure outside a turn (the CLI exiting after a finished one) is not shown.
+                    if self.agent_busy {
+                        self.chat.push(ChatLine {
+                            from_user: false,
+                            text: format!("⚠ {}: {error}", self.lang.t("chat.turnFailed")),
+                        });
+                    }
+                    self.agent_busy = false;
+                    self.agent = None;
+                    return;
+                }
+            }
+        }
     }
 
     fn page_point(&self, position: Point<Pixels>) -> WebViewPoint {
@@ -542,6 +632,7 @@ impl Browser {
                 f.pixels().step_by(16).map(|p| p.0).collect::<std::collections::HashSet<_>>().len()
             }),
             "requests": requests,
+            "chat": self.chat.iter().map(|line| serde_json::json!({ "fromUser": line.from_user, "text": line.text })).collect::<Vec<_>>(),
         });
         let _ = std::fs::write(format!("{dir}/state.json"), state.to_string());
     }
@@ -1014,7 +1105,11 @@ impl Browser {
                     .text_color(theme.text_dim)
                     .border_b_1()
                     .border_color(theme.border)
-                    .child("ready")
+                    .child(if self.agent_busy {
+                        "streaming"
+                    } else {
+                        "ready"
+                    })
                     .child(format!("{} (0)", lang.t("chat.history")))
                     .child(
                         div()
@@ -1134,10 +1229,12 @@ impl Render for Browser {
 
 fn main() {
     let mut url = DEFAULT_URL.to_owned();
-    let (mut self_check, mut open_panel) = (None, None);
+    let (mut self_check, mut open_panel, mut say) = (None, None, None);
     for arg in std::env::args().skip(1) {
         if let Some(dir) = arg.strip_prefix("--self-check=") {
             self_check = Some(dir.to_owned());
+        } else if let Some(text) = arg.strip_prefix("--say=") {
+            say = Some(text.to_owned());
         } else if let Some(name) = arg.strip_prefix("--panel=") {
             // Only known panels: the name is also the chip's element id.
             open_panel = PANEL_GROUPS
@@ -1150,6 +1247,12 @@ fn main() {
         }
     }
     let url = Url::parse(&normalize_address(&url)).expect("the URL argument is not a valid URL");
+    let launch = Launch {
+        url,
+        open_panel,
+        self_check,
+        say,
+    };
 
     Application::new()
         .with_assets(icons::Assets)
@@ -1161,7 +1264,7 @@ fn main() {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     ..Default::default()
                 },
-                |window, cx| cx.new(|cx| Browser::new(url, open_panel, self_check, window, cx)),
+                |window, cx| cx.new(|cx| Browser::new(launch, window, cx)),
             )
             .expect("could not open the main window");
             cx.activate(true);

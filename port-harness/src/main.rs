@@ -19,6 +19,24 @@ use std::process::Command;
 
 use serde_json::{Value, json};
 
+/// Stands in for the Claude Code CLI: streams a reply, asks to run a tool, and reports
+/// whether the app allowed or rejected it. No model is called.
+const FAKE_CLAUDE: &str = r#"#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"type":"user"'*)
+      printf '%s\n' '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"fake "}}}'
+      printf '%s\n' '{"type":"control_request","request_id":"p1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}'
+      ;;
+    *'"type":"control_response"'*)
+      case "$line" in *'"behavior":"deny"'*) verdict=rejected ;; *) verdict=allowed ;; esac
+      printf '%s\n' "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"reply, tool $verdict\"}}}"
+      printf '%s\n' '{"type":"result","subtype":"success","stop_reason":"end_turn"}'
+      ;;
+  esac
+done
+"#;
+
 const FIXTURE_PAGE: &str = "<!doctype html><title>port harness fixture</title><h1>port harness fixture</h1>\
 <p style=\"color:#b00;background:#eef\">colored text so the frame is not one flat color</p>\
 <script>fetch('/api/items').then(function (r) { return r.json() });\
@@ -81,6 +99,8 @@ fn main() {
     let ported_files: BTreeSet<String> = rust_sources
         .iter()
         .flat_map(|text| string_after(text, "Port of "))
+        // Only markers that name a real source file count.
+        .filter(|path| ts.iter().any(|(ts_path, _)| ts_path == path))
         .collect();
     let ported_tools: BTreeSet<String> = rust_sources
         .iter()
@@ -241,7 +261,18 @@ fn app_checks(root: &Path) -> Vec<(String, bool, String)> {
 
     let out_dir = root.join("target/port-harness");
     let _ = fs::remove_dir_all(&out_dir);
+    let _ = fs::create_dir_all(&out_dir);
+    let fake_claude = out_dir.join("fake-claude.sh");
+    let _ = fs::write(&fake_claude, FAKE_CLAUDE);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&fake_claude, fs::Permissions::from_mode(0o755));
+    }
     let launched = Command::new(root.join("target/debug/rever"))
+        .env("REVER_CLAUDE_CLI", &fake_claude)
+        .env("REVER_USER_DATA_DIR", out_dir.join("user-data"))
+        .arg("--say=hello")
         .arg(format!("--self-check={}", out_dir.display()))
         .arg(format!("http://127.0.0.1:{port}/"))
         .output();
@@ -258,6 +289,7 @@ fn app_checks(root: &Path) -> Vec<(String, bool, String)> {
             .unwrap_or(Value::Null)
     };
     let (items, login) = (find("/api/items"), find("/api/login"));
+    let chat = state["chat"].as_array().cloned().unwrap_or_default();
 
     vec![
         (
@@ -305,6 +337,23 @@ fn app_checks(root: &Path) -> Vec<(String, bool, String)> {
                     .as_str()
                     .is_some_and(|body| body.contains("[1,2,3]")),
             format!("/api/items body = {}", items["responseBody"]),
+        ),
+        (
+            "chat reaches the agent CLI and its reply streams back".into(),
+            chat.len() == 2
+                && chat[0]["fromUser"] == true
+                && chat[0]["text"] == "hello"
+                && chat[1]["text"]
+                    .as_str()
+                    .is_some_and(|text| text.starts_with("fake reply")),
+            format!("chat = {}", Value::Array(chat.clone())),
+        ),
+        (
+            "tool requests from the agent are rejected (no permission prompt yet)".into(),
+            chat.get(1)
+                .and_then(|line| line["text"].as_str())
+                .is_some_and(|text| text.ends_with("tool rejected")),
+            String::new(),
         ),
     ]
 }

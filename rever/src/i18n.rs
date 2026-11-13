@@ -12,18 +12,11 @@ pub enum Lang {
 }
 
 /// Strings that exist only while the port is in progress.
-const PORT_STRINGS: &[(&str, &str, &str)] = &[
-    (
-        "port.agentNotYet",
-        "The agent is not connected in the Rust app yet.",
-        "Rust 앱에는 아직 에이전트가 연결되지 않았습니다.",
-    ),
-    (
-        "port.panelNotYet",
-        "This panel is not available in the Rust app yet.",
-        "이 패널은 아직 Rust 앱으로 옮겨지지 않았습니다.",
-    ),
-];
+const PORT_STRINGS: &[(&str, &str, &str)] = &[(
+    "port.panelNotYet",
+    "This panel is not available in the Rust app yet.",
+    "이 패널은 아직 Rust 앱으로 옮겨지지 않았습니다.",
+)];
 
 impl Lang {
     /// `REVER_LANG=ko|en` wins; otherwise the OS locale decides (Korean → ko, else
