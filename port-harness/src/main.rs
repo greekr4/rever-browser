@@ -50,16 +50,20 @@ fn main() {
     let run_checks = !std::env::args().any(|arg| arg == "--no-run");
 
     let ts_files = files_under(&root.join("src"), &["ts", "tsx"]);
-    let rust_files: Vec<PathBuf> = [
-        "rever",
-        "rever-agent",
-        "rever-core",
-        "rever-formats",
-        "rever-scope",
-    ]
-    .iter()
-    .flat_map(|krate| files_under(&root.join(krate).join("src"), &["rs"]))
-    .collect();
+    // Every `rever*` directory at the root is a crate of the port.
+    let mut crates: Vec<String> = fs::read_dir(&root)
+        .map(|dir| {
+            dir.flatten()
+                .filter_map(|entry| entry.file_name().into_string().ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    crates.retain(|name| name.starts_with("rever") && root.join(name).join("Cargo.toml").is_file());
+    crates.sort();
+    let rust_files: Vec<PathBuf> = crates
+        .iter()
+        .flat_map(|krate| files_under(&root.join(krate).join("src"), &["rs"]))
+        .collect();
     let rust_sources: Vec<String> = rust_files
         .iter()
         .filter_map(|path| fs::read_to_string(path).ok())
@@ -178,14 +182,8 @@ fn main() {
                 Err(error) => (false, error.to_string()),
             }
         };
-        for krate in [
-            "rever-core",
-            "rever-scope",
-            "rever-formats",
-            "rever-agent",
-            "rever",
-        ] {
-            let (ok, detail) = cargo(&["test", "-p", krate]);
+        for krate in &crates {
+            let (ok, detail) = cargo(&["test", "-p", krate.as_str()]);
             checks.push((format!("{krate} unit tests pass"), ok, detail));
         }
         let (ok, detail) = cargo(&["build", "-p", "rever"]);

@@ -6947,6 +6947,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "rever-analysis"
+version = "0.0.0"
+dependencies = [
+ "rever-core",
+ "rever-scope",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rever-cli-spec"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rever-core"
 version = "0.0.0"
 dependencies = [
@@ -6963,6 +6981,14 @@ version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
  "indexmap 2.14.2",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rever-inject"
+version = "0.0.0"
+dependencies = [
  "serde",
  "serde_json",
 ]
@@ -6991,6 +7017,22 @@ dependencies = [
  "tungstenite",
  "url",
  "winit",
+]
+
+[[package]]
+name = "rever-tool-profile"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rever-tools-api"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

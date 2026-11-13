@@ -1,0 +1,10 @@
+[package]
+name = "rever-tools-api"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "What every MCP tool builds on: result helpers now, the tool trait next"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

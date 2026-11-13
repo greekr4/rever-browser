@@ -1,0 +1,10 @@
+[package]
+name = "rever-cli-spec"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "The revb command-line spec, ported from src/shared/cli-spec.ts"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

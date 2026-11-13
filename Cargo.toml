@@ -6,9 +6,14 @@ members = [
     "port-harness",
     "rever",
     "rever-agent",
+    "rever-analysis",
+    "rever-cli-spec",
     "rever-core",
     "rever-formats",
+    "rever-inject",
     "rever-scope",
+    "rever-tool-profile",
+    "rever-tools-api",
     "servo-shell",
 ]
 

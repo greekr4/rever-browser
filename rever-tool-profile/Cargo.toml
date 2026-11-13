@@ -1,0 +1,10 @@
+[package]
+name = "rever-tool-profile"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Tool profiles, risky-tool rules and per-provider tool limits, ported from src/main/mcp and src/shared"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
