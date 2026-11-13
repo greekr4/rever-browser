@@ -9,6 +9,16 @@ description = "rever: an AI-agent browser for reverse-engineering web APIs (Rust
 rever-core = { path = "../rever-core" }
 rever-agent = { path = "../rever-agent" }
 rever-tools-api = { path = "../rever-tools-api" }
+# The MCP server and the tool crates it serves; the risky-tool rules decide what the agent may call unasked.
+rever-mcp = { path = "../rever-mcp" }
+rever-tool-profile = { path = "../rever-tool-profile" }
+rever-tools-traffic = { path = "../rever-tools-traffic" }
+rever-tools-inspect = { path = "../rever-tools-inspect" }
+rever-tools-scripts = { path = "../rever-tools-scripts" }
+rever-tools-page = { path = "../rever-tools-page" }
+rever-tools-debug = { path = "../rever-tools-debug" }
+rever-tools-redteam = { path = "../rever-tools-redteam" }
+rever-tools-automation = { path = "../rever-tools-automation" }
 gpui = { workspace = true }
 rever-ui-kit = { path = "../rever-ui-kit" }
 rever-ui-state = { path = "../rever-ui-state" }

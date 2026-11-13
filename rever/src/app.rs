@@ -20,7 +20,8 @@ use net::tap::NetworkTapEvent;
 use rever_core::address::normalize_address;
 use rever_core::paths::user_data_dir;
 use rever_core::traffic::{self, ConsoleEntry, Headers, ListFilter, RequestPatch, TrafficStore};
-use rever_tools_api::tool::PageInfo;
+use rever_mcp::McpServer;
+use rever_tools_api::tool::{PageInfo, ToolContext, ToolRegistry};
 use rever_ui_history::history::NewHistoryEntry;
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::theme::ThemeMode;
@@ -75,6 +76,29 @@ fn now_ms() -> u64 {
 pub(crate) fn data_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();
     user_data_dir(|name| std::env::var(name).ok(), std::env::consts::OS, &home)
+}
+
+/// Every ported tool over this window's capture store and page, served over MCP.
+/// A failure costs the agent its tools, not the browser: it is logged and the app goes on.
+fn start_mcp(
+    traffic: Arc<Mutex<TrafficStore>>,
+    browser: Arc<bridge::AppBrowser>,
+) -> Option<McpServer> {
+    let mut registry = ToolRegistry::default();
+    rever_tools_traffic::register(&mut registry);
+    rever_tools_inspect::register(&mut registry);
+    rever_tools_scripts::register(&mut registry);
+    rever_tools_page::register(&mut registry);
+    rever_tools_debug::register(&mut registry);
+    rever_tools_redteam::register(&mut registry);
+    rever_tools_automation::register(&mut registry);
+    let data_dir = data_dir();
+    // The server publishes its endpoint file here.
+    let _ = std::fs::create_dir_all(&data_dir);
+    let context = Arc::new(ToolContext::new(traffic, browser, data_dir));
+    rever_mcp::start(Arc::new(registry), context)
+        .inspect_err(|error| eprintln!("[mcp] {error}"))
+        .ok()
 }
 
 /// `/^https?:\/\//i`: the pages that can be bookmarked.
@@ -260,9 +284,9 @@ pub(crate) struct Browser {
     wake: UnboundedSender<()>,
     /// Requests from MCP tools, answered in `pump`.
     tool_commands: UnboundedReceiver<bridge::Command>,
-    /// What tools hold to reach this window's page.
-    #[expect(dead_code, reason = "handed to the MCP server once it is wired in")]
-    tool_browser: Arc<bridge::AppBrowser>,
+    /// Serves the tools to the agent CLI and to outside clients (mcp-endpoint.json);
+    /// `None` when it could not start. Dropping it stops the server.
+    mcp: Option<McpServer>,
     pub page_focus: FocusHandle,
     pub lang: Lang,
     pub theme_mode: ThemeMode,
@@ -286,6 +310,7 @@ impl Browser {
         let (tool_tx, tool_commands) = futures::channel::mpsc::unbounded();
         let tool_browser = Arc::new(bridge::AppBrowser::new(tool_tx, wake.clone()));
         let traffic = Arc::new(Mutex::new(TrafficStore::default()));
+        let mcp = start_mcp(traffic.clone(), tool_browser);
         let traffic_changed = Arc::new(AtomicBool::new(false));
         {
             let (store, wake, changed) = (traffic.clone(), wake.clone(), traffic_changed.clone());
@@ -405,7 +430,7 @@ impl Browser {
             init_scripts: 0,
             wake: agent_wake,
             tool_commands,
-            tool_browser,
+            mcp,
             page_focus: cx.focus_handle(),
             lang,
             theme_mode,
@@ -737,7 +762,11 @@ impl Browser {
             // The same sandbox folder the Electron app gives its agents.
             let scratch = data_dir().join("agent-scratch");
             let wake = self.wake.clone();
-            self.agent = Some(AgentSession::spawn(&scratch, move || {
+            let mcp = self
+                .mcp
+                .as_ref()
+                .map(|mcp| (mcp.url.as_str(), mcp.auth_header.as_str()));
+            self.agent = Some(AgentSession::spawn(&scratch, mcp, move || {
                 let _ = wake.unbounded_send(());
             })?);
         }
@@ -880,6 +909,7 @@ impl Browser {
                 f.pixels().step_by(16).map(|p| p.0).collect::<std::collections::HashSet<_>>().len()
             }),
             "requests": requests,
+            "mcpUrl": self.mcp.as_ref().map(|mcp| mcp.url.as_str()),
             "chat": self.chat.iter().map(|line| serde_json::json!({ "fromUser": line.from_user, "text": line.text })).collect::<Vec<_>>(),
         });
         let _ = std::fs::write(format!("{dir}/state.json"), state.to_string());
