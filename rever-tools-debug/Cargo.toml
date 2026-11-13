@@ -8,5 +8,19 @@ description = "MCP tools for the JavaScript debugger and request interception"
 [dependencies]
 rever-tools-api = { path = "../rever-tools-api" }
 rever-core = { path = "../rever-core" }
+# Intercept rule URL patterns (intercept_match).
+rever-formats = { path = "../rever-formats" }
+# scopeBlockForUrl on intercept_continue's URL override and replay_request.
+rever-scope = { path = "../rever-scope" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# randomUUID
+uuid = { version = "1", features = ["v4"] }
+# CDP takes overridden request and response bodies as base64.
+base64 = "0.22"
+# replay_request's outbound request, standing in for Node's fetch(), which decodes
+# gzip, deflate, br and zstd responses whatever accept-encoding the request carried.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "deflate", "brotli", "zstd"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
