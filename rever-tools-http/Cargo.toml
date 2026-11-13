@@ -1,0 +1,12 @@
+[package]
+name = "rever-tools-http"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Outbound HTTP for tools: the repeater, raw HTTP, burst, intruder, gRPC and payload probes"
+
+[dependencies]
+rever-tools-api = { path = "../rever-tools-api" }
+rever-core = { path = "../rever-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }

@@ -1,0 +1,12 @@
+[package]
+name = "rever-tools-inspect"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "MCP tools that decode and inspect: protobuf, tokens, GraphQL, auth, anti-bot, security headers, crypto"
+
+[dependencies]
+rever-tools-api = { path = "../rever-tools-api" }
+rever-core = { path = "../rever-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
