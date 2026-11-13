@@ -8,5 +8,17 @@ description = "MCP tools over captured traffic: requests, bodies, HAR, diff, Web
 [dependencies]
 rever-tools-api = { path = "../rever-tools-api" }
 rever-core = { path = "../rever-core" }
+# endpoints, har_build and request_diff: the helpers the TypeScript tools import.
+rever-analysis = { path = "../rever-analysis" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# WHATWG URL parsing, standing in for JavaScript's `new URL()` in har_export.
+url = "2"
+# fetch_body returns binary bodies as base64.
+base64 = "0.22"
+# fetch_body's re-fetch, standing in for Node's fetch(), which asks for and
+# decodes gzip, deflate and brotli.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "deflate", "brotli"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
