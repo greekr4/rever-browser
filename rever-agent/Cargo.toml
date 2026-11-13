@@ -7,4 +7,10 @@ description = "Agent protocol translation and model catalogs, ported from src/ma
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Object keys stay in document order, as with JSON.parse / JSON.stringify:
+# grok_login picks the first matching entry and rewrites the auth file in place.
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[target.'cfg(unix)'.dependencies]
+# access(2), the check behind Node's fs.access(path, X_OK); std has no equivalent.
+libc = "0.2"
