@@ -15,6 +15,7 @@ rever-tool-profile = { path = "../rever-tool-profile" }
 rever-tools-traffic = { path = "../rever-tools-traffic" }
 rever-tools-inspect = { path = "../rever-tools-inspect" }
 rever-tools-scripts = { path = "../rever-tools-scripts" }
+rever-tools-browser = { path = "../rever-tools-browser" }
 rever-tools-page = { path = "../rever-tools-page" }
 rever-tools-debug = { path = "../rever-tools-debug" }
 rever-tools-redteam = { path = "../rever-tools-redteam" }

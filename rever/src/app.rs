@@ -88,6 +88,7 @@ fn start_mcp(
     rever_tools_traffic::register(&mut registry);
     rever_tools_inspect::register(&mut registry);
     rever_tools_scripts::register(&mut registry);
+    rever_tools_browser::register(&mut registry);
     rever_tools_page::register(&mut registry);
     rever_tools_debug::register(&mut registry);
     rever_tools_redteam::register(&mut registry);

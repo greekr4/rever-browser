@@ -7074,6 +7074,7 @@ dependencies = [
  "rever-tool-profile",
  "rever-tools-api",
  "rever-tools-automation",
+ "rever-tools-browser",
  "rever-tools-debug",
  "rever-tools-inspect",
  "rever-tools-page",
@@ -7251,6 +7252,21 @@ dependencies = [
  "rever-core",
  "rever-scope",
  "rever-tool-profile",
+ "rever-tools-api",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "rever-tools-browser"
+version = "0.0.0"
+dependencies = [
+ "rever-analysis",
+ "rever-core",
+ "rever-scope",
+ "rever-snapshot",
  "rever-tools-api",
  "serde",
  "serde_json",

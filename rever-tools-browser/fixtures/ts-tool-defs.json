@@ -1,0 +1,658 @@
+[
+  {
+    "name": "browser_navigate",
+    "description": "Navigate the active browser tab to the given URL. Waits for the load and returns a fresh accessibility snapshot — no separate browser_snapshot needed. Pass `tab` to drive a specific background tab (index from browser_tabs) without selecting it.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Absolute URL (must include scheme, e.g. https://...)"
+        },
+        "tab": {
+          "description": "Tab index from browser_tabs (default: the selected tab)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "url"
+      ]
+    }
+  },
+  {
+    "name": "browser_snapshot",
+    "description": "Capture the current page as a compact accessibility-tree snapshot. Returns url, title, and a YAML-like outline where actionable nodes carry [ref=rN] handles. Use these refs in browser_click and browser_type. This is the primary way to \"see\" the page — far cheaper than dumping HTML or screenshots. By default only what is painted inside the viewport is returned; hidden, overlay-covered and off-screen nodes are omitted and summarised as scroll hints. Scroll (browser_scroll) to reach them, or pass full=true when you genuinely need the whole document. Pass `tab` to snapshot a specific tab (index from browser_tabs) — refs are per-tab, so acting on them (browser_click/browser_type) needs the same `tab`.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "full": {
+          "description": "Return the entire document instead of the viewport-filtered tree (much larger; default false)",
+          "type": "boolean"
+        },
+        "tab": {
+          "description": "Tab index from browser_tabs (default: the selected tab)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      }
+    }
+  },
+  {
+    "name": "browser_click",
+    "description": "Click the element identified by ref (from the latest browser_snapshot). Scrolls into view, performs a human-like mouse move, then clicks. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards. Refs from the previous snapshot are now stale. Pass `tab` (browser_tabs index) when the ref came from a background tab's snapshot — refs are per-tab.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Element ref from browser_snapshot, e.g. \"r12\""
+        },
+        "tab": {
+          "description": "Tab the ref belongs to (browser_tabs index; default: the selected tab)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "ref"
+      ]
+    }
+  },
+  {
+    "name": "browser_hover",
+    "description": "Hover over the element identified by ref (from the latest browser_snapshot). Scrolls into view and performs a human-like mouse move WITHOUT clicking — use it to open hover-triggered dropdown menus, tooltips and mega-navs. Returns a fresh snapshot so the hover-revealed content is visible. Refs from the previous snapshot are now stale. Pass `tab` (browser_tabs index) when the ref came from a background tab's snapshot — refs are per-tab.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Element ref from browser_snapshot, e.g. \"r12\""
+        },
+        "tab": {
+          "description": "Tab the ref belongs to (browser_tabs index; default: the selected tab)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "ref"
+      ]
+    }
+  },
+  {
+    "name": "browser_type",
+    "description": "Move the cursor to the input/textarea identified by ref, click to focus, then type the text with realistic per-keystroke timing. Press Enter with submit=true (default false). Returns a fresh snapshot — DO NOT call browser_snapshot afterwards. Refs from the previous snapshot are now stale. Pass `tab` (browser_tabs index) when the ref came from a background tab's snapshot — refs are per-tab.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Element ref from browser_snapshot, e.g. \"r7\""
+        },
+        "text": {
+          "type": "string",
+          "description": "Text to put into the field"
+        },
+        "submit": {
+          "description": "If true, dispatches an Enter keydown after typing (default false)",
+          "type": "boolean"
+        },
+        "tab": {
+          "description": "Tab the ref belongs to (browser_tabs index; default: the selected tab)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "ref",
+        "text"
+      ]
+    }
+  },
+  {
+    "name": "browser_scroll_element",
+    "description": "Scroll a container identified by ref, rather than the window. browser_scroll moves the page, which does nothing for a list, drawer or chat log that scrolls inside its own box — those show as [scrollable +Npx] in the snapshot. Stepped, so lazy-loading handlers fire. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Ref of the scroll container, e.g. \"r15\""
+        },
+        "deltaY": {
+          "type": "number",
+          "description": "Pixels to scroll; negative scrolls up"
+        }
+      },
+      "required": [
+        "ref",
+        "deltaY"
+      ]
+    }
+  },
+  {
+    "name": "browser_draw",
+    "description": "Press, move and release inside ONE element — a canvas stroke, a signature pad, a colour picker, a range track. browser_drag goes between two elements and cannot express a gesture that starts and ends on the same surface. Points are fractions of the element box (0..1), so 0.1,0.5 to 0.9,0.5 draws a horizontal line across the middle. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Ref of the surface to draw on, e.g. \"r24\""
+        },
+        "from": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ],
+          "description": "Start point as fractions of the element box, e.g. {\"x\":0.1,\"y\":0.5}"
+        },
+        "to": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ],
+          "description": "End point as fractions of the element box"
+        }
+      },
+      "required": [
+        "ref",
+        "from",
+        "to"
+      ]
+    }
+  },
+  {
+    "name": "browser_paste",
+    "description": "Put text on the clipboard and paste it into the element identified by ref. A page that reads clipboardData on a paste event sees nothing when the text is typed instead — the two are different events. Overwrites the real clipboard. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Ref of the field to paste into, e.g. \"r22\""
+        },
+        "text": {
+          "type": "string",
+          "description": "Text to place on the clipboard and paste"
+        }
+      },
+      "required": [
+        "ref",
+        "text"
+      ]
+    }
+  },
+  {
+    "name": "browser_tabs",
+    "description": "List the open browser tabs, switch to one, or open a new background tab. A window.open popup becomes a tab, and its content is unreachable until the tools are pointed at it — every other browser tool acts on the selected tab only. Select by index from the list. open loads a URL in a new tab WITHOUT switching to it, so several same-site pages can load in parallel; read each with list_endpoints({tab}) / list_requests({tab}).",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "select",
+            "open"
+          ],
+          "description": "What to do"
+        },
+        "index": {
+          "description": "Tab index to select, from the list output",
+          "type": "number"
+        },
+        "url": {
+          "description": "URL to load for action \"open\"",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ]
+    }
+  },
+  {
+    "name": "browser_handle_dialog",
+    "description": "Choose the answer for a page alert()/confirm()/prompt(). Dialogs that open while your tools run are answered automatically (OK / the prompt default) and listed at the end of that tool's result. Call this BEFORE the click to reach a \"Cancel\" branch or type a prompt value. One-shot: consumed by the first dialog.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "accept": {
+          "type": "boolean",
+          "description": "true for OK, false for Cancel (a cancelled prompt returns null)"
+        },
+        "promptText": {
+          "description": "Value a prompt() should return. Ignored when accept is false.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "accept"
+      ]
+    }
+  },
+  {
+    "name": "browser_file_upload",
+    "description": "Attach files to a file input identified by ref. A file input cannot be typed into — the browser owns its value — and clicking it opens a native picker no tool can answer, so this is the only way to fill one. The ref may point at the input or at its rendered button. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Ref of the file input, or of its button, e.g. \"r7\""
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Absolute paths of the files to attach. Pass several only for a multiple input."
+        }
+      },
+      "required": [
+        "ref",
+        "paths"
+      ]
+    }
+  },
+  {
+    "name": "browser_history",
+    "description": "Move back or forward in the tab's own history. browser_navigate to the previous URL is NOT the same thing: it pushes a new entry, so the page sees a fresh load rather than a restore and anything keyed off popstate or history length behaves differently. Errors when there is nothing to go to. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "direction": {
+          "type": "string",
+          "enum": [
+            "back",
+            "forward"
+          ],
+          "description": "Which way to move"
+        }
+      },
+      "required": [
+        "direction"
+      ]
+    }
+  },
+  {
+    "name": "browser_click_modified",
+    "description": "Click a ref with a non-default button or click count: right-click to open a context menu, or double-click. browser_click always sends a single left click, and two browser_click calls are seconds apart so the page never pairs them into a double-click. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Element ref from browser_snapshot, e.g. \"r12\""
+        },
+        "button": {
+          "description": "Mouse button (default left)",
+          "type": "string",
+          "enum": [
+            "left",
+            "right",
+            "middle"
+          ]
+        },
+        "clickCount": {
+          "description": "2 for a double-click (default 1)",
+          "type": "number"
+        }
+      },
+      "required": [
+        "ref"
+      ]
+    }
+  },
+  {
+    "name": "browser_drag",
+    "description": "Drag one ref onto another. Tries the browser's own drag machinery first (HTML5 draggable), then falls back to a held-button pointer gesture, which is what dnd-kit / SortableJS listen for. A click on the source followed by a click on the target is two unrelated clicks and neither sees a drag. The result says which mechanism ran — CHECK THE PAGE ACTUALLY CHANGED, a drag that reached nothing looks identical to one that worked. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Ref of the element to drag, e.g. \"r6\""
+        },
+        "to": {
+          "type": "string",
+          "description": "Ref of the drop target, e.g. \"r9\""
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ]
+    }
+  },
+  {
+    "name": "browser_press_key",
+    "description": "Send a single key to the focused element — the only way to reach a keyboard-driven widget. Escape closes a dialog, ArrowDown moves a listbox or a slider, Tab moves focus, and Control+A then Delete clears a field (browser_type appends rather than replacing). Pass ref to focus that element first WITHOUT clicking it, which matters when a click would dismiss or mis-select. Accepts one character, or: Enter, Escape, Tab, Backspace, Delete, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, End, PageUp, PageDown, Space. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Key name (e.g. \"Escape\", \"ArrowDown\") or a single character"
+        },
+        "ref": {
+          "description": "Focus this element first, without clicking it. Omit to send to whatever has focus.",
+          "type": "string"
+        },
+        "modifiers": {
+          "description": "Held while the key is pressed, e.g. [\"Control\"] for Control+A",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Alt",
+              "Control",
+              "Meta",
+              "Shift"
+            ]
+          }
+        },
+        "repeat": {
+          "description": "Press this many times (default 1)",
+          "type": "number"
+        }
+      },
+      "required": [
+        "key"
+      ]
+    }
+  },
+  {
+    "name": "browser_select_option",
+    "description": "Choose option(s) in a <select> identified by ref (from the latest browser_snapshot). A native dropdown is drawn by the OS, so browser_click and browser_type cannot reach its options — this is the only way to answer one. Match by option value or by visible label; if nothing matches, the error lists the available options. Returns a fresh snapshot — DO NOT call browser_snapshot afterwards.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Element ref of the <select> from browser_snapshot, e.g. \"r20\""
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Option values or visible labels to select. Pass one for a normal select, several for a multiple one."
+        }
+      },
+      "required": [
+        "ref",
+        "values"
+      ]
+    }
+  },
+  {
+    "name": "browser_click_selector",
+    "description": "Click the first element matching a CSS selector, using the SAME human-shaped cursor move + click as browser_click (visualised on the page, fires trusted events). Use this to interact when you located an element via dom_extract / browser_evaluate and have no snapshot ref — NEVER poke the DOM with raw JS (.click()/dispatchEvent) to interact, as that skips the cursor animation and trips bot detection. Returns a fresh snapshot.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string",
+          "description": "CSS selector for the target, e.g. \"#q\" or \"button.search-btn\""
+        }
+      },
+      "required": [
+        "selector"
+      ]
+    }
+  },
+  {
+    "name": "browser_hover_selector",
+    "description": "Hover over the first element matching a CSS selector, using the SAME human-shaped cursor move as browser_hover (no click). Use when you have a selector but no snapshot ref — NEVER fake hover with raw JS dispatchEvent, as that skips the cursor animation and fires untrusted events. Returns a fresh snapshot.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string",
+          "description": "CSS selector for the target, e.g. \"nav .menu-item\""
+        }
+      },
+      "required": [
+        "selector"
+      ]
+    }
+  },
+  {
+    "name": "browser_type_selector",
+    "description": "Type into the first element matching a CSS selector, using the SAME human-shaped focus + per-keystroke timing as browser_type (visualised, fires real trusted key events that survive bot detection). Use when you have a selector but no snapshot ref. Set submit=true to press Enter after typing. Returns a fresh snapshot — do NOT set the value with raw JS.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string",
+          "description": "CSS selector for the input/textarea, e.g. \"#q\""
+        },
+        "text": {
+          "type": "string",
+          "description": "Text to type into the field"
+        },
+        "submit": {
+          "description": "If true, presses Enter after typing (default false)",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "selector",
+        "text"
+      ]
+    }
+  },
+  {
+    "name": "browser_scroll",
+    "description": "Scroll the page. Provide either absolute y or relative deltaY (in pixels). Useful for infinite-scroll sites.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "y": {
+          "description": "Absolute scroll position in px from top",
+          "type": "number"
+        },
+        "deltaY": {
+          "description": "Relative scroll delta in px (positive = down)",
+          "type": "number"
+        }
+      }
+    }
+  },
+  {
+    "name": "set_viewport",
+    "description": "Switch the active browser tab between desktop and mobile mode (changes user-agent + device metrics) and reloads the page. Use mobile mode to access mobile-only sites or APIs.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "desktop",
+            "mobile"
+          ],
+          "description": "Target viewport mode"
+        }
+      },
+      "required": [
+        "mode"
+      ]
+    }
+  },
+  {
+    "name": "browser_evaluate",
+    "description": "Run a JavaScript expression in the active page and return the result. The expression must return a JSON-serialisable value. Pass `tab` (browser_tabs index) to run it in a background tab without selecting it.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "expression": {
+          "type": "string",
+          "description": "JavaScript expression to evaluate (must return a value)"
+        },
+        "tab": {
+          "description": "Tab index from browser_tabs (default: the selected tab)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "expression"
+      ]
+    }
+  },
+  {
+    "name": "dom_extract",
+    "description": "Extract structured data from the rendered DOM by CSS selector. For each matching element, pulls the requested fields (text/href/src/value/html) plus any named attributes. This is the primary way to scrape results from server-rendered (SSR) pages — no JSON API required. Prefer this over ad-hoc browser_evaluate for pulling lists (search results, tables, cards).",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string",
+          "description": "CSS selector, e.g. \"a.result__title\" or \"ul.list > li\""
+        },
+        "fields": {
+          "description": "Built-in fields to pull per node. Default ['text'].",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "text",
+              "href",
+              "src",
+              "value",
+              "html"
+            ]
+          }
+        },
+        "attrs": {
+          "description": "Extra attribute names to read, e.g. [\"data-id\",\"aria-label\"]",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limit": {
+          "description": "Max nodes to return (default 50). Guards against huge dumps.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        }
+      },
+      "required": [
+        "selector"
+      ]
+    }
+  },
+  {
+    "name": "browser_screenshot",
+    "description": "Capture a PNG screenshot of the current page (visible area). Returned as image content. Pass `tab` (browser_tabs index) to shoot a background tab without selecting it.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "tab": {
+          "description": "Tab index from browser_tabs (default: the selected tab)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      }
+    }
+  },
+  {
+    "name": "ui_crawl",
+    "description": "Red Team exhaustive-click crawler: deterministically clicks every actionable element on the page once, attributes the requests each fired (button→API map), and returns the discovered endpoints for the probe phase. On non-loopback hosts, mutating requests are captured and answered with a synthetic 204 by the capture-not-send fence — the server state is never changed; loopback / lab_target hosts pass through so local benchmarks can be confirmed. Pass `tab` (browser_tabs index) to crawl a background tab.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "tab": {
+          "description": "Tab index from browser_tabs (default: the selected tab)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "maxElements": {
+          "description": "Max elements to click (default 40, hard cap 150)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      }
+    }
+  },
+  {
+    "name": "browser_wait_for",
+    "description": "Wait until the page settles before you read it — poll until a CSS selector is present (and visible) and/or a piece of text appears in the DOM. Use this on SPA / JS-rendered pages where the first snapshot shows a spinner or empty list because content arrives via a later XHR, instead of snapshotting repeatedly. Give at least one of selector / text; when both are given, both must hold.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "selector": {
+          "description": "CSS selector to wait for (must exist and be visible)",
+          "type": "string"
+        },
+        "text": {
+          "description": "Substring to wait for anywhere in the page text",
+          "type": "string"
+        },
+        "timeoutMs": {
+          "description": "Give up after this many ms (default 8000)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 30000
+        }
+      }
+    }
+  }
+]
