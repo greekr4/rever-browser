@@ -1,0 +1,255 @@
+[
+  {
+    "name": "finding_add",
+    "description": "Save a finding/evidence note as a durable session artifact (persisted to disk). Use during reversing to bookmark endpoints, auth flows, secrets, or vulnerabilities. Markdown body supported. Back the claim with `evidenceIds` (requestIds and/or other finding ids) and a `reproCommand`; a finding stays `candidate` until it carries ≥2 independent evidence items (best: 1 static + 1 dynamic), at which point you may mark it `validated`.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Short title"
+        },
+        "body": {
+          "type": "string",
+          "description": "Markdown body — observations, payload, repro, etc."
+        },
+        "category": {
+          "description": "What kind of finding this is (groups the export report)",
+          "type": "string",
+          "enum": [
+            "endpoint",
+            "auth",
+            "vuln",
+            "secret",
+            "other"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "requestId": {
+          "description": "Optional traffic-store requestId reference",
+          "type": "string"
+        },
+        "evidenceIds": {
+          "description": "requestIds and/or other finding ids that back this claim (the evidence chain)",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reproCommand": {
+          "description": "Exact command/script that reproduces the claim (e.g. an export_python_client path)",
+          "type": "string"
+        },
+        "status": {
+          "description": "Defaults to candidate. `validated` requires ≥2 independent evidence items.",
+          "type": "string",
+          "enum": [
+            "candidate",
+            "validated",
+            "false_positive",
+            "accepted_risk"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "title",
+        "body"
+      ]
+    }
+  },
+  {
+    "name": "finding_list",
+    "description": "List saved findings (newest first).",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": [
+            "endpoint",
+            "auth",
+            "vuln",
+            "secret",
+            "other"
+          ]
+        },
+        "tag": {
+          "description": "Filter by tag",
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "finding_export",
+    "description": "Render findings as a structured Markdown report — the session deliverable. Split into Confirmed (validated facts), Needs verification (unproven suspicions to check before acting), and Attack surface & recon (endpoint inventory, compact). Defaults to the current page's site so one scan's report is not polluted by findings from other targets; pass site=<url> when no tab is active (e.g. from a finished scan), or all=true for every finding in the store.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "site": {
+          "description": "URL of the scanned site — use when the page/tab is gone so the report stays scoped",
+          "type": "string"
+        },
+        "all": {
+          "description": "Include findings from every site, not just the current page's",
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  {
+    "name": "finding_remove",
+    "description": "Delete a finding by ID.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "redteam_start",
+    "description": "Launch a site-wide Red Team scan of one target URL: opens up to N same-site pages as background tabs, runs one inspecting agent per tab in parallel (read + dynamic exploration), then (at probe/redteam intensity) single-shot probes against the deduped endpoint set, and finishes with a merged Markdown report. By default the user confirms the run in the Red Team popup — active intensities are never started silently. Pass start:true to run the whole pipeline without a click; this is honoured ONLY for loopback targets (localhost/127.x/::1 — your own machine), matching the network fence, so the agent can self-drive local benchmarks. Non-loopback targets ignore start:true and still wait for the human click. Use this instead of spawning sub-agents per tab. Poll progress with finding_list / list_requests; the final report is exported by finding_export.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Absolute start URL of the site to scan (scheme required)"
+        },
+        "pages": {
+          "description": "Page budget, 1-200 (default 20)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "intensity": {
+          "description": "readonly = observe only; probe = replay captured requests unchanged + security headers; redteam = additionally one mutated/payload request per endpoint (default readonly)",
+          "type": "string",
+          "enum": [
+            "readonly",
+            "probe",
+            "redteam"
+          ]
+        },
+        "start": {
+          "description": "Run the full pipeline immediately without the user click. Honoured only for loopback targets (localhost/127.x/::1); ignored otherwise.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "url"
+      ]
+    }
+  },
+  {
+    "name": "scope_status",
+    "description": "Show the active target scope. When enabled, navigate/replay/repeater/intruder/burst refuse hosts outside these registrable domains. Empty = no enforcement (all hosts allowed).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "scope_set",
+    "description": "Set the target scope to the given hosts/URLs (stored as registrable domains, so subdomains like api./cdn. are included). Pass no hosts to scope to the current tab. Replaces any existing scope.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "hosts": {
+          "description": "Hosts or URLs. Omit to use the current tab host.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "scope_add",
+    "description": "Add hosts/URLs to the current scope (registrable domains).",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "hosts": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Hosts or URLs to allow"
+        }
+      },
+      "required": [
+        "hosts"
+      ]
+    }
+  },
+  {
+    "name": "scope_clear",
+    "description": "Clear the scope (disables enforcement — all hosts allowed again).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "lab_target",
+    "description": "Mark EXTRA (non-loopback) hosts as disposable LAB targets so the capture-not-send fence steps aside for them: POST/PUT/PATCH/DELETE pass through to the real server instead of being answered with a synthetic 204, letting the red team CONFIRM mutation-only vulns (SSTI, SQLi/cmd-injection via POST) instead of stopping at \"candidate\". Loopback (localhost / 127.x / ::1) is ALREADY a lab target by default, so you only need this for a non-loopback host you own and are authorized to mutate (e.g. an authorized staging domain). Pass no hosts to use the current tab; pass clear:true to drop the extra hosts.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "hosts": {
+          "description": "Hosts or URLs. Omit to use the current tab host.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "clear": {
+          "description": "Clear all lab targets (re-fence every host).",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+]

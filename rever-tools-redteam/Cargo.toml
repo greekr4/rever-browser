@@ -8,5 +8,17 @@ description = "MCP tools for Red Team scope, findings and scans"
 [dependencies]
 rever-tools-api = { path = "../rever-tools-api" }
 rever-core = { path = "../rever-core" }
+# Scope, fence and findings logic: the safety boundary of a Red Team scan.
+rever-scope = { path = "../rever-scope" }
 serde = { version = "1", features = ["derive"] }
+# preserve_order: tool output and findings.json list keys in the order the TypeScript wrote them.
 serde_json = { version = "1", features = ["preserve_order"] }
+# maskPii
+regex = "1"
+# randomUUID
+uuid = { version = "1", features = ["v4"] }
+# The renderer-bridge answer timeout of redteam_start.
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "test-util"] }
