@@ -423,7 +423,7 @@ fn parse_iso_ms(text: &str) -> Option<i64> {
 }
 
 /// `new Date(ms).toISOString()`; None outside the range a Date can hold.
-fn to_iso_string(ms: i64) -> Option<String> {
+pub(crate) fn to_iso_string(ms: i64) -> Option<String> {
     if !(-MAX_DATE_MS..=MAX_DATE_MS).contains(&ms) {
         return None;
     }

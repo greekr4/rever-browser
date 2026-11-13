@@ -10,6 +10,7 @@ pub mod claude_cli;
 pub mod claude_cli_protocol;
 pub mod grok_login;
 pub mod grok_models;
+pub mod model_catalog;
 pub mod model_catalog_parse;
 pub mod skill_install;
 pub mod turn_pulse;
