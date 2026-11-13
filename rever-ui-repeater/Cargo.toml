@@ -9,8 +9,23 @@ description = "The HTTP and WebSocket repeater panels"
 gpui = { workspace = true }
 rever-ui-kit = { path = "../rever-ui-kit" }
 rever-core = { path = "../rever-core" }
+# ws_sequence (the sequence runner) and format_json (the Format JSON button).
+rever-ui-state = { path = "../rever-ui-state" }
+# The response body's JsonView, and `String(number)` for the delay fields.
+rever-ui-traffic = { path = "../rever-ui-traffic" }
+# WsRepeaterPanel.tsx imports connLabel and useLiveSockets from WebSocketPanel.tsx:
+# the same `WsHost` (ws:sockets, ws:send) serves both panels.
+rever-ui-websocket = { path = "../rever-ui-websocket" }
+# `t(key, vars)`: the `{name}` placeholder fill with JavaScript's replaceAll rules.
+rever-ui-menus = { path = "../rever-ui-menus" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# Cursor movement by grapheme in the multi-line editor, as the kit's text field does.
+unicode-segmentation = "1"
+
+[dev-dependencies]
+# TestAppContext: clicks, keys and typing are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
 
 [[example]]
 name = "preview_repeater"
