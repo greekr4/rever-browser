@@ -9,8 +9,12 @@ description = "The API map panel"
 gpui = { workspace = true }
 rever-ui-kit = { path = "../rever-ui-kit" }
 rever-core = { path = "../rever-core" }
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+# Groups captured XHR/Fetch requests into endpoints by method, origin and path template.
+rever-analysis = { path = "../rever-analysis" }
+
+[dev-dependencies]
+# TestAppContext: clicks and hover are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
 
 [[example]]
 name = "preview_apimap"
