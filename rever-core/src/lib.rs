@@ -6,4 +6,6 @@ pub mod har_import;
 pub mod input;
 pub mod paths;
 pub mod secret_scan;
+pub mod session_log;
+pub mod time;
 pub mod traffic;
