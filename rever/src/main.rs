@@ -11,11 +11,6 @@
 
 mod agent;
 mod engine;
-mod i18n;
-mod icons;
-mod locales;
-mod text_input;
-mod theme;
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -36,19 +31,19 @@ use gpui::{
     SharedString, Stateful, Window, WindowBounds, WindowOptions, canvas, div, prelude::*, px, size,
     svg,
 };
-use i18n::Lang;
 use image::{Frame, RgbaImage};
 use net::tap::NetworkTapEvent;
 use rever_core::address::normalize_address;
 use rever_core::input::w3c_key_name;
 use rever_core::paths::user_data_dir;
 use rever_core::traffic::{self, Headers, ListFilter, RequestPatch, TrafficStore};
+use rever_ui_kit::i18n::Lang;
+use rever_ui_kit::text_input::{self, Submitted, TextInput};
+use rever_ui_kit::theme::{Theme, ThemeMode};
 use servo::{
     Code, InputEvent, Key, KeyState, KeyboardEvent, Location, Modifiers, MouseButtonAction,
     MouseButtonEvent, WebViewPoint, WheelDelta, WheelEvent, WheelMode,
 };
-use text_input::{Submitted, TextInput};
-use theme::{Theme, ThemeMode};
 use url::Url;
 
 const DEFAULT_URL: &str = "https://github.com/greekr4/rever-browser";
@@ -1255,7 +1250,7 @@ fn main() {
     };
 
     Application::new()
-        .with_assets(icons::Assets)
+        .with_assets(rever_ui_kit::icons::Assets)
         .run(move |cx: &mut App| {
             text_input::bind_keys(cx);
             let bounds = Bounds::centered(None, size(px(1440.0), px(900.0)), cx);

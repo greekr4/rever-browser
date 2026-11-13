@@ -14,8 +14,15 @@ members = [
     "rever-scope",
     "rever-tool-profile",
     "rever-tools-api",
+    "rever-ui-kit",
     "servo-shell",
 ]
+
+[workspace.dependencies]
+# runtime_shaders: compile Metal shaders at startup instead of at build time, so a build
+# does not need Xcode's separately downloaded Metal toolchain. Every crate that uses GPUI
+# takes it from here, so GPUI is never built without the feature.
+gpui = { version = "0.2.2", features = ["runtime_shaders"] }
 
 # Patched crates; scripts/apply-rust-patches.sh recreates vendor/ from patches/.
 [patch.crates-io]

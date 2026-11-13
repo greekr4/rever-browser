@@ -1,4 +1,4 @@
-// Regenerates rever/src/locales.rs from the Electron app's dictionaries, so both
+// Regenerates rever-ui-kit/src/locales.rs from the Electron app's dictionaries, so both
 // apps show the same strings. Run: bun scripts/gen-rust-locales.ts
 import { en } from '../src/renderer/src/locales/en'
 import { ko } from '../src/renderer/src/locales/ko'
@@ -15,5 +15,5 @@ pub static STRINGS: &[(&str, &str, &str)] = &[
 ${rows.join('\n')}
 ];
 `
-await Bun.write(new URL('../rever/src/locales.rs', import.meta.url), out)
+await Bun.write(new URL('../rever-ui-kit/src/locales.rs', import.meta.url), out)
 console.log(`${keys.length} keys`)

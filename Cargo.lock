@@ -6929,12 +6929,11 @@ dependencies = [
  "image",
  "rever-agent",
  "rever-core",
+ "rever-ui-kit",
  "rustls",
  "serde_json",
  "servo",
  "servo-net",
- "sys-locale",
- "unicode-segmentation",
  "url",
 ]
 
@@ -7033,6 +7032,15 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "rever-ui-kit"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+ "sys-locale",
+ "unicode-segmentation",
 ]
 
 [[package]]
