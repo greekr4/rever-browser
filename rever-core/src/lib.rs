@@ -7,5 +7,6 @@ pub mod input;
 pub mod paths;
 pub mod secret_scan;
 pub mod session_log;
+pub mod tab_partition;
 pub mod time;
 pub mod traffic;
