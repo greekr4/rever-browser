@@ -7351,6 +7351,7 @@ dependencies = [
 name = "rever-tools-browser"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "rever-analysis",
  "rever-core",
  "rever-scope",

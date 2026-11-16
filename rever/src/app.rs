@@ -21,7 +21,7 @@ use rever_core::address::normalize_address;
 use rever_core::paths::user_data_dir;
 use rever_core::traffic::{self, ConsoleEntry, Headers, ListFilter, RequestPatch, TrafficStore};
 use rever_mcp::McpServer;
-use rever_tools_api::tool::{PageInfo, ToolContext, ToolRegistry};
+use rever_tools_api::tool::{PageInfo, TabInfo, ToolContext, ToolRegistry};
 use rever_ui_history::history::NewHistoryEntry;
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::theme::ThemeMode;
@@ -537,7 +537,7 @@ impl Browser {
                 .update(cx, |panel, cx| panel.refresh(cx));
         }
         self.pump_agent();
-        self.run_tool_commands(window);
+        self.run_tool_commands(window, cx);
         cx.notify();
     }
 
@@ -799,7 +799,7 @@ impl Browser {
     }
 
     /// Answer what MCP tools asked of the page since the last pump.
-    fn run_tool_commands(&mut self, window: &mut Window) {
+    fn run_tool_commands(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         use bridge::Command;
         let scale = f64::from(window.scale_factor());
         while let Ok(command) = self.tool_commands.try_recv() {
@@ -866,6 +866,42 @@ impl Browser {
                         )
                     });
                     let _ = answer.send(size.ok_or_else(|| "the tab is closed".to_owned()));
+                }
+                Command::Tabs(answer) => {
+                    let tabs = self.tabs.iter().enumerate().map(|(index, tab)| TabInfo {
+                        url: tab.url.clone(),
+                        title: tab.title.to_string(),
+                        active: index == self.active,
+                    });
+                    let _ = answer.send(Ok(tabs.collect()));
+                }
+                Command::SelectTab(index, answer) => {
+                    let selected = if index < self.tabs.len() {
+                        self.select_tab(index, window, cx);
+                        Ok(())
+                    } else {
+                        Err("could not select that tab".to_owned())
+                    };
+                    let _ = answer.send(selected);
+                }
+                Command::OpenTab(url, answer) => {
+                    let size = self.engine.size(tab).unwrap_or(PhysicalSize::new(800, 600));
+                    let opened = Url::parse(&normalize_address(&url))
+                        .map_err(|error| format!("invalid URL: {error}"))
+                        .and_then(|url| {
+                            let address = url.to_string();
+                            let id = self.engine.open(url, size)?;
+                            // Not selected: the agent reads it by index while it loads.
+                            self.tabs.push(Tab {
+                                id,
+                                title: "".into(),
+                                url: address,
+                                frame: None,
+                            });
+                            Ok(self.tabs.len() - 1)
+                        });
+                    let _ = answer.send(opened);
+                    cx.notify();
                 }
                 Command::AddInitScript(source, answer) => {
                     self.engine.add_init_script(tab, source);

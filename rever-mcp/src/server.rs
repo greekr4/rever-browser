@@ -508,6 +508,18 @@ fn to_call_tool_result(res: ToolResult) -> CallToolResult {
         .content
         .iter()
         .filter_map(|block| serde_json::to_value(block).ok())
+        .map(|block| {
+            // A screenshot comes as a text block holding one image data URL.
+            match block["text"]
+                .as_str()
+                .and_then(rever_tools_api::utils::parse_image_data_url)
+            {
+                Some((mime_type, data)) => {
+                    serde_json::json!({ "type": "image", "data": data, "mimeType": mime_type })
+                }
+                None => block,
+            }
+        })
         .filter_map(|block| serde_json::from_value(block).ok())
         .collect();
     // A successful result has no `isError` key at all, not `isError: false`.

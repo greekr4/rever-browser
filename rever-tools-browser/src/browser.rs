@@ -9,11 +9,15 @@
 
 use std::sync::Mutex;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use rever_analysis::triggered_requests::{ActionWindows, MAX_TRIGGERED, format_triggered_requests};
 use rever_scope::scope::scope_block_for_url;
 use rever_snapshot::snapshot::{SnapshotOptions, SnapshotStats};
-use rever_tools_api::tool::{ToolContext, ToolDef, ToolRegistry, unsupported};
-use rever_tools_api::utils::{Content, ResultStore};
+use rever_tools_api::tool::{
+    BoxFuture, TabInfo, Tool, ToolContext, ToolDef, ToolRegistry, unsupported,
+};
+use rever_tools_api::utils::{Content, ResultStore, ToolResult, err, ok_image};
 use serde_json::{Value, json};
 
 use crate::cdp_eval::{eval_in_page, visualize};
@@ -446,8 +450,25 @@ tool!(
             &["action"]
         )
     ),
-    |_ctx, args| {
-        if args.str("action") == "open" {
+    |ctx, args| {
+        let rows = |tabs: &[TabInfo]| {
+            let rows: Vec<String> = tabs
+                .iter()
+                .enumerate()
+                .map(|(i, t)| {
+                    let mark = if t.active { " *" } else { "  " };
+                    let title = if t.title.is_empty() {
+                        "(untitled)"
+                    } else {
+                        &t.title
+                    };
+                    format!("{i}{mark} {title} — {}", t.url)
+                })
+                .collect();
+            rows.join("\n")
+        };
+        let action = args.str("action");
+        if action == "open" {
             let url = args.opt_str("url").unwrap_or_default();
             if url.is_empty() {
                 return Err("url required for action \"open\"".to_owned());
@@ -455,10 +476,29 @@ tool!(
             if let Some(blocked) = scope_block_for_url(Some(url)) {
                 return Err(blocked);
             }
-            return Err(unsupported("opening a background tab"));
+            let index = ctx.browser.open_tab(url).await?;
+            let after = ctx.browser.tabs().await?;
+            return Ok(format!(
+                "opened background tab {index}: {url}\n{}\n\n* = selected. Read this tab with list_endpoints({{tab: {index}}}).",
+                rows(&after)
+            ));
         }
-        // Listing, and selecting by an index of that list.
-        Err(unsupported("listing tabs"))
+        let tabs = ctx.browser.tabs().await?;
+        if action == "list" {
+            if tabs.is_empty() {
+                return Ok("no attached tabs".to_owned());
+            }
+            return Ok(format!("{}\n\n* = selected", rows(&tabs)));
+        }
+        let index = args.0.get("index").and_then(Value::as_f64);
+        let Some(index) =
+            index.filter(|i| i.fract() == 0.0 && *i >= 0.0 && (*i as usize) < tabs.len())
+        else {
+            return Err(format!("index must be 0..{}", tabs.len() as i64 - 1));
+        };
+        let index = index as usize;
+        ctx.browser.select_tab(index).await?;
+        Ok(snapshot_after(ctx, &format!("selected tab {index}: {}", tabs[index].url)).await)
     }
 );
 
@@ -906,20 +946,36 @@ tool!(
     }
 );
 
-tool!(
-    BrowserScreenshot,
-    ToolDef::new(
-        "browser_screenshot",
-        "Capture a PNG screenshot of the current page (visible area). Returned as image content. Pass `tab` (browser_tabs index) to shoot a background tab without selecting it.",
-        schema(json!({ "tab": tab_schema(TAB) }), &[]),
-    ),
-    |_ctx, args| {
-        no_tab(args)?;
-        // `Browser::screenshot` has the PNG, but a tool result can only carry
-        // text: the image content the TypeScript returned has nowhere to go.
-        Err(unsupported("returning an image from a tool"))
+pub struct BrowserScreenshot;
+
+impl Tool for BrowserScreenshot {
+    fn def(&self) -> ToolDef {
+        ToolDef::new(
+            "browser_screenshot",
+            "Capture a PNG screenshot of the current page (visible area). Returned as image content. Pass `tab` (browser_tabs index) to shoot a background tab without selecting it.",
+            schema(json!({ "tab": tab_schema(TAB) }), &[]),
+        )
     }
-);
+
+    fn call<'a>(&'a self, ctx: &'a ToolContext, args: Value) -> BoxFuture<'a, ToolResult> {
+        Box::pin(async move {
+            if let Err(text) = crate::validate(&self.def(), &args) {
+                return err(text);
+            }
+            if let Err(text) = no_tab(&crate::Args(args)) {
+                return err(text);
+            }
+            match ctx.browser.screenshot().await {
+                // Shutter AFTER the capture so the flash never lands in the PNG.
+                Ok(png) => {
+                    visualize(&ctx.browser, "shutter", &[]);
+                    ok_image("image/png", &BASE64.encode(png))
+                }
+                Err(text) => err(text),
+            }
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -1162,7 +1218,12 @@ mod tests {
         let blocked = "Out of scope: other.test is not within the allowed scope [allowed.test]. Add it with scope_add if this target is intended.";
         assert_eq!(navigated, Err(blocked.to_owned()));
         assert_eq!(opened, Err(blocked.to_owned()));
-        assert_eq!(allowed, Err(unsupported("opening a background tab")));
+        // In scope: the tab opens.
+        assert!(
+            allowed.is_ok_and(
+                |text| text.starts_with("opened background tab 0: https://allowed.test/")
+            )
+        );
         assert!(browser.calls().is_empty());
     }
 
@@ -1303,17 +1364,6 @@ mod tests {
                 json!({ "ref": "r1", "text": "x" }),
                 "writing the clipboard",
             ),
-            (&BrowserTabs, json!({ "action": "list" }), "listing tabs"),
-            (
-                &BrowserTabs,
-                json!({ "action": "select", "index": 0 }),
-                "listing tabs",
-            ),
-            (
-                &BrowserTabs,
-                json!({ "action": "open", "url": "https://b.test/" }),
-                "opening a background tab",
-            ),
             (
                 &BrowserHandleDialog,
                 json!({ "accept": false, "promptText": "x" }),
@@ -1328,21 +1378,6 @@ mod tests {
                 &SetViewport,
                 json!({ "mode": "mobile" }),
                 "switching between desktop and mobile mode",
-            ),
-            (
-                &BrowserScreenshot,
-                json!({}),
-                "returning an image from a tool",
-            ),
-            (
-                &BrowserClickModified,
-                json!({ "ref": "r1", "button": "right" }),
-                "a press with another mouse button or a click count",
-            ),
-            (
-                &BrowserClickModified,
-                json!({ "ref": "r1", "clickCount": 2 }),
-                "a press with another mouse button or a click count",
             ),
         ] {
             assert_eq!(
@@ -1475,16 +1510,95 @@ mod tests {
     async fn 조합키와_포커스_없는_페이지의_키는_거절한다() {
         let (browser, ctx) = context(FakeBrowser::answering([Ok(json!(true)), Ok(json!(false))]));
         let args = json!({ "key": "a", "modifiers": ["Control"] });
-        assert_eq!(
-            call(&BrowserPressKey, &ctx, args).await,
-            Err(unsupported("pressing a key with modifiers held"))
-        );
+        call(&BrowserPressKey, &ctx, args).await.unwrap();
+        let chord = Input::KeyChord {
+            key: "a".to_owned(),
+            modifiers: 2,
+        };
+        assert_eq!(browser.inputs(), [chord.clone()]);
         assert!(
             call(&BrowserPressKey, &ctx, json!({ "key": "a" }))
                 .await
                 .is_err_and(|e| e.starts_with("the page does not have keyboard focus"))
         );
-        assert!(browser.inputs().is_empty());
+        assert_eq!(browser.inputs(), [chord]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn 탭을_나열하고_고르고_뒤에서_연다() {
+        let (browser, ctx) = context(FakeBrowser::new());
+        assert_eq!(
+            call(&BrowserTabs, &ctx, json!({ "action": "list" })).await,
+            Ok("no attached tabs".to_owned())
+        );
+        *browser.tabs.lock().unwrap() = vec![
+            TabInfo {
+                url: "https://a.test/".to_owned(),
+                title: "A".to_owned(),
+                active: true,
+            },
+            TabInfo {
+                url: "https://b.test/".to_owned(),
+                ..TabInfo::default()
+            },
+        ];
+        assert_eq!(
+            call(&BrowserTabs, &ctx, json!({ "action": "list" })).await,
+            Ok(
+                "0 * A — https://a.test/\n1   (untitled) — https://b.test/\n\n* = selected"
+                    .to_owned()
+            )
+        );
+        for index in [json!(2), json!(-1), json!(0.5), Value::Null] {
+            let mut args = json!({ "action": "select" });
+            if !index.is_null() {
+                args["index"] = index;
+            }
+            assert_eq!(
+                call(&BrowserTabs, &ctx, args).await,
+                Err("index must be 0..1".to_owned())
+            );
+        }
+        let selected = call(
+            &BrowserTabs,
+            &ctx,
+            json!({ "action": "select", "index": 1 }),
+        )
+        .await
+        .unwrap();
+        assert!(
+            selected.starts_with("selected tab 1: https://b.test/"),
+            "{selected}"
+        );
+        assert!(browser.tabs.lock().unwrap()[1].active);
+
+        let opened = call(
+            &BrowserTabs,
+            &ctx,
+            json!({ "action": "open", "url": "https://c.test/" }),
+        )
+        .await;
+        assert_eq!(
+            opened,
+            Ok("opened background tab 2: https://c.test/\n0   A — https://a.test/\n1 * (untitled) — https://b.test/\n2   (untitled) — https://c.test/\n\n* = selected. Read this tab with list_endpoints({tab: 2}).".to_owned())
+        );
+        assert_eq!(
+            call(&BrowserTabs, &ctx, json!({ "action": "open" })).await,
+            Err("url required for action \"open\"".to_owned())
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn 스크린샷은_png를_이미지_데이터_url로_돌려준다() {
+        let (_browser, ctx) = context(FakeBrowser::new());
+        assert_eq!(
+            call(&BrowserScreenshot, &ctx, json!({})).await,
+            Ok("data:image/png;base64,iVBORw==".to_owned())
+        );
+        assert_eq!(
+            call(&BrowserScreenshot, &ctx, json!({ "tab": 1 })).await,
+            Err(unsupported("driving a tab by index"))
+        );
     }
 
     #[tokio::test(start_paused = true)]

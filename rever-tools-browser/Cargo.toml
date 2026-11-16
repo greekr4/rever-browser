@@ -14,6 +14,8 @@ rever-scope = { path = "../rever-scope" }
 # The requests an action set off (triggered-requests.ts is ported there).
 rever-analysis = { path = "../rever-analysis" }
 serde = { version = "1", features = ["derive"] }
+# browser_screenshot returns the PNG as base64.
+base64 = "0.22"
 serde_json = { version = "1", features = ["preserve_order"] }
 # time: the pauses of human-shaped input and the polling waits.
 # rt: overlay calls are spawned so they never hold up an input event.

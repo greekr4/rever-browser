@@ -117,13 +117,6 @@ pub(crate) async fn click_ref_with(
     mouse: Mouse<'_>,
 ) -> Result<(), String> {
     let entry = entry(ctx, r)?;
-    // Refused before the page is scrolled and the cursor moved for a press that
-    // cannot be sent.
-    if !mouse.is_plain() {
-        return Err(unsupported(
-            "a press with another mouse button or a click count",
-        ));
-    }
     let kind = if mouse.click_count == Some(2.0) {
         "double-click".to_owned()
     } else {
@@ -557,20 +550,38 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn 다른_버튼의_클릭은_커서를_옮기기_전에_거절한다() {
+    async fn 다른_버튼의_클릭은_그_버튼으로_누르고_뗀다() {
         let (browser, ctx) = context(FakeBrowser::new());
         snapshot(&browser, &ctx).await;
         let right = Mouse {
             button: Some("right"),
             click_count: None,
         };
-        assert_eq!(
-            click_ref_with(&ctx, "r1", right).await,
-            Err(unsupported(
-                "a press with another mouse button or a click count"
-            ))
+        click_ref_with(&ctx, "r1", right).await.unwrap();
+        let sent: Vec<Input> = browser
+            .inputs()
+            .into_iter()
+            .filter(|input| matches!(input, Input::MouseButton { .. }))
+            .collect();
+        assert!(
+            matches!(
+                sent[..],
+                [
+                    Input::MouseButton {
+                        down: true,
+                        button: 2,
+                        ..
+                    },
+                    Input::MouseButton {
+                        down: false,
+                        button: 2,
+                        ..
+                    }
+                ]
+            ),
+            "{sent:?}"
         );
-        assert!(browser.calls().is_empty() && browser.inputs().is_empty());
+        browser.inputs.lock().unwrap().clear();
 
         // The default button and count is the plain click, with its own label.
         click_ref_with(&ctx, "r1", Mouse::default()).await.unwrap();

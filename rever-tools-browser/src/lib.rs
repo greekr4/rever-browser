@@ -484,7 +484,7 @@ pub(crate) mod test_support {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
-    use rever_tools_api::tool::{BoxFuture, Browser, Input, PageInfo, Tool, ToolContext};
+    use rever_tools_api::tool::{BoxFuture, Browser, Input, PageInfo, TabInfo, Tool, ToolContext};
     use rever_tools_api::utils::Content;
     use serde_json::{Value, json};
 
@@ -496,6 +496,7 @@ pub(crate) mod test_support {
         /// `window.__reverAi` calls: cosmetic, so they never take a canned answer.
         pub overlay: Mutex<Vec<String>>,
         pub inputs: Mutex<Vec<Input>>,
+        pub tabs: Mutex<Vec<TabInfo>>,
         /// Answers of plain `evaluate` calls, in order; `null` once they run out.
         pub evaluations: Mutex<VecDeque<Result<Value, String>>>,
         /// Answers of the snapshot script's `act`, in order; a default once they run out.
@@ -623,6 +624,34 @@ pub(crate) mod test_support {
                 self.record(format!("evaluate:{expression}"));
                 let next = self.evaluations.lock().unwrap().pop_front();
                 next.unwrap_or(Ok(Value::Null))
+            })
+        }
+
+        fn screenshot(&self) -> BoxFuture<'_, Result<Vec<u8>, String>> {
+            Box::pin(async { Ok(vec![0x89, b'P', b'N', b'G']) })
+        }
+
+        fn tabs(&self) -> BoxFuture<'_, Result<Vec<TabInfo>, String>> {
+            Box::pin(async { Ok(self.tabs.lock().unwrap().clone()) })
+        }
+
+        fn select_tab(&self, index: usize) -> BoxFuture<'_, Result<(), String>> {
+            Box::pin(async move {
+                for (i, tab) in self.tabs.lock().unwrap().iter_mut().enumerate() {
+                    tab.active = i == index;
+                }
+                Ok(())
+            })
+        }
+
+        fn open_tab<'a>(&'a self, url: &'a str) -> BoxFuture<'a, Result<usize, String>> {
+            Box::pin(async move {
+                let mut tabs = self.tabs.lock().unwrap();
+                tabs.push(TabInfo {
+                    url: url.to_owned(),
+                    ..TabInfo::default()
+                });
+                Ok(tabs.len() - 1)
             })
         }
 

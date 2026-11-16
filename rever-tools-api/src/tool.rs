@@ -96,14 +96,38 @@ pub enum Input {
         dx: f64,
         dy: f64,
     },
+    /// A press or release of one button at a point: `button` is the DOM's number
+    /// (0 left, 1 middle, 2 right). The engine counts clicks itself, so a double
+    /// click is two press/release pairs in quick succession.
+    MouseButton {
+        x: f64,
+        y: f64,
+        down: bool,
+        button: u8,
+    },
     /// A W3C key value ("a", "Enter", "ArrowLeft"), pressed then released.
     Key {
         key: String,
+    },
+    /// A key pressed and released while modifiers are held: `Alt` 1, `Control` 2,
+    /// `Meta` 4, `Shift` 8.
+    KeyChord {
+        key: String,
+        modifiers: u8,
     },
     /// Text typed as key presses.
     Text {
         text: String,
     },
+}
+
+/// One open tab, as `Browser::tabs` lists them: the position in the list is its index.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TabInfo {
+    pub url: String,
+    pub title: String,
+    /// The tab the tools act on.
+    pub active: bool,
 }
 
 /// What tools may ask of the page they are driving. It addresses the tab the agent
@@ -171,6 +195,21 @@ pub trait Browser: Send + Sync {
         _name: &'a str,
     ) -> BoxFuture<'a, Result<(), String>> {
         Box::pin(async { Err(unsupported("deleting cookies")) })
+    }
+
+    /// Every open tab, in tab-strip order.
+    fn tabs(&self) -> BoxFuture<'_, Result<Vec<TabInfo>, String>> {
+        Box::pin(async { Err(unsupported("listing tabs")) })
+    }
+
+    /// Point the tools (and the window) at the tab with this index of [`Browser::tabs`].
+    fn select_tab(&self, _index: usize) -> BoxFuture<'_, Result<(), String>> {
+        Box::pin(async { Err(unsupported("selecting a tab")) })
+    }
+
+    /// Load `url` in a new tab without selecting it; resolves to the new tab's index.
+    fn open_tab<'a>(&'a self, _url: &'a str) -> BoxFuture<'a, Result<usize, String>> {
+        Box::pin(async { Err(unsupported("opening a background tab")) })
     }
 
     /// Run `source` in every new document before its own scripts. Returns an id for

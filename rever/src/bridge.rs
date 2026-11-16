@@ -6,11 +6,12 @@ use std::str::FromStr;
 
 use futures::channel::mpsc::UnboundedSender;
 use futures::channel::oneshot;
-use rever_tools_api::tool::{BoxFuture, Browser, Input, PageInfo, unsupported};
+use rever_tools_api::tool::{BoxFuture, Browser, Input, PageInfo, TabInfo, unsupported};
 use serde_json::Value;
 use servo::{
-    InputEvent, JSValue, Key, KeyState, KeyboardEvent, MouseButton, MouseButtonAction,
-    MouseButtonEvent, MouseMoveEvent, WebViewPoint, WheelDelta, WheelEvent, WheelMode,
+    Code, InputEvent, JSValue, Key, KeyState, KeyboardEvent, Location, Modifiers, MouseButton,
+    MouseButtonAction, MouseButtonEvent, MouseMoveEvent, WebViewPoint, WheelDelta, WheelEvent,
+    WheelMode,
 };
 
 type Answer<T> = oneshot::Sender<Result<T, String>>;
@@ -27,6 +28,10 @@ pub enum Command {
     Input(Input, Answer<()>),
     Viewport(Answer<(u32, u32)>),
     AddInitScript(String, Answer<String>),
+    Tabs(Answer<Vec<TabInfo>>),
+    SelectTab(usize, Answer<()>),
+    /// Open a URL in a tab without selecting it; answers the new tab's index.
+    OpenTab(String, Answer<usize>),
 }
 
 pub struct AppBrowser {
@@ -94,6 +99,18 @@ impl Browser for AppBrowser {
         self.ask(Command::Viewport)
     }
 
+    fn tabs(&self) -> BoxFuture<'_, Result<Vec<TabInfo>, String>> {
+        self.ask(Command::Tabs)
+    }
+
+    fn select_tab(&self, index: usize) -> BoxFuture<'_, Result<(), String>> {
+        self.ask(|answer| Command::SelectTab(index, answer))
+    }
+
+    fn open_tab<'a>(&'a self, url: &'a str) -> BoxFuture<'a, Result<usize, String>> {
+        self.ask(|answer| Command::OpenTab(url.to_owned(), answer))
+    }
+
     fn add_init_script<'a>(&'a self, source: &'a str) -> BoxFuture<'a, Result<String, String>> {
         self.ask(|answer| Command::AddInitScript(source.to_owned(), answer))
     }
@@ -157,6 +174,23 @@ pub fn input_events(input: &Input, scale: f64) -> Vec<InputEvent> {
             MouseButton::Primary,
             at(*x, *y),
         ))],
+        Input::MouseButton { x, y, down, button } => {
+            let button = match button {
+                1 => MouseButton::Auxiliary,
+                2 => MouseButton::Secondary,
+                _ => MouseButton::Primary,
+            };
+            let (action, moved) = match down {
+                // Move first, as for the plain press.
+                true => (
+                    MouseButtonAction::Down,
+                    Some(InputEvent::MouseMove(MouseMoveEvent::new(at(*x, *y)))),
+                ),
+                false => (MouseButtonAction::Up, None),
+            };
+            let press = InputEvent::MouseButton(MouseButtonEvent::new(action, button, at(*x, *y)));
+            moved.into_iter().chain([press]).collect()
+        }
         // Tools use "positive scrolls down"; Servo uses "positive scrolls up", in device pixels.
         Input::Wheel { x, y, dx, dy } => vec![InputEvent::Wheel(WheelEvent::new(
             WheelDelta {
@@ -174,6 +208,33 @@ pub fn input_events(input: &Input, scale: f64) -> Vec<InputEvent> {
             ],
             Err(_) => vec![],
         },
+        Input::KeyChord {
+            key: name,
+            modifiers,
+        } => {
+            let Ok(parsed) = Key::from_str(name) else {
+                return vec![];
+            };
+            // The tools' bits: Alt 1, Control 2, Meta 4, Shift 8.
+            let mut held = Modifiers::empty();
+            held.set(Modifiers::ALT, modifiers & 1 != 0);
+            held.set(Modifiers::CONTROL, modifiers & 2 != 0);
+            held.set(Modifiers::META, modifiers & 4 != 0);
+            held.set(Modifiers::SHIFT, modifiers & 8 != 0);
+            [KeyState::Down, KeyState::Up]
+                .map(|state| {
+                    InputEvent::Keyboard(KeyboardEvent::new_without_event(
+                        state,
+                        parsed.clone(),
+                        Code::Unidentified,
+                        Location::Standard,
+                        held,
+                        false,
+                        false,
+                    ))
+                })
+                .to_vec()
+        }
         Input::Text { text } => text
             .chars()
             .flat_map(|ch| {

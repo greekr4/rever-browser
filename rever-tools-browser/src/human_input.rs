@@ -9,7 +9,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use rever_tools_api::tool::{Browser, Input, unsupported};
+use rever_tools_api::tool::{Browser, Input};
 
 use crate::cdp_eval::fire;
 use crate::{js_round, lock, now_ms, sleep_ms, truthy};
@@ -141,14 +141,29 @@ impl HumanInput {
         y: f64,
         mouse: Mouse<'_>,
     ) -> Result<(), String> {
-        // A double click is one press/release pair with clickCount 2, not two
+        // A double click is two press/release pairs close together, not two
         // separate clicks — two browser_click calls are seconds apart and the page
-        // pairs nothing. `Input` carries neither a button nor a count, and a left
-        // click sent in their place would be a different gesture.
+        // pairs nothing. The engine counts clicks from the timing itself, where
+        // Chromium was told the run of counts (1, then the count).
         if !mouse.is_plain() {
-            return Err(unsupported(
-                "a press with another mouse button or a click count",
-            ));
+            let button = match mouse.button.unwrap_or("left") {
+                "middle" => 1,
+                "right" => 2,
+                _ => 0,
+            };
+            let pairs = if mouse.click_count.is_some_and(|n| n > 1.0) {
+                2
+            } else {
+                1
+            };
+            for _ in 0..pairs {
+                for (down, low, high) in [(true, 30.0, 70.0), (false, 30.0, 60.0)] {
+                    let press = Input::MouseButton { x, y, down, button };
+                    browser.input(press).await?;
+                    self.pause(low, high).await;
+                }
+            }
+            return Ok(());
         }
         // Same reason as the cursor move: the press/release sprite is cosmetic, and
         // awaiting it queues behind the page's main thread.
@@ -247,15 +262,16 @@ impl HumanInput {
         }
 
         let press = key_press(key, modifiers)?;
-        if press.modifiers != 0 {
-            return Err(unsupported("pressing a key with modifiers held"));
-        }
 
         let times = repeat.unwrap_or(1.0).max(1.0);
         let mut i = 0.0;
         while i < times {
             let key = press.key.clone();
-            browser.input(Input::Key { key }).await?;
+            let input = match press.modifiers {
+                0 => Input::Key { key },
+                modifiers => Input::KeyChord { key, modifiers },
+            };
+            browser.input(input).await?;
             self.pause(20.0, 60.0).await;
             if i > 0.0 {
                 self.pause(30.0, 80.0).await;
@@ -737,13 +753,24 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn 다른_버튼과_여러_번_클릭은_보내지_않고_지원하지_않는다고_알린다() {
+    async fn 다른_버튼은_그_버튼으로_여러_번_클릭은_두_쌍으로_보낸다() {
         let (browser, ctx) = context(FakeBrowser::new());
         let human = human_at(10.0, 10.0);
-        let refused = Err(unsupported(
-            "a press with another mouse button or a click count",
-        ));
-        for mouse in [
+        let pair = |button| {
+            [true, false].map(|down| Input::MouseButton {
+                x: 1.0,
+                y: 2.0,
+                down,
+                button,
+            })
+        };
+        let expected = [
+            pair(2).to_vec(),
+            pair(1).to_vec(),
+            [pair(0), pair(0)].concat(),
+            [pair(0), pair(0)].concat(),
+        ];
+        for (mouse, expected) in [
             Mouse {
                 button: Some("right"),
                 click_count: None,
@@ -760,13 +787,20 @@ mod tests {
                 button: Some("left"),
                 click_count: Some(1.5),
             },
-        ] {
-            assert_eq!(
-                human.press_release(&ctx.browser, 1.0, 2.0, mouse).await,
-                refused
-            );
+        ]
+        .into_iter()
+        .zip(expected)
+        {
+            browser.inputs.lock().unwrap().clear();
+            human
+                .press_release(&ctx.browser, 1.0, 2.0, mouse)
+                .await
+                .unwrap();
+            assert_eq!(browser.inputs(), expected, "{mouse:?}");
         }
-        assert!(browser.inputs().is_empty());
+        // No cursor sprite for these: the TypeScript returns before it.
+        assert!(browser.overlay().is_empty());
+        browser.inputs.lock().unwrap().clear();
 
         // A count of 1 (or below) with the left button is the plain click.
         let plain = Mouse {
@@ -885,11 +919,16 @@ mod tests {
             human.press_key(&ctx.browser, "a", &["Hyper"], None).await,
             Err("unknown modifier \"Hyper\" — use Alt, Control, Meta or Shift".to_owned())
         );
-        assert_eq!(
-            human.press_key(&ctx.browser, "a", &["Control"], None).await,
-            Err(unsupported("pressing a key with modifiers held"))
-        );
         assert!(browser.inputs().is_empty());
+        human
+            .press_key(&ctx.browser, "a", &["Control", "Shift"], None)
+            .await
+            .unwrap();
+        let chord = Input::KeyChord {
+            key: "a".to_owned(),
+            modifiers: 2 | 8,
+        };
+        assert_eq!(browser.inputs(), [chord]);
     }
 
     #[tokio::test(start_paused = true)]

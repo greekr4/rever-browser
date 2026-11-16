@@ -34,6 +34,29 @@ pub fn ok(text: impl Into<String>) -> ToolResult {
     }
 }
 
+/// A result whose one block is an image, written as a `data:` URL.
+///
+/// shortcut: `Content` only has text, and a new kind breaks every exhaustive match
+/// on it, including crates this port must leave alone. The MCP server turns a
+/// block that is exactly one image data URL into an image block
+/// ([`parse_image_data_url`]); make it a `Content` variant once those can change.
+pub fn ok_image(mime_type: &str, base64: &str) -> ToolResult {
+    ok(format!("data:{mime_type};base64,{base64}"))
+}
+
+/// `(mime type, base64 data)` when `text` is one whole image data URL.
+pub fn parse_image_data_url(text: &str) -> Option<(&str, &str)> {
+    let (mime_type, data) = text.strip_prefix("data:")?.split_once(";base64,")?;
+    let subtype = mime_type.strip_prefix("image/")?;
+    let token = |c: char| c.is_ascii_alphanumeric() || "+-.".contains(c);
+    let base64 = |c: char| c.is_ascii_alphanumeric() || "+/=".contains(c);
+    (!subtype.is_empty()
+        && subtype.chars().all(token)
+        && !data.is_empty()
+        && data.chars().all(base64))
+    .then_some((mime_type, data))
+}
+
 pub fn err(text: impl Into<String>) -> ToolResult {
     ToolResult {
         is_error: true,
@@ -819,5 +842,25 @@ mod tests {
                 .map(|p| p.slice),
             Some("a".to_owned())
         );
+    }
+
+    #[test]
+    fn 이미지_데이터_url_하나로만_된_블록을_이미지로_읽는다() {
+        let result = ok_image("image/png", "iVBORw0KGgo=");
+        assert_eq!(text_of(&result), "data:image/png;base64,iVBORw0KGgo=");
+        assert_eq!(
+            parse_image_data_url(text_of(&result)),
+            Some(("image/png", "iVBORw0KGgo="))
+        );
+        for text in [
+            "see data:image/png;base64,AAAA",
+            "data:image/png;base64,AAAA and more",
+            "data:image/png;base64,",
+            "data:text/html;base64,AAAA",
+            "data:image/;base64,AAAA",
+            "data:image/png,AAAA",
+        ] {
+            assert_eq!(parse_image_data_url(text), None, "{text}");
+        }
     }
 }
