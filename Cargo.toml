@@ -55,6 +55,8 @@ gpui = { version = "0.2.2", features = ["runtime_shaders"] }
 [patch.crates-io]
 # Network tap: hands request and response bodies to the embedder.
 servo-net = { path = "vendor/servo-net" }
+# AVIF images: Servo 0.8 decodes none. Needs libdav1d and pkg-config on the build machine.
+servo-pixels = { path = "vendor/servo-pixels" }
 # One freetype-sys version for both GPUI and Servo.
 zed-font-kit = { path = "vendor/zed-font-kit" }
 # Without log's serde key-value feature, which breaks Servo's CSS engine at compile time.

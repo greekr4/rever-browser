@@ -1,0 +1,159 @@
+diff --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml	2026-11-16 10:20:09
++++ b/Cargo.toml	2026-11-16 10:20:09
+@@ -47,6 +47,7 @@
+ [dependencies.image]
+ version = "0.25"
+ features = [
++    "avif-native",
+     "bmp",
+     "gif",
+     "ico",
+diff --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/decoding.rs b/decoding.rs
+--- a/decoding.rs	2026-11-16 10:20:09
++++ b/decoding.rs	2026-11-16 10:20:09
+@@ -7,7 +7,7 @@
+ use std::time::Duration;
+ use std::{cmp, fmt, vec};
+ 
+-use image::codecs::{bmp, gif, ico, jpeg, png, webp};
++use image::codecs::{avif, bmp, gif, ico, jpeg, png, webp};
+ use image::error::ImageFormatHint;
+ use image::metadata::LoopCount;
+ use image::{
+@@ -28,6 +28,7 @@
+     Jpeg(Box<jpeg::JpegDecoder<Cursor<&'a [u8]>>>),
+     Bmp(Box<bmp::BmpDecoder<Cursor<&'a [u8]>>>),
+     Ico(Box<ico::IcoDecoder<Cursor<&'a [u8]>>>),
++    Avif(Box<avif::AvifDecoder<Cursor<&'a [u8]>>>),
+ }
+ 
+ impl<'a> std::fmt::Debug for GenericImageDecoder<'a> {
+@@ -40,6 +41,7 @@
+             Self::Jpeg(_) => f.debug_tuple("Jpeg").finish(),
+             Self::Bmp(_) => f.debug_tuple("Bmp").finish(),
+             Self::Ico(_) => f.debug_tuple("Ico").finish(),
++            Self::Avif(_) => f.debug_tuple("Avif").finish(),
+         }
+     }
+ }
+@@ -58,6 +60,7 @@
+             GenericImageDecoder::Jpeg(d) => d.dimensions(),
+             GenericImageDecoder::Bmp(d) => d.dimensions(),
+             GenericImageDecoder::Ico(d) => d.dimensions(),
++            GenericImageDecoder::Avif(d) => d.dimensions(),
+         }
+     }
+ 
+@@ -72,6 +75,7 @@
+             GenericImageDecoder::Jpeg(d) => d.color_type(),
+             GenericImageDecoder::Bmp(d) => d.color_type(),
+             GenericImageDecoder::Ico(d) => d.color_type(),
++            GenericImageDecoder::Avif(d) => d.color_type(),
+         }
+     }
+ 
+@@ -89,6 +93,7 @@
+             GenericImageDecoder::Jpeg(d) => d.read_image(buf),
+             GenericImageDecoder::Bmp(d) => d.read_image(buf),
+             GenericImageDecoder::Ico(d) => d.read_image(buf),
++            GenericImageDecoder::Avif(d) => d.read_image(buf),
+         }
+     }
+ 
+@@ -103,6 +108,7 @@
+             GenericImageDecoder::Jpeg(d) => d.read_image_boxed(buf),
+             GenericImageDecoder::Bmp(d) => d.read_image_boxed(buf),
+             GenericImageDecoder::Ico(d) => d.read_image_boxed(buf),
++            GenericImageDecoder::Avif(d) => d.read_image_boxed(buf),
+         }
+     }
+ 
+@@ -117,6 +123,7 @@
+             GenericImageDecoder::Jpeg(d) => d.icc_profile(),
+             GenericImageDecoder::Bmp(d) => d.icc_profile(),
+             GenericImageDecoder::Ico(d) => d.icc_profile(),
++            GenericImageDecoder::Avif(d) => d.icc_profile(),
+         }
+     }
+ 
+@@ -131,6 +138,7 @@
+             GenericImageDecoder::Jpeg(d) => d.exif_metadata(),
+             GenericImageDecoder::Bmp(d) => d.exif_metadata(),
+             GenericImageDecoder::Ico(d) => d.exif_metadata(),
++            GenericImageDecoder::Avif(d) => d.exif_metadata(),
+         }
+     }
+ 
+@@ -145,6 +153,7 @@
+             GenericImageDecoder::Jpeg(d) => d.xmp_metadata(),
+             GenericImageDecoder::Bmp(d) => d.xmp_metadata(),
+             GenericImageDecoder::Ico(d) => d.xmp_metadata(),
++            GenericImageDecoder::Avif(d) => d.xmp_metadata(),
+         }
+     }
+ 
+@@ -159,6 +168,7 @@
+             GenericImageDecoder::Jpeg(d) => d.iptc_metadata(),
+             GenericImageDecoder::Bmp(d) => d.iptc_metadata(),
+             GenericImageDecoder::Ico(d) => d.iptc_metadata(),
++            GenericImageDecoder::Avif(d) => d.iptc_metadata(),
+         }
+     }
+ }
+@@ -224,6 +234,7 @@
+             },
+             ImageFormat::Bmp => GenericImageDecoder::Bmp(Box::new(bmp::BmpDecoder::new(reader)?)),
+             ImageFormat::Ico => GenericImageDecoder::Ico(Box::new(ico::IcoDecoder::new(reader)?)),
++            ImageFormat::Avif => GenericImageDecoder::Avif(Box::new(avif::AvifDecoder::new(reader)?)),
+             _ => {
+                 return Err(ImageError::Unsupported(
+                     ImageFormatHint::Exact(format).into(),
+@@ -240,7 +251,8 @@
+             GenericImageDecoder::Png(_) |
+             GenericImageDecoder::Jpeg(_) |
+             GenericImageDecoder::Bmp(_) |
+-            GenericImageDecoder::Ico(_) => false,
++            GenericImageDecoder::Ico(_) |
++            GenericImageDecoder::Avif(_) => false,
+         }
+     }
+ 
+diff --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/lib.rs b/lib.rs
+--- a/lib.rs	2026-11-16 10:20:09
++++ b/lib.rs	2026-11-16 10:20:09
+@@ -555,6 +555,25 @@
+     }
+ }
+ 
++/// An ISO BMFF file whose `ftyp` box names an AVIF brand, major or compatible.
++fn is_avif(buffer: &[u8]) -> bool {
++    let Some(size) = buffer.get(..4) else {
++        return false;
++    };
++    let size = u32::from_be_bytes([size[0], size[1], size[2], size[3]]) as usize;
++    if buffer.get(4..8) != Some(b"ftyp") {
++        return false;
++    }
++    // Brands are four bytes each: the major brand, a version, then the compatible ones.
++    let end = size.clamp(12, buffer.len().max(12));
++    buffer
++        .get(8..end)
++        .unwrap_or_default()
++        .chunks_exact(4)
++        .enumerate()
++        .any(|(index, brand)| index != 1 && (brand == b"avif" || brand == b"avis"))
++}
++
+ // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
+ pub fn detect_image_format(buffer: &[u8]) -> Result<ImageFormat, &str> {
+     if is_gif(buffer) {
+@@ -569,6 +588,8 @@
+         Ok(ImageFormat::Bmp)
+     } else if is_ico(buffer) {
+         Ok(ImageFormat::Ico)
++    } else if is_avif(buffer) {
++        Ok(ImageFormat::Avif)
+     } else {
+         Err("Image Format Not Supported")
+     }
