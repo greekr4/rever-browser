@@ -9,7 +9,7 @@ use dpi::PhysicalSize;
 use image::RgbaImage;
 use servo::{
     ConsoleLogLevel, CookieSource, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize,
-    EmbedderControl, EventLoopWaker, InputEvent, JSValue, PrefValue, RenderingContext, Servo,
+    EmbedderControl, EventLoopWaker, InputEvent, JSValue, Opts, PrefValue, RenderingContext, Servo,
     ServoBuilder, ServoDelegate, SoftwareRenderingContext, UserContentManager, UserScript,
     WebResourceLoad, WebView, WebViewBuilder, WebViewDelegate,
 };
@@ -194,10 +194,22 @@ pub struct Engine {
 impl Engine {
     /// `wake` is called from Servo's threads whenever [`Engine::pump`] should run
     /// on the main thread.
-    pub fn new(wake: impl Fn() + Send + Sync + 'static, scale: f32) -> Self {
+    /// `profile_dir` is where Servo keeps its persistent state (cookies, HSTS,
+    /// auth cache) between runs.
+    pub fn new(
+        wake: impl Fn() + Send + Sync + 'static,
+        scale: f32,
+        profile_dir: std::path::PathBuf,
+    ) -> Self {
         // Servo's TLS stack needs a process-wide crypto provider; GPUI may have installed one already.
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let _ = std::fs::create_dir_all(&profile_dir);
         let servo = ServoBuilder::default()
+            // Where Servo reads and writes cookie_jar.json, so logins survive a restart.
+            .opts(servo::Opts {
+                config_dir: Some(profile_dir),
+                ..Default::default()
+            })
             // Off by default in Servo; React sites call it on load and fail without it.
             .preferences(servo::Preferences {
                 dom_intersection_observer_enabled: true,

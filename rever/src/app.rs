@@ -396,6 +396,7 @@ impl Browser {
                 let _ = wake.unbounded_send(());
             },
             window.scale_factor(),
+            data_dir().join("servo-profile"),
         );
         let held_requests = crate::intercept::Held::default();
         let note = {
