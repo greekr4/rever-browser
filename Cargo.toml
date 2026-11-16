@@ -62,3 +62,9 @@ gpui = { path = "vendor/gpui" }
 gpui_http_client = { path = "vendor/gpui_http_client" }
 gpui_sum_tree = { path = "vendor/gpui_sum_tree" }
 gpui_util = { path = "vendor/gpui_util" }
+
+# The app crate converts every painted frame's pixels on the main thread; without
+# optimization that loop alone stalls the window. Dependencies stay unoptimized
+# so a debug build does not recompile Servo.
+[profile.dev.package.rever]
+opt-level = 2
