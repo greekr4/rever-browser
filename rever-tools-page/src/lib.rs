@@ -82,6 +82,14 @@ pub(crate) fn schema(properties: Value, required: &[&str]) -> Value {
     schema
 }
 
+/// Epoch milliseconds now.
+pub(crate) fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 /// `JSON.stringify(value, null, 2)`.
 pub(crate) fn pretty(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_default()

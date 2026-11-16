@@ -26,6 +26,7 @@ use rever_tools_api::tool::{
 };
 use rever_tools_debug::debugger::DebugState;
 use rever_tools_debug::intercept::InterceptState;
+use rever_tools_page::downloads::DownloadState;
 use rever_ui_history::history::NewHistoryEntry;
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::theme::ThemeMode;
@@ -88,7 +89,7 @@ fn start_mcp(
     traffic: Arc<Mutex<TrafficStore>>,
     browser: Arc<bridge::AppBrowser>,
     debug_endpoint: crate::debug::Endpoint,
-) -> (Option<McpServer>, Arc<InterceptState>) {
+) -> (Option<McpServer>, Arc<InterceptState>, Arc<DownloadState>) {
     let mut registry = ToolRegistry::default();
     rever_tools_traffic::register(&mut registry);
     rever_tools_inspect::register(&mut registry);
@@ -109,6 +110,7 @@ fn start_mcp(
         debug_endpoint,
         Arc::downgrade(&debug),
     ));
+    let downloads = context.state::<DownloadState>();
     let intercept = context.state::<InterceptState>();
     let edits = Arc::new(crate::intercept::NetEdits::default());
     crate::intercept::install_editors(intercept.clone(), edits.clone());
@@ -120,7 +122,7 @@ fn start_mcp(
     let server = rever_mcp::start(Arc::new(registry), context)
         .inspect_err(|error| eprintln!("[mcp] {error}"))
         .ok();
-    (server, intercept)
+    (server, intercept, downloads)
 }
 
 /// `/^https?:\/\//i`: the pages that can be bookmarked.
@@ -197,7 +199,7 @@ fn theme_name(mode: ThemeMode) -> &'static str {
 }
 
 /// Runs on Servo's network threads: record what the tap saw.
-fn record(store: &Mutex<TrafficStore>, event: NetworkTapEvent) {
+fn record(store: &Mutex<TrafficStore>, downloads: &DownloadState, event: NetworkTapEvent) {
     fn headers<'a>(pairs: impl Iterator<Item = (&'a str, &'a [u8])>) -> Headers {
         let mut map = Headers::new();
         for (name, value) in pairs {
@@ -236,6 +238,30 @@ fn record(store: &Mutex<TrafficStore>, event: NetworkTapEvent) {
         } => {
             let response_headers = headers(h.iter().map(|(n, v)| (n.as_str(), v.as_bytes())));
             let mime = traffic::mime_of(&response_headers);
+            // A top-level navigation answered as an attachment is a download, not a
+            // page: record it and save the file (a fetch of one is XHR, not a download).
+            if status < 400 {
+                let disposition = response_headers
+                    .iter()
+                    .find(|(name, _)| name.eq_ignore_ascii_case("content-disposition"))
+                    .map(|(_, value)| value.clone());
+                let is_attachment = disposition
+                    .as_deref()
+                    .is_some_and(|value| value.to_ascii_lowercase().contains("attachment"));
+                let is_navigation = store
+                    .lock()
+                    .unwrap()
+                    .get(&id)
+                    .is_some_and(|request| request.resource_type == "Document");
+                if is_attachment && is_navigation {
+                    let url = url.to_string();
+                    let name = rever_tools_page::downloads::download_filename(
+                        &disposition.unwrap_or_default(),
+                        &url,
+                    );
+                    downloads.record(&url, &name, &mime, &body, now_ms());
+                }
+            }
             let (stored, base64) = traffic::encode_body(&body, &mime);
             RequestPatch {
                 request_id: id,
@@ -353,12 +379,14 @@ impl Browser {
         let tool_browser = Arc::new(bridge::AppBrowser::new(tool_tx, wake.clone()));
         let traffic = Arc::new(Mutex::new(TrafficStore::default()));
         let debug_endpoint = crate::debug::Endpoint::default();
-        let (mcp, intercept) = start_mcp(traffic.clone(), tool_browser, debug_endpoint.clone());
+        let (mcp, intercept, downloads) =
+            start_mcp(traffic.clone(), tool_browser, debug_endpoint.clone());
         let traffic_changed = Arc::new(AtomicBool::new(false));
         {
             let (store, wake, changed) = (traffic.clone(), wake.clone(), traffic_changed.clone());
+            let downloads = downloads.clone();
             net::tap::set_network_tap(move |event| {
-                record(&store, event);
+                record(&store, &downloads, event);
                 changed.store(true, Ordering::Relaxed);
                 let _ = wake.unbounded_send(());
             });

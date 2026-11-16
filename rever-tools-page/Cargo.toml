@@ -16,6 +16,8 @@ serde_json = { version = "1", features = ["preserve_order"] }
 regex = "1"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
+# wait_for_download polls on the tool runtime.
+tokio = { version = "1", features = ["rt", "time"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
