@@ -7150,11 +7150,13 @@ dependencies = [
 name = "rever"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "cookie 0.18.2",
  "dpi",
  "euclid",
  "futures",
  "gpui",
+ "http",
  "image",
  "rever-agent",
  "rever-core",
@@ -7419,6 +7421,7 @@ dependencies = [
  "regex",
  "rever-core",
  "rever-tools-api",
+ "rever-tools-debug",
  "serde",
  "serde_json",
  "tokio",

@@ -29,6 +29,8 @@ pub enum Command {
     Viewport(Answer<(u32, u32)>),
     AddInitScript(String, Answer<String>),
     RemoveInitScript(String, Answer<()>),
+    /// The agent's decision for a request a modify rule holds.
+    Decide(String, crate::intercept::Decision, Answer<()>),
     WriteClipboard(String, Answer<()>),
     Tabs(Answer<Vec<TabInfo>>),
     SelectTab(usize, Answer<()>),
@@ -51,7 +53,7 @@ impl AppBrowser {
         Self { commands, wake }
     }
 
-    fn ask<T: Send + 'static>(
+    pub(crate) fn ask<T: Send + 'static>(
         &self,
         make: impl FnOnce(Answer<T>) -> Command,
     ) -> BoxFuture<'static, Result<T, String>> {

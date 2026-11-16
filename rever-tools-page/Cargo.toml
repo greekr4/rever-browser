@@ -8,6 +8,8 @@ description = "MCP tools acting on the page: dialogs, DOM edits, storage, servic
 [dependencies]
 rever-tools-api = { path = "../rever-tools-api" }
 rever-core = { path = "../rever-core" }
+# Local overrides are intercept rules, kept in the list the intercept tools use.
+rever-tools-debug = { path = "../rever-tools-debug" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # The host glob of an injection snippet is a JavaScript regex in the TypeScript.

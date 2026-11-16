@@ -241,6 +241,24 @@ impl InterceptState {
             .unwrap_or_else(|| Arc::new(NoInterceptEngine))
     }
 
+    /// Add a rule and start intercepting with it, for the tools that share this
+    /// list (local overrides). A rule the engine cannot serve is taken back out
+    /// and the engine's error returned.
+    pub async fn add_rule(&self, rule: InterceptRule) -> Result<(), String> {
+        let id = rule.id.clone();
+        let (_, rules) = self.update_rules(|rules| rules.push(rule));
+        let applied = self.engine().apply_rules(&rules).await;
+        if applied.is_err() {
+            self.update_rules(|rules| rules.retain(|rule| rule.id != id));
+        }
+        applied
+    }
+
+    pub async fn remove_rule(&self, id: &str) {
+        let (_, rules) = self.update_rules(|rules| rules.retain(|rule| rule.id != id));
+        self.apply(&rules).await;
+    }
+
     fn target(&self) -> Result<Arc<dyn InterceptEngine>, String> {
         let engine = self.engine();
         if !engine.has_target() {

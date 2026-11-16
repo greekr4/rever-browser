@@ -22,6 +22,7 @@ use rever_core::paths::user_data_dir;
 use rever_core::traffic::{self, ConsoleEntry, Headers, ListFilter, RequestPatch, TrafficStore};
 use rever_mcp::McpServer;
 use rever_tools_api::tool::{PageInfo, TabInfo, ToolContext, ToolRegistry};
+use rever_tools_debug::intercept::InterceptState;
 use rever_ui_history::history::NewHistoryEntry;
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::theme::ThemeMode;
@@ -83,7 +84,7 @@ pub(crate) fn data_dir() -> PathBuf {
 fn start_mcp(
     traffic: Arc<Mutex<TrafficStore>>,
     browser: Arc<bridge::AppBrowser>,
-) -> Option<McpServer> {
+) -> (Option<McpServer>, Arc<InterceptState>) {
     let mut registry = ToolRegistry::default();
     rever_tools_traffic::register(&mut registry);
     rever_tools_inspect::register(&mut registry);
@@ -96,10 +97,14 @@ fn start_mcp(
     let data_dir = data_dir();
     // The server publishes its endpoint file here.
     let _ = std::fs::create_dir_all(&data_dir);
-    let context = Arc::new(ToolContext::new(traffic, browser, data_dir));
-    rever_mcp::start(Arc::new(registry), context)
+    let context = Arc::new(ToolContext::new(traffic, browser.clone(), data_dir));
+    // The intercept and override tools decide requests through the page engine.
+    let intercept = context.state::<InterceptState>();
+    intercept.set_engine(Arc::new(crate::intercept::AppIntercept(browser)));
+    let server = rever_mcp::start(Arc::new(registry), context)
         .inspect_err(|error| eprintln!("[mcp] {error}"))
-        .ok()
+        .ok();
+    (server, intercept)
 }
 
 /// `/^https?:\/\//i`: the pages that can be bookmarked.
@@ -302,6 +307,8 @@ pub(crate) struct Browser {
     tool_acted: Option<Instant>,
     /// The `<select>` whose option list is open over the page.
     pub select: Option<SelectElement>,
+    /// Requests a modify rule holds until the agent decides them.
+    held_requests: crate::intercept::Held,
     /// The text the input method is still composing in the page (한 before it
     /// becomes 한글); `None` when nothing is being composed.
     pub composing: Option<String>,
@@ -321,7 +328,7 @@ impl Browser {
         let (tool_tx, tool_commands) = futures::channel::mpsc::unbounded();
         let tool_browser = Arc::new(bridge::AppBrowser::new(tool_tx, wake.clone()));
         let traffic = Arc::new(Mutex::new(TrafficStore::default()));
-        let mcp = start_mcp(traffic.clone(), tool_browser);
+        let (mcp, intercept) = start_mcp(traffic.clone(), tool_browser);
         let traffic_changed = Arc::new(AtomicBool::new(false));
         {
             let (store, wake, changed) = (traffic.clone(), wake.clone(), traffic_changed.clone());
@@ -337,6 +344,8 @@ impl Browser {
             },
             window.scale_factor(),
         );
+        let held_requests = crate::intercept::Held::default();
+        engine.on_resource_load(crate::intercept::on_load(intercept, held_requests.clone()));
         let first = engine
             .open(url.clone(), PhysicalSize::new(800, 600))
             .expect("the page engine could not start");
@@ -451,6 +460,7 @@ impl Browser {
             upload_paths: Vec::new(),
             tool_acted: None,
             select: None,
+            held_requests,
             composing: None,
         }
     }
@@ -1047,6 +1057,13 @@ impl Browser {
                             .then_some(())
                             .ok_or_else(|| format!("no init script with id {id}")),
                     );
+                }
+                Command::Decide(request_id, decision, answer) => {
+                    let held = self.held_requests.borrow_mut().remove(&request_id);
+                    let decided = held
+                        .map(|load| crate::intercept::answer(load, decision))
+                        .ok_or_else(|| format!("no paused request {request_id}"));
+                    let _ = answer.send(decided);
                 }
                 Command::WriteClipboard(text, answer) => {
                     cx.write_to_clipboard(ClipboardItem::new_string(text));

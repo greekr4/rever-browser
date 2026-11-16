@@ -34,6 +34,9 @@ rever-formats = { path = "../rever-formats" }
 servo = "=0.8.0"
 # The cookie type of Servo's site data manager.
 cookie = "0.18"
+# The header and status types of a response the app answers a request with.
+http = "1"
+base64 = "0.22"
 # The patched servo-net (see the workspace Cargo.toml): its tap carries request and response bodies.
 net = { package = "servo-net", version = "=0.8.0" }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "logging", "std", "tls12"] }

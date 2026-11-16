@@ -13,6 +13,7 @@ mod agent;
 mod app;
 mod bridge;
 mod engine;
+mod intercept;
 mod panels;
 mod shell;
 

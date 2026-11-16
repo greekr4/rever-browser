@@ -10,8 +10,8 @@ use image::RgbaImage;
 use servo::{
     ConsoleLogLevel, CookieSource, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize,
     EmbedderControl, EventLoopWaker, InputEvent, JSValue, RenderingContext, Servo, ServoBuilder,
-    SoftwareRenderingContext, UserContentManager, UserScript, WebView, WebViewBuilder,
-    WebViewDelegate,
+    SoftwareRenderingContext, UserContentManager, UserScript, WebResourceLoad, WebView,
+    WebViewBuilder, WebViewDelegate,
 };
 use url::Url;
 
@@ -36,6 +36,8 @@ pub enum EngineEvent {
 type Events = Rc<RefCell<Vec<EngineEvent>>>;
 /// What the pages asked the interface to show: dialogs, file pickers, select lists.
 type Controls = Rc<RefCell<Vec<(TabId, EmbedderControl)>>>;
+/// Decides each HTTP request before it is sent; dropping the load sends it.
+type LoadHook = Rc<RefCell<Option<Box<dyn FnMut(WebResourceLoad)>>>>;
 
 struct Delegate {
     tab: TabId,
@@ -46,6 +48,7 @@ struct Delegate {
     next_id: Rc<Cell<u32>>,
     opened: Rc<RefCell<Vec<Page>>>,
     controls: Controls,
+    loads: LoadHook,
 }
 
 impl Delegate {
@@ -82,6 +85,7 @@ impl WebViewDelegate for Delegate {
                 next_id: self.next_id.clone(),
                 opened: self.opened.clone(),
                 controls: self.controls.clone(),
+                loads: self.loads.clone(),
             }))
             .build();
         self.opened.borrow_mut().push(Page {
@@ -91,6 +95,12 @@ impl WebViewDelegate for Delegate {
             scripts,
         });
         self.push(EngineEvent::Opened(id));
+    }
+
+    fn load_web_resource(&self, _: WebView, load: WebResourceLoad) {
+        if let Some(hook) = self.loads.borrow_mut().as_mut() {
+            hook(load);
+        }
     }
 
     fn notify_closed(&self, _: WebView) {
@@ -147,6 +157,7 @@ pub struct Engine {
     /// Tabs the pages opened during the current pump.
     opened: Rc<RefCell<Vec<Page>>>,
     controls: Controls,
+    loads: LoadHook,
     /// Init scripts by the id they were handed out under: Servo removes one only
     /// by the handle it was added with.
     init_scripts: Vec<(String, TabId, Rc<UserScript>)>,
@@ -175,6 +186,7 @@ impl Engine {
             next_id: Rc::new(Cell::new(1)),
             opened: Rc::default(),
             controls: Rc::default(),
+            loads: Rc::default(),
             init_scripts: Vec::new(),
             next_script: 1,
         }
@@ -200,6 +212,7 @@ impl Engine {
                 next_id: self.next_id.clone(),
                 opened: self.opened.clone(),
                 controls: self.controls.clone(),
+                loads: self.loads.clone(),
             }))
             .build();
         self.pages.push(Page {
@@ -227,6 +240,11 @@ impl Engine {
     }
 
     /// Paint the tab's page and read it back as RGBA.
+    /// Have `hook` decide every HTTP request of every tab before it is sent.
+    pub fn on_resource_load(&self, hook: impl FnMut(WebResourceLoad) + 'static) {
+        *self.loads.borrow_mut() = Some(Box::new(hook));
+    }
+
     /// The dialogs and pickers the pages opened since the last call; each must be
     /// answered, or dropped to dismiss it.
     pub fn take_controls(&mut self) -> Vec<(TabId, EmbedderControl)> {

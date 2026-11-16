@@ -1,21 +1,35 @@
 //! Port of `src/main/mcp/tools/override.ts` — local overrides: answer a request from
 //! a given body or file instead of the network.
 //!
-//! The TypeScript served an override through the page layer's request interception.
-//! `Browser` cannot intercept requests, so `override_add` checks its arguments and
-//! the file as before and then reports the registration as unsupported. No override
-//! can therefore exist, which is exactly what `override_list` and `override_remove`
-//! answer; the TypeScript's set of override ids would always be empty and is not kept.
+//! An override is an intercept rule that answers at the request stage with a
+//! body, kept in the list the intercept tools use, as in the TypeScript; the ids
+//! of the rules that are overrides are remembered beside it.
 
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 use std::{fs, io};
 
-use rever_tools_api::tool::{ToolDef, ToolRegistry, unsupported};
-use serde_json::json;
+use std::sync::Mutex;
+
+use rever_tools_api::tool::{ToolDef, ToolRegistry};
+use rever_tools_debug::intercept::{InterceptRule, InterceptState, Mode, Stage};
+use serde_json::{Value, json};
 
 use crate::{no_args, schema};
 
 const OVERRIDE_FILE_SIZE_LIMIT: u64 = 5 * 1024 * 1024; // 5MB
+
+/// The ids of the intercept rules that are overrides.
+#[derive(Default)]
+pub struct Overrides(Mutex<HashSet<String>>);
+
+impl Overrides {
+    fn ids(&self) -> std::sync::MutexGuard<'_, HashSet<String>> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
 
 pub fn register(registry: &mut ToolRegistry) {
     registry.register(OverrideAdd);
@@ -100,6 +114,7 @@ tool!(
         if body.is_none() && file.is_none() {
             return Err("provide body or file".to_owned());
         }
+        let mut text = body.unwrap_or_default().to_owned();
         if let Some(file) = file {
             let resolved = resolve_override_path(&ctx.data_dir, file)?;
             let stat = fs::metadata(&resolved)
@@ -113,15 +128,59 @@ tool!(
             if stat.is_dir() {
                 return Err("EISDIR: illegal operation on a directory, read".to_owned());
             }
+            // `readFileSync(path, 'utf8')`: bytes that are not UTF-8 become U+FFFD.
+            let bytes = fs::read(&resolved).map_err(|error| stat_error(&error, &resolved))?;
+            text = String::from_utf8_lossy(&bytes).into_owned();
         }
-        Err(unsupported("response overrides"))
+        let url_pattern = args.str("urlPattern");
+        let mime_type = args.opt_str("mimeType").filter(|mime| !mime.is_empty());
+        let rule = InterceptRule {
+            id: uuid::Uuid::new_v4().to_string(),
+            url_pattern: url_pattern.to_owned(),
+            mode: Mode::Modify,
+            stage: Stage::Request,
+            modify_headers: mime_type
+                .map(|mime| vec![("content-type".to_owned(), mime.to_owned())]),
+            replace_body: Some(text.clone()),
+        };
+        let id = rule.id.clone();
+        ctx.state::<InterceptState>().add_rule(rule).await?;
+        ctx.state::<Overrides>().ids().insert(id.clone());
+        Ok(crate::pretty(&json!({
+            "id": id,
+            "urlPattern": url_pattern,
+            "bytes": text.encode_utf16().count(),
+        })))
     }
 );
 
 tool!(
     OverrideList,
     ToolDef::new("override_list", "List active local overrides.", no_args()),
-    |_ctx, _args| { Ok("[]".to_owned()) }
+    |ctx, _args| {
+        let ids = ctx.state::<Overrides>().ids().clone();
+        let rules = ctx.state::<InterceptState>().rules();
+        let listed: Vec<Value> = rules
+            .iter()
+            .filter(|rule| ids.contains(&rule.id))
+            .map(|rule| {
+                let body = rule.replace_body.as_deref().unwrap_or_default();
+                let mut entry = json!({
+                    "id": rule.id,
+                    "urlPattern": rule.url_pattern,
+                    "bytes": body.encode_utf16().count(),
+                });
+                let headers = rule.modify_headers.iter().flatten();
+                if let Some((_, mime)) =
+                    headers.into_iter().find(|(name, _)| name == "content-type")
+                {
+                    entry["mimeType"] = json!(mime);
+                }
+                entry
+            })
+            .collect();
+        Ok(crate::pretty(&json!(listed)))
+    }
 );
 
 tool!(
@@ -131,12 +190,21 @@ tool!(
         "Remove a local override by ID.",
         schema(json!({ "id": { "type": "string" } }), &["id"])
     ),
-    |_ctx, args| { Err(format!("not an override: {}", args.str("id"))) }
+    |ctx, args| {
+        let id = args.str("id");
+        if !ctx.state::<Overrides>().ids().remove(id) {
+            return Err(format!("not an override: {id}"));
+        }
+        ctx.state::<InterceptState>().remove_rule(id).await;
+        Ok(format!("removed {id}"))
+    }
 );
 
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+
+    use rever_tools_api::tool::unsupported;
 
     use super::*;
     use crate::test_support::{FakeBrowser, call, context, invalid};
@@ -287,7 +355,7 @@ mod tests {
         file.set_len(5 * 1024 * 1024).unwrap();
         assert_eq!(
             call(&OverrideAdd, &ctx, args).await,
-            Err(unsupported("response overrides"))
+            Err(unsupported("request interception"))
         );
         let _ = fs::remove_dir_all(&ctx.data_dir);
     }
@@ -305,7 +373,7 @@ mod tests {
         ] {
             assert_eq!(
                 call(&OverrideAdd, &ctx, args).await,
-                Err(unsupported("response overrides"))
+                Err(unsupported("request interception"))
             );
         }
         assert!(browser.calls().is_empty());
@@ -322,6 +390,56 @@ mod tests {
         assert_eq!(
             call(&OverrideRemove, &ctx, json!({ "id": "abc" })).await,
             Err("not an override: abc".to_owned())
+        );
+    }
+
+    /// An engine that intercepts whatever it is given.
+    struct Accepting;
+
+    impl rever_tools_debug::intercept::InterceptEngine for Accepting {
+        fn apply_rules<'a>(
+            &'a self,
+            _: &'a [InterceptRule],
+        ) -> rever_tools_api::tool::BoxFuture<'a, Result<(), String>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    #[tokio::test]
+    async fn 오버라이드를_등록하고_나열하고_지운다() {
+        let (_, ctx) = context(FakeBrowser::default());
+        let state = ctx.state::<InterceptState>();
+        state.set_engine(std::sync::Arc::new(Accepting));
+        let args =
+            json!({ "urlPattern": "*/main.js", "body": "한글 ok", "mimeType": "text/javascript" });
+        let added: Value =
+            serde_json::from_str(&call(&OverrideAdd, &ctx, args).await.unwrap()).unwrap();
+        // Bytes are UTF-16 units, as `text.length` counted them.
+        assert_eq!(
+            (added["urlPattern"].as_str(), added["bytes"].as_u64()),
+            (Some("*/main.js"), Some(5))
+        );
+        let id = added["id"].as_str().unwrap();
+
+        let rule = state
+            .matching_rule("https://a.test/static/main.js")
+            .unwrap();
+        assert_eq!((rule.mode, rule.stage), (Mode::Modify, Stage::Request));
+        assert_eq!(rule.replace_body.as_deref(), Some("한글 ok"));
+
+        let listed = call(&OverrideList, &ctx, json!({})).await.unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&listed).unwrap(),
+            json!([{ "id": id, "urlPattern": "*/main.js", "bytes": 5, "mimeType": "text/javascript" }])
+        );
+        assert_eq!(
+            call(&OverrideRemove, &ctx, json!({ "id": id })).await,
+            Ok(format!("removed {id}"))
+        );
+        assert!(state.rules().is_empty());
+        assert_eq!(
+            call(&OverrideRemove, &ctx, json!({ "id": id })).await,
+            Err(format!("not an override: {id}"))
         );
     }
 }
