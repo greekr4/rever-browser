@@ -21,7 +21,9 @@ use rever_core::address::normalize_address;
 use rever_core::paths::user_data_dir;
 use rever_core::traffic::{self, ConsoleEntry, Headers, ListFilter, RequestPatch, TrafficStore};
 use rever_mcp::McpServer;
-use rever_tools_api::tool::{PageInfo, TabInfo, ToolContext, ToolRegistry};
+use rever_tools_api::tool::{
+    DialogAnswer, DialogRecord, PageInfo, TabInfo, ToolContext, ToolRegistry,
+};
 use rever_tools_debug::intercept::InterceptState;
 use rever_ui_history::history::NewHistoryEntry;
 use rever_ui_kit::i18n::Lang;
@@ -301,6 +303,10 @@ pub(crate) struct Browser {
     self_check: Option<String>,
     /// The agent's answer for the next page dialog: accept, and a prompt's text.
     dialog_answer: Option<(bool, Option<String>)>,
+    /// The native dialogs the pages opened, oldest first, for dialog_history.
+    dialog_log: Vec<DialogRecord>,
+    /// Off: dialogs wait for the user even while the agent acts.
+    dialog_auto_dismiss: bool,
     /// Files the agent hands to the next file picker.
     upload_paths: Vec<PathBuf>,
     /// When a tool last drove the page: a dialog opened right after is the agent's.
@@ -468,6 +474,8 @@ impl Browser {
             last_rgba: None,
             self_check,
             dialog_answer: None,
+            dialog_log: Vec::new(),
+            dialog_auto_dismiss: true,
             upload_paths: Vec::new(),
             tool_acted: None,
             select: None,
@@ -861,9 +869,34 @@ impl Browser {
             .is_some_and(|at| at.elapsed() < Duration::from_secs(3));
         match control {
             EmbedderControl::SimpleDialog(dialog) => {
+                let kind = match dialog {
+                    SimpleDialog::Alert(_) => "alert",
+                    SimpleDialog::Confirm(_) => "confirm",
+                    SimpleDialog::Prompt(_) => "prompt",
+                };
+                // shortcut: the history keeps the last 200; raise it with the tool's limit.
+                if self.dialog_log.len() >= 200 {
+                    self.dialog_log.remove(0);
+                }
+                self.dialog_log.push(DialogRecord {
+                    ts: now_ms(),
+                    kind: kind.to_owned(),
+                    message: dialog.message().to_owned(),
+                    url: self.tabs[self.active].url.clone(),
+                    answer: None,
+                });
+                let opened = self.dialog_log.len() - 1;
+                let answered = |by: &str, accept| {
+                    Some(DialogAnswer {
+                        by: by.to_owned(),
+                        accept,
+                        at: now_ms(),
+                    })
+                };
                 let armed = self.dialog_answer.take();
-                if armed.is_some() || agent_acting {
+                if armed.is_some() || (agent_acting && self.dialog_auto_dismiss) {
                     let (accept, text) = armed.unwrap_or((true, None));
+                    self.dialog_log[opened].answer = answered("agent", accept);
                     return answer_dialog(dialog, accept, text.as_deref());
                 }
                 let buttons: &[&str] = match dialog {
@@ -873,8 +906,17 @@ impl Browser {
                 // shortcut: the system prompt has no text field, so the user's
                 // prompt() answers its default value; give it a text input when needed.
                 let chosen = window.prompt(PromptLevel::Info, dialog.message(), None, buttons, cx);
-                cx.spawn(async move |_, _| {
-                    answer_dialog(dialog, chosen.await == Ok(0), None);
+                let ts = self.dialog_log[opened].ts;
+                cx.spawn(async move |this, cx| {
+                    let accept = chosen.await == Ok(0);
+                    answer_dialog(dialog, accept, None);
+                    let _ = this.update(cx, |this, _| {
+                        // Found again by its time: the log may have been cleared or trimmed.
+                        if let Some(record) = this.dialog_log.iter_mut().rev().find(|r| r.ts == ts)
+                        {
+                            record.answer = answered("user", accept);
+                        }
+                    });
                 })
                 .detach();
             }
@@ -1048,6 +1090,19 @@ impl Browser {
                                 .set_cookie(url, bridge::to_engine_cookie(&cookie))
                         });
                     let _ = answer.send(stored);
+                }
+                Command::DialogHistory(limit, answer) => {
+                    let from = self.dialog_log.len().saturating_sub(limit);
+                    let recent = self.dialog_log[from..].to_vec();
+                    let _ = answer.send(Ok((self.dialog_auto_dismiss, recent)));
+                }
+                Command::ClearDialogs(answer) => {
+                    self.dialog_log.clear();
+                    let _ = answer.send(Ok(()));
+                }
+                Command::SetDialogAutoDismiss(enabled, answer) => {
+                    self.dialog_auto_dismiss = enabled;
+                    let _ = answer.send(Ok(()));
                 }
                 Command::ArmDialog(accept, text, answer) => {
                     self.dialog_answer = Some((accept, text));

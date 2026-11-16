@@ -130,6 +130,30 @@ pub struct TabInfo {
     pub active: bool,
 }
 
+/// A native `alert`/`confirm`/`prompt` the page opened, as `dialog_history` prints it.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct DialogRecord {
+    /// Epoch milliseconds.
+    pub ts: u64,
+    /// "alert", "confirm" or "prompt".
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub message: String,
+    pub url: String,
+    /// Who closed it and how; none while it is still open.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<DialogAnswer>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct DialogAnswer {
+    /// "agent" or "user".
+    pub by: String,
+    pub accept: bool,
+    /// Epoch milliseconds.
+    pub at: u64,
+}
+
 /// What tools may ask of the page they are driving. It addresses the tab the agent
 /// is working in. Every method has a default that reports the operation as
 /// unsupported, so an engine implements what it can and tools degrade with a clear
@@ -232,6 +256,24 @@ pub trait Browser: Send + Sync {
     /// Replace the system clipboard's text.
     fn write_clipboard<'a>(&'a self, _text: &'a str) -> BoxFuture<'a, Result<(), String>> {
         Box::pin(async { Err(unsupported("writing the clipboard")) })
+    }
+
+    /// Whether dialogs that open while the agent acts are answered for it, and
+    /// the last `limit` native dialogs, oldest first.
+    fn dialog_history(
+        &self,
+        _limit: usize,
+    ) -> BoxFuture<'_, Result<(bool, Vec<DialogRecord>), String>> {
+        Box::pin(async { Err(unsupported("native dialog handling")) })
+    }
+
+    fn clear_dialog_history(&self) -> BoxFuture<'_, Result<(), String>> {
+        Box::pin(async { Err(unsupported("native dialog handling")) })
+    }
+
+    /// With `false`, every dialog waits for the user, also while the agent acts.
+    fn set_dialog_auto_dismiss(&self, _enabled: bool) -> BoxFuture<'_, Result<(), String>> {
+        Box::pin(async { Err(unsupported("native dialog handling")) })
     }
 
     /// Hand these files to the next file picker the page opens; an empty list

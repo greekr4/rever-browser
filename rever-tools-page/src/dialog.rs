@@ -1,16 +1,14 @@
 //! Port of `src/main/mcp/tools/dialog.ts` — the page's alert/confirm/prompt history
 //! and the in-page override that records it.
 //!
-//! The TypeScript also kept a history of native dialogs and an auto-dismiss switch,
-//! both fed by Chrome DevTools Protocol events. `Browser` has no native dialog
-//! events, so those parts report the operation as unsupported.
+//! The history of native dialogs and the auto-dismiss switch are the engine's
+//! (`Browser::dialog_history` and its neighbours); an engine without them has an
+//! empty history and reports the two switches as unsupported.
 
-use rever_tools_api::tool::{ToolDef, ToolRegistry, unsupported};
+use rever_tools_api::tool::{ToolDef, ToolRegistry};
 use serde_json::{Value, json};
 
 use crate::{no_args, pretty, schema};
-
-const NATIVE_DIALOGS: &str = "native dialog handling";
 
 const INJECT_OVERRIDE: &str = r#"(() => {
   window.__revDialogOverride = undefined;
@@ -51,8 +49,14 @@ tool!(
             &[]
         )
     ),
-    |ctx, _args| {
-        // `limit` only ever applied to the native history, which is empty here.
+    |ctx, args| {
+        let limit = args.0.get("limit").and_then(Value::as_u64).unwrap_or(50);
+        // An engine without native dialog handling has no history and the default switch.
+        let (auto_dismiss, native) = ctx
+            .browser
+            .dialog_history(limit as usize)
+            .await
+            .unwrap_or((true, Vec::new()));
         // Page-side history (from the injected override). A page that cannot answer
         // has none: this never fails the call.
         let page_history = match ctx
@@ -64,9 +68,8 @@ tool!(
             _ => None,
         };
         Ok(pretty(&json!({
-            // The TypeScript default; nothing can change it without native dialog handling.
-            "autoDismiss": true,
-            "cdpHistory": [],
+            "autoDismiss": auto_dismiss,
+            "cdpHistory": native,
             "pageHistory": page_history.unwrap_or_else(|| json!([])),
         })))
     }
@@ -79,7 +82,15 @@ tool!(
         "Toggle whether native JS dialogs are auto-dismissed. Default true (recommended). Turn off if you want to see real alert/confirm/prompt modals.",
         schema(json!({ "enabled": { "type": "boolean" } }), &["enabled"])
     ),
-    |_ctx, _args| { Err(unsupported(NATIVE_DIALOGS)) }
+    |ctx, args| {
+        let enabled = args
+            .0
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        ctx.browser.set_dialog_auto_dismiss(enabled).await?;
+        Ok(format!("auto-dismiss = {enabled}"))
+    }
 );
 
 tool!(
@@ -89,7 +100,10 @@ tool!(
         "Clear the CDP-side dialog history buffer.",
         no_args()
     ),
-    |_ctx, _args| { Err(unsupported(NATIVE_DIALOGS)) }
+    |ctx, _args| {
+        ctx.browser.clear_dialog_history().await?;
+        Ok("cleared".to_owned())
+    }
 );
 
 tool!(
@@ -108,6 +122,8 @@ tool!(
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+
+    use rever_tools_api::tool::unsupported;
 
     use super::*;
     use crate::test_support::{

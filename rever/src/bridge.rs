@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use futures::channel::mpsc::UnboundedSender;
 use futures::channel::oneshot;
-use rever_tools_api::tool::{BoxFuture, Browser, Cookie, Input, PageInfo, TabInfo};
+use rever_tools_api::tool::{BoxFuture, Browser, Cookie, DialogRecord, Input, PageInfo, TabInfo};
 use serde_json::Value;
 use servo::{
     Code, InputEvent, JSValue, Key, KeyState, KeyboardEvent, Location, Modifiers, MouseButton,
@@ -37,6 +37,9 @@ pub enum Command {
     /// Open a URL in a tab without selecting it; answers the new tab's index.
     OpenTab(String, Answer<usize>),
     ArmDialog(bool, Option<String>, Answer<()>),
+    DialogHistory(usize, Answer<(bool, Vec<DialogRecord>)>),
+    ClearDialogs(Answer<()>),
+    SetDialogAutoDismiss(bool, Answer<()>),
     Cookies(String, Answer<Vec<Cookie>>),
     /// A cookie to store for a URL; an expired one deletes.
     SetCookie(String, Cookie, Answer<()>),
@@ -148,6 +151,21 @@ impl Browser for AppBrowser {
         prompt_text: Option<String>,
     ) -> BoxFuture<'_, Result<(), String>> {
         self.ask(|answer| Command::ArmDialog(accept, prompt_text, answer))
+    }
+
+    fn dialog_history(
+        &self,
+        limit: usize,
+    ) -> BoxFuture<'_, Result<(bool, Vec<DialogRecord>), String>> {
+        self.ask(|answer| Command::DialogHistory(limit, answer))
+    }
+
+    fn clear_dialog_history(&self) -> BoxFuture<'_, Result<(), String>> {
+        self.ask(Command::ClearDialogs)
+    }
+
+    fn set_dialog_auto_dismiss(&self, enabled: bool) -> BoxFuture<'_, Result<(), String>> {
+        self.ask(|answer| Command::SetDialogAutoDismiss(enabled, answer))
     }
 
     fn arm_file_paths(&self, paths: Vec<String>) -> BoxFuture<'_, Result<(), String>> {
