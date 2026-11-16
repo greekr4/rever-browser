@@ -139,6 +139,11 @@ impl Engine {
         // Servo's TLS stack needs a process-wide crypto provider; GPUI may have installed one already.
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let servo = ServoBuilder::default()
+            // Off by default in Servo; React sites call it on load and fail without it.
+            .preferences(servo::Preferences {
+                dom_intersection_observer_enabled: true,
+                ..Default::default()
+            })
             .event_loop_waker(Box::new(Waker(Arc::new(wake))))
             .build();
         Self {
