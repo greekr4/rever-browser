@@ -410,7 +410,12 @@ impl EntityInputHandler for TextInput {
         let line_point = self.last_bounds?.localize(&point)?;
         let last_layout = self.last_layout.as_ref()?;
 
-        assert_eq!(last_layout.text, self.content);
+        // An empty field is laid out as its placeholder (and a masked one as dots):
+        // the input method asks this while composing, and there is nothing of the
+        // content to point at, so the answer is its start instead of a panic.
+        if last_layout.text != self.content {
+            return Some(0);
+        }
         let utf8_index = last_layout.index_for_x(point.x - line_point.x)?;
         Some(self.offset_to_utf16(utf8_index))
     }
