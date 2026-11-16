@@ -10,8 +10,8 @@ use image::RgbaImage;
 use servo::{
     ConsoleLogLevel, CookieSource, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize,
     EmbedderControl, EventLoopWaker, InputEvent, JSValue, PrefValue, RenderingContext, Servo,
-    ServoBuilder, SoftwareRenderingContext, UserContentManager, UserScript, WebResourceLoad,
-    WebView, WebViewBuilder, WebViewDelegate,
+    ServoBuilder, ServoDelegate, SoftwareRenderingContext, UserContentManager, UserScript,
+    WebResourceLoad, WebView, WebViewBuilder, WebViewDelegate,
 };
 use url::Url;
 
@@ -133,6 +133,25 @@ impl WebViewDelegate for Delegate {
     }
 }
 
+/// Where Servo's own debugging server listens and the token that admits a client:
+/// the app is its only client, anyone else is refused by default.
+type Devtools = Rc<RefCell<Option<(u16, String)>>>;
+
+struct AppDelegate(Devtools);
+
+impl ServoDelegate for AppDelegate {
+    fn notify_devtools_server_started(&self, port: u16, token: String) {
+        *self.0.borrow_mut() = Some((port, token));
+    }
+}
+
+/// A port nothing listens on right now.
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .map_or(0, |address| address.port())
+}
+
 #[derive(Clone)]
 struct Waker(Arc<dyn Fn() + Send + Sync>);
 
@@ -154,6 +173,7 @@ struct Page {
 }
 
 pub struct Engine {
+    devtools: Devtools,
     servo: Servo,
     pages: Vec<Page>,
     events: Events,
@@ -181,11 +201,19 @@ impl Engine {
             // Off by default in Servo; React sites call it on load and fail without it.
             .preferences(servo::Preferences {
                 dom_intersection_observer_enabled: true,
+                // The debugger tools drive pages through Servo's debugging server.
+                devtools_server_enabled: true,
+                // On this machine only. Servo reports the port it was told, not the
+                // one it got, so a free one is picked here first.
+                devtools_server_listen_address: format!("127.0.0.1:{}", free_port()),
                 ..Default::default()
             })
             .event_loop_waker(Box::new(Waker(Arc::new(wake))))
             .build();
+        let devtools = Devtools::default();
+        servo.set_delegate(Rc::new(AppDelegate(devtools.clone())));
         Self {
+            devtools,
             servo,
             pages: Vec::new(),
             events: Events::default(),
@@ -295,6 +323,12 @@ impl Engine {
         };
         self.servo
             .set_preference("user_agent", PrefValue::Str(user_agent));
+    }
+
+    /// The port of Servo's debugging server and the token that admits a client;
+    /// `None` until the server has started.
+    pub fn devtools(&self) -> Option<(u16, String)> {
+        self.devtools.borrow().clone()
     }
 
     /// Device pixels per CSS pixel.

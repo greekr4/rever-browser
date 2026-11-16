@@ -7158,6 +7158,7 @@ dependencies = [
  "gpui",
  "http",
  "image",
+ "regex",
  "rever-agent",
  "rever-core",
  "rever-formats",
@@ -8699,8 +8700,6 @@ dependencies = [
 [[package]]
 name = "servo-devtools"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ba7f336b4c90414dd61faa71e259a829b11e3135efcdd172f6bc72ab521d6cf"
 dependencies = [
  "atomic_refcell",
  "base64 0.23.1",

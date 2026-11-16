@@ -24,6 +24,7 @@ use rever_mcp::McpServer;
 use rever_tools_api::tool::{
     DialogAnswer, DialogRecord, PageInfo, TabInfo, ToolContext, ToolRegistry,
 };
+use rever_tools_debug::debugger::DebugState;
 use rever_tools_debug::intercept::InterceptState;
 use rever_ui_history::history::NewHistoryEntry;
 use rever_ui_kit::i18n::Lang;
@@ -86,6 +87,7 @@ pub(crate) fn data_dir() -> PathBuf {
 fn start_mcp(
     traffic: Arc<Mutex<TrafficStore>>,
     browser: Arc<bridge::AppBrowser>,
+    debug_endpoint: crate::debug::Endpoint,
 ) -> (Option<McpServer>, Arc<InterceptState>) {
     let mut registry = ToolRegistry::default();
     rever_tools_traffic::register(&mut registry);
@@ -101,6 +103,12 @@ fn start_mcp(
     let _ = std::fs::create_dir_all(&data_dir);
     let context = Arc::new(ToolContext::new(traffic, browser.clone(), data_dir));
     // The intercept and override tools decide requests through the page engine.
+    // The breakpoint tools debug pages through Servo's own debugging server.
+    let debug = context.state::<DebugState>();
+    debug.set_engine(crate::debug::ServoDebugger::new(
+        debug_endpoint,
+        Arc::downgrade(&debug),
+    ));
     let intercept = context.state::<InterceptState>();
     let edits = Arc::new(crate::intercept::NetEdits::default());
     crate::intercept::install_editors(intercept.clone(), edits.clone());
@@ -319,6 +327,8 @@ pub(crate) struct Browser {
     tool_acted: Option<Instant>,
     /// The `<select>` whose option list is open over the page.
     pub select: Option<SelectElement>,
+    /// Where the debugger tools find Servo's debugging server.
+    debug_endpoint: crate::debug::Endpoint,
     /// Mobile mode: the page is a phone-wide column in the middle of its area.
     pub mobile: bool,
     /// Requests a modify rule holds until the agent decides them.
@@ -342,7 +352,8 @@ impl Browser {
         let (tool_tx, tool_commands) = futures::channel::mpsc::unbounded();
         let tool_browser = Arc::new(bridge::AppBrowser::new(tool_tx, wake.clone()));
         let traffic = Arc::new(Mutex::new(TrafficStore::default()));
-        let (mcp, intercept) = start_mcp(traffic.clone(), tool_browser);
+        let debug_endpoint = crate::debug::Endpoint::default();
+        let (mcp, intercept) = start_mcp(traffic.clone(), tool_browser, debug_endpoint.clone());
         let traffic_changed = Arc::new(AtomicBool::new(false));
         {
             let (store, wake, changed) = (traffic.clone(), wake.clone(), traffic_changed.clone());
@@ -488,6 +499,7 @@ impl Browser {
             tool_acted: None,
             select: None,
             mobile: false,
+            debug_endpoint,
             held_requests,
             composing: None,
         }
@@ -567,6 +579,13 @@ impl Browser {
         }
         if frame_ready {
             self.capture(window);
+        }
+        // The debugger tools connect to Servo's debugging server once it is up.
+        if self.debug_endpoint.lock().unwrap().is_none() {
+            *self.debug_endpoint.lock().unwrap() = self.engine.devtools();
+            if std::env::var_os("REVER_DEVTOOLS_DEBUG").is_some() {
+                eprintln!("[devtools] {:?}", self.engine.devtools());
+            }
         }
         for (_, control) in self.engine.take_controls() {
             self.answer_control(control, window, cx);

@@ -12,6 +12,7 @@
 mod agent;
 mod app;
 mod bridge;
+mod debug;
 mod engine;
 mod intercept;
 mod panels;
