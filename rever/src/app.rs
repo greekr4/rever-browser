@@ -102,7 +102,13 @@ fn start_mcp(
     let context = Arc::new(ToolContext::new(traffic, browser.clone(), data_dir));
     // The intercept and override tools decide requests through the page engine.
     let intercept = context.state::<InterceptState>();
-    intercept.set_engine(Arc::new(crate::intercept::AppIntercept(browser)));
+    let edits = Arc::new(crate::intercept::NetEdits::default());
+    crate::intercept::install_editors(intercept.clone(), edits.clone());
+    intercept.set_engine(Arc::new(crate::intercept::AppIntercept {
+        browser,
+        edits,
+        state: Arc::downgrade(&intercept),
+    }));
     let server = rever_mcp::start(Arc::new(registry), context)
         .inspect_err(|error| eprintln!("[mcp] {error}"))
         .ok();
