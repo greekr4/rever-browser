@@ -449,9 +449,19 @@ impl Browser {
         let active = self.active_id();
         let mut frame_ready = false;
         let mut console_changed = false;
+        let mut opened = false;
         for event in self.engine.pump() {
             match event {
                 EngineEvent::FrameReady(tab) => frame_ready |= tab == active,
+                EngineEvent::Opened(id) => {
+                    self.tabs.push(Tab {
+                        id,
+                        title: "".into(),
+                        url: String::new(),
+                        frame: None,
+                    });
+                    opened = true;
+                }
                 EngineEvent::Title(tab, title) => {
                     let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab) else {
                         continue;
@@ -503,6 +513,10 @@ impl Browser {
         }
         if frame_ready {
             self.capture(window);
+        }
+        if opened {
+            // As a browser does for a link that opens a window: show the new tab.
+            self.select_tab(self.tabs.len() - 1, window, cx);
         }
         for result in self.eval_results.take() {
             let reply = result.and_then(|value| panels::eval_reply(&value));

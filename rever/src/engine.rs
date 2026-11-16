@@ -1,16 +1,16 @@
 //! The Servo side of rever: one WebView per tab, each rendered off-screen. The UI asks
 //! for frames as images and forwards input; everything here stays on the main thread.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
 use dpi::PhysicalSize;
 use image::RgbaImage;
 use servo::{
-    ConsoleLogLevel, DeviceIntRect, DeviceIntSize, EventLoopWaker, InputEvent, JSValue,
-    RenderingContext, Servo, ServoBuilder, SoftwareRenderingContext, UserContentManager,
-    UserScript, WebView, WebViewBuilder, WebViewDelegate,
+    ConsoleLogLevel, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize, EventLoopWaker,
+    InputEvent, JSValue, RenderingContext, Servo, ServoBuilder, SoftwareRenderingContext,
+    UserContentManager, UserScript, WebView, WebViewBuilder, WebViewDelegate,
 };
 use url::Url;
 
@@ -20,9 +20,14 @@ pub struct TabId(pub u32);
 /// What happened inside the engine since the last [`Engine::pump`].
 pub enum EngineEvent {
     FrameReady(TabId),
+    /// The page opened a window (`target="_blank"`, `window.open`): it is a new tab.
+    Opened(TabId),
     Title(TabId, String),
     Url(TabId, String),
-    Console { level: String, message: String },
+    Console {
+        level: String,
+        message: String,
+    },
 }
 
 type Events = Rc<RefCell<Vec<EngineEvent>>>;
@@ -30,6 +35,11 @@ type Events = Rc<RefCell<Vec<EngineEvent>>>;
 struct Delegate {
     tab: TabId,
     events: Events,
+    /// This tab's surface: a window it opens starts at the same size.
+    context: Rc<SoftwareRenderingContext>,
+    // Shared with the engine, which is borrowed while Servo calls the delegate.
+    next_id: Rc<Cell<u32>>,
+    opened: Rc<RefCell<Vec<Page>>>,
 }
 
 impl Delegate {
@@ -41,6 +51,39 @@ impl Delegate {
 impl WebViewDelegate for Delegate {
     fn notify_new_frame_ready(&self, _: WebView) {
         self.push(EngineEvent::FrameReady(self.tab));
+    }
+
+    fn request_create_new(&self, parent: WebView, request: CreateNewWebViewRequest) {
+        // Without a surface the request is dropped, which leaves the link dead.
+        let Ok(context) = SoftwareRenderingContext::new(self.context.size()) else {
+            return;
+        };
+        let context = Rc::new(context);
+        let id = TabId(self.next_id.get());
+        self.next_id.set(id.0 + 1);
+        // The opener's init scripts (capture hooks, injections) apply to its windows too.
+        let Some(scripts) = parent.user_content_manager() else {
+            return;
+        };
+        let webview = request
+            .builder(context.clone())
+            .user_content_manager(scripts.clone())
+            .hidpi_scale_factor(parent.hidpi_scale_factor())
+            .delegate(Rc::new(Delegate {
+                tab: id,
+                events: self.events.clone(),
+                context: context.clone(),
+                next_id: self.next_id.clone(),
+                opened: self.opened.clone(),
+            }))
+            .build();
+        self.opened.borrow_mut().push(Page {
+            id,
+            webview,
+            context,
+            scripts,
+        });
+        self.push(EngineEvent::Opened(id));
     }
 
     fn notify_page_title_changed(&self, _: WebView, title: Option<String>) {
@@ -84,7 +127,9 @@ pub struct Engine {
     pages: Vec<Page>,
     events: Events,
     scale: f32,
-    next_id: u32,
+    next_id: Rc<Cell<u32>>,
+    /// Tabs the pages opened during the current pump.
+    opened: Rc<RefCell<Vec<Page>>>,
 }
 
 impl Engine {
@@ -101,7 +146,8 @@ impl Engine {
             pages: Vec::new(),
             events: Events::default(),
             scale,
-            next_id: 1,
+            next_id: Rc::new(Cell::new(1)),
+            opened: Rc::default(),
         }
     }
 
@@ -111,8 +157,8 @@ impl Engine {
             SoftwareRenderingContext::new(size)
                 .map_err(|error| format!("could not create a rendering surface: {error:?}"))?,
         );
-        let id = TabId(self.next_id);
-        self.next_id += 1;
+        let id = TabId(self.next_id.get());
+        self.next_id.set(id.0 + 1);
         let scripts = Rc::new(UserContentManager::new(&self.servo));
         let webview = WebViewBuilder::new(&self.servo, context.clone())
             .user_content_manager(scripts.clone())
@@ -121,6 +167,9 @@ impl Engine {
             .delegate(Rc::new(Delegate {
                 tab: id,
                 events: self.events.clone(),
+                context: context.clone(),
+                next_id: self.next_id.clone(),
+                opened: self.opened.clone(),
             }))
             .build();
         self.pages.push(Page {
@@ -141,8 +190,9 @@ impl Engine {
     }
 
     /// Let Servo process its queue; returns what changed.
-    pub fn pump(&self) -> Vec<EngineEvent> {
+    pub fn pump(&mut self) -> Vec<EngineEvent> {
         self.servo.spin_event_loop();
+        self.pages.append(&mut self.opened.borrow_mut());
         std::mem::take(&mut *self.events.borrow_mut())
     }
 
