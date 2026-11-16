@@ -232,6 +232,11 @@ impl Engine {
         image
     }
 
+    /// Device pixels per CSS pixel.
+    pub fn scale(&self) -> f32 {
+        self.scale
+    }
+
     pub fn size(&self, id: TabId) -> Option<PhysicalSize<u32>> {
         self.page(id).map(|page| page.context.size())
     }

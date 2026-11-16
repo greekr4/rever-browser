@@ -30,7 +30,7 @@ use rever_ui_menus::bot_check_button::BotCheckButton;
 use rever_ui_menus::ip_badge::IpBadge;
 use rever_ui_menus::ui::{Look, LookFn, fill};
 use rever_ui_state::app_theme::{self, AppThemeStore};
-use servo::{EmbedderControl, JSValue, SimpleDialog};
+use servo::{EmbedderControl, JSValue, SelectElement, SimpleDialog};
 use url::Url;
 
 use crate::agent::{AgentEvent, AgentSession};
@@ -301,6 +301,8 @@ pub(crate) struct Browser {
     upload_paths: Vec<PathBuf>,
     /// When a tool last drove the page: a dialog opened right after is the agent's.
     tool_acted: Option<Instant>,
+    /// The `<select>` whose option list is open over the page.
+    pub select: Option<SelectElement>,
 }
 
 impl Browser {
@@ -447,6 +449,7 @@ impl Browser {
             dialog_answer: None,
             upload_paths: Vec::new(),
             tool_acted: None,
+            select: None,
         }
     }
 
@@ -867,10 +870,29 @@ impl Browser {
                 })
                 .detach();
             }
-            // Dropped, which dismisses them: select lists, color pickers, context
-            // menus and the input method have no interface here yet.
+            // The agent picks options with browser_select_option; a list its click
+            // opened would only sit over the page.
+            EmbedderControl::SelectElement(select) if !agent_acting => {
+                self.select = Some(select);
+                cx.notify();
+            }
+            // Dropped, which dismisses them: color pickers, context menus and the
+            // input method have no interface here yet.
             _ => {}
         }
+    }
+
+    /// Close the open `<select>` list: with the option the user picked, or with
+    /// none, which leaves the page's choice as it was.
+    pub fn choose_option(&mut self, id: Option<usize>, cx: &mut Context<Self>) {
+        let Some(mut select) = self.select.take() else {
+            return;
+        };
+        if let Some(id) = id {
+            select.select(vec![id]);
+            select.submit();
+        }
+        cx.notify();
     }
 
     fn run_tool_commands(&mut self, window: &mut Window, cx: &mut Context<Self>) {

@@ -5,15 +5,16 @@ use std::str::FromStr;
 
 use euclid::Point2D;
 use gpui::{
-    Context, Corners, KeyDownEvent, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta, ScrollWheelEvent, Window, canvas,
-    div, prelude::*,
+    AnyElement, ClickEvent, Context, Corners, KeyDownEvent, KeyUpEvent, Keystroke, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta, ScrollWheelEvent,
+    Window, canvas, div, prelude::*, px,
 };
 use rever_core::input::w3c_key_name;
 use rever_ui_kit::theme::Theme;
 use servo::{
     Code, InputEvent, Key, KeyState, KeyboardEvent, Location, Modifiers, MouseButtonAction,
-    MouseButtonEvent, WebViewPoint, WheelDelta, WheelEvent, WheelMode,
+    MouseButtonEvent, SelectElementOption, SelectElementOptionOrOptgroup, WebViewPoint, WheelDelta,
+    WheelEvent, WheelMode,
 };
 
 use crate::app::Browser;
@@ -69,6 +70,71 @@ impl Browser {
             .flex_col()
             .child(page)
             .child(self.bot_check.clone())
+            .children(self.select_list(theme, cx))
+    }
+
+    /// The option list of the `<select>` the user opened, under the element.
+    ///
+    /// shortcut: one choice closes the list, also for `<select multiple>`; keep it
+    /// open and collect choices when a page needs several.
+    fn select_list(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let select = self.select.as_ref()?;
+        let chosen = select.selected_options();
+        let (hover, accent, dim, text) =
+            (theme.chrome_hover, theme.accent, theme.text_dim, theme.text);
+        let row = |option: &SelectElementOption, indent: f32, cx: &mut Context<Self>| {
+            let id = option.id;
+            let color = match (option.is_disabled, chosen.contains(&id)) {
+                (true, _) => dim,
+                (false, true) => accent,
+                (false, false) => text,
+            };
+            div()
+                .id(("select-option", id))
+                .pl(px(10.0 + indent))
+                .pr(px(10.0))
+                .py(px(4.0))
+                .text_color(color)
+                .child(option.label.clone())
+                .when(!option.is_disabled, |row| {
+                    row.hover(move |style| style.bg(hover))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.choose_option(Some(id), cx)
+                        }))
+                })
+                .into_any_element()
+        };
+        let mut rows = Vec::new();
+        for entry in select.options() {
+            match entry {
+                SelectElementOptionOrOptgroup::Option(option) => rows.push(row(option, 0.0, cx)),
+                SelectElementOptionOrOptgroup::Optgroup { label, options } => {
+                    let heading = div().px(px(10.0)).py(px(4.0)).text_color(dim);
+                    rows.push(heading.child(label.clone()).into_any_element());
+                    rows.extend(options.iter().map(|option| row(option, 12.0, cx)));
+                }
+            }
+        }
+        // Servo places the element in device pixels of the page.
+        let (area, scale) = (select.position(), self.engine.scale());
+        let list = div()
+            .id("select-list")
+            .absolute()
+            .left(px(area.min.x as f32 / scale))
+            .top(px(area.max.y as f32 / scale))
+            .min_w(px(area.width() as f32 / scale))
+            .max_h(px(320.0))
+            .overflow_y_scroll()
+            .occlude()
+            .bg(theme.bg)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(6.0))
+            .shadow_md()
+            .py(px(4.0))
+            .text_size(px(13.0))
+            .children(rows);
+        Some(list.into_any_element())
     }
 
     fn page_point(&self, position: Point<Pixels>) -> WebViewPoint {
@@ -83,8 +149,12 @@ impl Browser {
         &mut self,
         event: &MouseDownEvent,
         window: &mut Window,
-        _: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) {
+        // A press outside an open option list closes it, as a native list does.
+        if self.select.is_some() {
+            return self.choose_option(None, cx);
+        }
         window.focus(&self.page_focus);
         let point = self.page_point(event.position);
         let tab = self.active_id();
