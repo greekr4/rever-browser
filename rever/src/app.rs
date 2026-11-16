@@ -302,6 +302,9 @@ pub(crate) struct Browser {
     tool_acted: Option<Instant>,
     /// The `<select>` whose option list is open over the page.
     pub select: Option<SelectElement>,
+    /// The text the input method is still composing in the page (한 before it
+    /// becomes 한글); `None` when nothing is being composed.
+    pub composing: Option<String>,
 }
 
 impl Browser {
@@ -448,6 +451,7 @@ impl Browser {
             upload_paths: Vec::new(),
             tool_acted: None,
             select: None,
+            composing: None,
         }
     }
 

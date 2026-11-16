@@ -4,17 +4,20 @@
 use std::str::FromStr;
 
 use euclid::Point2D;
+use std::ops::Range;
+
 use gpui::{
-    AnyElement, ClickEvent, Context, Corners, KeyDownEvent, KeyUpEvent, Keystroke, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta, ScrollWheelEvent,
-    Window, canvas, div, prelude::*, px,
+    AnyElement, Bounds, ClickEvent, Context, Corners, ElementInputHandler, EntityInputHandler,
+    KeyDownEvent, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    Pixels, Point, ScrollDelta, ScrollWheelEvent, UTF16Selection, Window, canvas, div, prelude::*,
+    px,
 };
 use rever_core::input::w3c_key_name;
 use rever_ui_kit::theme::Theme;
 use servo::{
-    Code, InputEvent, Key, KeyState, KeyboardEvent, Location, Modifiers, MouseButtonAction,
-    MouseButtonEvent, SelectElementOption, SelectElementOptionOrOptgroup, WebViewPoint, WheelDelta,
-    WheelEvent, WheelMode,
+    Code, CompositionEvent, CompositionState, ImeEvent, InputEvent, Key, KeyState, KeyboardEvent,
+    Location, Modifiers, MouseButtonAction, MouseButtonEvent, SelectElementOption,
+    SelectElementOptionOrOptgroup, WebViewPoint, WheelDelta, WheelEvent, WheelMode,
 };
 
 use crate::app::Browser;
@@ -24,6 +27,7 @@ impl Browser {
         let frame = self.tabs[self.active].frame.clone();
         let bounds_cell = self.page_bounds.clone();
         let this = cx.entity();
+        let (input, focus) = (cx.entity(), self.page_focus.clone());
         let painted = canvas(
             move |bounds, window, _| {
                 // The engine is resized after this frame: entities cannot be updated mid-paint.
@@ -34,7 +38,9 @@ impl Browser {
                     });
                 }
             },
-            move |bounds, _, window, _| {
+            move |bounds, _, window, cx| {
+                // Composed text (Korean, Japanese, Chinese) reaches the page through this.
+                window.handle_input(&focus, ElementInputHandler::new(bounds, input), cx);
                 if let Some(frame) = frame {
                     let _ = window.paint_image(bounds, Corners::default(), frame, 0, false);
                 }
@@ -53,8 +59,11 @@ impl Browser {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, _| {
-                this.on_key(KeyState::Down, &event.keystroke)
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                this.on_key(KeyState::Down, &event.keystroke);
+                // Handled: otherwise the system types the same character again
+                // through the input handler.
+                cx.stop_propagation();
             }))
             .on_key_up(cx.listener(|this, event: &KeyUpEvent, _, _| {
                 this.on_key(KeyState::Up, &event.keystroke)
@@ -240,4 +249,122 @@ impl Browser {
             )),
         );
     }
+}
+
+/// The input method's side of the page. The page owns its text, so nothing can be
+/// read back: the handler only reports whether a composition is open and forwards
+/// what the input method composes and commits.
+impl EntityInputHandler for Browser {
+    fn text_for_range(
+        &mut self,
+        _: Range<usize>,
+        _: &mut Option<Range<usize>>,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) -> Option<String> {
+        None
+    }
+
+    fn selected_text_range(
+        &mut self,
+        _: bool,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) -> Option<UTF16Selection> {
+        let end = self.composing.as_deref().map_or(0, utf16_len);
+        Some(UTF16Selection {
+            range: end..end,
+            reversed: false,
+        })
+    }
+
+    fn marked_text_range(&self, _: &mut Window, _: &mut Context<Self>) -> Option<Range<usize>> {
+        self.composing.as_deref().map(|text| 0..utf16_len(text))
+    }
+
+    fn unmark_text(&mut self, _: &mut Window, _: &mut Context<Self>) {
+        // The input method gave up the composition: what was composed stays.
+        if let Some(text) = self.composing.take() {
+            self.compose(CompositionState::End, &text);
+        }
+    }
+
+    fn replace_text_in_range(
+        &mut self,
+        _: Option<Range<usize>>,
+        text: &str,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) {
+        if self.composing.take().is_some() {
+            return self.compose(CompositionState::End, text);
+        }
+        // Text the input method inserts without composing (an emoji, a dictated word).
+        let tab = self.active_id();
+        for ch in text.chars() {
+            for state in [KeyState::Down, KeyState::Up] {
+                let key = Key::Character(ch.to_string());
+                let event = KeyboardEvent::from_state_and_key(state, key);
+                self.engine.input(tab, InputEvent::Keyboard(event));
+            }
+        }
+    }
+
+    fn replace_and_mark_text_in_range(
+        &mut self,
+        _: Option<Range<usize>>,
+        text: &str,
+        _: Option<Range<usize>>,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) {
+        if self.composing.is_none() {
+            self.compose(CompositionState::Start, "");
+        }
+        if text.is_empty() {
+            // Everything composed was deleted: the composition ends with nothing.
+            self.composing = None;
+            return self.compose(CompositionState::End, "");
+        }
+        self.compose(CompositionState::Update, text);
+        self.composing = Some(text.to_owned());
+    }
+
+    fn bounds_for_range(
+        &mut self,
+        _: Range<usize>,
+        bounds: Bounds<Pixels>,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) -> Option<Bounds<Pixels>> {
+        // shortcut: the candidate window sits at the page's corner, since the caret's
+        // place is the page's to know; ask the engine for it when that bothers.
+        Some(bounds)
+    }
+
+    fn character_index_for_point(
+        &mut self,
+        _: Point<Pixels>,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) -> Option<usize> {
+        None
+    }
+}
+
+impl Browser {
+    fn compose(&self, state: CompositionState, data: &str) {
+        let event = CompositionEvent {
+            state,
+            data: data.to_owned(),
+        };
+        self.engine.input(
+            self.active_id(),
+            InputEvent::Ime(ImeEvent::Composition(event)),
+        );
+    }
+}
+
+fn utf16_len(text: &str) -> usize {
+    text.encode_utf16().count()
 }
