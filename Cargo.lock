@@ -7169,6 +7169,7 @@ dependencies = [
  "rever-tools-automation",
  "rever-tools-browser",
  "rever-tools-debug",
+ "rever-tools-http",
  "rever-tools-inspect",
  "rever-tools-page",
  "rever-tools-redteam",
@@ -7389,7 +7390,10 @@ name = "rever-tools-http"
 version = "0.0.0"
 dependencies = [
  "rever-core",
+ "rever-scope",
  "rever-tools-api",
+ "rustls",
+ "rustls-pki-types",
  "serde",
  "serde_json",
 ]

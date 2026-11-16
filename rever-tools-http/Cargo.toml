@@ -3,10 +3,15 @@ name = "rever-tools-http"
 version = "0.0.0"
 edition = "2024"
 publish = false
-description = "Outbound HTTP for tools: the repeater, raw HTTP, burst, intruder, gRPC and payload probes"
+description = "Outbound HTTP primitives for tools: raw HTTP and gRPC request senders (fence-gated)"
 
 [dependencies]
 rever-tools-api = { path = "../rever-tools-api" }
 rever-core = { path = "../rever-core" }
+# raw_http is gated to loopback / lab hosts.
+rever-scope = { path = "../rever-scope" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# raw_http opens its own TCP/TLS socket to send bytes verbatim.
+rustls = "0.23"
+rustls-pki-types = "1"
