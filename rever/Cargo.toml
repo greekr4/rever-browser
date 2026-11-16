@@ -32,6 +32,8 @@ rever-ui-menus = { path = "../rever-ui-menus" }
 # EvalReply: the shape the console panel takes a script result in.
 rever-formats = { path = "../rever-formats" }
 servo = "=0.8.0"
+# The cookie type of Servo's site data manager.
+cookie = "0.18"
 # The patched servo-net (see the workspace Cargo.toml): its tap carries request and response bodies.
 net = { package = "servo-net", version = "=0.8.0" }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "logging", "std", "tls12"] }

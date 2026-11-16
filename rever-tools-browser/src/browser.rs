@@ -425,10 +425,21 @@ tool!(
             &["ref", "text"]
         )
     ),
-    |_ctx, _args| {
-        // Writing the clipboard is the first thing the TypeScript does, and the
-        // paste itself is a key with the platform's accelerator held.
-        Err(unsupported("writing the clipboard"))
+    |ctx, args| {
+        let (r, text) = (args.str("ref"), args.str("text"));
+        ctx.browser.write_clipboard(text).await?;
+        snapshotter(ctx).focus_ref(ctx.browser.as_ref(), r).await?;
+        // The paste itself is a key with the platform's accelerator held.
+        let accelerator = if cfg!(target_os = "macos") {
+            "Meta"
+        } else {
+            "Control"
+        };
+        ctx.state::<HumanInput>()
+            .press_key(&ctx.browser, "v", &[accelerator], None)
+            .await?;
+        let pasted = format!("pasted {} char(s) into {r}", utf16_len(text));
+        Ok(snapshot_after(ctx, &pasted).await)
     }
 );
 

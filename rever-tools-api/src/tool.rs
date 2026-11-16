@@ -222,6 +222,11 @@ pub trait Browser: Send + Sync {
         Box::pin(async { Err(unsupported("answering native dialogs")) })
     }
 
+    /// Replace the system clipboard's text.
+    fn write_clipboard<'a>(&'a self, _text: &'a str) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async { Err(unsupported("writing the clipboard")) })
+    }
+
     /// Hand these files to the next file picker the page opens; an empty list
     /// takes back files that no picker asked for.
     fn arm_file_paths(&self, _paths: Vec<String>) -> BoxFuture<'_, Result<(), String>> {

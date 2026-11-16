@@ -8,8 +8,8 @@ use std::sync::Arc;
 use dpi::PhysicalSize;
 use image::RgbaImage;
 use servo::{
-    ConsoleLogLevel, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize, EmbedderControl,
-    EventLoopWaker, InputEvent, JSValue, RenderingContext, Servo, ServoBuilder,
+    ConsoleLogLevel, CookieSource, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize,
+    EmbedderControl, EventLoopWaker, InputEvent, JSValue, RenderingContext, Servo, ServoBuilder,
     SoftwareRenderingContext, UserContentManager, UserScript, WebView, WebViewBuilder,
     WebViewDelegate,
 };
@@ -23,6 +23,8 @@ pub enum EngineEvent {
     FrameReady(TabId),
     /// The page opened a window (`target="_blank"`, `window.open`): it is a new tab.
     Opened(TabId),
+    /// The page closed itself with `window.close()`.
+    Closed(TabId),
     Title(TabId, String),
     Url(TabId, String),
     Console {
@@ -91,6 +93,10 @@ impl WebViewDelegate for Delegate {
         self.push(EngineEvent::Opened(id));
     }
 
+    fn notify_closed(&self, _: WebView) {
+        self.push(EngineEvent::Closed(self.tab));
+    }
+
     fn show_embedder_control(&self, _: WebView, control: EmbedderControl) {
         // Dropping a control answers it with "dismissed", so it is kept for the app.
         self.controls.borrow_mut().push((self.tab, control));
@@ -141,6 +147,10 @@ pub struct Engine {
     /// Tabs the pages opened during the current pump.
     opened: Rc<RefCell<Vec<Page>>>,
     controls: Controls,
+    /// Init scripts by the id they were handed out under: Servo removes one only
+    /// by the handle it was added with.
+    init_scripts: Vec<(String, TabId, Rc<UserScript>)>,
+    next_script: u32,
 }
 
 impl Engine {
@@ -165,6 +175,8 @@ impl Engine {
             next_id: Rc::new(Cell::new(1)),
             opened: Rc::default(),
             controls: Rc::default(),
+            init_scripts: Vec::new(),
+            next_script: 1,
         }
     }
 
@@ -232,6 +244,21 @@ impl Engine {
         image
     }
 
+    /// The cookies sent to `url`, HTTP-only ones included.
+    pub fn cookies(&self, url: Url) -> Vec<cookie::Cookie<'static>> {
+        self.servo
+            .site_data_manager()
+            .cookies_for_url(url, CookieSource::HTTP)
+    }
+
+    /// Store a cookie as if `url` had set it. One that is already expired removes
+    /// the cookie of that name, which is how a cookie is deleted.
+    pub fn set_cookie(&self, url: Url, cookie: cookie::Cookie<'static>) {
+        self.servo
+            .site_data_manager()
+            .set_cookie_for_url(url, cookie, None);
+    }
+
     /// Device pixels per CSS pixel.
     pub fn scale(&self) -> f32 {
         self.scale
@@ -287,11 +314,30 @@ impl Engine {
     }
 
     /// Run `source` in every new document of the tab, before the page's own scripts.
-    pub fn add_init_script(&self, id: TabId, source: String) {
-        if let Some(page) = self.page(id) {
-            page.scripts
-                .add_script(Rc::new(UserScript::new(source, None)));
+    /// Returns the id to remove the script with; `None` when the tab is gone.
+    pub fn add_init_script(&mut self, id: TabId, source: String) -> Option<String> {
+        let script = Rc::new(UserScript::new(source, None));
+        self.page(id)?.scripts.add_script(script.clone());
+        let script_id = self.next_script.to_string();
+        self.next_script += 1;
+        self.init_scripts.push((script_id.clone(), id, script));
+        Some(script_id)
+    }
+
+    /// False when no script has this id.
+    pub fn remove_init_script(&mut self, script_id: &str) -> bool {
+        let Some(at) = self
+            .init_scripts
+            .iter()
+            .position(|(id, ..)| id == script_id)
+        else {
+            return false;
+        };
+        let (_, tab, script) = self.init_scripts.remove(at);
+        if let Some(page) = self.page(tab) {
+            page.scripts.remove_script(script);
         }
+        true
     }
 
     pub fn input(&self, id: TabId, event: InputEvent) {

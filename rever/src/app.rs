@@ -12,8 +12,8 @@ use dpi::PhysicalSize;
 use futures::StreamExt;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use gpui::{
-    App, AppContext, Bounds, Context, Entity, FocusHandle, Focusable, PathPromptOptions, Pixels,
-    PromptLevel, RenderImage, SharedString, WeakEntity, Window,
+    App, AppContext, Bounds, ClipboardItem, Context, Entity, FocusHandle, Focusable,
+    PathPromptOptions, Pixels, PromptLevel, RenderImage, SharedString, WeakEntity, Window,
 };
 use image::{Frame, RgbaImage};
 use net::tap::NetworkTapEvent;
@@ -280,7 +280,6 @@ pub(crate) struct Browser {
     agent: Option<AgentSession>,
     pub agent_busy: bool,
     /// How many init scripts tools have added; the count is the next script's id.
-    init_scripts: u32,
     /// Wakes `pump` from other threads.
     wake: UnboundedSender<()>,
     /// Requests from MCP tools, answered in `pump`.
@@ -436,7 +435,6 @@ impl Browser {
             eval_results: Rc::default(),
             agent: None,
             agent_busy: false,
-            init_scripts: 0,
             wake: agent_wake,
             tool_commands,
             mcp,
@@ -462,9 +460,11 @@ impl Browser {
         let mut frame_ready = false;
         let mut console_changed = false;
         let mut opened = false;
+        let mut closed = Vec::new();
         for event in self.engine.pump() {
             match event {
                 EngineEvent::FrameReady(tab) => frame_ready |= tab == active,
+                EngineEvent::Closed(id) => closed.push(id),
                 EngineEvent::Opened(id) => {
                     self.tabs.push(Tab {
                         id,
@@ -528,6 +528,12 @@ impl Browser {
         }
         for (_, control) in self.engine.take_controls() {
             self.answer_control(control, window, cx);
+        }
+        for id in closed {
+            // The last tab stays: `close_tab` never closes it.
+            if let Some(index) = self.tabs.iter().position(|tab| tab.id == id) {
+                self.close_tab(index, window, cx);
+            }
         }
         if opened {
             // As a browser does for a link that opens a window: show the new tab.
@@ -1000,6 +1006,24 @@ impl Browser {
                     let _ = answer.send(opened);
                     cx.notify();
                 }
+                Command::Cookies(url, answer) => {
+                    let cookies = Url::parse(&url)
+                        .map_err(|error| format!("invalid URL: {error}"))
+                        .map(|url| {
+                            let cookies = self.engine.cookies(url);
+                            cookies.iter().map(bridge::from_engine_cookie).collect()
+                        });
+                    let _ = answer.send(cookies);
+                }
+                Command::SetCookie(url, cookie, answer) => {
+                    let stored = Url::parse(&url)
+                        .map_err(|error| format!("invalid URL: {error}"))
+                        .map(|url| {
+                            self.engine
+                                .set_cookie(url, bridge::to_engine_cookie(&cookie))
+                        });
+                    let _ = answer.send(stored);
+                }
                 Command::ArmDialog(accept, text, answer) => {
                     self.dialog_answer = Some((accept, text));
                     let _ = answer.send(Ok(()));
@@ -1009,9 +1033,20 @@ impl Browser {
                     let _ = answer.send(Ok(()));
                 }
                 Command::AddInitScript(source, answer) => {
-                    self.engine.add_init_script(tab, source);
-                    self.init_scripts += 1;
-                    let _ = answer.send(Ok(self.init_scripts.to_string()));
+                    let added = self.engine.add_init_script(tab, source);
+                    let _ = answer.send(added.ok_or_else(|| "the tab is closed".to_owned()));
+                }
+                Command::RemoveInitScript(id, answer) => {
+                    let removed = self.engine.remove_init_script(&id);
+                    let _ = answer.send(
+                        removed
+                            .then_some(())
+                            .ok_or_else(|| format!("no init script with id {id}")),
+                    );
+                }
+                Command::WriteClipboard(text, answer) => {
+                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                    let _ = answer.send(Ok(()));
                 }
             }
         }

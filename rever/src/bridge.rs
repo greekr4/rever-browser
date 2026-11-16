@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use futures::channel::mpsc::UnboundedSender;
 use futures::channel::oneshot;
-use rever_tools_api::tool::{BoxFuture, Browser, Input, PageInfo, TabInfo, unsupported};
+use rever_tools_api::tool::{BoxFuture, Browser, Cookie, Input, PageInfo, TabInfo};
 use serde_json::Value;
 use servo::{
     Code, InputEvent, JSValue, Key, KeyState, KeyboardEvent, Location, Modifiers, MouseButton,
@@ -28,11 +28,16 @@ pub enum Command {
     Input(Input, Answer<()>),
     Viewport(Answer<(u32, u32)>),
     AddInitScript(String, Answer<String>),
+    RemoveInitScript(String, Answer<()>),
+    WriteClipboard(String, Answer<()>),
     Tabs(Answer<Vec<TabInfo>>),
     SelectTab(usize, Answer<()>),
     /// Open a URL in a tab without selecting it; answers the new tab's index.
     OpenTab(String, Answer<usize>),
     ArmDialog(bool, Option<String>, Answer<()>),
+    Cookies(String, Answer<Vec<Cookie>>),
+    /// A cookie to store for a URL; an expired one deletes.
+    SetCookie(String, Cookie, Answer<()>),
     ArmFiles(Vec<String>, Answer<()>),
 }
 
@@ -113,6 +118,28 @@ impl Browser for AppBrowser {
         self.ask(|answer| Command::OpenTab(url.to_owned(), answer))
     }
 
+    fn cookies<'a>(&'a self, url: &'a str) -> BoxFuture<'a, Result<Vec<Cookie>, String>> {
+        self.ask(|answer| Command::Cookies(url.to_owned(), answer))
+    }
+
+    fn set_cookie<'a>(&'a self, url: &'a str, cookie: Cookie) -> BoxFuture<'a, Result<(), String>> {
+        self.ask(|answer| Command::SetCookie(url.to_owned(), cookie, answer))
+    }
+
+    fn delete_cookie<'a>(
+        &'a self,
+        url: &'a str,
+        name: &'a str,
+    ) -> BoxFuture<'a, Result<(), String>> {
+        // A cookie that has already expired replaces the stored one and is dropped.
+        let expired = Cookie {
+            name: name.to_owned(),
+            expires: Some(0.0),
+            ..Cookie::default()
+        };
+        self.ask(|answer| Command::SetCookie(url.to_owned(), expired, answer))
+    }
+
     fn arm_dialog_answer(
         &self,
         accept: bool,
@@ -129,10 +156,56 @@ impl Browser for AppBrowser {
         self.ask(|answer| Command::AddInitScript(source.to_owned(), answer))
     }
 
-    // shortcut: Servo's UserContentManager can remove a script only by the handle it
-    // was added with; keep handles by id in the engine before porting tools that need this.
-    fn remove_init_script<'a>(&'a self, _: &'a str) -> BoxFuture<'a, Result<(), String>> {
-        Box::pin(async { Err(unsupported("removing init scripts")) })
+    fn remove_init_script<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
+        self.ask(|answer| Command::RemoveInitScript(id.to_owned(), answer))
+    }
+
+    fn write_clipboard<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<(), String>> {
+        self.ask(|answer| Command::WriteClipboard(text.to_owned(), answer))
+    }
+}
+
+/// The tools' cookie as the engine's.
+pub fn to_engine_cookie(cookie: &Cookie) -> cookie::Cookie<'static> {
+    let mut out = cookie::Cookie::new(cookie.name.clone(), cookie.value.clone());
+    if !cookie.domain.is_empty() {
+        out.set_domain(cookie.domain.clone());
+    }
+    out.set_path(if cookie.path.is_empty() {
+        "/".to_owned()
+    } else {
+        cookie.path.clone()
+    });
+    out.set_http_only(cookie.http_only);
+    out.set_secure(cookie.secure);
+    out.set_same_site(match cookie.same_site.as_deref() {
+        Some("Strict") => Some(cookie::SameSite::Strict),
+        Some("Lax") => Some(cookie::SameSite::Lax),
+        Some("None") => Some(cookie::SameSite::None),
+        _ => None,
+    });
+    if let Some(seconds) = cookie.expires {
+        // Out of range reads as "already expired", which is what such a date means.
+        let at = cookie::time::OffsetDateTime::from_unix_timestamp(seconds as i64)
+            .unwrap_or(cookie::time::OffsetDateTime::UNIX_EPOCH);
+        out.set_expires(at);
+    }
+    out
+}
+
+/// The engine's cookie as the tools'.
+pub fn from_engine_cookie(cookie: &cookie::Cookie<'_>) -> Cookie {
+    Cookie {
+        name: cookie.name().to_owned(),
+        value: cookie.value().to_owned(),
+        domain: cookie.domain().unwrap_or_default().to_owned(),
+        path: cookie.path().unwrap_or("/").to_owned(),
+        expires: cookie
+            .expires_datetime()
+            .map(|at| at.unix_timestamp() as f64),
+        http_only: cookie.http_only().unwrap_or(false),
+        secure: cookie.secure().unwrap_or(false),
+        same_site: cookie.same_site().map(|same_site| same_site.to_string()),
     }
 }
 
@@ -340,5 +413,40 @@ mod tests {
             panic!("expected one wheel event")
         };
         assert_eq!(wheel.delta.y, -200.0);
+    }
+
+    #[test]
+    fn 쿠키를_엔진_형식으로_바꿨다가_되돌리면_같다() {
+        let cookie = Cookie {
+            name: "sid".to_owned(),
+            value: "abc".to_owned(),
+            domain: "a.test".to_owned(),
+            path: "/app".to_owned(),
+            expires: Some(1_900_000_000.0),
+            http_only: true,
+            secure: true,
+            same_site: Some("Lax".to_owned()),
+        };
+        assert_eq!(from_engine_cookie(&to_engine_cookie(&cookie)), cookie);
+        // A session cookie with nothing else set: the path defaults to the root.
+        let bare = Cookie {
+            name: "k".to_owned(),
+            value: "v".to_owned(),
+            ..Cookie::default()
+        };
+        let back = from_engine_cookie(&to_engine_cookie(&bare));
+        assert_eq!(
+            (back.path.as_str(), back.expires, back.same_site),
+            ("/", None, None)
+        );
+        // The deletion marker is a cookie that expired at the epoch.
+        let expired = to_engine_cookie(&Cookie {
+            expires: Some(0.0),
+            ..bare
+        });
+        assert_eq!(
+            expired.expires_datetime().map(|at| at.unix_timestamp()),
+            Some(0)
+        );
     }
 }
