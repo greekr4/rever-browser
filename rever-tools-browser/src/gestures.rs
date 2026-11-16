@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use rever_core::traffic::ListFilter;
 use rever_snapshot::snapshot::{RefEntry, RefPoint, Snapshotter, point_for_selector};
-use rever_tools_api::tool::{ToolContext, unsupported};
+use rever_tools_api::tool::ToolContext;
 use serde_json::Value;
 use tokio::time::Instant;
 
@@ -319,8 +319,8 @@ pub(crate) async fn drag_ref(
 ///
 /// A file input cannot be typed into — the browser owns its value, and clicking
 /// it opens a native picker no tool can answer. The TypeScript set the files
-/// with `DOM.setFileInputFiles`; `Browser` has no way to hand files to an
-/// input, so after the checks that need no page this reports it as unsupported.
+/// with `DOM.setFileInputFiles`; here the files are handed to the engine, which
+/// gives them to the picker the click on the ref opens.
 pub(crate) async fn upload_to_ref(
     ctx: &ToolContext,
     r: &str,
@@ -338,7 +338,47 @@ pub(crate) async fn upload_to_ref(
             missing.join(", ")
         ));
     }
-    Err(unsupported("attaching files to a file input"))
+    let owned = paths.iter().map(|path| (*path).to_owned()).collect();
+    ctx.browser.arm_file_paths(owned).await?;
+    // What every file input holds, to tell whether the picker took the files.
+    let held = "JSON.stringify([...document.querySelectorAll('input[type=file]')].map((i) => [...i.files].map((f) => [f.name, f.size, f.lastModified])))";
+    let before = ctx.browser.evaluate(held).await?;
+    // The input itself is often hidden behind a styled button: when it cannot be
+    // pointed at, it is clicked from script instead.
+    let clicked = match click_ref(ctx, r).await {
+        Ok(()) => Ok(()),
+        Err(_) => ctx
+            .browser
+            .evaluate(&format!(
+                "(() => {{ const el = {}; if (!el) return false; el.click(); return true; }})()",
+                ref_element(r)
+            ))
+            .await
+            .map(|_| ()),
+    };
+    let mut attached = false;
+    if clicked.is_ok() {
+        // The picker is answered on the engine's next turns.
+        for _ in 0..20 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            if ctx.browser.evaluate(held).await? != before {
+                attached = true;
+                break;
+            }
+        }
+    }
+    // Files no picker asked for must not reach a later, unrelated one.
+    let _ = ctx.browser.arm_file_paths(Vec::new()).await;
+    clicked?;
+    // shortcut: attaching the very same files again reads as "nothing changed";
+    // ask the engine whether the picker opened if that case matters.
+    if !attached {
+        return Err(
+            "no file picker took the files — pass the ref of the file input or of the button that opens it"
+                .to_owned(),
+        );
+    }
+    Ok(paths.len())
 }
 
 /// The page's address, or nothing when it cannot be read.
@@ -430,6 +470,8 @@ mod tests {
     use rever_snapshot::snapshot::SnapshotOptions;
     use rever_tools_api::tool::Input;
     use serde_json::json;
+
+    use rever_tools_api::tool::unsupported;
 
     use super::*;
     use crate::test_support::{FakeBrowser, context, settle_overlay};

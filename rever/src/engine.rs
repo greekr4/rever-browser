@@ -8,9 +8,10 @@ use std::sync::Arc;
 use dpi::PhysicalSize;
 use image::RgbaImage;
 use servo::{
-    ConsoleLogLevel, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize, EventLoopWaker,
-    InputEvent, JSValue, RenderingContext, Servo, ServoBuilder, SoftwareRenderingContext,
-    UserContentManager, UserScript, WebView, WebViewBuilder, WebViewDelegate,
+    ConsoleLogLevel, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize, EmbedderControl,
+    EventLoopWaker, InputEvent, JSValue, RenderingContext, Servo, ServoBuilder,
+    SoftwareRenderingContext, UserContentManager, UserScript, WebView, WebViewBuilder,
+    WebViewDelegate,
 };
 use url::Url;
 
@@ -31,6 +32,8 @@ pub enum EngineEvent {
 }
 
 type Events = Rc<RefCell<Vec<EngineEvent>>>;
+/// What the pages asked the interface to show: dialogs, file pickers, select lists.
+type Controls = Rc<RefCell<Vec<(TabId, EmbedderControl)>>>;
 
 struct Delegate {
     tab: TabId,
@@ -40,6 +43,7 @@ struct Delegate {
     // Shared with the engine, which is borrowed while Servo calls the delegate.
     next_id: Rc<Cell<u32>>,
     opened: Rc<RefCell<Vec<Page>>>,
+    controls: Controls,
 }
 
 impl Delegate {
@@ -75,6 +79,7 @@ impl WebViewDelegate for Delegate {
                 context: context.clone(),
                 next_id: self.next_id.clone(),
                 opened: self.opened.clone(),
+                controls: self.controls.clone(),
             }))
             .build();
         self.opened.borrow_mut().push(Page {
@@ -84,6 +89,11 @@ impl WebViewDelegate for Delegate {
             scripts,
         });
         self.push(EngineEvent::Opened(id));
+    }
+
+    fn show_embedder_control(&self, _: WebView, control: EmbedderControl) {
+        // Dropping a control answers it with "dismissed", so it is kept for the app.
+        self.controls.borrow_mut().push((self.tab, control));
     }
 
     fn notify_page_title_changed(&self, _: WebView, title: Option<String>) {
@@ -130,6 +140,7 @@ pub struct Engine {
     next_id: Rc<Cell<u32>>,
     /// Tabs the pages opened during the current pump.
     opened: Rc<RefCell<Vec<Page>>>,
+    controls: Controls,
 }
 
 impl Engine {
@@ -153,6 +164,7 @@ impl Engine {
             scale,
             next_id: Rc::new(Cell::new(1)),
             opened: Rc::default(),
+            controls: Rc::default(),
         }
     }
 
@@ -175,6 +187,7 @@ impl Engine {
                 context: context.clone(),
                 next_id: self.next_id.clone(),
                 opened: self.opened.clone(),
+                controls: self.controls.clone(),
             }))
             .build();
         self.pages.push(Page {
@@ -202,6 +215,12 @@ impl Engine {
     }
 
     /// Paint the tab's page and read it back as RGBA.
+    /// The dialogs and pickers the pages opened since the last call; each must be
+    /// answered, or dropped to dismiss it.
+    pub fn take_controls(&mut self) -> Vec<(TabId, EmbedderControl)> {
+        std::mem::take(&mut *self.controls.borrow_mut())
+    }
+
     pub fn frame(&self, id: TabId) -> Option<RgbaImage> {
         let page = self.page(id)?;
         page.webview.paint();

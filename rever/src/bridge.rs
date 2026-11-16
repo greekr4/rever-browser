@@ -32,6 +32,8 @@ pub enum Command {
     SelectTab(usize, Answer<()>),
     /// Open a URL in a tab without selecting it; answers the new tab's index.
     OpenTab(String, Answer<usize>),
+    ArmDialog(bool, Option<String>, Answer<()>),
+    ArmFiles(Vec<String>, Answer<()>),
 }
 
 pub struct AppBrowser {
@@ -109,6 +111,18 @@ impl Browser for AppBrowser {
 
     fn open_tab<'a>(&'a self, url: &'a str) -> BoxFuture<'a, Result<usize, String>> {
         self.ask(|answer| Command::OpenTab(url.to_owned(), answer))
+    }
+
+    fn arm_dialog_answer(
+        &self,
+        accept: bool,
+        prompt_text: Option<String>,
+    ) -> BoxFuture<'_, Result<(), String>> {
+        self.ask(|answer| Command::ArmDialog(accept, prompt_text, answer))
+    }
+
+    fn arm_file_paths(&self, paths: Vec<String>) -> BoxFuture<'_, Result<(), String>> {
+        self.ask(|answer| Command::ArmFiles(paths, answer))
     }
 
     fn add_init_script<'a>(&'a self, source: &'a str) -> BoxFuture<'a, Result<String, String>> {

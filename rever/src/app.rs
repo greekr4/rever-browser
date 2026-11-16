@@ -6,14 +6,14 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use dpi::PhysicalSize;
 use futures::StreamExt;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use gpui::{
-    App, AppContext, Bounds, Context, Entity, FocusHandle, Focusable, Pixels, RenderImage,
-    SharedString, WeakEntity, Window,
+    App, AppContext, Bounds, Context, Entity, FocusHandle, Focusable, PathPromptOptions, Pixels,
+    PromptLevel, RenderImage, SharedString, WeakEntity, Window,
 };
 use image::{Frame, RgbaImage};
 use net::tap::NetworkTapEvent;
@@ -30,7 +30,7 @@ use rever_ui_menus::bot_check_button::BotCheckButton;
 use rever_ui_menus::ip_badge::IpBadge;
 use rever_ui_menus::ui::{Look, LookFn, fill};
 use rever_ui_state::app_theme::{self, AppThemeStore};
-use servo::JSValue;
+use servo::{EmbedderControl, JSValue, SimpleDialog};
 use url::Url;
 
 use crate::agent::{AgentEvent, AgentSession};
@@ -295,6 +295,12 @@ pub(crate) struct Browser {
     /// The active tab's frame as RGBA, kept only for --self-check.
     last_rgba: Option<RgbaImage>,
     self_check: Option<String>,
+    /// The agent's answer for the next page dialog: accept, and a prompt's text.
+    dialog_answer: Option<(bool, Option<String>)>,
+    /// Files the agent hands to the next file picker.
+    upload_paths: Vec<PathBuf>,
+    /// When a tool last drove the page: a dialog opened right after is the agent's.
+    tool_acted: Option<Instant>,
 }
 
 impl Browser {
@@ -438,6 +444,9 @@ impl Browser {
             app_theme,
             last_rgba: None,
             self_check,
+            dialog_answer: None,
+            upload_paths: Vec::new(),
+            tool_acted: None,
         }
     }
 
@@ -513,6 +522,9 @@ impl Browser {
         }
         if frame_ready {
             self.capture(window);
+        }
+        for (_, control) in self.engine.take_controls() {
+            self.answer_control(control, window, cx);
         }
         if opened {
             // As a browser does for a link that opens a window: show the new tab.
@@ -799,10 +811,73 @@ impl Browser {
     }
 
     /// Answer what MCP tools asked of the page since the last pump.
+    /// A page opened a dialog or a picker. The agent's armed answer wins; a dialog
+    /// that opens while the agent drives the page is accepted so its tools do not
+    /// hang on it; anything else is the user's and gets the system's own window.
+    fn answer_control(
+        &mut self,
+        control: EmbedderControl,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // shortcut: "the agent is acting" is "a tool ran within the last 3 seconds";
+        // track tool calls from start to end if that guess proves wrong.
+        let agent_acting = self
+            .tool_acted
+            .is_some_and(|at| at.elapsed() < Duration::from_secs(3));
+        match control {
+            EmbedderControl::SimpleDialog(dialog) => {
+                let armed = self.dialog_answer.take();
+                if armed.is_some() || agent_acting {
+                    let (accept, text) = armed.unwrap_or((true, None));
+                    return answer_dialog(dialog, accept, text.as_deref());
+                }
+                let buttons: &[&str] = match dialog {
+                    SimpleDialog::Alert(_) => &["OK"],
+                    _ => &["OK", "Cancel"],
+                };
+                // shortcut: the system prompt has no text field, so the user's
+                // prompt() answers its default value; give it a text input when needed.
+                let chosen = window.prompt(PromptLevel::Info, dialog.message(), None, buttons, cx);
+                cx.spawn(async move |_, _| {
+                    answer_dialog(dialog, chosen.await == Ok(0), None);
+                })
+                .detach();
+            }
+            EmbedderControl::FilePicker(mut picker) => {
+                if !self.upload_paths.is_empty() {
+                    picker.select(&std::mem::take(&mut self.upload_paths));
+                    return picker.submit();
+                }
+                if agent_acting {
+                    return picker.dismiss();
+                }
+                let chosen = cx.prompt_for_paths(PathPromptOptions {
+                    files: true,
+                    directories: false,
+                    multiple: picker.allow_select_multiple(),
+                    prompt: None,
+                });
+                cx.spawn(async move |_, _| match chosen.await {
+                    Ok(Ok(Some(paths))) => {
+                        picker.select(&paths);
+                        picker.submit();
+                    }
+                    _ => picker.dismiss(),
+                })
+                .detach();
+            }
+            // Dropped, which dismisses them: select lists, color pickers, context
+            // menus and the input method have no interface here yet.
+            _ => {}
+        }
+    }
+
     fn run_tool_commands(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         use bridge::Command;
         let scale = f64::from(window.scale_factor());
         while let Ok(command) = self.tool_commands.try_recv() {
+            self.tool_acted = Some(Instant::now());
             let tab = self.active_id();
             match command {
                 Command::Page(answer) => {
@@ -902,6 +977,14 @@ impl Browser {
                         });
                     let _ = answer.send(opened);
                     cx.notify();
+                }
+                Command::ArmDialog(accept, text, answer) => {
+                    self.dialog_answer = Some((accept, text));
+                    let _ = answer.send(Ok(()));
+                }
+                Command::ArmFiles(paths, answer) => {
+                    self.upload_paths = paths.into_iter().map(PathBuf::from).collect();
+                    let _ = answer.send(Ok(()));
                 }
                 Command::AddInitScript(source, answer) => {
                     self.engine.add_init_script(tab, source);
@@ -1065,5 +1148,18 @@ mod tests {
     #[test]
     fn 히스토리의_탭_아이디는_t와_번호다() {
         assert_eq!(history_tab_id(TabId(3)), "t3");
+    }
+}
+
+fn answer_dialog(dialog: SimpleDialog, accept: bool, text: Option<&str>) {
+    match dialog {
+        SimpleDialog::Prompt(mut prompt) if accept => {
+            if let Some(text) = text {
+                prompt.set_current_value(text);
+            }
+            prompt.confirm();
+        }
+        dialog if accept => dialog.confirm(),
+        dialog => dialog.dismiss(),
     }
 }

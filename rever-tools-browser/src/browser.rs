@@ -521,7 +521,19 @@ tool!(
             &["accept"]
         )
     ),
-    |_ctx, _args| { Err(unsupported("answering native dialogs")) }
+    |ctx, args| {
+        let accept = args.opt_bool("accept").unwrap_or(false);
+        let prompt_text = args.opt_str("promptText");
+        ctx.browser
+            .arm_dialog_answer(accept, prompt_text.map(str::to_owned))
+            .await?;
+        let what = match (accept, prompt_text) {
+            (true, Some(text)) => format!("OK with \"{text}\""),
+            (true, None) => "OK".to_owned(),
+            (false, _) => "Cancel".to_owned(),
+        };
+        Ok(format!("next dialog will answer {what} — now trigger it"))
+    }
 );
 
 tool!(

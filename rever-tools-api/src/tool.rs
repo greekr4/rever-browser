@@ -212,6 +212,22 @@ pub trait Browser: Send + Sync {
         Box::pin(async { Err(unsupported("opening a background tab")) })
     }
 
+    /// Choose the answer of the next `alert`/`confirm`/`prompt` the page opens:
+    /// OK or Cancel, and for an accepted prompt the text it returns. One-shot.
+    fn arm_dialog_answer(
+        &self,
+        _accept: bool,
+        _prompt_text: Option<String>,
+    ) -> BoxFuture<'_, Result<(), String>> {
+        Box::pin(async { Err(unsupported("answering native dialogs")) })
+    }
+
+    /// Hand these files to the next file picker the page opens; an empty list
+    /// takes back files that no picker asked for.
+    fn arm_file_paths(&self, _paths: Vec<String>) -> BoxFuture<'_, Result<(), String>> {
+        Box::pin(async { Err(unsupported("attaching files to a file input")) })
+    }
+
     /// Run `source` in every new document before its own scripts. Returns an id for
     /// [`Browser::remove_init_script`].
     fn add_init_script<'a>(&'a self, _source: &'a str) -> BoxFuture<'a, Result<String, String>> {
