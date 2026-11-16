@@ -313,6 +313,8 @@ pub(crate) struct Browser {
     tool_acted: Option<Instant>,
     /// The `<select>` whose option list is open over the page.
     pub select: Option<SelectElement>,
+    /// Mobile mode: the page is a phone-wide column in the middle of its area.
+    pub mobile: bool,
     /// Requests a modify rule holds until the agent decides them.
     held_requests: crate::intercept::Held,
     /// The text the input method is still composing in the page (한 before it
@@ -479,6 +481,7 @@ impl Browser {
             upload_paths: Vec::new(),
             tool_acted: None,
             select: None,
+            mobile: false,
             held_requests,
             composing: None,
         }
@@ -615,7 +618,7 @@ impl Browser {
 
     /// Make the active page as large as the area the interface gave it.
     pub fn fit_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let bounds = self.page_bounds.get();
+        let bounds = page_area(self.page_bounds.get(), self.mobile);
         let scale = window.scale_factor();
         let device = |length: Pixels| (f32::from(length) * scale).round().max(1.0) as u32;
         let size = PhysicalSize::new(device(bounds.size.width), device(bounds.size.height));
@@ -1131,6 +1134,15 @@ impl Browser {
                         .ok_or_else(|| format!("no paused request {request_id}"));
                     let _ = answer.send(decided);
                 }
+                Command::SetViewport(mobile, answer) => {
+                    self.mobile = mobile;
+                    self.engine.set_mobile_user_agent(mobile);
+                    self.fit_page(window, cx);
+                    // The page has to ask again to be served the other layout.
+                    self.engine.reload(tab);
+                    cx.notify();
+                    let _ = answer.send(Ok(()));
+                }
                 Command::WriteClipboard(text, answer) => {
                     cx.write_to_clipboard(ClipboardItem::new_string(text));
                     let _ = answer.send(Ok(()));
@@ -1306,4 +1318,20 @@ fn answer_dialog(dialog: SimpleDialog, accept: bool, text: Option<&str>) {
         dialog if accept => dialog.confirm(),
         dialog => dialog.dismiss(),
     }
+}
+
+/// Where the page is drawn inside the area the interface gave it: all of it, or
+/// in mobile mode a phone-wide column in the middle.
+///
+/// shortcut: mobile mode keeps the window's height and pixel density, where the
+/// TypeScript emulated 390x844 at 3x; add those when a site needs the exact device.
+pub fn page_area(bounds: Bounds<Pixels>, mobile: bool) -> Bounds<Pixels> {
+    if !mobile {
+        return bounds;
+    }
+    let width = bounds.size.width.min(gpui::px(crate::engine::MOBILE_WIDTH));
+    let mut area = bounds;
+    area.origin.x += (bounds.size.width - width) / 2.0;
+    area.size.width = width;
+    area
 }

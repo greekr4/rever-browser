@@ -9,9 +9,9 @@ use dpi::PhysicalSize;
 use image::RgbaImage;
 use servo::{
     ConsoleLogLevel, CookieSource, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize,
-    EmbedderControl, EventLoopWaker, InputEvent, JSValue, RenderingContext, Servo, ServoBuilder,
-    SoftwareRenderingContext, UserContentManager, UserScript, WebResourceLoad, WebView,
-    WebViewBuilder, WebViewDelegate,
+    EmbedderControl, EventLoopWaker, InputEvent, JSValue, PrefValue, RenderingContext, Servo,
+    ServoBuilder, SoftwareRenderingContext, UserContentManager, UserScript, WebResourceLoad,
+    WebView, WebViewBuilder, WebViewDelegate,
 };
 use url::Url;
 
@@ -32,6 +32,11 @@ pub enum EngineEvent {
         message: String,
     },
 }
+
+/// The phone the TypeScript's mobile mode pretends to be (viewport.ts).
+const MOBILE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
+/// The width of that phone in CSS pixels.
+pub const MOBILE_WIDTH: f32 = 390.0;
 
 type Events = Rc<RefCell<Vec<EngineEvent>>>;
 /// What the pages asked the interface to show: dialogs, file pickers, select lists.
@@ -158,6 +163,8 @@ pub struct Engine {
     opened: Rc<RefCell<Vec<Page>>>,
     controls: Controls,
     loads: LoadHook,
+    /// What the engine called itself at start, to go back to from mobile mode.
+    desktop_user_agent: String,
     /// Init scripts by the id they were handed out under: Servo removes one only
     /// by the handle it was added with.
     init_scripts: Vec<(String, TabId, Rc<UserScript>)>,
@@ -187,6 +194,7 @@ impl Engine {
             opened: Rc::default(),
             controls: Rc::default(),
             loads: Rc::default(),
+            desktop_user_agent: servo::prefs::get().user_agent.clone(),
             init_scripts: Vec::new(),
             next_script: 1,
         }
@@ -275,6 +283,18 @@ impl Engine {
         self.servo
             .site_data_manager()
             .set_cookie_for_url(url, cookie, None);
+    }
+
+    /// Identify as a phone, or as the desktop browser again. The user agent is one
+    /// setting for the whole engine, so it holds for every tab.
+    pub fn set_mobile_user_agent(&self, mobile: bool) {
+        let user_agent = if mobile {
+            MOBILE_USER_AGENT.to_owned()
+        } else {
+            self.desktop_user_agent.clone()
+        };
+        self.servo
+            .set_preference("user_agent", PrefValue::Str(user_agent));
     }
 
     /// Device pixels per CSS pixel.

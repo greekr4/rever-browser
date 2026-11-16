@@ -253,6 +253,12 @@ pub trait Browser: Send + Sync {
         false
     }
 
+    /// Show the page as a phone would (a phone's user agent and width) or as a
+    /// desktop again, and reload it.
+    fn set_viewport_mode(&self, _mobile: bool) -> BoxFuture<'_, Result<(), String>> {
+        Box::pin(async { Err(unsupported("switching between desktop and mobile mode")) })
+    }
+
     /// Replace the system clipboard's text.
     fn write_clipboard<'a>(&'a self, _text: &'a str) -> BoxFuture<'a, Result<(), String>> {
         Box::pin(async { Err(unsupported("writing the clipboard")) })

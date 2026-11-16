@@ -20,7 +20,7 @@ use servo::{
     SelectElementOptionOrOptgroup, WebViewPoint, WheelDelta, WheelEvent, WheelMode,
 };
 
-use crate::app::Browser;
+use crate::app::{Browser, page_area};
 
 impl Browser {
     pub(super) fn page(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
@@ -28,6 +28,7 @@ impl Browser {
         let bounds_cell = self.page_bounds.clone();
         let this = cx.entity();
         let (input, focus) = (cx.entity(), self.page_focus.clone());
+        let mobile = self.mobile;
         let painted = canvas(
             move |bounds, window, _| {
                 // The engine is resized after this frame: entities cannot be updated mid-paint.
@@ -42,7 +43,8 @@ impl Browser {
                 // Composed text (Korean, Japanese, Chinese) reaches the page through this.
                 window.handle_input(&focus, ElementInputHandler::new(bounds, input), cx);
                 if let Some(frame) = frame {
-                    let _ = window.paint_image(bounds, Corners::default(), frame, 0, false);
+                    let area = page_area(bounds, mobile);
+                    let _ = window.paint_image(area, Corners::default(), frame, 0, false);
                 }
             },
         )
@@ -124,12 +126,15 @@ impl Browser {
                 }
             }
         }
+        // In mobile mode the page is a column that starts right of the area's edge.
+        let bounds = self.page_bounds.get();
+        let column = page_area(bounds, self.mobile).origin.x - bounds.origin.x;
         // Servo places the element in device pixels of the page.
         let (area, scale) = (select.position(), self.engine.scale());
         let list = div()
             .id("select-list")
             .absolute()
-            .left(px(area.min.x as f32 / scale))
+            .left(px(area.min.x as f32 / scale) + column)
             .top(px(area.max.y as f32 / scale))
             .min_w(px(area.width() as f32 / scale))
             .max_h(px(320.0))
@@ -147,7 +152,7 @@ impl Browser {
     }
 
     fn page_point(&self, position: Point<Pixels>) -> WebViewPoint {
-        let origin = self.page_bounds.get().origin;
+        let origin = page_area(self.page_bounds.get(), self.mobile).origin;
         WebViewPoint::Page(Point2D::new(
             f32::from(position.x - origin.x),
             f32::from(position.y - origin.y),

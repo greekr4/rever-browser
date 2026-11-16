@@ -32,6 +32,8 @@ pub enum Command {
     /// The agent's decision for a request a modify rule holds.
     Decide(String, crate::intercept::Decision, Answer<()>),
     WriteClipboard(String, Answer<()>),
+    /// Mobile mode on or off.
+    SetViewport(bool, Answer<()>),
     Tabs(Answer<Vec<TabInfo>>),
     SelectTab(usize, Answer<()>),
     /// Open a URL in a tab without selecting it; answers the new tab's index.
@@ -178,6 +180,10 @@ impl Browser for AppBrowser {
 
     fn remove_init_script<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), String>> {
         self.ask(|answer| Command::RemoveInitScript(id.to_owned(), answer))
+    }
+
+    fn set_viewport_mode(&self, mobile: bool) -> BoxFuture<'_, Result<(), String>> {
+        self.ask(|answer| Command::SetViewport(mobile, answer))
     }
 
     /// `intercept::on_load` answers fenced requests before they are sent.

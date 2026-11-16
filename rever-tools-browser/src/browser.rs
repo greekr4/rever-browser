@@ -843,7 +843,11 @@ tool!(
             &["mode"]
         )
     ),
-    |_ctx, _args| { Err(unsupported("switching between desktop and mobile mode")) }
+    |ctx, args| {
+        let mode = args.str("mode");
+        ctx.browser.set_viewport_mode(mode == "mobile").await?;
+        Ok(format!("viewport set to {mode}"))
+    }
 );
 
 tool!(
