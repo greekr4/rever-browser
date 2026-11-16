@@ -345,7 +345,18 @@ impl Browser {
             window.scale_factor(),
         );
         let held_requests = crate::intercept::Held::default();
-        engine.on_resource_load(crate::intercept::on_load(intercept, held_requests.clone()));
+        let note = {
+            let (store, changed) = (traffic.clone(), traffic_changed.clone());
+            move |patch| {
+                store.lock().unwrap().upsert(patch, now_ms());
+                changed.store(true, Ordering::Relaxed);
+            }
+        };
+        engine.on_resource_load(crate::intercept::on_load(
+            intercept,
+            held_requests.clone(),
+            note,
+        ));
         let first = engine
             .open(url.clone(), PhysicalSize::new(800, 600))
             .expect("the page engine could not start");

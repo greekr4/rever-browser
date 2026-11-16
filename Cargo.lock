@@ -7162,6 +7162,7 @@ dependencies = [
  "rever-core",
  "rever-formats",
  "rever-mcp",
+ "rever-scope",
  "rever-tool-profile",
  "rever-tools-api",
  "rever-tools-automation",

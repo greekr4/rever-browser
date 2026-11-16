@@ -222,6 +222,13 @@ pub trait Browser: Send + Sync {
         Box::pin(async { Err(unsupported("answering native dialogs")) })
     }
 
+    /// Whether this engine enforces the capture-not-send fence: while the fence is
+    /// held, a request that would change server state is answered here and never
+    /// sent. A crawl that clicks everything must not run without it.
+    fn holds_fenced_requests(&self) -> bool {
+        false
+    }
+
     /// Replace the system clipboard's text.
     fn write_clipboard<'a>(&'a self, _text: &'a str) -> BoxFuture<'a, Result<(), String>> {
         Box::pin(async { Err(unsupported("writing the clipboard")) })

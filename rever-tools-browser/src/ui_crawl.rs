@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use rever_analysis::triggered_requests::ActionWindows;
-use rever_scope::fence::fence_reason;
+use rever_scope::fence::{acquire_fence, fence_reason, release_fence};
 use rever_scope::scope::{get_scope, scope_block_for_url};
 use rever_snapshot::snapshot::SnapshotOptions;
 use rever_tools_api::tool::{ToolContext, ToolDef, ToolRegistry, unsupported};
@@ -316,13 +316,27 @@ tool!(
             &[]
         )
     ),
-    |_ctx, args| {
+    |ctx, args| {
         no_tab(args)?;
         // Without the fence a crawl would really send every mutating request it
         // triggers, on a tool that promises the server state is never changed.
-        Err(unsupported(
-            "holding mutating requests back (the capture-not-send fence)",
-        ))
+        if !ctx.browser.holds_fenced_requests() {
+            return Err(unsupported(
+                "holding mutating requests back (the capture-not-send fence)",
+            ));
+        }
+        let budget = click_budget(args.opt_number("maxElements"));
+        // Released when this goes out of scope, also if the call is abandoned midway.
+        struct Fence;
+        impl Drop for Fence {
+            fn drop(&mut self) {
+                release_fence();
+            }
+        }
+        acquire_fence();
+        let _fence = Fence;
+        let result = crawl(ctx, budget).await;
+        Ok(format_crawl(None, &result))
     }
 );
 

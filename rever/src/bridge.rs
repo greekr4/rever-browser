@@ -162,6 +162,11 @@ impl Browser for AppBrowser {
         self.ask(|answer| Command::RemoveInitScript(id.to_owned(), answer))
     }
 
+    /// `intercept::on_load` answers fenced requests before they are sent.
+    fn holds_fenced_requests(&self) -> bool {
+        true
+    }
+
     fn write_clipboard<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<(), String>> {
         self.ask(|answer| Command::WriteClipboard(text.to_owned(), answer))
     }

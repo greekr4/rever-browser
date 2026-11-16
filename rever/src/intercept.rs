@@ -14,7 +14,8 @@ use std::sync::Arc;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
-use rever_core::traffic;
+use rever_core::traffic::{self, RequestPatch};
+use rever_scope::fence;
 use rever_tools_api::tool::{BoxFuture, unsupported};
 use rever_tools_debug::intercept::{
     ContinueRequest, FulfillRequest, InterceptEngine, InterceptRule, InterceptState, Mode,
@@ -40,18 +41,66 @@ pub enum Decision {
 
 /// Decides each request as Servo is about to send it: the first matching rule
 /// blocks it, answers it with the rule's body, or holds it for the agent.
-pub fn on_load(state: Arc<InterceptState>, held: Held) -> impl FnMut(WebResourceLoad) {
+///
+/// A request that is answered here never reaches the network tap, so `note`
+/// records it: the capture shows what the page tried to send, with the status
+/// it was answered with (none while it is held or when it was blocked).
+pub fn on_load(
+    state: Arc<InterceptState>,
+    held: Held,
+    note: impl Fn(RequestPatch),
+) -> impl FnMut(WebResourceLoad) {
     let mut next_id = 0u64;
     move |load| {
         let url = load.request.url.to_string();
+        let resource_type = {
+            let destination = format!("{:?}", load.request.destination);
+            traffic::resource_type_of(&destination).to_owned()
+        };
+        next_id += 1;
+        let request_id = format!("servo-{next_id}");
+        let noted = |status: Option<u16>| {
+            let mut headers = traffic::Headers::new();
+            for (name, value) in &load.request.headers {
+                let value = String::from_utf8_lossy(value.as_bytes()).into_owned();
+                headers.insert(name.as_str().to_owned(), value);
+            }
+            note(RequestPatch {
+                request_id: request_id.clone(),
+                url: Some(url.clone()),
+                method: Some(load.request.method.to_string()),
+                resource_type: Some(resource_type.clone()),
+                request_headers: Some(headers),
+                status,
+                ..RequestPatch::default()
+            });
+        };
+        // The fence comes before any rule: while a crawl holds it, a request that
+        // would change server state gets an empty 204 here and is only recorded.
+        if fence::is_fence_active()
+            && let Some(reason) = fence::fence_reason(load.request.method.as_str(), &url)
+        {
+            fence::record_fence_block(load.request.method.as_str(), &url, reason);
+            noted(Some(204));
+            let held_back = Decision::Fulfill {
+                status: 204,
+                headers: Vec::new(),
+                body: Vec::new(),
+            };
+            return answer(load, held_back);
+        }
         // Dropping the load lets the request go to the network.
         let Some(rule) = state.matching_rule(&url) else {
             return;
         };
         match (rule.mode, rule.stage, rule.replace_body) {
             (_, Stage::Response, _) | (Mode::Log, ..) => {}
-            (Mode::Block, ..) => answer(load, Decision::Fail),
+            (Mode::Block, ..) => {
+                noted(None);
+                answer(load, Decision::Fail);
+            }
             (Mode::Modify, _, Some(body)) => {
+                noted(Some(200));
                 let fulfill = Decision::Fulfill {
                     status: 200,
                     headers: rule.modify_headers.unwrap_or_default(),
@@ -60,14 +109,12 @@ pub fn on_load(state: Arc<InterceptState>, held: Held) -> impl FnMut(WebResource
                 answer(load, fulfill);
             }
             (Mode::Modify, _, None) => {
-                next_id += 1;
-                let request_id = format!("servo-{next_id}");
-                let destination = format!("{:?}", load.request.destination);
+                noted(None);
                 state.hold(PausedRequest {
                     request_id: request_id.clone(),
                     url,
                     method: load.request.method.to_string(),
-                    resource_type: traffic::resource_type_of(&destination).to_owned(),
+                    resource_type,
                 });
                 held.borrow_mut().insert(request_id, load);
             }
