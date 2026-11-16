@@ -7389,6 +7389,10 @@ dependencies = [
 name = "rever-tools-http"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "h2",
+ "http",
  "rever-core",
  "rever-scope",
  "rever-tools-api",
@@ -7396,6 +7400,8 @@ dependencies = [
  "rustls-pki-types",
  "serde",
  "serde_json",
+ "tokio",
+ "tokio-rustls",
 ]
 
 [[package]]

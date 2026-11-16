@@ -103,7 +103,7 @@ pub fn parse_raw_response(raw: &[u8]) -> RawResponse {
 /// Sound here: `raw_http` only reaches loopback / lab hosts, where self-signed
 /// certificates are the norm and there is no trust decision to protect.
 #[derive(Debug)]
-struct AcceptAnyCert(Arc<rustls::crypto::CryptoProvider>);
+pub(crate) struct AcceptAnyCert(pub(crate) Arc<rustls::crypto::CryptoProvider>);
 
 impl rustls::client::danger::ServerCertVerifier for AcceptAnyCert {
     fn verify_server_cert(

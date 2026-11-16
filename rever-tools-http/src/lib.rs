@@ -5,11 +5,13 @@
 use rever_tools_api::tool::ToolRegistry;
 use serde_json::{Value, json};
 
+pub mod grpc_call;
 pub mod raw_http;
 
 /// Registers every tool of this crate, in the order `buildMcpServer` does.
 pub fn register(registry: &mut ToolRegistry) {
     raw_http::register(registry);
+    grpc_call::register(registry);
 }
 
 /// The JSON Schema the MCP SDK derives from a zod shape.

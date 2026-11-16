@@ -15,3 +15,10 @@ serde_json = { version = "1", features = ["preserve_order"] }
 # raw_http opens its own TCP/TLS socket to send bytes verbatim.
 rustls = "0.23"
 rustls-pki-types = "1"
+# grpc_call speaks HTTP/2 with trailers (grpc-status), which needs a raw h2 client.
+tokio = { version = "1", features = ["rt", "net", "io-util", "time", "macros"] }
+tokio-rustls = "0.26"
+h2 = "0.4"
+http = "1"
+bytes = "1"
+base64 = "0.22"
