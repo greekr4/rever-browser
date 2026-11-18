@@ -10,7 +10,7 @@
 use std::sync::Mutex;
 
 use rever_core::traffic::ListFilter;
-use rever_tools_api::tool::{ToolContext, ToolDef, unsupported};
+use rever_tools_api::tool::{ToolContext, ToolDef};
 use rever_tools_api::utils::{ToolResult, ok};
 use serde_json::{Value, json};
 
@@ -216,12 +216,29 @@ tool!(
     WsCaptureList,
     ToolDef::new(
         "ws_capture_list",
-        "List the page's live WebSockets — in the page and in cross-site iframes — found directly in memory. No setup or reload needed. Use a url from here with ws_send.",
+        "List the page's live WebSockets found in memory. No setup or reload needed: when the ws_capture_enable wrapper is installed (installing it into the current document takes one call) every socket the page opens is held in window.__revWSCapture and read from there. Use a url from here with ws_send.",
         no_input(),
     ),
-    // listPageSockets searches the page heap (Runtime.queryObjects).
-    |_ctx, _args| Err(unsupported("listing the page's live WebSockets"))
+    |ctx, _args| ws_capture_list(ctx).await
 );
+
+/// The wrapper's entries, as the page sees them. `readyState` is kept so a
+/// closed-but-recorded socket is still visible (it explains past frames).
+const LIST_EXPRESSION: &str = "JSON.stringify((window.__revWSCapture||[]).map(e=>\
+({id:e.id,url:e.url,readyState:e.ws.readyState,openedAt:e.openedAt,protocols:e.protocols||null})))";
+
+async fn ws_capture_list(ctx: &ToolContext) -> Result<ToolResult, String> {
+    match ctx.browser.evaluate(LIST_EXPRESSION).await? {
+        Value::String(json) => {
+            let rows: Vec<Value> = serde_json::from_str(&json)
+                .map_err(|error| format!("ws_capture_list: unreadable wrapper state: {error}"))?;
+            ok_pretty(&rows)
+        }
+        other => Err(format!(
+            "ws-capture is not installed in this document — call ws_capture_enable first (got {other})"
+        )),
+    }
+}
 
 tool!(
     WsSend,
@@ -253,6 +270,48 @@ tool!(
     |ctx, args| ws_send(ctx, &args).await
 );
 
+/// Send on the socket the wrapper holds for `url` — the page's own socket, so
+/// auth and session ride with it. `reconnect` reopens (and records) a new one
+/// when the old socket closed or the wrapper never saw it.
+async fn ws_send_by_url(
+    ctx: &ToolContext,
+    url: &str,
+    payload: &str,
+    as_binary: bool,
+    reconnect: bool,
+) -> Result<ToolResult, String> {
+    // asBinary: base64 → bytes. Text goes as a JSON string literal.
+    let payload = if as_binary {
+        format!("(()=>{{const raw=atob({});const b=new Uint8Array(raw.length);\
+for(let i=0;i<raw.length;i++)b[i]=raw.charCodeAt(i);return b}})()",
+            Value::from(payload).to_string())
+    } else {
+        Value::from(payload).to_string()
+    };
+    let expression = format!(
+        "(() => {{\
+const list = window.__revWSCapture || [];\
+const url = {url};\
+let e = list.find(x => x.url === url);\
+if (e && e.ws.readyState !== 1) {{ if (!{reconnect}) return 'not-open:' + e.ws.readyState; e = null; }}\
+if (!e) {{ if (!{reconnect}) return 'no-such-capture'; \
+e = {{ id: list.length, url, ws: new WebSocket(url), openedAt: Date.now() }}; list.push(e); \
+e.ws.onopen = () => e.ws.send({payload}); return 'reopened'; }}\
+e.ws.send({payload}); return 'ok'; }})()",
+        url = Value::from(url).to_string(),
+        reconnect = reconnect,
+        payload = payload,
+    );
+    match ctx.browser.evaluate(&expression).await? {
+        Value::String(answer) if answer == "ok" => Ok(ok("sent on the page socket".to_owned())),
+        Value::String(answer) if answer == "reopened" => {
+            Ok(ok("socket closed — reopened it from the page and sent on the new connection".to_owned()))
+        }
+        Value::String(answer) => Err(format!("ws_send failed: {answer}")),
+        other => Err(format!("ws_send failed: {other}")),
+    }
+}
+
 async fn ws_send(ctx: &ToolContext, args: &Args<'_>) -> Result<ToolResult, String> {
     let url = args.str("url")?;
     let capture_id = args.int("captureId", 0, MAX_SAFE_INTEGER)?;
@@ -260,9 +319,9 @@ async fn ws_send(ctx: &ToolContext, args: &Args<'_>) -> Result<ToolResult, Strin
     let as_binary = args.bool("asBinary")?.unwrap_or(false);
     args.bool("reconnect")?;
 
-    if url.is_some() {
-        // sendWsByUrl finds the socket in the page heap (Runtime.queryObjects).
-        return Err(unsupported("sending on a live WebSocket by url"));
+    if let Some(url) = url {
+        let reconnect = args.bool("reconnect")?.unwrap_or(false);
+        return ws_send_by_url(ctx, url, payload, as_binary, reconnect).await;
     }
     let Some(capture_id) = capture_id else {
         return Err("pass url (preferred) or captureId".to_owned());
@@ -280,7 +339,7 @@ mod tests {
     use std::sync::Arc;
 
     use rever_core::traffic::{WsDirection, WsFrame};
-    use rever_tools_api::tool::ToolContext;
+    use rever_tools_api::tool::{ToolContext, unsupported};
 
     use super::*;
     use crate::test_support::{FakeBrowser, call, call_json, ctx_with, put, request};
@@ -486,21 +545,75 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn 힙에서_소켓을_찾는_경로는_지원하지_않는다고_알린다() {
-        let ctx = ToolContext::for_tests();
-        assert_eq!(
-            call(&WsCaptureList, &ctx, json!({})).await,
-            Err(unsupported("listing the page's live WebSockets"))
-        );
+    async fn 캡처_목록은_래퍼_상태를_해석해_돌려준다() {
+        let browser = FakeBrowser {
+            evaluate: Some(Ok(Value::String(
+                r#"[{"id":0,"url":"ws://a.test/ws","readyState":1,"openedAt":123,"protocols":null}]"#
+                    .to_owned(),
+            ))),
+            ..FakeBrowser::default()
+        };
+        let ctx = ctx_with(Arc::new(browser));
+        let text = call(&WsCaptureList, &ctx, json!({})).await.unwrap();
+        assert!(text.contains("ws://a.test/ws"));
+        // A non-string answer means the wrapper is not installed in this document.
+        let browser = FakeBrowser {
+            evaluate: Some(Ok(json!({}))),
+            ..FakeBrowser::default()
+        };
+        let ctx = ctx_with(Arc::new(browser));
+        assert!(call(&WsCaptureList, &ctx, json!({})).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn url로_보내기는_래퍼의_소켓을_찾아_보내고_상태를_그대로_전한다() {
+        let browser = Arc::new(FakeBrowser {
+            evaluate: Some(Ok(Value::String("ok".to_owned()))),
+            ..FakeBrowser::default()
+        });
+        let ctx = ctx_with(browser.clone());
+        let sent = call(
+            &WsSend,
+            &ctx,
+            json!({ "url": "ws://a.test/ws", "payload": "hi" }),
+        )
+        .await
+        .unwrap();
+        assert!(sent.contains("sent on the page socket"));
+        let expression = browser.calls()[0].trim_start_matches("evaluate:").to_owned();
+        assert!(expression.contains(r#""ws://a.test/ws""#), "{expression}");
+        assert!(expression.contains(r#""hi""#), "{expression}");
+
+        // Closed socket without reconnect surfaces the readyState.
+        let browser = Arc::new(FakeBrowser {
+            evaluate: Some(Ok(Value::String("not-open:3".to_owned()))),
+            ..FakeBrowser::default()
+        });
+        let ctx = ctx_with(browser);
         assert_eq!(
             call(
                 &WsSend,
                 &ctx,
-                json!({ "url": "wss://a.test/ws", "payload": "hi" })
+                json!({ "url": "ws://a.test/ws", "payload": "hi" })
             )
             .await,
-            Err(unsupported("sending on a live WebSocket by url"))
+            Err("ws_send failed: not-open:3".to_owned())
         );
+
+        // With reconnect the reopened socket reports as such.
+        let browser = Arc::new(FakeBrowser {
+            evaluate: Some(Ok(Value::String("reopened".to_owned()))),
+            ..FakeBrowser::default()
+        });
+        let ctx = ctx_with(browser);
+        let sent = call(
+            &WsSend,
+            &ctx,
+            json!({ "url": "ws://a.test/ws", "payload": "hi", "reconnect": true }),
+        )
+        .await
+        .unwrap();
+        assert!(sent.contains("reopened"));
     }
 
     #[tokio::test]
