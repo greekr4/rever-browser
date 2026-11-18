@@ -44,7 +44,9 @@ rever-ui-markdown = { path = "../rever-ui-markdown" }
 rever-ui-menus = { path = "../rever-ui-menus" }
 # EvalReply: the shape the console panel takes a script result in.
 rever-formats = { path = "../rever-formats" }
-servo = "=0.8.0"
+# `subtlecrypto` is not in servo's `default` (that group is servoshell's), and
+# without it pages see `crypto.subtle === undefined` — signed-request flows die.
+servo = { version = "=0.8.0", features = ["subtlecrypto"] }
 # The cookie type of Servo's site data manager.
 cookie = "0.18"
 # The header and status types of a response the app answers a request with.
