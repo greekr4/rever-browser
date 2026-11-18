@@ -9,7 +9,7 @@ use dpi::PhysicalSize;
 use image::RgbaImage;
 use servo::{
     ConsoleLogLevel, CookieSource, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize,
-    EmbedderControl, EventLoopWaker, InputEvent, JSValue, Opts, PrefValue, RenderingContext, Servo,
+    EmbedderControl, EventLoopWaker, InputEvent, JSValue, PrefValue, RenderingContext, Servo,
     ServoBuilder, ServoDelegate, SoftwareRenderingContext, UserContentManager, UserScript,
     WebResourceLoad, WebView, WebViewBuilder, WebViewDelegate,
 };

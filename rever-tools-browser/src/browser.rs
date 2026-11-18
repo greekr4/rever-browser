@@ -14,9 +14,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use rever_analysis::triggered_requests::{ActionWindows, MAX_TRIGGERED, format_triggered_requests};
 use rever_scope::scope::scope_block_for_url;
 use rever_snapshot::snapshot::{SnapshotOptions, SnapshotStats};
-use rever_tools_api::tool::{
-    BoxFuture, TabInfo, Tool, ToolContext, ToolDef, ToolRegistry, unsupported,
-};
+use rever_tools_api::tool::{BoxFuture, TabInfo, Tool, ToolContext, ToolDef, ToolRegistry};
 use rever_tools_api::utils::{Content, ResultStore, ToolResult, err, ok_image};
 use serde_json::{Value, json};
 

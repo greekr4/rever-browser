@@ -12,7 +12,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use rever_tools_api::tool::{ToolContext, ToolDef, ToolRegistry};
+use rever_tools_api::tool::{ToolDef, ToolRegistry};
 use serde::Serialize;
 use serde_json::{Value, json};
 
