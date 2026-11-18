@@ -20,8 +20,18 @@ use rever_ui_kit::text_input::{Submitted, TextInput};
 use rever_ui_kit::theme::ThemeMode;
 use rever_ui_menus::ip_badge::{IpBadgeHost, IpResult};
 use rever_ui_state::ip_visibility::IpVisibilityStore;
+use rever_ui_apimap::api_map_panel::ApiMapPanel;
+use rever_ui_repeater::repeater_panel::{RepeaterPanel, RepeaterSender};
+use rever_ui_repeater::{RepeaterRequestSpec, RepeaterResponse, RepeaterStore};
 use rever_ui_state::{FileStorage, MemoryStorage, Storage};
 use rever_ui_storage::cookies_panel::CookiesPanel;
+use rever_ui_workflows::core::workflow_panel::WorkflowPanel;
+use rever_ui_workflows::core::store::WorkflowsStore;
+use rever_ui_workflows::host::{
+    CliRunPayload, CliRunResult, McpToolInfo, OnProgress, PipeProgress, TrafficCall, WorkflowHost,
+    WorkflowRunStep, WorkflowStepProgress,
+};
+use rever_ui_workflows::pipeline::resolve::ResolvedPipeNode;
 use rever_ui_traffic::detail_drawer::{DetailDrawer, DetailDrawerEvent, WIDTH_STORAGE_KEY};
 use rever_ui_traffic::store::TrafficState;
 use rever_ui_traffic::traffic_list::{TrafficList, TrafficListEvent};
@@ -117,6 +127,9 @@ pub(crate) struct Views {
     pub history: Entity<HistoryPanel>,
     pub bookmark_bar: Entity<BookmarkBar>,
     pub storage: Entity<CookiesPanel>,
+    pub apimap: Entity<ApiMapPanel>,
+    pub repeater: Entity<RepeaterPanel>,
+    pub workflows: Entity<WorkflowPanel>,
 }
 
 impl Views {
@@ -190,8 +203,20 @@ impl Views {
         .detach();
 
         let storage = cx.new(|cx| {
-            CookiesPanel::new(Rc::new(StorageBridge::new(browser)), lang, theme_mode, cx)
+            CookiesPanel::new(Rc::new(StorageBridge::new(browser.clone())), lang, theme_mode, cx)
         });
+        let apimap =
+            cx.new(|cx| ApiMapPanel::new(stores.traffic.clone(), lang, theme_mode, cx));
+        let repeater = {
+            let store = cx.new(|_| RepeaterStore::new());
+            let sender = Arc::new(RepeaterBridge { browser });
+            cx.new(|cx| RepeaterPanel::new(store, sender, lang, theme_mode, cx))
+        };
+        let workflows = {
+            let store = cx.new(|_| WorkflowsStore::new(stores.storage.clone()));
+            let registry = Rc::new(rever_ui_workflows::default_registry());
+            cx.new(|cx| WorkflowPanel::new(store, registry, Rc::new(NoWorkflows), lang, theme_mode, cx))
+        };
 
         Self {
             address,
@@ -204,7 +229,73 @@ impl Views {
             history,
             bookmark_bar,
             storage,
+            apimap,
+            repeater,
+            workflows,
         }
+    }
+}
+
+/// The workflows panel's host. The panel renders (list/edit workflows from the
+/// registry), but running them + the CLI compiler need the agent/MCP wiring that
+/// isn't ported into the GPUI shell yet, so those return "not yet".
+struct NoWorkflows;
+
+impl WorkflowHost for NoWorkflows {
+    fn list_tools(&self, _: &mut App) -> Task<Vec<McpToolInfo>> {
+        Task::ready(Vec::new())
+    }
+    fn run(
+        &self,
+        _: Vec<WorkflowRunStep>,
+        _: OnProgress<WorkflowStepProgress>,
+        _: &mut App,
+    ) -> Task<Result<Vec<WorkflowStepProgress>, String>> {
+        Task::ready(Err(NOT_YET.to_owned()))
+    }
+    fn run_pipeline(
+        &self,
+        _: Vec<ResolvedPipeNode>,
+        _: OnProgress<PipeProgress>,
+        _: &mut App,
+    ) -> Task<Result<bool, String>> {
+        Task::ready(Err(NOT_YET.to_owned()))
+    }
+    fn cancel(&self, _: &mut App) {}
+    fn compile_cli(
+        &self,
+        _: Vec<String>,
+        _: &mut App,
+    ) -> Task<Result<rever_cli_spec::cli_spec::CliData, String>> {
+        Task::ready(Err(NOT_YET.to_owned()))
+    }
+    fn run_cli(&self, _: CliRunPayload, _: &mut App) -> Task<Result<CliRunResult, String>> {
+        Task::ready(Err(NOT_YET.to_owned()))
+    }
+    fn traffic(&self, _: &App) -> Vec<TrafficCall> {
+        Vec::new()
+    }
+}
+
+/// The repeater panel's sender: replays a request through the active tab's
+/// `fetch` (the same engine path as the `repeater_send` tool), so it carries the
+/// page's cookies/TLS. `send_raw` runs on a background thread, so blocking on
+/// the bridge future is fine.
+struct RepeaterBridge {
+    browser: Arc<dyn rever_tools_api::tool::Browser>,
+}
+
+impl RepeaterSender for RepeaterBridge {
+    fn send_raw(&self, spec: RepeaterRequestSpec) -> Result<RepeaterResponse, String> {
+        let request = rever_tools_http::RequestSpec {
+            url: spec.url,
+            method: spec.method,
+            headers: spec.headers.entries().iter().cloned().collect(),
+            body: spec.body,
+        };
+        let expression = rever_tools_http::repeater::build_eval_expression(&request);
+        let value = futures::executor::block_on(self.browser.evaluate(&expression))?;
+        serde_json::from_value(value).map_err(|error| error.to_string())
     }
 }
 

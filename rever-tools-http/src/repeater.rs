@@ -52,7 +52,8 @@ fn forbidden_fetch_header(name: &str) -> bool {
 
 /// Build the in-page fetch expression. Placeholders are replaced rather than
 /// `format!`-interpolated to avoid escaping the many `{}` in the JS body.
-fn build_eval_expression(spec: &RequestSpec) -> String {
+/// Public so the repeater UI panel can send through the same engine path.
+pub fn build_eval_expression(spec: &RequestSpec) -> String {
     let headers: serde_json::Map<String, Value> = spec
         .headers
         .iter()

@@ -33,6 +33,9 @@ impl Browser {
             "websocket" => views.websocket.clone().into(),
             "history" => views.history.clone().into(),
             "storage" => views.storage.clone().into(),
+            "apimap" => views.apimap.clone().into(),
+            "repeater" => views.repeater.clone().into(),
+            "workflows" => views.workflows.clone().into(),
             _ => return None,
         })
     }
