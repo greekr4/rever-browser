@@ -235,6 +235,13 @@ pub trait Browser: Send + Sync {
         Box::pin(async { Err(unsupported("selecting a tab")) })
     }
 
+    /// A handle whose page actions (navigate / evaluate / screenshot / page)
+    /// target the tab at `index` instead of the active one, without switching
+    /// the user's tab. `None` when the backend can't address tabs by index.
+    fn for_tab(&self, _index: usize) -> Option<Arc<dyn Browser>> {
+        None
+    }
+
     /// Load `url` in a new tab without selecting it; resolves to the new tab's index.
     fn open_tab<'a>(&'a self, _url: &'a str) -> BoxFuture<'a, Result<usize, String>> {
         Box::pin(async { Err(unsupported("opening a background tab")) })

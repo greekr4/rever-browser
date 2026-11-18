@@ -865,22 +865,14 @@ tool!(
         )
     ),
     |ctx, args| {
-        no_tab(args)?;
+        let browser = crate::tab_browser(ctx, args)?;
         let expression = args.str("expression");
-        visualize(
-            &ctx.browser,
-            "evalHudStart",
-            &[json!(utf16_prefix(expression, 160))],
-        );
-        let text = match eval_in_page(ctx.browser.as_ref(), expression).await? {
+        visualize(&browser, "evalHudStart", &[json!(utf16_prefix(expression, 160))]);
+        let text = match eval_in_page(browser.as_ref(), expression).await? {
             Value::String(text) => text,
             other => pretty(&other),
         };
-        visualize(
-            &ctx.browser,
-            "evalHudDone",
-            &[json!(preview(&text)), json!(false)],
-        );
+        visualize(&browser, "evalHudDone", &[json!(preview(&text)), json!(false)]);
         Ok(text)
     }
 );
@@ -987,13 +979,14 @@ impl Tool for BrowserScreenshot {
             if let Err(text) = crate::validate(&self.def(), &args) {
                 return err(text);
             }
-            if let Err(text) = no_tab(&crate::Args(args)) {
-                return err(text);
-            }
-            match ctx.browser.screenshot().await {
+            let browser = match crate::tab_browser(ctx, &crate::Args(args)) {
+                Ok(browser) => browser,
+                Err(text) => return err(text),
+            };
+            match browser.screenshot().await {
                 // Shutter AFTER the capture so the flash never lands in the PNG.
                 Ok(png) => {
-                    visualize(&ctx.browser, "shutter", &[]);
+                    visualize(&browser, "shutter", &[]);
                     ok_image("image/png", &BASE64.encode(png))
                 }
                 Err(text) => err(text),

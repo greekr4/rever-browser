@@ -18,13 +18,15 @@ type Answer<T> = oneshot::Sender<Result<T, String>>;
 
 /// One request from a tool, answered on the main thread.
 pub enum Command {
-    Page(Answer<PageInfo>),
-    Navigate(String, Answer<()>),
+    // The leading `Option<usize>` is a target tab index (None = the active tab);
+    // `for_tab` sets it so a tool can act on a background tab.
+    Page(Option<usize>, Answer<PageInfo>),
+    Navigate(Option<usize>, String, Answer<()>),
     Back(Answer<()>),
     Forward(Answer<()>),
     Reload(Answer<()>),
-    Evaluate(String, Answer<Value>),
-    Screenshot(Answer<Vec<u8>>),
+    Evaluate(Option<usize>, String, Answer<Value>),
+    Screenshot(Option<usize>, Answer<Vec<u8>>),
     Input(Input, Answer<()>),
     Viewport(Answer<(u32, u32)>),
     AddInitScript(String, Answer<String>),
@@ -51,11 +53,17 @@ pub enum Command {
 pub struct AppBrowser {
     commands: UnboundedSender<Command>,
     wake: UnboundedSender<()>,
+    /// The tab a `for_tab` handle acts on; None drives the active tab.
+    target: Option<usize>,
 }
 
 impl AppBrowser {
     pub fn new(commands: UnboundedSender<Command>, wake: UnboundedSender<()>) -> Self {
-        Self { commands, wake }
+        Self {
+            commands,
+            wake,
+            target: None,
+        }
     }
 
     pub(crate) fn ask<T: Send + 'static>(
@@ -78,11 +86,21 @@ impl AppBrowser {
 
 impl Browser for AppBrowser {
     fn page(&self) -> BoxFuture<'_, Result<PageInfo, String>> {
-        self.ask(Command::Page)
+        let target = self.target;
+        self.ask(move |answer| Command::Page(target, answer))
     }
 
     fn navigate<'a>(&'a self, url: &'a str) -> BoxFuture<'a, Result<(), String>> {
-        self.ask(|answer| Command::Navigate(url.to_owned(), answer))
+        let target = self.target;
+        self.ask(move |answer| Command::Navigate(target, url.to_owned(), answer))
+    }
+
+    fn for_tab(&self, index: usize) -> Option<std::sync::Arc<dyn Browser>> {
+        Some(std::sync::Arc::new(AppBrowser {
+            commands: self.commands.clone(),
+            wake: self.wake.clone(),
+            target: Some(index),
+        }))
     }
 
     fn back(&self) -> BoxFuture<'_, Result<(), String>> {
@@ -98,11 +116,13 @@ impl Browser for AppBrowser {
     }
 
     fn evaluate<'a>(&'a self, expression: &'a str) -> BoxFuture<'a, Result<Value, String>> {
-        self.ask(|answer| Command::Evaluate(expression.to_owned(), answer))
+        let target = self.target;
+        self.ask(move |answer| Command::Evaluate(target, expression.to_owned(), answer))
     }
 
     fn screenshot(&self) -> BoxFuture<'_, Result<Vec<u8>, String>> {
-        self.ask(Command::Screenshot)
+        let target = self.target;
+        self.ask(move |answer| Command::Screenshot(target, answer))
     }
 
     fn input(&self, input: Input) -> BoxFuture<'_, Result<(), String>> {

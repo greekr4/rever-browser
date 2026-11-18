@@ -596,6 +596,14 @@ impl Browser {
         self.tabs[self.active].id
     }
 
+    /// The tab a targeted command names by index, or the active tab when the
+    /// index is absent or out of range.
+    fn resolve_tab(&self, target: Option<usize>) -> TabId {
+        target
+            .and_then(|index| self.tabs.get(index))
+            .map_or_else(|| self.active_id(), |tab| tab.id)
+    }
+
     fn pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let active = self.active_id();
         let mut frame_ready = false;
@@ -1188,14 +1196,16 @@ impl Browser {
             self.tool_acted = Some(Instant::now());
             let tab = self.active_id();
             match command {
-                Command::Page(answer) => {
-                    let active = &self.tabs[self.active];
+                Command::Page(target, answer) => {
+                    let index = target.unwrap_or(self.active).min(self.tabs.len() - 1);
+                    let page = &self.tabs[index];
                     let _ = answer.send(Ok(PageInfo {
-                        url: active.url.clone(),
-                        title: active.title.to_string(),
+                        url: page.url.clone(),
+                        title: page.title.to_string(),
                     }));
                 }
-                Command::Navigate(url, answer) => {
+                Command::Navigate(target, url, answer) => {
+                    let tab = self.resolve_tab(target);
                     let loaded = Url::parse(&normalize_address(&url))
                         .map(|url| self.engine.load(tab, url))
                         .map_err(|error| format!("invalid URL: {error}"));
@@ -1213,12 +1223,14 @@ impl Browser {
                     self.engine.reload(tab);
                     let _ = answer.send(Ok(()));
                 }
-                Command::Evaluate(script, answer) => {
+                Command::Evaluate(target, script, answer) => {
+                    let tab = self.resolve_tab(target);
                     self.engine.evaluate(tab, script, move |result| {
                         let _ = answer.send(result.map(|value| bridge::js_to_json(&value)));
                     })
                 }
-                Command::Screenshot(answer) => {
+                Command::Screenshot(target, answer) => {
+                    let tab = self.resolve_tab(target);
                     let png = self
                         .engine
                         .frame(tab)

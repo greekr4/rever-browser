@@ -1,10 +1,10 @@
 //! MCP tools driving the tab: navigate, snapshot, click, type, scroll,
 //! screenshot, waits, UI crawl.
 
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rever_tools_api::tool::{ToolDef, ToolRegistry, unsupported};
+use rever_tools_api::tool::{Browser, ToolContext, ToolDef, ToolRegistry, unsupported};
 use rever_tools_api::utils::{ToolResult, err, ok};
 use serde_json::{Value, json};
 
@@ -85,11 +85,27 @@ pub(crate) fn tab_schema(description: &str) -> Value {
 }
 
 /// `Browser` addresses the one tab the agent works in, so a call that names
-/// another tab by index cannot be routed.
+/// another tab by index cannot be routed. Used by the snapshot/interaction
+/// tools, whose ref map is still per-process (a background tab needs a per-tab
+/// snapshotter — see docs/port-progress.md A).
 pub(crate) fn no_tab(args: &Args) -> Result<(), String> {
     match args.0.get("tab") {
         Some(_) => Err(unsupported("driving a tab by index")),
         None => Ok(()),
+    }
+}
+
+/// The browser handle a tool should drive: the tab the `tab` arg names (via
+/// `for_tab`, without switching the user's tab), or the active tab when absent.
+/// For the snapshotter-free tools (evaluate, screenshot).
+pub(crate) fn tab_browser(ctx: &ToolContext, args: &Args) -> Result<Arc<dyn Browser>, String> {
+    match args.0.get("tab").and_then(Value::as_i64) {
+        None => Ok(ctx.browser.clone()),
+        Some(index) if index >= 0 => ctx
+            .browser
+            .for_tab(index as usize)
+            .ok_or_else(|| unsupported("driving a tab by index")),
+        Some(_) => Err("tab index must be >= 0".to_owned()),
     }
 }
 
