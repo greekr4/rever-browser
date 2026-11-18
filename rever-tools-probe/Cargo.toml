@@ -18,6 +18,10 @@ serde_json = { version = "1", features = ["preserve_order"] }
 regex = "1"
 # encodeURIComponent: a custom AsciiSet keeping A-Za-z0-9 - _ . ! ~ * ' ( ).
 percent-encoding = "2"
+# path_write_probe: URL / URLSearchParams rewriting (the TS used `new URL`).
+url = "2"
+# pickle_gadget: base64 encoding of the payload bytes.
+base64 = "0.22"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }

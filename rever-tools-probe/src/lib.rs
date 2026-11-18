@@ -14,6 +14,9 @@ mod cmd;
 mod common;
 mod crlf;
 mod nosqli;
+mod path_write;
+mod payload;
+mod pickle;
 mod sqli;
 mod ssti;
 
@@ -24,6 +27,9 @@ pub fn register(registry: &mut ToolRegistry) {
     registry.register(nosqli::NosqliProbe);
     registry.register(ssti::SstiProbe);
     registry.register(cmd::CmdProbe);
+    registry.register(payload::PayloadProbe);
+    registry.register(path_write::PathWriteProbe);
+    registry.register(pickle::PickleGadget);
 }
 
 /// The JSON Schema the MCP SDK derives from a zod shape.

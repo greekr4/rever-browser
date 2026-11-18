@@ -7447,6 +7447,7 @@ dependencies = [
 name = "rever-tools-probe"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "percent-encoding",
  "regex",
  "rever-core",
@@ -7456,6 +7457,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "url",
 ]
 
 [[package]]
