@@ -1198,18 +1198,24 @@ impl Browser {
         }
     }
 
-    /// Hand the configured scan to the agent (it runs `redteam_start`), then close.
+    /// Run the configured scan by starting an agent turn directly (no visible
+    /// chat message): the agent calls `redteam_start`. Its reply streams into
+    /// the chat panel.
     pub fn start_redteam(&mut self, cx: &mut Context<Self>) {
         let target = self.views.redteam_target.read(cx).text().trim().to_owned();
-        if target.is_empty() {
+        if target.is_empty() || self.agent_busy {
             return;
         }
         let message = format!(
-            "Start a Red Team scan: run redteam_start on {target} at \"{}\" intensity, up to {} pages.",
+            "Run redteam_start on {target} at \"{}\" intensity, up to {} pages; report the findings.",
             self.redteam_intensity, self.redteam_pages
         );
         self.redteam_open = false;
-        self.send_chat(&message, cx);
+        if let Err(error) = self.start_turn(&message) {
+            self.agent = None;
+            self.turn_failed(&error);
+        }
+        cx.notify();
     }
 
     /// Resize the open panel while its top edge is dragged (dragging up, so a
