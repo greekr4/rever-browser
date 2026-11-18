@@ -21,6 +21,7 @@ use rever_ui_kit::theme::ThemeMode;
 use rever_ui_menus::ip_badge::{IpBadgeHost, IpResult};
 use rever_ui_state::ip_visibility::IpVisibilityStore;
 use rever_ui_state::{FileStorage, MemoryStorage, Storage};
+use rever_ui_storage::cookies_panel::CookiesPanel;
 use rever_ui_traffic::detail_drawer::{DetailDrawer, DetailDrawerEvent, WIDTH_STORAGE_KEY};
 use rever_ui_traffic::store::TrafficState;
 use rever_ui_traffic::traffic_list::{TrafficList, TrafficListEvent};
@@ -30,6 +31,7 @@ use servo::JSValue;
 
 use crate::app::{Browser, data_dir};
 use crate::bridge;
+use crate::storage_host::StorageBridge;
 
 /// The interface's own settings file in the shared data folder. The Electron app keeps
 /// these keys in Chromium's Local Storage and has no file of this name.
@@ -114,6 +116,7 @@ pub(crate) struct Views {
     pub websocket: Entity<WebSocketPanel>,
     pub history: Entity<HistoryPanel>,
     pub bookmark_bar: Entity<BookmarkBar>,
+    pub storage: Entity<CookiesPanel>,
 }
 
 impl Views {
@@ -121,6 +124,7 @@ impl Views {
         stores: &Stores,
         lang: Lang,
         theme_mode: ThemeMode,
+        browser: Arc<dyn rever_tools_api::tool::Browser>,
         cx: &mut Context<Browser>,
     ) -> Self {
         let address = cx.new(|cx| TextInput::new(lang.t("toolbar.addressPlaceholder"), cx));
@@ -185,6 +189,10 @@ impl Views {
         })
         .detach();
 
+        let storage = cx.new(|cx| {
+            CookiesPanel::new(Rc::new(StorageBridge::new(browser)), lang, theme_mode, cx)
+        });
+
         Self {
             address,
             composer,
@@ -195,6 +203,7 @@ impl Views {
             websocket,
             history,
             bookmark_bar,
+            storage,
         }
     }
 }

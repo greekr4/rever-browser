@@ -320,6 +320,9 @@ pub(crate) struct Browser {
     pub page_bounds: Rc<Cell<Bounds<Pixels>>>,
     /// The capture store, the stores of the history views and the settings storage.
     pub stores: Stores,
+    /// The engine bridge, kept so the storage panel's host can reach it (and so
+    /// `rebuild_views` can hand it to a fresh `Views`).
+    storage_browser: Arc<bridge::AppBrowser>,
     /// The text fields and panels; made again when the language or the theme changes.
     pub views: Views,
     pub menu: Entity<AppMenu>,
@@ -386,7 +389,7 @@ impl Browser {
         let traffic = Arc::new(Mutex::new(TrafficStore::default()));
         let debug_endpoint = crate::debug::Endpoint::default();
         let (mcp, intercept, downloads) =
-            start_mcp(traffic.clone(), tool_browser, debug_endpoint.clone());
+            start_mcp(traffic.clone(), tool_browser.clone(), debug_endpoint.clone());
         let traffic_changed = Arc::new(AtomicBool::new(false));
         {
             let (store, wake, changed) = (traffic.clone(), wake.clone(), traffic_changed.clone());
@@ -463,7 +466,7 @@ impl Browser {
         } else {
             theme_from_stored(app_theme.mode())
         };
-        let views = Views::new(&stores, lang, theme_mode, cx);
+        let views = Views::new(&stores, lang, theme_mode, tool_browser.clone(), cx);
         views
             .address
             .update(cx, |input, cx| input.set_text(url.to_string(), cx));
@@ -510,6 +513,7 @@ impl Browser {
             open_panel,
             page_bounds: Rc::new(Cell::new(Bounds::default())),
             stores,
+            storage_browser: tool_browser,
             views,
             menu,
             ip_badge,
@@ -829,7 +833,8 @@ impl Browser {
     fn rebuild_views(&mut self, cx: &mut Context<Self>) {
         let address = self.views.address.read(cx).text().to_owned();
         let draft = self.views.composer.read(cx).text().to_owned();
-        self.views = Views::new(&self.stores, self.lang, self.theme_mode, cx);
+        self.views =
+            Views::new(&self.stores, self.lang, self.theme_mode, self.storage_browser.clone(), cx);
         self.views
             .address
             .update(cx, |input, cx| input.set_text(address, cx));

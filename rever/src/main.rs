@@ -17,6 +17,7 @@ mod engine;
 mod intercept;
 mod panels;
 mod shell;
+mod storage_host;
 
 use app::{Browser, DEFAULT_URL, Launch, PANEL_GROUPS};
 use gpui::{App, Application, Bounds, WindowBounds, WindowOptions, prelude::*, px, size};

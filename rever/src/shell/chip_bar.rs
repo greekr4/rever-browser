@@ -32,6 +32,7 @@ impl Browser {
             "exceptions" => views.exceptions.clone().into(),
             "websocket" => views.websocket.clone().into(),
             "history" => views.history.clone().into(),
+            "storage" => views.storage.clone().into(),
             _ => return None,
         })
     }
