@@ -88,7 +88,9 @@ async function authorize(req: Request, url: URL, body: string): Promise<Response
 
   const ts = req.headers.get('x-timestamp') ?? ''
   const got = req.headers.get('x-signature') ?? ''
-  const want = await hmacHex(HMAC_KEY, `${req.method}\n${url.pathname}\n${body}\n${ts}`)
+  // Sign path + query: that is what the shipped bundle signs (`${API_BASE}${path}`
+  // with the query string), so /items?page=1 must verify, not 403.
+  const want = await hmacHex(HMAC_KEY, `${req.method}\n${url.pathname}${url.search}\n${body}\n${ts}`)
   if (got !== want) {
     return json(
       { error: 'bad_signature', expected: want, received: got || null, signed: 'METHOD\\nPATH\\nBODY\\nTS' },
