@@ -23,6 +23,7 @@ members = [
     "rever-tools-http",
     "rever-tools-inspect",
     "rever-tools-page",
+    "rever-tools-probe",
     "rever-tools-redteam",
     "rever-tools-scripts",
     "rever-tools-traffic",

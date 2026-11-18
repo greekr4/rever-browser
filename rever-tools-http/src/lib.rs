@@ -7,6 +7,11 @@ use serde_json::{Value, json};
 
 pub mod grpc_call;
 pub mod raw_http;
+pub mod request_spec;
+pub mod send;
+
+pub use request_spec::{Mods, RequestSpec, build_request_spec, restore_marker};
+pub use send::{SendOutcome, send};
 
 /// Registers every tool of this crate, in the order `buildMcpServer` does.
 pub fn register(registry: &mut ToolRegistry) {

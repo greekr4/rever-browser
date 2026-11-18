@@ -100,6 +100,7 @@ fn start_mcp(
     rever_tools_redteam::register(&mut registry);
     rever_tools_automation::register(&mut registry);
     rever_tools_http::register(&mut registry);
+    rever_tools_probe::register(&mut registry);
     let data_dir = data_dir();
     // The server publishes its endpoint file here.
     let _ = std::fs::create_dir_all(&data_dir);

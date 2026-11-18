@@ -23,6 +23,7 @@ rever-tools-debug = { path = "../rever-tools-debug" }
 rever-tools-redteam = { path = "../rever-tools-redteam" }
 rever-tools-automation = { path = "../rever-tools-automation" }
 rever-tools-http = { path = "../rever-tools-http" }
+rever-tools-probe = { path = "../rever-tools-probe" }
 gpui = { workspace = true }
 rever-ui-kit = { path = "../rever-ui-kit" }
 rever-ui-state = { path = "../rever-ui-state" }

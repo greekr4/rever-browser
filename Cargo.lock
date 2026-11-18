@@ -7172,6 +7172,7 @@ dependencies = [
  "rever-tools-http",
  "rever-tools-inspect",
  "rever-tools-page",
+ "rever-tools-probe",
  "rever-tools-redteam",
  "rever-tools-scripts",
  "rever-tools-traffic",
@@ -7393,6 +7394,7 @@ dependencies = [
  "bytes",
  "h2",
  "http",
+ "reqwest",
  "rever-core",
  "rever-scope",
  "rever-tools-api",
@@ -7439,6 +7441,21 @@ dependencies = [
  "tokio",
  "url",
  "uuid 1.29.2",
+]
+
+[[package]]
+name = "rever-tools-probe"
+version = "0.0.0"
+dependencies = [
+ "percent-encoding",
+ "regex",
+ "rever-core",
+ "rever-scope",
+ "rever-tools-api",
+ "rever-tools-http",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
