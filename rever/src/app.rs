@@ -19,7 +19,9 @@ use image::{Frame, RgbaImage};
 use net::tap::NetworkTapEvent;
 use rever_core::address::normalize_address;
 use rever_core::paths::user_data_dir;
-use rever_core::traffic::{self, ConsoleEntry, Headers, ListFilter, RequestPatch, TrafficStore};
+use rever_core::traffic::{
+    self, ConsoleEntry, Headers, ListFilter, RequestPatch, TrafficStore, WsDirection, WsFrame,
+};
 use rever_mcp::McpServer;
 use rever_tools_api::tool::{
     DialogAnswer, DialogRecord, PageInfo, TabInfo, ToolContext, ToolRegistry,
@@ -217,6 +219,8 @@ fn record(store: &Mutex<TrafficStore>, downloads: &DownloadState, event: Network
         map
     }
     let patch = match event {
+        // The WebSocket variants are routed to record_ws by the tap callback.
+        NetworkTapEvent::WebSocketOpened { .. } | NetworkTapEvent::WebSocketFrame { .. } => return,
         NetworkTapEvent::Request {
             id,
             url,
@@ -225,28 +229,56 @@ fn record(store: &Mutex<TrafficStore>, downloads: &DownloadState, event: Network
             body,
             destination,
             webview_id,
-        } => RequestPatch {
-            request_id: id,
-            url: Some(url.to_string()),
-            method: Some(method.to_string()),
-            resource_type: Some(traffic::resource_type_of(&destination).to_owned()),
-            request_headers: Some(headers(h.iter().map(|(n, v)| (n.as_str(), v.as_bytes())))),
-            request_post_data: (!body.is_empty())
-                .then(|| String::from_utf8_lossy(&body).into_owned()),
-            // The tab that sent it (its WebView id as u64); None for a request
-            // with no target webview.
-            tab_id: webview_id,
-            ..RequestPatch::default()
-        },
+        } => {
+            let resource_type = traffic::resource_type_of(&destination);
+            // A WS handshake fetch reports its URL with the http scheme; the
+            // websocket tools (and the agent) expect ws/wss.
+            let mut url = url;
+            if resource_type == "WebSocket" {
+                let scheme = match url.scheme() {
+                    "https" => "wss",
+                    _ => "ws",
+                };
+                url.as_mut_url().set_scheme(scheme).ok();
+            }
+            RequestPatch {
+                request_id: id,
+                url: Some(url.to_string()),
+                method: Some(method.to_string()),
+                resource_type: Some(resource_type.to_owned()),
+                request_headers: Some(headers(h.iter().map(|(n, v)| (n.as_str(), v.as_bytes())))),
+                request_post_data: (!body.is_empty())
+                    .then(|| String::from_utf8_lossy(&body).into_owned()),
+                // The tab that sent it (its WebView id as u64); None for a request
+                // with no target webview.
+                tab_id: webview_id,
+                ..RequestPatch::default()
+            }
+        }
         NetworkTapEvent::Response {
             id,
-            url,
+            mut url,
             status,
             headers: h,
             body,
         } => {
             let response_headers = headers(h.iter().map(|(n, v)| (n.as_str(), v.as_bytes())));
             let mime = traffic::mime_of(&response_headers);
+            // What this id was classified as decides two things below.
+            let entry_type = store
+                .lock()
+                .unwrap()
+                .get(&id)
+                .map(|request| request.resource_type.clone());
+            let is_navigation = entry_type.as_deref() == Some("Document");
+            // A WS handshake answers with the http form of the socket URL.
+            if entry_type.as_deref() == Some("WebSocket") {
+                let scheme = match url.scheme() {
+                    "https" => "wss",
+                    _ => "ws",
+                };
+                url.as_mut_url().set_scheme(scheme).ok();
+            }
             // A top-level navigation answered as an attachment is a download, not a
             // page: record it and save the file (a fetch of one is XHR, not a download).
             if status < 400 {
@@ -257,11 +289,6 @@ fn record(store: &Mutex<TrafficStore>, downloads: &DownloadState, event: Network
                 let is_attachment = disposition
                     .as_deref()
                     .is_some_and(|value| value.to_ascii_lowercase().contains("attachment"));
-                let is_navigation = store
-                    .lock()
-                    .unwrap()
-                    .get(&id)
-                    .is_some_and(|request| request.resource_type == "Document");
                 if is_attachment && is_navigation {
                     let url = url.to_string();
                     let name = rever_tools_page::downloads::download_filename(
@@ -287,6 +314,49 @@ fn record(store: &Mutex<TrafficStore>, downloads: &DownloadState, event: Network
         }
     };
     store.lock().unwrap().upsert(patch, now_ms());
+}
+
+/// The WebSocket events the tap emits: a connection becomes a store entry the
+/// websocket tools filter on (resource type "WebSocket", status 101); frames
+/// append to that entry so get_ws_frames can read them back.
+fn record_ws(store: &Mutex<TrafficStore>, event: NetworkTapEvent) {
+    let (id, frame) = match event {
+        NetworkTapEvent::WebSocketOpened { id, url, webview_id } => {
+            // Same scheme rewrite as the handshake Request: ws/wss, not http(s).
+            let mut url = url;
+            let scheme = match url.scheme() {
+                "https" => "wss",
+                _ => "ws",
+            };
+            url.as_mut_url().set_scheme(scheme).ok();
+            let patch = RequestPatch {
+                request_id: id,
+                url: Some(url.to_string()),
+                method: Some("GET".to_owned()),
+                resource_type: Some("WebSocket".to_owned()),
+                status: Some(101),
+                // A websocket stays open: no completed_at, like CDP's 101 handshake.
+                tab_id: webview_id,
+                ..RequestPatch::default()
+            };
+            store.lock().unwrap().upsert(patch, now_ms());
+            return;
+        }
+        NetworkTapEvent::WebSocketFrame { id, outgoing, binary, payload } => (
+            id,
+            WsFrame {
+                direction: if outgoing { WsDirection::Sent } else { WsDirection::Received },
+                // 1 = text, 2 = binary, the WebSocket opcodes CDP reports.
+                opcode: if binary { 2 } else { 1 },
+                payload_data: String::from_utf8_lossy(&payload).into_owned(),
+                timestamp: now_ms(),
+                mask: Some(outgoing),
+            },
+        ),
+        // Only the WebSocket variants belong here.
+        _ => return,
+    };
+    store.lock().unwrap().append_ws_frame(&id, frame);
 }
 
 pub(crate) struct Tab {
@@ -461,7 +531,14 @@ impl Browser {
             let (store, wake, changed) = (traffic.clone(), wake.clone(), traffic_changed.clone());
             let downloads = downloads.clone();
             net::tap::set_network_tap(move |event| {
-                record(&store, &downloads, event);
+                match &event {
+                    NetworkTapEvent::WebSocketOpened { .. } | NetworkTapEvent::WebSocketFrame { .. } => {
+                        record_ws(&store, event);
+                    }
+                    NetworkTapEvent::Request { .. } | NetworkTapEvent::Response { .. } => {
+                        record(&store, &downloads, event);
+                    }
+                }
                 changed.store(true, Ordering::Relaxed);
                 let _ = wake.unbounded_send(());
             });
@@ -1602,6 +1679,57 @@ fn menu_props(browser: &WeakEntity<Browser>, cx: &App) -> AppMenuProps {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 웹소켓_이벤트는_연결을_항목으로_프레임을_붙여_기록한다() {
+        let store = Mutex::new(TrafficStore::default());
+        record_ws(
+            &store,
+            NetworkTapEvent::WebSocketOpened {
+                id: "ws-1".to_owned(),
+                url: "ws://127.0.0.1:8779/ws".parse().unwrap(),
+                webview_id: Some(7),
+            },
+        );
+        let entry = {
+            let store = store.lock().unwrap();
+            let list = store.list(&ListFilter::default());
+            (list.len(), list[0].resource_type.clone())
+        };
+        assert_eq!(entry, (1, "WebSocket".to_owned()));
+
+        record_ws(
+            &store,
+            NetworkTapEvent::WebSocketFrame {
+                id: "ws-1".to_owned(),
+                outgoing: true,
+                binary: false,
+                payload: b"hello".to_vec(),
+            },
+        );
+        record_ws(
+            &store,
+            NetworkTapEvent::WebSocketFrame {
+                id: "ws-1".to_owned(),
+                outgoing: false,
+                binary: true,
+                payload: vec![1, 2],
+            },
+        );
+        let frames = store
+            .lock()
+            .unwrap()
+            .ws_frames("ws-1", None)
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(
+            (frames[0].direction, frames[0].opcode, frames[0].payload_data.as_str()),
+            (WsDirection::Sent, 1, "hello")
+        );
+        assert_eq!((frames[1].direction, frames[1].opcode), (WsDirection::Received, 2));
+    }
 
     #[test]
     fn 테마는_시스템_라이트_다크_순서로_돌고_저장값과_오간다() {

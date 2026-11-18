@@ -1,6 +1,6 @@
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/http_loader.rs b/http_loader.rs
---- a/http_loader.rs	2006-07-24 10:21:28
-+++ b/http_loader.rs	2026-11-18 12:53:34
+diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/http_loader.rs b/http_loader.rs
+--- a/http_loader.rs	2026-11-18 21:19:35
++++ b/http_loader.rs	2026-11-18 21:19:35
 @@ -648,6 +648,8 @@
          Ok(request) => request,
          Err(error) => return Err(NetworkError::HttpError(error.to_string())),
@@ -114,9 +114,9 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
                  *body = ResponseBody::Done(completed_body);
                  #[cfg(feature = "devtools")]
                  send_response_values_to_devtools(
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/lib.rs b/lib.rs
---- a/lib.rs	2006-07-24 10:21:28
-+++ b/lib.rs	2026-11-18 12:53:34
+diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/lib.rs b/lib.rs
+--- a/lib.rs	2026-11-18 21:19:35
++++ b/lib.rs	2026-11-18 21:19:35
 @@ -23,6 +23,7 @@
  pub mod request_interceptor;
  pub mod resource_thread;
@@ -125,10 +125,10 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
  #[cfg(feature = "test-util")]
  pub mod test_util;
  mod websocket_loader;
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/tap.rs b/tap.rs
+diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/tap.rs b/tap.rs
 --- a/tap.rs	1970-01-01 09:00:00
-+++ b/tap.rs	2026-11-18 12:53:34
-@@ -0,0 +1,89 @@
++++ b/tap.rs	2026-11-18 21:19:35
+@@ -0,0 +1,95 @@
 +/* rever patch (not upstream): hand request and response bodies to the embedder
 + * in-process. The network threads live in the embedder's process, so a
 + * process-wide callback is enough for a proof of concept. */
@@ -154,6 +154,12 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
 +        webview_id: Option<u64>,
 +    },
 +    Response { id: String, url: ServoUrl, status: u16, headers: HeaderMap, body: Vec<u8> },
++    /// A WebSocket connection finished its handshake. `id` is the same id the
++    /// frames of this connection carry, and `webview_id` is the owning tab.
++    WebSocketOpened { id: String, url: ServoUrl, webview_id: Option<u64> },
++    /// One WebSocket frame. `outgoing` is page→server; `payload` is raw bytes
++    /// (text frames are valid UTF-8).
++    WebSocketFrame { id: String, outgoing: bool, binary: bool, payload: Vec<u8> },
 +}
 +
 +type Tap = Box<dyn Fn(NetworkTapEvent) + Send + Sync>;
@@ -218,3 +224,126 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
 +        None => body,
 +    }
 +}
+diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/websocket_loader.rs b/websocket_loader.rs
+--- a/websocket_loader.rs	2026-11-18 21:19:35
++++ b/websocket_loader.rs	2026-11-18 21:19:35
+@@ -172,6 +172,7 @@
+ fn setup_dom_listener(
+     dom_action_receiver: CallbackSetter<WebSocketDomAction>,
+     initiated_close: Arc<AtomicBool>,
++    #[cfg(feature = "devtools")] tap_id: String,
+ ) -> UnboundedReceiver<DomMsg> {
+     let (sender, receiver) = unbounded_channel();
+ 
+@@ -180,11 +181,26 @@
+         trace!("handling WS DOM action: {:?}", dom_action);
+         match dom_action {
+             WebSocketDomAction::SendMessage(MessageData::Text(data)) => {
++                // rever patch: outgoing frames ride the network tap.
++                #[cfg(feature = "devtools")]
++                crate::tap::emit(crate::tap::NetworkTapEvent::WebSocketFrame {
++                    id: tap_id.clone(),
++                    outgoing: true,
++                    binary: false,
++                    payload: data.as_bytes().to_vec(),
++                });
+                 if let Err(e) = sender.send(DomMsg::Send(Message::Text(data.into()))) {
+                     warn!("Error sending websocket message: {:?}", e);
+                 }
+             },
+             WebSocketDomAction::SendMessage(MessageData::Binary(data)) => {
++                #[cfg(feature = "devtools")]
++                crate::tap::emit(crate::tap::NetworkTapEvent::WebSocketFrame {
++                    id: tap_id.clone(),
++                    outgoing: true,
++                    binary: true,
++                    payload: data.clone(),
++                });
+                 if let Err(e) = sender.send(DomMsg::Send(Message::Binary(data.into()))) {
+                     warn!("Error sending websocket message: {:?}", e);
+                 }
+@@ -212,6 +228,7 @@
+     mut dom_receiver: UnboundedReceiver<DomMsg>,
+     resource_event_sender: ProfileGenericCallback<WebSocketNetworkEvent>,
+     mut stream: WebSocketStream<ConnectStream>,
++    #[cfg(feature = "devtools")] tap_id: String,
+ ) {
+     loop {
+         select! {
+@@ -256,6 +273,13 @@
+                 };
+                 match msg {
+                     Message::Text(s) => {
++                        #[cfg(feature = "devtools")]
++                        crate::tap::emit(crate::tap::NetworkTapEvent::WebSocketFrame {
++                            id: tap_id.clone(),
++                            outgoing: false,
++                            binary: false,
++                            payload: s.as_bytes().to_vec(),
++                        });
+                         let message = MessageData::Text(s.as_str().to_owned());
+                         if let Err(e) = resource_event_sender
+                             .send(WebSocketNetworkEvent::MessageReceived(message))
+@@ -266,6 +290,13 @@
+                     }
+ 
+                     Message::Binary(v) => {
++                        #[cfg(feature = "devtools")]
++                        crate::tap::emit(crate::tap::NetworkTapEvent::WebSocketFrame {
++                            id: tap_id.clone(),
++                            outgoing: false,
++                            binary: true,
++                            payload: v.to_vec(),
++                        });
+                         let message = MessageData::Binary(v.to_vec());
+                         if let Err(e) = resource_event_sender
+                             .send(WebSocketNetworkEvent::MessageReceived(message))
+@@ -313,7 +344,26 @@
+     trace!("starting WS connection to {}", client.url());
+ 
+     let initiated_close = Arc::new(AtomicBool::new(false));
+-    let dom_receiver = setup_dom_listener(dom_action_receiver, initiated_close.clone());
++    // rever patch: the tap id this connection's frames carry, and the owning
++    // tab hashed the same way http_loader hashes it (see the tap Request emit).
++    #[cfg(feature = "devtools")]
++    let (tap_id, tap_webview_id) = (
++        client.id.0.to_string(),
++        client.target_webview_id.map(|id| {
++            use std::hash::{Hash, Hasher};
++            let mut hasher = std::hash::DefaultHasher::new();
++            id.hash(&mut hasher);
++            hasher.finish()
++        }),
++    );
++    #[cfg(feature = "devtools")]
++    let tap_url = client.url().clone();
++    let dom_receiver = setup_dom_listener(
++        dom_action_receiver,
++        initiated_close.clone(),
++        #[cfg(feature = "devtools")]
++        tap_id.clone(),
++    );
+ 
+     let url = client.url();
+     let host = replace_host(url.host_str().expect("URL has no host"));
+@@ -363,7 +413,19 @@
+         }
+ 
+         trace!("about to start ws loop for {}", url);
+-        spawn_task(run_ws_loop(dom_receiver, resource_event_sender, stream));
++        #[cfg(feature = "devtools")]
++        crate::tap::emit(crate::tap::NetworkTapEvent::WebSocketOpened {
++            id: tap_id.clone(),
++            url: tap_url,
++            webview_id: tap_webview_id,
++        });
++        spawn_task(run_ws_loop(
++            dom_receiver,
++            resource_event_sender,
++            stream,
++            #[cfg(feature = "devtools")]
++            tap_id,
++        ));
+     } else {
+         trace!("client closed connection for {}, not running loop", url);
+     }

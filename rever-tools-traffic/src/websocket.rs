@@ -244,7 +244,7 @@ tool!(
     WsSend,
     ToolDef::new(
         "ws_send",
-        "Send a frame on the page's own live WebSocket (auth and session preserved). Pass url (from ws_capture_list or list_websockets) — works on sockets the page already opened, including in cross-site iframes, with no setup. Payload is sent as a UTF-8 string; for binary, base64-encode the bytes and set asBinary=true. If the socket has closed, reconnect=true reopens it from the page (same URL, subprotocols, cookies and origin) and sends on the new connection, which shows up in list_websockets under a new requestId. captureId is the legacy path after ws_capture_enable.",
+        "Send a frame on the page's own live WebSocket (auth and session preserved). Pass url (from ws_capture_list or list_websockets) — after one ws_capture_enable call it reaches sockets the page already opened, including in cross-site iframes. Payload is sent as a UTF-8 string; for binary, base64-encode the bytes and set asBinary=true. If the socket has closed, reconnect=true reopens it from the page (same URL, cookies and origin) and sends on the new connection, which shows up in list_websockets under a new requestId. captureId is the legacy path after ws_capture_enable.",
         schema(
             json!({
                 "url": prop("string", "Socket URL, e.g. wss://host/socket?room=1"),
@@ -307,6 +307,11 @@ e.ws.send({payload}); return 'ok'; }})()",
         Value::String(answer) if answer == "reopened" => {
             Ok(ok("socket closed — reopened it from the page and sent on the new connection".to_owned()))
         }
+        Value::String(answer) if answer == "no-such-capture" => Err(
+            "no wrapped socket at this url — call ws_capture_enable first (sockets opened after \
+             that are addressable by url), or pass reconnect: true to open a new one"
+                .to_owned(),
+        ),
         Value::String(answer) => Err(format!("ws_send failed: {answer}")),
         other => Err(format!("ws_send failed: {other}")),
     }

@@ -617,6 +617,7 @@ pub fn resource_type_of(destination: &str) -> &'static str {
         "Image" => "Image",
         "Font" => "Font",
         "Audio" | "Video" | "Track" => "Media",
+        "WebSocket" => "WebSocket",
         "Manifest" => "Manifest",
         // XHR and fetch() have no destination.
         "None" => "XHR",
