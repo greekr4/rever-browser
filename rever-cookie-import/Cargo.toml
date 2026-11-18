@@ -1,0 +1,18 @@
+[package]
+name = "rever-cookie-import"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Import cookies from a locally installed Chrome (macOS): keychain key + AES-128-CBC decrypt of v10/v11 values, cookies read via the sqlite3 CLI"
+
+[dependencies]
+# AES-128-CBC with PKCS7, the scheme Chrome encrypts cookie values with.
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+# PBKDF2-HMAC-SHA1 derives the AES key from the keychain password.
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+sha1 = "0.10"
+
+[dev-dependencies]
+# Round-trip test encrypts with the same scheme to lock the decrypt path.
+cbc = { version = "0.1", features = ["alloc"] }

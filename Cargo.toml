@@ -9,6 +9,7 @@ members = [
     "rever-analysis",
     "rever-chat-core",
     "rever-cli-spec",
+    "rever-cookie-import",
     "rever-core",
     "rever-formats",
     "rever-inject",
