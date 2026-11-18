@@ -93,7 +93,9 @@ pub(crate) mod test_support {
     use std::sync::{Arc, Mutex};
 
     use rever_core::traffic::RequestPatch;
-    use rever_tools_api::tool::{BoxFuture, Browser, NoBrowser, PageInfo, Tool, ToolContext};
+    use rever_tools_api::tool::{
+        BoxFuture, Browser, NoBrowser, PageInfo, TabInfo, Tool, ToolContext,
+    };
     use rever_tools_api::utils::Content;
     use serde_json::Value;
 
@@ -107,6 +109,8 @@ pub(crate) mod test_support {
         pub(crate) evaluate: Option<Result<Value, String>>,
         /// "evaluate:<expression>", "add:<source>", "remove:<id>", in call order.
         pub(crate) calls: Mutex<Vec<String>>,
+        /// Tabs `tabs()` returns; empty = the engine default (unsupported).
+        pub(crate) tabs: Vec<TabInfo>,
     }
 
     impl FakeBrowser {
@@ -132,6 +136,17 @@ pub(crate) mod test_support {
                 match &self.evaluate {
                     Some(result) => result.clone(),
                     None => NoBrowser.evaluate(expression).await,
+                }
+            })
+        }
+
+        fn tabs(&self) -> BoxFuture<'_, Result<Vec<TabInfo>, String>> {
+            let tabs = self.tabs.clone();
+            Box::pin(async move {
+                if tabs.is_empty() {
+                    Err("no attached tabs".to_owned())
+                } else {
+                    Ok(tabs)
                 }
             })
         }

@@ -1,6 +1,6 @@
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/http_loader.rs b/http_loader.rs
---- a/http_loader.rs	2026-11-16 14:41:29
-+++ b/http_loader.rs	2026-11-16 14:41:29
+--- a/http_loader.rs	2006-07-24 10:21:28
++++ b/http_loader.rs	2026-11-18 12:53:34
 @@ -648,6 +648,8 @@
          Ok(request) => request,
          Err(error) => return Err(NetworkError::HttpError(error.to_string())),
@@ -10,23 +10,32 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
      *request.headers_mut() = headers.clone();
  
      let connect_end = CrossProcessInstant::now();
-@@ -658,6 +660,15 @@
+@@ -658,6 +660,24 @@
      let host = request.uri().host().unwrap_or("").to_owned();
      let override_manager = context.state.override_manager.clone();
      #[cfg(feature = "devtools")]
-+    let (tap_id, tap_url, tap_method, tap_headers, tap_bytes, tap_destination) = (
++    let (tap_id, tap_url, tap_method, tap_headers, tap_bytes, tap_destination, tap_webview_id) = (
 +        request_id.map(|id| id.to_string()).unwrap_or_default(),
 +        url.clone(),
 +        method.clone(),
 +        headers.clone(),
 +        devtools_bytes.clone(),
 +        format!("{destination:?}"),
++        // Stable per-tab key the embedder stamps onto the captured request so
++        // list_requests can filter by tab. A fixed-seed hash of the WebViewId:
++        // the embedder hashes the same id the same way, so the keys match.
++        fetch_params.request.target_webview_id.map(|id| {
++            use std::hash::{Hash, Hasher};
++            let mut hasher = std::hash::DefaultHasher::new();
++            id.hash(&mut hasher);
++            hasher.finish()
++        }),
 +    );
 +    #[cfg(feature = "devtools")]
      let (request_id, pipeline_id, closure_url, method, send_start, headers) = (
          request_id.map(|value| value.to_owned()),
          pipeline_id,
-@@ -680,6 +691,15 @@
+@@ -680,6 +700,16 @@
          .and_then(move |res| {
              // TODO(#21271) response_start: immediately after receiving first byte of response
              #[cfg(feature = "devtools")]
@@ -37,12 +46,13 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
 +                headers: tap_headers,
 +                body: tap_bytes.lock().clone(),
 +                destination: tap_destination,
++                webview_id: tap_webview_id,
 +            });
 +            #[cfg(feature = "devtools")]
              let msg = if let Some(request_id) = request_id {
                  let send_end = CrossProcessInstant::now();
                  if let Some(pipeline_id) = pipeline_id {
-@@ -2332,6 +2352,13 @@
+@@ -2332,6 +2362,13 @@
          request.url()
      );
      response.headers = response_stream.headers().clone();
@@ -56,7 +66,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
      response.referrer = request.referrer.to_url().cloned();
      response.referrer_policy = request.referrer_policy;
  
-@@ -2406,7 +2433,9 @@
+@@ -2406,7 +2443,9 @@
                  }
                  if let ResponseBody::Receiving(ref mut body) = *response_body_accumulator.lock() {
                      body.extend_from_slice(&chunk);
@@ -67,7 +77,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
                  }
                  future::ready(Ok(response_body_accumulator))
              })
-@@ -2419,11 +2448,34 @@
+@@ -2419,11 +2458,34 @@
                  };
                  // This allocation may be retained by the http-cache.
                  completed_body.shrink_to_fit();
@@ -105,8 +115,8 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
                  #[cfg(feature = "devtools")]
                  send_response_values_to_devtools(
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/lib.rs b/lib.rs
---- a/lib.rs	2026-11-16 14:41:29
-+++ b/lib.rs	2026-11-16 14:41:29
+--- a/lib.rs	2006-07-24 10:21:28
++++ b/lib.rs	2026-11-18 12:53:34
 @@ -23,6 +23,7 @@
  pub mod request_interceptor;
  pub mod resource_thread;
@@ -117,8 +127,8 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
  mod websocket_loader;
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/tap.rs b/tap.rs
 --- a/tap.rs	1970-01-01 09:00:00
-+++ b/tap.rs	2026-11-16 14:41:29
-@@ -0,0 +1,85 @@
++++ b/tap.rs	2026-11-18 12:53:34
+@@ -0,0 +1,89 @@
 +/* rever patch (not upstream): hand request and response bodies to the embedder
 + * in-process. The network threads live in the embedder's process, so a
 + * process-wide callback is enough for a proof of concept. */
@@ -138,6 +148,10 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
 +        body: Vec<u8>,
 +        /// Debug name of the fetch destination ("Document", "Script", "None" for XHR/fetch, ...).
 +        destination: String,
++        /// The initiating WebView (tab) as a u64 (namespace<<32 | index), so the
++        /// embedder can stamp the request with the tab it belongs to. None for
++        /// requests with no target webview.
++        webview_id: Option<u64>,
 +    },
 +    Response { id: String, url: ServoUrl, status: u16, headers: HeaderMap, body: Vec<u8> },
 +}

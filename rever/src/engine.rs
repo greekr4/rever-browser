@@ -276,6 +276,17 @@ impl Engine {
         self.pages.retain(|page| page.id != id);
     }
 
+    /// The tab's WebView id hashed to a u64 — the same key the network tap
+    /// stamps onto captured requests (same fixed-seed hash of the same
+    /// WebViewId), so a tab index resolves to its captured requests.
+    pub fn webview_u64(&self, id: TabId) -> Option<u64> {
+        use std::hash::{Hash, Hasher};
+        let wid = self.page(id)?.webview.id();
+        let mut hasher = std::hash::DefaultHasher::new();
+        wid.hash(&mut hasher);
+        Some(hasher.finish())
+    }
+
     fn page(&self, id: TabId) -> Option<&Page> {
         self.pages.iter().find(|page| page.id == id)
     }

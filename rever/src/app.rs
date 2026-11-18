@@ -221,6 +221,7 @@ fn record(store: &Mutex<TrafficStore>, downloads: &DownloadState, event: Network
             headers: h,
             body,
             destination,
+            webview_id,
         } => RequestPatch {
             request_id: id,
             url: Some(url.to_string()),
@@ -229,6 +230,9 @@ fn record(store: &Mutex<TrafficStore>, downloads: &DownloadState, event: Network
             request_headers: Some(headers(h.iter().map(|(n, v)| (n.as_str(), v.as_bytes())))),
             request_post_data: (!body.is_empty())
                 .then(|| String::from_utf8_lossy(&body).into_owned()),
+            // The tab that sent it (its WebView id as u64); None for a request
+            // with no target webview.
+            tab_id: webview_id,
             ..RequestPatch::default()
         },
         NetworkTapEvent::Response {
@@ -1101,6 +1105,7 @@ impl Browser {
                         url: tab.url.clone(),
                         title: tab.title.to_string(),
                         active: index == self.active,
+                        id: self.engine.webview_u64(tab.id).unwrap_or(0),
                     });
                     let _ = answer.send(Ok(tabs.collect()));
                 }

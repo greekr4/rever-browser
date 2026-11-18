@@ -128,6 +128,10 @@ pub struct TabInfo {
     pub title: String,
     /// The tab the tools act on.
     pub active: bool,
+    /// Stable per-tab id (the engine's WebView id as u64), matching the
+    /// `tab_id` stamped on captured requests — the key `list_requests?tab=` /
+    /// `list_endpoints?tab=` resolve a tab index to. 0 when unknown.
+    pub id: u64,
 }
 
 /// A native `alert`/`confirm`/`prompt` the page opened, as `dialog_history` prints it.

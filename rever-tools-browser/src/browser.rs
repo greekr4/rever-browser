@@ -1561,6 +1561,7 @@ mod tests {
                 url: "https://a.test/".to_owned(),
                 title: "A".to_owned(),
                 active: true,
+                ..TabInfo::default()
             },
             TabInfo {
                 url: "https://b.test/".to_owned(),

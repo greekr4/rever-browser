@@ -8,7 +8,7 @@ use rever_analysis::endpoints::{
     EndpointScope, SiteSplit, format_endpoints, split_by_site, summarize_endpoints,
 };
 use rever_core::traffic::{ListFilter, Source, StoredRequest};
-use rever_tools_api::tool::{ToolContext, ToolDef, unsupported};
+use rever_tools_api::tool::{ToolContext, ToolDef};
 use rever_tools_api::utils::{ResultStore, ToolResult, ok};
 use serde::de::{Deserializer, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
@@ -108,14 +108,18 @@ fn to_summary(e: &StoredRequest) -> Summary<'_> {
     }
 }
 
-// The agent addresses tabs by the index it sees in browser_tabs, and the
-// TypeScript maps that index to a webContents id. `Browser` drives one tab and
-// cannot list the others, so a tab filter cannot be resolved here.
-fn reject_tab(args: &Args) -> Result<(), String> {
-    match args.any_int("tab")? {
-        Some(_) => Err(unsupported("filtering by tab")),
-        None => Ok(()),
-    }
+// The agent addresses tabs by the index it sees in browser_tabs; resolve that
+// index to the tab's stable id (the `tab_id` stamped on captured requests).
+async fn resolve_tab(ctx: &ToolContext, args: &Args<'_>) -> Result<Option<u64>, String> {
+    let Some(index) = args.any_int("tab")? else {
+        return Ok(None);
+    };
+    let index = usize::try_from(index).map_err(|_| format!("invalid tab index: {index}"))?;
+    let tabs = ctx.browser.tabs().await?;
+    let tab = tabs
+        .get(index)
+        .ok_or_else(|| format!("no tab at index {index} (there are {} tabs)", tabs.len()))?;
+    Ok(Some(tab.id))
 }
 
 tool!(
@@ -142,15 +146,16 @@ tool!(
             &[],
         ),
     ),
-    |ctx, args| list_requests(ctx, &args)
+    |ctx, args| list_requests(ctx, &args).await
 );
 
-fn list_requests(ctx: &ToolContext, args: &Args) -> Result<ToolResult, String> {
+async fn list_requests(ctx: &ToolContext, args: &Args<'_>) -> Result<ToolResult, String> {
     let filter = ListFilter {
         host: args.str("host")?.map(str::to_owned),
         method_or_type: args.str("methodOrType")?.map(str::to_owned),
         since: args.since()?,
         limit: args.limit(200)?,
+        tab_id: resolve_tab(ctx, args).await?,
         source: match args.str("source")? {
             None | Some("live") => Source::Live,
             Some("import") => Source::Import,
@@ -163,7 +168,6 @@ fn list_requests(ctx: &ToolContext, args: &Args) -> Result<ToolResult, String> {
         },
         ..ListFilter::default()
     };
-    reject_tab(args)?;
     let store = store(ctx);
     let rows: Vec<Summary> = store.list(&filter).into_iter().map(to_summary).collect();
     ok_pretty(&rows)
@@ -194,7 +198,7 @@ async fn list_endpoints(ctx: &ToolContext, args: &Args<'_>) -> Result<ToolResult
     let host = args.str("host")?;
     let all = args.bool("all")?.unwrap_or(false);
     let limit = args.limit(200)?.unwrap_or(50);
-    reject_tab(args)?;
+    let tab_id = resolve_tab(ctx, args).await?;
 
     let every_site = host.is_some_and(|host| !host.is_empty()) || all;
     // Asked before the store is locked: the guard cannot be held across an await.
@@ -209,6 +213,7 @@ async fn list_endpoints(ctx: &ToolContext, args: &Args<'_>) -> Result<ToolResult
     let rows = store.list(&ListFilter {
         host: host.map(str::to_owned),
         limit: Some(500),
+        tab_id,
         ..ListFilter::default()
     });
     if every_site {
@@ -599,14 +604,41 @@ mod tests {
                 .await
                 .is_err()
         );
-        assert_eq!(
-            call(&ListRequests, &ctx, json!({ "tab": 0 })).await,
-            Err(unsupported("filtering by tab"))
-        );
-        assert_eq!(
-            call(&ListEndpoints, &ctx, json!({ "tab": 2 })).await,
-            Err(unsupported("filtering by tab"))
-        );
+        // A tab filter on a ctx with no tabs can't resolve the index → error.
+        assert!(call(&ListRequests, &ctx, json!({ "tab": 0 })).await.is_err());
+        assert!(call(&ListEndpoints, &ctx, json!({ "tab": 2 })).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn 탭_인덱스를_해석해_그_탭의_요청만_필터한다() {
+        use rever_tools_api::tool::TabInfo;
+        use std::sync::Arc;
+
+        // browser_tabs index 0 → id 10, index 1 → id 20.
+        let ctx = ctx_with(Arc::new(FakeBrowser {
+            tabs: vec![
+                TabInfo { id: 10, ..TabInfo::default() },
+                TabInfo { id: 20, ..TabInfo::default() },
+            ],
+            ..FakeBrowser::default()
+        }));
+        let tab_req = |id: &str, tab: u64| {
+            let mut patch = request(id, "https://x.test/a", "GET", "XHR");
+            patch.tab_id = Some(tab);
+            patch
+        };
+        put(&ctx, tab_req("a", 10), 1);
+        put(&ctx, tab_req("b", 20), 2);
+
+        // tab:0 resolves to id 10 → only request "a".
+        let rows = call_json(&ListRequests, &ctx, json!({ "tab": 0 })).await;
+        let ids: Vec<&str> = rows.as_array().unwrap().iter().map(|r| r["requestId"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["a"]);
+        // tab:1 → id 20 → only "b".
+        let rows = call_json(&ListRequests, &ctx, json!({ "tab": 1 })).await;
+        assert_eq!(rows[0]["requestId"], "b");
+        // Out-of-range index errors.
+        assert!(call(&ListRequests, &ctx, json!({ "tab": 9 })).await.is_err());
     }
 
     fn endpoints_ctx(page_url: Option<&str>) -> ToolContext {
