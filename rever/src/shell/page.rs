@@ -80,7 +80,6 @@ impl Browser {
             .flex()
             .flex_col()
             .child(page)
-            .child(self.bot_check.clone())
             .children(self.select_list(theme, cx))
             .children(self.context_menu_list(theme, cx))
             .children(self.prompt_overlay(theme, cx))

@@ -32,7 +32,6 @@ use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::text_input::{Submitted, TextInput};
 use rever_ui_kit::theme::ThemeMode;
 use rever_ui_menus::app_menu::{AppMenu, AppMenuItem, AppMenuProps};
-use rever_ui_menus::bot_check_button::BotCheckButton;
 use rever_ui_menus::ip_badge::IpBadge;
 use rever_ui_menus::ui::{Look, LookFn, fill};
 use rever_ui_state::app_theme::{self, AppThemeStore};
@@ -365,7 +364,6 @@ pub(crate) struct Browser {
     pub views: Views,
     pub menu: Entity<AppMenu>,
     pub ip_badge: Entity<IpBadge>,
-    pub bot_check: Entity<BotCheckButton>,
     /// Set by the network tap's threads when the capture store changed.
     traffic_changed: Arc<AtomicBool>,
     /// Answers to what the console panel ran in the page, collected until the next pump.
@@ -398,6 +396,10 @@ pub(crate) struct Browser {
     upload_paths: Vec<PathBuf>,
     /// When a tool last drove the page: a dialog opened right after is the agent's.
     tool_acted: Option<Instant>,
+    /// Height of the open bottom chip panel; the user drags its top edge.
+    pub panel_height: f32,
+    /// While the panel's top edge is dragged: (pointer y at start, height at start).
+    pub panel_drag: Option<(f32, f32)>,
     /// The `<select>` whose option list is open over the page.
     pub select: Option<SelectElement>,
     /// An open `prompt()` dialog: the page can't type into the system prompt, so
@@ -536,15 +538,7 @@ impl Browser {
             let host = Rc::new(IpHost::new(stores.storage.clone()));
             cx.new(|cx| IpBadge::new(host, look.clone(), cx))
         };
-        let bot_check = cx.new(|_| {
-            BotCheckButton::new(
-                move |url, _, cx| {
-                    let _ = this.update(cx, |this, cx| this.open_url(url, cx));
-                },
-                look,
-            )
-        });
-
+        // The bot-check floating button is hidden in the browser, so it is not built.
         Self {
             engine,
             tabs: vec![Tab {
@@ -562,7 +556,6 @@ impl Browser {
             views,
             menu,
             ip_badge,
-            bot_check,
             traffic_changed,
             eval_results: Rc::default(),
             agent: None,
@@ -581,6 +574,8 @@ impl Browser {
             dialog_auto_dismiss: true,
             upload_paths: Vec::new(),
             tool_acted: None,
+            panel_height: 320.0,
+            panel_drag: None,
             select: None,
             prompt: None,
             context_menu: None,
@@ -1155,6 +1150,15 @@ impl Browser {
         }
         overlay.picker.submit();
         cx.notify();
+    }
+
+    /// Resize the open panel while its top edge is dragged (dragging up, so a
+    /// smaller y, makes it taller).
+    pub fn on_panel_drag(&mut self, y: f32, cx: &mut Context<Self>) {
+        if let Some((start_y, start_height)) = self.panel_drag {
+            self.panel_height = (start_height + (start_y - y)).clamp(160.0, 900.0);
+            cx.notify();
+        }
     }
 
     /// Close the context menu: run the action the user picked, or dismiss it.

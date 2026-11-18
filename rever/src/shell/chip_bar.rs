@@ -1,13 +1,17 @@
 //! The chip bar at the bottom of the page area and the panel a chip opens above it.
 //! Port of `src/renderer/src/components/FloatingChips.tsx`.
 
-use gpui::{AnyView, ClickEvent, Context, FontWeight, div, prelude::*, px};
+use gpui::{
+    AnyView, ClickEvent, Context, DragMoveEvent, FontWeight, MouseButton, MouseDownEvent, div,
+    prelude::*, px,
+};
 use rever_ui_kit::theme::Theme;
 
 use super::icon;
 use crate::app::{Browser, PANEL_GROUPS, panel_title_key};
 
-const PANEL_HEIGHT: f32 = 320.0;
+/// Marker for the panel's top-edge resize drag.
+struct PanelDrag;
 
 /// `n.toLocaleString('en-US')`: the count on a chip.
 fn fmt_count(n: usize) -> String {
@@ -61,13 +65,36 @@ impl Browser {
         };
         // `.chip-panel-bottom`
         div()
-            .h(px(PANEL_HEIGHT))
+            .relative()
+            .h(px(self.panel_height))
             .flex()
             .flex_col()
             .flex_none()
             .bg(theme.bg)
             .border_t_1()
             .border_color(theme.border_2)
+            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<PanelDrag>, _, cx| {
+                this.on_panel_drag(f32::from(event.event.position.y), cx)
+            }))
+            // A drag handle over the top edge resizes the panel up/down.
+            .child(
+                div()
+                    .id("panel-resize")
+                    .absolute()
+                    .top(px(-3.0))
+                    .left_0()
+                    .right_0()
+                    .h(px(6.0))
+                    .cursor_ns_resize()
+                    .hover(|style| style.bg(gpui::rgba(0x4a8fff66)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, event: &MouseDownEvent, _, _| {
+                            this.panel_drag = Some((f32::from(event.position.y), this.panel_height));
+                        }),
+                    )
+                    .on_drag(PanelDrag, |_, _, _, cx| cx.new(|_| gpui::Empty)),
+            )
             .child(
                 // `.chip-panel-header`
                 div()
@@ -187,8 +214,12 @@ impl Browser {
                 );
             }
         }
+        let hover = theme.chrome_hover;
         bar.child(div().flex_1()).child(
+            // Red Team starts a scan rather than opening a panel: the dedicated
+            // popup isn't ported, so clicking primes the agent request in chat.
             div()
+                .id("redteam")
                 .h(px(28.0))
                 .px(px(10.0))
                 .flex()
@@ -200,6 +231,12 @@ impl Browser {
                 .border_color(theme.border_2)
                 .text_size(px(12.0))
                 .text_color(theme.status_error)
+                .cursor_pointer()
+                .hover(move |style| style.bg(hover))
+                .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                    let url = this.tabs[this.active].url.clone();
+                    this.push_draft(&format!("Start a Red Team scan of {url}"), cx);
+                }))
                 .child(icon("redteam", 14.0, theme.status_error))
                 .child(lang.t("panel.redteam")),
         )
