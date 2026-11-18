@@ -29,6 +29,7 @@ use rever_tools_debug::intercept::InterceptState;
 use rever_tools_page::downloads::DownloadState;
 use rever_ui_history::history::NewHistoryEntry;
 use rever_ui_kit::i18n::Lang;
+use rever_ui_kit::text_input::{Submitted, TextInput};
 use rever_ui_kit::theme::ThemeMode;
 use rever_ui_menus::app_menu::{AppMenu, AppMenuItem, AppMenuProps};
 use rever_ui_menus::bot_check_button::BotCheckButton;
@@ -310,6 +311,15 @@ pub(crate) struct Launch {
     pub say: Option<String>,
 }
 
+/// An open `prompt()` dialog awaiting the user: the message, a text input, and
+/// the log entry's timestamp so the answer can be recorded on it.
+pub(crate) struct PromptOverlay {
+    pub dialog: SimpleDialog,
+    pub input: Entity<TextInput>,
+    pub message: String,
+    ts: u64,
+}
+
 pub(crate) struct Browser {
     pub engine: Engine,
     pub tabs: Vec<Tab>,
@@ -362,6 +372,9 @@ pub(crate) struct Browser {
     tool_acted: Option<Instant>,
     /// The `<select>` whose option list is open over the page.
     pub select: Option<SelectElement>,
+    /// An open `prompt()` dialog: the page can't type into the system prompt, so
+    /// it gets a text-input overlay instead.
+    pub prompt: Option<PromptOverlay>,
     /// Where the debugger tools find Servo's debugging server.
     debug_endpoint: crate::debug::Endpoint,
     /// Mobile mode: the page is a phone-wide column in the middle of its area.
@@ -537,6 +550,7 @@ impl Browser {
             upload_paths: Vec::new(),
             tool_acted: None,
             select: None,
+            prompt: None,
             mobile: false,
             debug_endpoint,
             held_requests,
@@ -967,6 +981,25 @@ impl Browser {
                     self.dialog_log[opened].answer = answered("agent", accept);
                     return answer_dialog(dialog, accept, text.as_deref());
                 }
+                // prompt() needs a text field the system dialog doesn't give: open
+                // a GPUI input overlay instead (alert/confirm keep the native buttons).
+                if let SimpleDialog::Prompt(prompt) = &dialog {
+                    let initial = prompt.current_value().to_owned();
+                    let input = cx.new(|cx| TextInput::new("", cx));
+                    input.update(cx, |input, cx| input.set_text(initial, cx));
+                    cx.subscribe(&input, |this, _, _: &Submitted, cx| {
+                        this.confirm_prompt(true, cx)
+                    })
+                    .detach();
+                    self.prompt = Some(PromptOverlay {
+                        message: self.dialog_log[opened].message.clone(),
+                        ts: self.dialog_log[opened].ts,
+                        dialog,
+                        input,
+                    });
+                    cx.notify();
+                    return;
+                }
                 let buttons: &[&str] = match dialog {
                     SimpleDialog::Alert(_) => &["OK"],
                     _ => &["OK", "Cancel"],
@@ -1021,6 +1054,23 @@ impl Browser {
             // input method have no interface here yet.
             _ => {}
         }
+    }
+
+    /// Close the prompt overlay: confirm with the typed text, or dismiss it.
+    pub fn confirm_prompt(&mut self, accept: bool, cx: &mut Context<Self>) {
+        let Some(overlay) = self.prompt.take() else {
+            return;
+        };
+        let text = overlay.input.read(cx).text().to_owned();
+        answer_dialog(overlay.dialog, accept, accept.then_some(text.as_str()));
+        if let Some(record) = self.dialog_log.iter_mut().rev().find(|r| r.ts == overlay.ts) {
+            record.answer = Some(DialogAnswer {
+                by: "user".to_owned(),
+                accept,
+                at: now_ms(),
+            });
+        }
+        cx.notify();
     }
 
     /// Close the open `<select>` list: with the option the user picked, or with
