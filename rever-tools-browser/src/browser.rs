@@ -998,7 +998,7 @@ impl Tool for BrowserScreenshot {
 #[cfg(test)]
 mod tests {
     use rever_core::traffic::RequestPatch;
-    use rever_tools_api::tool::Input;
+    use rever_tools_api::tool::{Input, unsupported};
 
     use super::*;
     use crate::test_support::{FakeBrowser, SCOPE, call, context, settle_overlay};
