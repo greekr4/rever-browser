@@ -11,6 +11,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use dpi::PhysicalSize;
 use futures::StreamExt;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use futures::channel::oneshot;
 use gpui::{
     App, AppContext, Bounds, ClipboardItem, Context, Entity, FocusHandle, Focusable,
     PathPromptOptions, Pixels, PromptLevel, RenderImage, SharedString, WeakEntity, Window,
@@ -29,6 +30,7 @@ use rever_tools_api::tool::{
 use rever_tools_debug::debugger::DebugState;
 use rever_tools_debug::intercept::InterceptState;
 use rever_tools_page::downloads::DownloadState;
+use rever_tools_redteam::scan::RendererBridge;
 use rever_ui_history::history::NewHistoryEntry;
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::text_input::{Submitted, TextInput};
@@ -122,10 +124,35 @@ fn start_mcp(
     let edits = Arc::new(crate::intercept::NetEdits::default());
     crate::intercept::install_editors(intercept.clone(), edits.clone());
     intercept.set_engine(Arc::new(crate::intercept::AppIntercept {
-        browser,
+        browser: browser.clone(),
         edits,
         state: Arc::downgrade(&intercept),
     }));
+    // redteam_start hands its request to the interface through the
+    // RendererBridge; without this subscription every ask failed with
+    // "no renderer window". The command answers on the main thread.
+    {
+        let (commands, wake) = browser.channels();
+        context.state::<RendererBridge>().subscribe(move |op, payload| {
+            let (answer, answered) = oneshot::channel();
+            let sent = commands
+                .unbounded_send(crate::bridge::Command::InterfaceAsk(
+                    op.to_owned(),
+                    payload,
+                    answer,
+                ))
+                .is_ok();
+            let _ = wake.unbounded_send(());
+            Box::pin(async move {
+                if !sent {
+                    return Err("the browser window is closed".to_owned());
+                }
+                answered
+                    .await
+                    .unwrap_or_else(|_| Err("the browser window is closed".to_owned()))
+            })
+        });
+    }
     let server = rever_mcp::start(Arc::new(registry), context)
         .inspect_err(|error| eprintln!("[mcp] {error}"))
         .ok();
@@ -1266,6 +1293,66 @@ impl Browser {
         cx.notify();
     }
 
+    /// Answer a RendererBridge request (only "scan:launch" is defined): arm the
+    /// Red Team dialog with the payload and open it; an autostart (loopback)
+    /// target begins the scan at once. Runs on the main thread.
+    fn answer_interface_ask(
+        &mut self,
+        op: &str,
+        payload: serde_json::Value,
+        cx: &mut Context<Self>,
+    ) -> Result<serde_json::Value, String> {
+        if op != "scan:launch" {
+            return Err(format!("the interface does not answer \"{op}\""));
+        }
+        let url = payload
+            .get("url")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let pages = payload
+            .get("pages")
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(20)
+            .clamp(1, 200) as u32;
+        let intensity = payload
+            .get("intensity")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("readonly");
+        let intensity = match intensity {
+            "probe" => "probe",
+            "full" => "full",
+            _ => "readonly",
+        };
+        let autostart = payload
+            .get("autostart")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        if url.is_empty() {
+            return Err("scan:launch without a url".to_owned());
+        }
+        if self.redteam_pos == (0.0, 0.0) {
+            self.redteam_pos = (120.0, 90.0);
+        }
+        self.views
+            .redteam_target
+            .update(cx, |input, cx| input.set_text(url, cx));
+        self.redteam_intensity = intensity;
+        self.redteam_pages = pages;
+        self.redteam_open = true;
+        let phase = if autostart {
+            if self.agent_busy {
+                return Err("an agent turn is already running — close it first".to_owned());
+            }
+            self.start_redteam(cx);
+            "running"
+        } else {
+            "confirm"
+        };
+        cx.notify();
+        Ok(serde_json::json!({ "phase": phase }))
+    }
+
     /// Open the Red Team dialog, prefilling the target with the active page url.
     pub fn open_redteam(&mut self, cx: &mut Context<Self>) {
         let url = self.tabs[self.active].url.clone();
@@ -1449,6 +1536,9 @@ impl Browser {
                         self.engine.input(tab, event);
                     }
                     let _ = answer.send(Ok(()));
+                }
+                Command::InterfaceAsk(op, payload, answer) => {
+                    let _ = answer.send(self.answer_interface_ask(&op, payload, cx));
                 }
                 Command::Viewport(answer) => {
                     let size = self.engine.size(tab).map(|size| {

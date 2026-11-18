@@ -44,6 +44,9 @@ pub enum Command {
     DialogHistory(usize, Answer<(bool, Vec<DialogRecord>)>),
     ClearDialogs(Answer<()>),
     SetDialogAutoDismiss(bool, Answer<()>),
+    /// A RendererBridge request (op + payload), e.g. "scan:launch" from
+    /// redteam_start; answered with the interface's reply value.
+    InterfaceAsk(String, Value, Answer<Value>),
     Cookies(String, Answer<Vec<Cookie>>),
     /// A cookie to store for a URL; an expired one deletes.
     SetCookie(String, Cookie, Answer<()>),
@@ -64,6 +67,12 @@ impl AppBrowser {
             wake,
             target: None,
         }
+    }
+
+    /// The raw channel pair, for callers that queue commands without an
+    /// AppBrowser target (the RendererBridge subscription in start_mcp).
+    pub fn channels(&self) -> (UnboundedSender<Command>, UnboundedSender<()>) {
+        (self.commands.clone(), self.wake.clone())
     }
 
     pub(crate) fn ask<T: Send + 'static>(
