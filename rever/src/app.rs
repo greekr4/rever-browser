@@ -37,7 +37,8 @@ use rever_ui_menus::ip_badge::IpBadge;
 use rever_ui_menus::ui::{Look, LookFn, fill};
 use rever_ui_state::app_theme::{self, AppThemeStore};
 use servo::{
-    ContextMenu, ContextMenuAction, EmbedderControl, JSValue, SelectElement, SimpleDialog,
+    ColorPicker, ContextMenu, ContextMenuAction, EmbedderControl, JSValue, RgbColor,
+    SelectElement, SimpleDialog,
 };
 use url::Url;
 
@@ -322,6 +323,31 @@ pub(crate) struct PromptOverlay {
     ts: u64,
 }
 
+/// An open color picker: the picker and a `#rrggbb` text field.
+pub(crate) struct ColorOverlay {
+    pub picker: ColorPicker,
+    pub input: Entity<TextInput>,
+}
+
+/// `RgbColor` → `#rrggbb`.
+pub(crate) fn rgb_to_hex(c: RgbColor) -> String {
+    format!("#{:02x}{:02x}{:02x}", c.red, c.green, c.blue)
+}
+
+/// `#rrggbb` / `rrggbb` → `RgbColor`; `None` if it isn't 6 hex digits.
+pub(crate) fn hex_to_rgb(hex: &str) -> Option<RgbColor> {
+    let hex = hex.trim().strip_prefix('#').unwrap_or(hex.trim());
+    if hex.len() != 6 {
+        return None;
+    }
+    let byte = |range: std::ops::Range<usize>| u8::from_str_radix(&hex[range], 16).ok();
+    Some(RgbColor {
+        red: byte(0..2)?,
+        green: byte(2..4)?,
+        blue: byte(4..6)?,
+    })
+}
+
 pub(crate) struct Browser {
     pub engine: Engine,
     pub tabs: Vec<Tab>,
@@ -379,6 +405,8 @@ pub(crate) struct Browser {
     pub prompt: Option<PromptOverlay>,
     /// An open right-click context menu, drawn over the page at its position.
     pub context_menu: Option<ContextMenu>,
+    /// An open `<input type=color>` picker: a hex field over the page.
+    pub color_picker: Option<ColorOverlay>,
     /// Where the debugger tools find Servo's debugging server.
     debug_endpoint: crate::debug::Endpoint,
     /// Mobile mode: the page is a phone-wide column in the middle of its area.
@@ -556,6 +584,7 @@ impl Browser {
             select: None,
             prompt: None,
             context_menu: None,
+            color_picker: None,
             mobile: false,
             debug_endpoint,
             held_requests,
@@ -1060,8 +1089,20 @@ impl Browser {
                 self.context_menu = Some(menu);
                 cx.notify();
             }
-            // Dropped, which dismisses them: color pickers and the input method
-            // have no interface here yet.
+            EmbedderControl::ColorPicker(picker) if !agent_acting => {
+                let hex = rgb_to_hex(picker.current_color().unwrap_or(RgbColor {
+                    red: 0,
+                    green: 0,
+                    blue: 0,
+                }));
+                let input = cx.new(|cx| TextInput::new("#rrggbb", cx));
+                input.update(cx, |input, cx| input.set_text(hex, cx));
+                cx.subscribe(&input, |this, _, _: &Submitted, cx| this.submit_color(true, cx))
+                    .detach();
+                self.color_picker = Some(ColorOverlay { picker, input });
+                cx.notify();
+            }
+            // Dropped, which dismisses it: the input method has no interface yet.
             _ => {}
         }
     }
@@ -1083,6 +1124,19 @@ impl Browser {
         cx.notify();
     }
 
+    /// Close the color picker: on accept, set the typed `#rrggbb` (if it parses)
+    /// before submitting; on cancel, submit the color unchanged.
+    pub fn submit_color(&mut self, accept: bool, cx: &mut Context<Self>) {
+        let Some(mut overlay) = self.color_picker.take() else {
+            return;
+        };
+        if accept && let Some(color) = hex_to_rgb(overlay.input.read(cx).text()) {
+            overlay.picker.select(Some(color));
+        }
+        overlay.picker.submit();
+        cx.notify();
+    }
+
     /// Close the context menu: run the action the user picked, or dismiss it.
     pub fn choose_context(&mut self, action: Option<ContextMenuAction>, cx: &mut Context<Self>) {
         let Some(menu) = self.context_menu.take() else {
@@ -1101,9 +1155,28 @@ impl Browser {
         let Some(mut select) = self.select.take() else {
             return;
         };
-        if let Some(id) = id {
-            select.select(vec![id]);
-            select.submit();
+        match id {
+            // `<select multiple>`: a click toggles the option and keeps the list
+            // open; the outside press (id None) submits the accumulated set.
+            Some(id) if select.allow_select_multiple() => {
+                let mut chosen = select.selected_options();
+                match chosen.iter().position(|&c| c == id) {
+                    Some(at) => {
+                        chosen.remove(at);
+                    }
+                    None => chosen.push(id),
+                }
+                select.select(chosen);
+                self.select = Some(select);
+            }
+            Some(id) => {
+                select.select(vec![id]);
+                select.submit();
+            }
+            // Single select: an outside press leaves the page's choice as it was.
+            // Multiple: it confirms what was toggled.
+            None if select.allow_select_multiple() => select.submit(),
+            None => {}
         }
         cx.notify();
     }

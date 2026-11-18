@@ -84,6 +84,68 @@ impl Browser {
             .children(self.select_list(theme, cx))
             .children(self.context_menu_list(theme, cx))
             .children(self.prompt_overlay(theme, cx))
+            .children(self.color_overlay(theme, cx))
+    }
+
+    /// The `<input type=color>` overlay: a `#rrggbb` field (Servo gives no native
+    /// picker here). Backdrop/Cancel submits the color unchanged, OK/Enter the typed one.
+    fn color_overlay(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let overlay = self.color_picker.as_ref()?;
+        let input = overlay.input.clone();
+        let button = |label: &'static str, accept: bool, primary: bool, cx: &mut Context<Self>| {
+            let (bg, fg) = if primary {
+                (theme.accent, theme.bg)
+            } else {
+                (theme.surface_3, theme.text)
+            };
+            div()
+                .id(label)
+                .px(px(12.0))
+                .py(px(5.0))
+                .rounded(px(6.0))
+                .bg(bg)
+                .text_color(fg)
+                .cursor_pointer()
+                .child(label)
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.submit_color(accept, cx)
+                }))
+        };
+        let modal = div()
+            .occlude()
+            .min_w(px(260.0))
+            .flex()
+            .flex_col()
+            .gap(px(10.0))
+            .p(px(16.0))
+            .bg(theme.bg)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(8.0))
+            .shadow_md()
+            .text_size(px(13.0))
+            .child(div().text_color(theme.text).child("Pick a color (#rrggbb)"))
+            .child(input)
+            .child(
+                div()
+                    .flex()
+                    .justify_end()
+                    .gap(px(8.0))
+                    .child(button("Cancel", false, false, cx))
+                    .child(button("OK", true, true, cx)),
+            );
+        let backdrop = div()
+            .id("color-backdrop")
+            .absolute()
+            .size_full()
+            .occlude()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(gpui::hsla(0.0, 0.0, 0.0, 0.3))
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.submit_color(false, cx)))
+            .child(modal);
+        Some(backdrop.into_any_element())
     }
 
     /// The right-click context menu, drawn at the position Servo gave it.
@@ -209,10 +271,9 @@ impl Browser {
         Some(backdrop.into_any_element())
     }
 
-    /// The option list of the `<select>` the user opened, under the element.
-    ///
-    /// shortcut: one choice closes the list, also for `<select multiple>`; keep it
-    /// open and collect choices when a page needs several.
+    /// The option list of the `<select>` the user opened, under the element. For
+    /// `<select multiple>` a click toggles and the list stays open (an outside
+    /// press submits the set); a single select closes on the first choice.
     fn select_list(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
         let select = self.select.as_ref()?;
         let chosen = select.selected_options();
