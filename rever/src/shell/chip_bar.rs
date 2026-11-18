@@ -216,8 +216,7 @@ impl Browser {
         }
         let hover = theme.chrome_hover;
         bar.child(div().flex_1()).child(
-            // Red Team starts a scan rather than opening a panel: the dedicated
-            // popup isn't ported, so clicking primes the agent request in chat.
+            // Red Team opens a scan dialog rather than a bottom panel.
             div()
                 .id("redteam")
                 .h(px(28.0))
@@ -233,10 +232,7 @@ impl Browser {
                 .text_color(theme.status_error)
                 .cursor_pointer()
                 .hover(move |style| style.bg(hover))
-                .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                    let url = this.tabs[this.active].url.clone();
-                    this.push_draft(&format!("Start a Red Team scan of {url}"), cx);
-                }))
+                .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.open_redteam(cx)))
                 .child(icon("redteam", 14.0, theme.status_error))
                 .child(lang.t("panel.redteam")),
         )

@@ -5,6 +5,7 @@
 mod chat;
 mod chip_bar;
 mod page;
+mod redteam;
 mod tab_strip;
 mod toolbar;
 
@@ -117,7 +118,15 @@ impl Render for Browser {
             .text_size(px(13.0))
             .font_family(".SystemUIFont")
             .child(self.tab_strip(&theme, cx))
-            .child(div().flex_1().min_h_0().relative().child(left).child(chat))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .relative()
+                    .child(left)
+                    .child(chat)
+                    .children(self.redteam_dialog(&theme, cx)),
+            )
     }
 }
 

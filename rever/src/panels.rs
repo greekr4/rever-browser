@@ -120,6 +120,8 @@ impl Stores {
 pub(crate) struct Views {
     pub address: Entity<TextInput>,
     pub composer: Entity<TextInput>,
+    /// The target-URL field of the Red Team dialog.
+    pub redteam_target: Entity<TextInput>,
     pub traffic: Entity<TrafficList>,
     pub drawer: Entity<DetailDrawer>,
     pub console: Entity<ConsolePanel>,
@@ -152,6 +154,11 @@ impl Views {
         let composer = cx.new(|cx| TextInput::new(lang.t("chat.placeholder"), cx));
         cx.subscribe(&composer, |this, _, event: &Submitted, cx| {
             this.send_chat(&event.0, cx)
+        })
+        .detach();
+        let redteam_target = cx.new(|cx| TextInput::new(lang.t("scan.bar.placeholder"), cx));
+        cx.subscribe(&redteam_target, |this, _, _: &Submitted, cx| {
+            this.start_redteam(cx)
         })
         .detach();
 
@@ -230,6 +237,7 @@ impl Views {
         Self {
             address,
             composer,
+            redteam_target,
             traffic,
             drawer,
             console,

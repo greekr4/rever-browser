@@ -400,6 +400,16 @@ pub(crate) struct Browser {
     pub panel_height: f32,
     /// While the panel's top edge is dragged: (pointer y at start, height at start).
     pub panel_drag: Option<(f32, f32)>,
+    /// The Red Team scan dialog (a movable popup) is open.
+    pub redteam_open: bool,
+    /// Chosen scan intensity: "readonly" | "probe" | "redteam".
+    pub redteam_intensity: &'static str,
+    /// Max same-site pages the scan opens.
+    pub redteam_pages: u32,
+    /// Top-left of the dialog in window pixels.
+    pub redteam_pos: (f32, f32),
+    /// While the header is dragged: the (pointer - pos) offset held constant.
+    pub redteam_drag: Option<(f32, f32)>,
     /// The `<select>` whose option list is open over the page.
     pub select: Option<SelectElement>,
     /// An open `prompt()` dialog: the page can't type into the system prompt, so
@@ -576,6 +586,11 @@ impl Browser {
             tool_acted: None,
             panel_height: 320.0,
             panel_drag: None,
+            redteam_open: false,
+            redteam_intensity: "readonly",
+            redteam_pages: 8,
+            redteam_pos: (0.0, 0.0),
+            redteam_drag: None,
             select: None,
             prompt: None,
             context_menu: None,
@@ -1150,6 +1165,51 @@ impl Browser {
         }
         overlay.picker.submit();
         cx.notify();
+    }
+
+    /// Open the Red Team dialog, prefilling the target with the active page url.
+    pub fn open_redteam(&mut self, cx: &mut Context<Self>) {
+        let url = self.tabs[self.active].url.clone();
+        self.views
+            .redteam_target
+            .update(cx, |input, cx| input.set_text(url, cx));
+        if self.redteam_pos == (0.0, 0.0) {
+            self.redteam_pos = (120.0, 90.0);
+        }
+        self.redteam_open = true;
+        cx.notify();
+    }
+
+    pub fn close_redteam(&mut self, cx: &mut Context<Self>) {
+        self.redteam_open = false;
+        cx.notify();
+    }
+
+    pub fn set_redteam_intensity(&mut self, level: &'static str, cx: &mut Context<Self>) {
+        self.redteam_intensity = level;
+        cx.notify();
+    }
+
+    /// Move the dialog so the pointer keeps its grab offset within the header.
+    pub fn on_redteam_drag(&mut self, x: f32, y: f32, cx: &mut Context<Self>) {
+        if let Some((dx, dy)) = self.redteam_drag {
+            self.redteam_pos = (x - dx, y - dy);
+            cx.notify();
+        }
+    }
+
+    /// Hand the configured scan to the agent (it runs `redteam_start`), then close.
+    pub fn start_redteam(&mut self, cx: &mut Context<Self>) {
+        let target = self.views.redteam_target.read(cx).text().trim().to_owned();
+        if target.is_empty() {
+            return;
+        }
+        let message = format!(
+            "Start a Red Team scan: run redteam_start on {target} at \"{}\" intensity, up to {} pages.",
+            self.redteam_intensity, self.redteam_pages
+        );
+        self.redteam_open = false;
+        self.send_chat(&message, cx);
     }
 
     /// Resize the open panel while its top edge is dragged (dragging up, so a
