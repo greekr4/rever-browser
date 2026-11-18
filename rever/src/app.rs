@@ -414,6 +414,11 @@ pub(crate) struct Browser {
     pub redteam_running: bool,
     /// The scan's live activity, shown inside the dialog.
     pub redteam_log: String,
+    /// Dialog size; the bottom-right corner drags it.
+    pub redteam_w: f32,
+    pub redteam_h: f32,
+    /// While the corner is dragged: (pointer x, pointer y, width, height) at start.
+    pub redteam_size_drag: Option<(f32, f32, f32, f32)>,
     /// The `<select>` whose option list is open over the page.
     pub select: Option<SelectElement>,
     /// An open `prompt()` dialog: the page can't type into the system prompt, so
@@ -597,6 +602,9 @@ impl Browser {
             redteam_drag: None,
             redteam_running: false,
             redteam_log: String::new(),
+            redteam_w: 560.0,
+            redteam_h: 380.0,
+            redteam_size_drag: None,
             select: None,
             prompt: None,
             context_menu: None,
@@ -1212,6 +1220,15 @@ impl Browser {
         }
     }
 
+    /// Resize the dialog while its bottom-right corner is dragged.
+    pub fn on_redteam_resize(&mut self, x: f32, y: f32, cx: &mut Context<Self>) {
+        if let Some((sx, sy, sw, sh)) = self.redteam_size_drag {
+            self.redteam_w = (sw + (x - sx)).clamp(360.0, 1100.0);
+            self.redteam_h = (sh + (y - sy)).clamp(220.0, 900.0);
+            cx.notify();
+        }
+    }
+
     /// Run the configured scan by starting an agent turn directly (no visible
     /// chat message): the agent calls `redteam_start`. Its reply streams into
     /// the chat panel.
@@ -1220,8 +1237,13 @@ impl Browser {
         if target.is_empty() || self.agent_busy {
             return;
         }
+        let scope = match self.redteam_intensity {
+            "readonly" => "Recon only: read the captured traffic, map the API (list_endpoints / list_requests / get_request), inspect auth and scripts. Do NOT send probes or payloads.",
+            "probe" => "Access: recon, then fire the injection/auth probes (sqli/nosqli/ssti/cmd/idor/path/etc.) at the discovered endpoints. The capture-not-send fence still blocks mutations on non-loopback hosts.",
+            _ => "Red Team: recon, then the full probe set plus active checks. The fence still gates mutations off loopback/lab.",
+        };
         let message = format!(
-            "Run redteam_start on {target} at \"{}\" intensity, up to {} pages; report the findings.",
+            "Run a {} red-team scan of {target} (up to {} pages). {scope} Work quietly — do not narrate your steps. When finished, reply with ONLY a concise markdown report of the findings (severity, endpoint, evidence).",
             self.redteam_intensity, self.redteam_pages
         );
         self.redteam_log.clear();

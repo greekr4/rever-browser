@@ -14,6 +14,9 @@ use crate::app::Browser;
 /// Marker for the dialog's header move-drag.
 struct RedteamDrag;
 
+/// Marker for the dialog's bottom-right resize-drag.
+struct RedteamResize;
+
 impl Browser {
     /// The risk colour + label key for a scan intensity.
     fn risk(&self, intensity: &str, theme: &Theme) -> (Hsla, &'static str) {
@@ -160,32 +163,34 @@ impl Browser {
                 .into_any_element()
         };
 
-        // The scan's live activity, streamed into the dialog (not the chat panel).
-        let has_log = running || !self.redteam_log.is_empty();
-        let log = has_log.then(|| {
-            div()
-                .id("redteam-log")
-                .max_h(px(240.0))
-                .overflow_y_scroll()
-                .p(px(10.0))
-                .bg(theme.bg_bar)
-                .border_t_1()
-                .border_color(theme.border)
-                .text_size(px(11.0))
-                .text_color(theme.text_dim)
-                .font_family("monospace")
-                .child(if self.redteam_log.is_empty() {
-                    lang.t("scan.panel.running").to_owned()
-                } else {
-                    self.redteam_log.clone()
-                })
-        });
+        // The scan's live activity / report, streamed into the dialog itself.
+        let log_text = if !self.redteam_log.is_empty() {
+            self.redteam_log.clone()
+        } else if running {
+            lang.t("scan.panel.running").to_owned()
+        } else {
+            String::new()
+        };
+        let log = div()
+            .id("redteam-log")
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
+            .p(px(10.0))
+            .bg(theme.bg_bar)
+            .border_t_1()
+            .border_color(theme.border)
+            .text_size(px(11.0))
+            .text_color(theme.text_dim)
+            .font_family("monospace")
+            .child(log_text);
 
         let dialog = div()
             .absolute()
             .left(px(rx))
             .top(px(ry))
-            .w(px(560.0))
+            .w(px(self.redteam_w))
+            .h(px(self.redteam_h))
             .occlude()
             .flex()
             .flex_col()
@@ -203,10 +208,18 @@ impl Browser {
                     cx,
                 )
             }))
+            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<RedteamResize>, _, cx| {
+                this.on_redteam_resize(
+                    f32::from(event.event.position.x),
+                    f32::from(event.event.position.y),
+                    cx,
+                )
+            }))
             .child(header)
             .child(
                 div()
                     .flex()
+                    .flex_none()
                     .flex_col()
                     .gap(px(12.0))
                     .p(px(14.0))
@@ -215,7 +228,30 @@ impl Browser {
                     .child(risk_row)
                     .child(div().flex().justify_end().child(start)),
             )
-            .children(log);
+            .child(log)
+            // Bottom-right corner: drag to resize.
+            .child(
+                div()
+                    .id("redteam-resize")
+                    .absolute()
+                    .bottom_0()
+                    .right_0()
+                    .w(px(14.0))
+                    .h(px(14.0))
+                    .cursor(gpui::CursorStyle::ResizeUpLeftDownRight)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, event: &MouseDownEvent, _, _| {
+                            this.redteam_size_drag = Some((
+                                f32::from(event.position.x),
+                                f32::from(event.position.y),
+                                this.redteam_w,
+                                this.redteam_h,
+                            ));
+                        }),
+                    )
+                    .on_drag(RedteamResize, |_, _, _, cx| cx.new(|_| gpui::Empty)),
+            );
         Some(dialog.into_any_element())
     }
 }
