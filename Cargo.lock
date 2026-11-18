@@ -7392,6 +7392,7 @@ version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "futures",
  "h2",
  "http",
  "reqwest",
@@ -7402,6 +7403,7 @@ dependencies = [
  "rustls-pki-types",
  "serde",
  "serde_json",
+ "sha1 0.10.7",
  "tokio",
  "tokio-rustls",
 ]

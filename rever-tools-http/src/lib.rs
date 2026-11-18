@@ -5,6 +5,7 @@
 use rever_tools_api::tool::ToolRegistry;
 use serde_json::{Value, json};
 
+pub mod fuzz;
 pub mod grpc_call;
 pub mod raw_http;
 pub mod request_spec;
@@ -18,6 +19,8 @@ pub use send::{SendOutcome, send};
 pub fn register(registry: &mut ToolRegistry) {
     raw_http::register(registry);
     grpc_call::register(registry);
+    registry.register(fuzz::IntruderRun);
+    registry.register(fuzz::BurstSend);
 }
 
 /// The JSON Schema the MCP SDK derives from a zod shape.

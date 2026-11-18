@@ -24,6 +24,9 @@ bytes = "1"
 base64 = "0.22"
 # send.rs: the one send path the probes funnel through (scope/fence-gated).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "deflate", "brotli"] }
+# fuzz.rs: intruder bodyHash + burst's concurrent fan-out.
+sha1 = "0.10"
+futures = "0.3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
