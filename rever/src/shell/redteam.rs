@@ -134,17 +134,52 @@ impl Browser {
             .child(div().flex_1())
             .child(div().text_color(theme.text_dim).child(format!("{} {}", self.redteam_pages, lang.t("scan.panel.pages"))));
 
-        let start = div()
-            .id("redteam-start")
-            .px(px(14.0))
-            .py(px(6.0))
-            .rounded(px(6.0))
-            .bg(theme.accent)
-            .text_color(theme.bg)
-            .font_weight(FontWeight::SEMIBOLD)
-            .cursor_pointer()
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.start_redteam(cx)))
-            .child(format!("▶ {}", lang.t("scan.panel.start")));
+        let running = self.redteam_running;
+        let start = if running {
+            div()
+                .px(px(14.0))
+                .py(px(6.0))
+                .rounded(px(6.0))
+                .bg(theme.surface_3)
+                .text_color(theme.text_dim)
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(lang.t("scan.panel.running"))
+                .into_any_element()
+        } else {
+            div()
+                .id("redteam-start")
+                .px(px(14.0))
+                .py(px(6.0))
+                .rounded(px(6.0))
+                .bg(theme.accent)
+                .text_color(theme.bg)
+                .font_weight(FontWeight::SEMIBOLD)
+                .cursor_pointer()
+                .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.start_redteam(cx)))
+                .child(format!("▶ {}", lang.t("scan.panel.start")))
+                .into_any_element()
+        };
+
+        // The scan's live activity, streamed into the dialog (not the chat panel).
+        let has_log = running || !self.redteam_log.is_empty();
+        let log = has_log.then(|| {
+            div()
+                .id("redteam-log")
+                .max_h(px(240.0))
+                .overflow_y_scroll()
+                .p(px(10.0))
+                .bg(theme.bg_bar)
+                .border_t_1()
+                .border_color(theme.border)
+                .text_size(px(11.0))
+                .text_color(theme.text_dim)
+                .font_family("monospace")
+                .child(if self.redteam_log.is_empty() {
+                    lang.t("scan.panel.running").to_owned()
+                } else {
+                    self.redteam_log.clone()
+                })
+        });
 
         let dialog = div()
             .absolute()
@@ -179,7 +214,8 @@ impl Browser {
                     .child(intensity_row)
                     .child(risk_row)
                     .child(div().flex().justify_end().child(start)),
-            );
+            )
+            .children(log);
         Some(dialog.into_any_element())
     }
 }

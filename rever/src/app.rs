@@ -410,6 +410,10 @@ pub(crate) struct Browser {
     pub redteam_pos: (f32, f32),
     /// While the header is dragged: the (pointer - pos) offset held constant.
     pub redteam_drag: Option<(f32, f32)>,
+    /// A scan turn is streaming into the dialog (not the chat panel).
+    pub redteam_running: bool,
+    /// The scan's live activity, shown inside the dialog.
+    pub redteam_log: String,
     /// The `<select>` whose option list is open over the page.
     pub select: Option<SelectElement>,
     /// An open `prompt()` dialog: the page can't type into the system prompt, so
@@ -591,6 +595,8 @@ impl Browser {
             redteam_pages: 8,
             redteam_pos: (0.0, 0.0),
             redteam_drag: None,
+            redteam_running: false,
+            redteam_log: String::new(),
             select: None,
             prompt: None,
             context_menu: None,
@@ -973,6 +979,19 @@ impl Browser {
 
     /// Start the CLI if needed and hand it the prompt.
     fn start_turn(&mut self, text: &str) -> Result<(), String> {
+        self.start_agent_turn(text)?;
+        // The empty assistant line the streamed reply fills in.
+        self.chat.push(ChatLine {
+            from_user: false,
+            text: String::new(),
+            failed: false,
+        });
+        Ok(())
+    }
+
+    /// Spawn the agent if needed and send `text` as a turn, without touching the
+    /// chat log — the Red Team dialog uses this so the scan streams into itself.
+    fn start_agent_turn(&mut self, text: &str) -> Result<(), String> {
         if self.agent.is_none() {
             // The same sandbox folder the Electron app gives its agents.
             let scratch = data_dir().join("agent-scratch");
@@ -990,11 +1009,6 @@ impl Browser {
             .send(text)
             .map_err(|error| format!("Claude Code CLI is not accepting input: {error}"))?;
         self.agent_busy = true;
-        self.chat.push(ChatLine {
-            from_user: false,
-            text: String::new(),
-            failed: false,
-        });
         Ok(())
     }
 
@@ -1210,10 +1224,12 @@ impl Browser {
             "Run redteam_start on {target} at \"{}\" intensity, up to {} pages; report the findings.",
             self.redteam_intensity, self.redteam_pages
         );
-        self.redteam_open = false;
-        if let Err(error) = self.start_turn(&message) {
+        self.redteam_log.clear();
+        self.redteam_running = true;
+        if let Err(error) = self.start_agent_turn(&message) {
             self.agent = None;
-            self.turn_failed(&error);
+            self.redteam_running = false;
+            self.redteam_log = format!("error: {error}");
         }
         cx.notify();
     }
@@ -1464,14 +1480,22 @@ impl Browser {
         for event in agent.drain() {
             match event {
                 AgentEvent::Text(text) => {
-                    if let Some(line) = self.chat.last_mut().filter(|line| !line.from_user) {
+                    if self.redteam_running {
+                        self.redteam_log.push_str(&text);
+                    } else if let Some(line) = self.chat.last_mut().filter(|line| !line.from_user) {
                         line.text.push_str(&text);
                     }
                 }
-                AgentEvent::Done => self.agent_busy = false,
+                AgentEvent::Done => {
+                    self.agent_busy = false;
+                    self.redteam_running = false;
+                }
                 AgentEvent::Failed(error) => {
                     // A failure outside a turn (the CLI exiting after a finished one) is not shown.
-                    if self.agent_busy {
+                    if self.redteam_running {
+                        self.redteam_log.push_str(&format!("\nerror: {error}"));
+                        self.redteam_running = false;
+                    } else if self.agent_busy {
                         self.turn_failed(&error);
                     }
                     self.agent_busy = false;
