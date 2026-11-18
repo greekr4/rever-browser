@@ -36,7 +36,9 @@ use rever_ui_menus::bot_check_button::BotCheckButton;
 use rever_ui_menus::ip_badge::IpBadge;
 use rever_ui_menus::ui::{Look, LookFn, fill};
 use rever_ui_state::app_theme::{self, AppThemeStore};
-use servo::{EmbedderControl, JSValue, SelectElement, SimpleDialog};
+use servo::{
+    ContextMenu, ContextMenuAction, EmbedderControl, JSValue, SelectElement, SimpleDialog,
+};
 use url::Url;
 
 use crate::agent::{AgentEvent, AgentSession};
@@ -375,6 +377,8 @@ pub(crate) struct Browser {
     /// An open `prompt()` dialog: the page can't type into the system prompt, so
     /// it gets a text-input overlay instead.
     pub prompt: Option<PromptOverlay>,
+    /// An open right-click context menu, drawn over the page at its position.
+    pub context_menu: Option<ContextMenu>,
     /// Where the debugger tools find Servo's debugging server.
     debug_endpoint: crate::debug::Endpoint,
     /// Mobile mode: the page is a phone-wide column in the middle of its area.
@@ -551,6 +555,7 @@ impl Browser {
             tool_acted: None,
             select: None,
             prompt: None,
+            context_menu: None,
             mobile: false,
             debug_endpoint,
             held_requests,
@@ -1050,8 +1055,13 @@ impl Browser {
                 self.select = Some(select);
                 cx.notify();
             }
-            // Dropped, which dismisses them: color pickers, context menus and the
-            // input method have no interface here yet.
+            // The agent doesn't right-click; a menu would only sit over the page.
+            EmbedderControl::ContextMenu(menu) if !agent_acting => {
+                self.context_menu = Some(menu);
+                cx.notify();
+            }
+            // Dropped, which dismisses them: color pickers and the input method
+            // have no interface here yet.
             _ => {}
         }
     }
@@ -1069,6 +1079,18 @@ impl Browser {
                 accept,
                 at: now_ms(),
             });
+        }
+        cx.notify();
+    }
+
+    /// Close the context menu: run the action the user picked, or dismiss it.
+    pub fn choose_context(&mut self, action: Option<ContextMenuAction>, cx: &mut Context<Self>) {
+        let Some(menu) = self.context_menu.take() else {
+            return;
+        };
+        match action {
+            Some(action) => menu.select(action),
+            None => menu.dismiss(),
         }
         cx.notify();
     }

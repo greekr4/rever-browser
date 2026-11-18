@@ -15,8 +15,8 @@ use gpui::{
 use rever_core::input::w3c_key_name;
 use rever_ui_kit::theme::Theme;
 use servo::{
-    Code, CompositionEvent, CompositionState, ImeEvent, InputEvent, Key, KeyState, KeyboardEvent,
-    Location, Modifiers, MouseButtonAction, MouseButtonEvent, SelectElementOption,
+    Code, CompositionEvent, CompositionState, ContextMenuItem, ImeEvent, InputEvent, Key, KeyState,
+    KeyboardEvent, Location, Modifiers, MouseButtonAction, MouseButtonEvent, SelectElementOption,
     SelectElementOptionOrOptgroup, WebViewPoint, WheelDelta, WheelEvent, WheelMode,
 };
 
@@ -82,7 +82,69 @@ impl Browser {
             .child(page)
             .child(self.bot_check.clone())
             .children(self.select_list(theme, cx))
+            .children(self.context_menu_list(theme, cx))
             .children(self.prompt_overlay(theme, cx))
+    }
+
+    /// The right-click context menu, drawn at the position Servo gave it.
+    fn context_menu_list(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let menu = self.context_menu.as_ref()?;
+        let (hover, dim, text) = (theme.chrome_hover, theme.text_dim, theme.text);
+        let mut rows = Vec::new();
+        for (index, item) in menu.items().iter().enumerate() {
+            match item {
+                ContextMenuItem::Separator => rows.push(
+                    div()
+                        .my(px(4.0))
+                        .h(px(1.0))
+                        .bg(theme.border_2)
+                        .into_any_element(),
+                ),
+                ContextMenuItem::Item {
+                    label,
+                    action,
+                    enabled,
+                } => {
+                    let action = *action;
+                    let enabled = *enabled;
+                    rows.push(
+                        div()
+                            .id(("context-item", index))
+                            .px(px(12.0))
+                            .py(px(4.0))
+                            .text_color(if enabled { text } else { dim })
+                            .child(label.clone())
+                            .when(enabled, |row| {
+                                row.hover(move |style| style.bg(hover)).on_click(cx.listener(
+                                    move |this, _: &ClickEvent, _, cx| {
+                                        this.choose_context(Some(action), cx)
+                                    },
+                                ))
+                            })
+                            .into_any_element(),
+                    );
+                }
+            }
+        }
+        let bounds = self.page_bounds.get();
+        let column = page_area(bounds, self.mobile).origin.x - bounds.origin.x;
+        let (area, scale) = (menu.position(), self.engine.scale());
+        let list = div()
+            .id("context-menu")
+            .absolute()
+            .left(px(area.min.x as f32 / scale) + column)
+            .top(px(area.min.y as f32 / scale))
+            .min_w(px(160.0))
+            .occlude()
+            .bg(theme.bg)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(6.0))
+            .shadow_md()
+            .py(px(4.0))
+            .text_size(px(13.0))
+            .children(rows);
+        Some(list.into_any_element())
     }
 
     /// The text-input overlay of an open `prompt()` (the system dialog can't take
@@ -231,6 +293,10 @@ impl Browser {
         // A press outside an open option list closes it, as a native list does.
         if self.select.is_some() {
             return self.choose_option(None, cx);
+        }
+        // Same for a context menu (its own items occlude, so this is an outside press).
+        if self.context_menu.is_some() {
+            return self.choose_context(None, cx);
         }
         window.focus(&self.page_focus);
         let point = self.page_point(event.position);
