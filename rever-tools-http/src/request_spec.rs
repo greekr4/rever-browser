@@ -11,6 +11,7 @@
 //! that carry the session, and drop only the few headers the client must own.
 
 use rever_core::traffic::{Headers, StoredRequest, TrafficStore};
+use serde_json::Value;
 
 /// The safe subset of repeater.ts's `RepeaterModifications`: field overrides a
 /// caller layers on the captured base request. No send/burst/intruder knobs.
@@ -160,6 +161,38 @@ pub fn restore_marker(spec: RequestSpec) -> RequestSpec {
     }
 }
 
+/// Parse a `modifications` JSON object into [`Mods`] (the safe repeater subset),
+/// as the `repeater_send` / `burst_send` tools accept it.
+pub fn parse_mods(value: &Value) -> Option<Mods> {
+    let object = value.as_object()?;
+    let set_headers = object.get("setHeaders").and_then(Value::as_object).map(|map| {
+        map.iter()
+            .filter_map(|(name, value)| Some((name.clone(), value.as_str()?.to_owned())))
+            .collect::<Headers>()
+    });
+    let remove_headers = object
+        .get("removeHeaders")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect::<Vec<_>>()
+        });
+    // `body`: a string sets it, explicit null clears it, absent leaves it.
+    let body = match object.get("body") {
+        Some(Value::String(s)) => Some(Some(s.clone())),
+        Some(Value::Null) => Some(None),
+        _ => None,
+    };
+    Some(Mods {
+        url: object.get("url").and_then(Value::as_str).map(str::to_owned),
+        method: object.get("method").and_then(Value::as_str).map(str::to_owned),
+        set_headers,
+        remove_headers,
+        body,
+    })
+}
+
 fn restore_in(s: &str) -> String {
     let mut out = s.to_owned();
     for pat in ["%c2%a7", "%C2%a7", "%c2%A7", "%C2%A7"] {
@@ -230,19 +263,19 @@ mod tests {
     }
 
     #[test]
-    fn 알_수_없는_requestId는_에러() {
+    fn 알_수_없는_요청아이디는_에러() {
         let store = TrafficStore::default();
         assert!(build_request_spec(&store, Some("nope"), None).is_err());
     }
 
     #[test]
-    fn requestId도_url도_없으면_에러() {
+    fn 요청아이디도_url도_없으면_에러() {
         let store = TrafficStore::default();
         assert!(build_request_spec(&store, None, None).is_err());
     }
 
     #[test]
-    fn mods_url만_주면_빈_GET_요청() {
+    fn mods_url만_주면_빈_get_요청() {
         let store = TrafficStore::default();
         let mods = Mods {
             url: Some("https://x.test/a".to_owned()),

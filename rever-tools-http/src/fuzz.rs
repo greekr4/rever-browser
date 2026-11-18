@@ -8,13 +8,12 @@
 use std::time::{Duration, Instant};
 
 use futures::stream::{self, StreamExt};
-use rever_core::traffic::Headers;
 use rever_tools_api::tool::{BoxFuture, Tool, ToolContext, ToolDef};
 use rever_tools_api::utils::{ToolResult, err, ok};
 use serde_json::{Value, json};
 use sha1::{Digest, Sha1};
 
-use crate::request_spec::{Mods, RequestSpec, build_request_spec};
+use crate::request_spec::{RequestSpec, build_request_spec, parse_mods};
 use crate::send::send;
 use crate::{pretty, schema};
 
@@ -268,34 +267,6 @@ impl Tool for BurstSend {
             })))
         })
     }
-}
-
-/// Parse the `modifications` object into [`Mods`] (the safe repeater subset).
-fn parse_mods(value: &Value) -> Option<Mods> {
-    let object = value.as_object()?;
-    let set_headers = object.get("setHeaders").and_then(Value::as_object).map(|map| {
-        map.iter()
-            .filter_map(|(name, value)| Some((name.clone(), value.as_str()?.to_owned())))
-            .collect::<Headers>()
-    });
-    let remove_headers = object.get("removeHeaders").and_then(Value::as_array).map(|list| {
-        list.iter()
-            .filter_map(|v| v.as_str().map(str::to_owned))
-            .collect::<Vec<_>>()
-    });
-    // `body`: a string sets it, explicit null clears it, absent leaves it.
-    let body = match object.get("body") {
-        Some(Value::String(s)) => Some(Some(s.clone())),
-        Some(Value::Null) => Some(None),
-        _ => None,
-    };
-    Some(Mods {
-        url: object.get("url").and_then(Value::as_str).map(str::to_owned),
-        method: object.get("method").and_then(Value::as_str).map(str::to_owned),
-        set_headers,
-        remove_headers,
-        body,
-    })
 }
 
 #[cfg(test)]

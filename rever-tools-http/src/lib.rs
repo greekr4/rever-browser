@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 pub mod fuzz;
 pub mod grpc_call;
 pub mod raw_http;
+pub mod repeater;
 pub mod request_spec;
 pub mod send;
 
@@ -21,6 +22,7 @@ pub fn register(registry: &mut ToolRegistry) {
     grpc_call::register(registry);
     registry.register(fuzz::IntruderRun);
     registry.register(fuzz::BurstSend);
+    registry.register(repeater::RepeaterSend);
 }
 
 /// The JSON Schema the MCP SDK derives from a zod shape.
