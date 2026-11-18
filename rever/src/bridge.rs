@@ -116,8 +116,13 @@ impl Browser for AppBrowser {
     }
 
     fn evaluate<'a>(&'a self, expression: &'a str) -> BoxFuture<'a, Result<Value, String>> {
-        let target = self.target;
-        self.ask(move |answer| Command::Evaluate(target, expression.to_owned(), answer))
+        let poller = AppBrowser {
+            commands: self.commands.clone(),
+            wake: self.wake.clone(),
+            target: self.target,
+        };
+        let expression = expression.to_owned();
+        Box::pin(evaluate_awaiting(poller, expression))
     }
 
     fn screenshot(&self) -> BoxFuture<'_, Result<Vec<u8>, String>> {
@@ -261,6 +266,75 @@ pub fn from_engine_cookie(cookie: &cookie::Cookie<'_>) -> Cookie {
 }
 
 /// Servo's script result as plain JSON. Element and window handles become their id strings.
+/// `evaluate_javascript` answers with the first frame of the result, so a
+/// Promise serialises to `{}` — async IIFEs (repeater_send, awaited
+/// browser_evaluate) came back empty. The wrapper runs the script via indirect
+/// eval: sync values and throws ride the first answer, a Promise parks its
+/// resolution in a page-global slot that we poll until it is set.
+const EVAL_PROMISE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const EVAL_POLL_MS: std::time::Duration = std::time::Duration::from_millis(60);
+
+async fn evaluate_awaiting(browser: AppBrowser, expression: String) -> Result<Value, String> {
+    static NEXT_SLOT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let slot = format!(
+        "__reverAwait{}",
+        NEXT_SLOT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    let js_string = |s: &str| serde_json::Value::from(s).to_string();
+    let target = browser.target;
+    let wrap = format!(
+        "(()=>{{try{{const v=(0,eval)({expr});\
+if(v&&typeof v.then===\"function\"){{const k={slot};window[k]=undefined;\
+Promise.resolve(v).then(r=>{{try{{window[k]={{ok:JSON.stringify(r===undefined?null:r)}}}}\
+catch(e){{window[k]={{ok:\"null\"}}}}}},e=>{{window[k]={{err:String(e&&e.message||e)}}}});\
+return{{__pending:true}}}}return{{__sync:v===undefined?null:v}}}}\
+catch(e){{return{{__throw:String(e&&e.message||e)}}}}}})()",
+        expr = js_string(&expression),
+        slot = js_string(&slot),
+    );
+    let first = browser
+        .ask(|answer| Command::Evaluate(target, wrap, answer))
+        .await?;
+    let object = first
+        .as_object()
+        .ok_or_else(|| format!("evaluate: unexpected result {first}"))?;
+    if object.get("__pending").and_then(Value::as_bool) == Some(true) {
+        let read = format!("window[{}]", js_string(&slot));
+        let cleanup = format!("delete window[{}]", js_string(&slot));
+        let deadline = std::time::Instant::now() + EVAL_PROMISE_TIMEOUT;
+        loop {
+            if std::time::Instant::now() >= deadline {
+                let _ = browser
+                    .ask(|answer| Command::Evaluate(target, cleanup, answer))
+                    .await;
+                return Err("evaluate: the promise did not settle within 30s".to_owned());
+            }
+            tokio::time::sleep(EVAL_POLL_MS).await;
+            let parked = browser
+                .ask(|answer| Command::Evaluate(target, read.clone(), answer))
+                .await?;
+            // Undefined (not resolved yet) and a resolved `null` both read back
+            // as JSON null — tell them apart by wrapping the value in {ok}.
+            if parked.is_null() {
+                continue;
+            }
+            let _ = browser
+                .ask(|answer| Command::Evaluate(target, cleanup, answer))
+                .await;
+            if let Some(error) = parked.get("err").and_then(Value::as_str) {
+                return Err(error.to_owned());
+            }
+            let json = parked.get("ok").and_then(Value::as_str).unwrap_or("null");
+            return serde_json::from_str(json)
+                .map_err(|error| format!("evaluate: the promise result was not JSON: {error}"));
+        }
+    }
+    if let Some(thrown) = object.get("__throw").and_then(Value::as_str) {
+        return Err(thrown.to_owned());
+    }
+    Ok(object.get("__sync").cloned().unwrap_or(Value::Null))
+}
+
 pub fn js_to_json(value: &JSValue) -> Value {
     match value {
         JSValue::Undefined | JSValue::Null => Value::Null,
@@ -390,9 +464,73 @@ pub fn input_events(input: &Input, scale: f64) -> Vec<InputEvent> {
 mod tests {
     use std::collections::HashMap;
 
+    use futures::StreamExt;
     use serde_json::json;
 
     use super::*;
+
+    /// A pump that answers each Evaluate with the next scripted result, standing
+    /// in for the main thread's command loop.
+    async fn scripted_pump(scripted: Vec<Result<Value, String>>) -> AppBrowser {
+        let (commands, mut receiver) = futures::channel::mpsc::unbounded::<Command>();
+        let (wake, _keep_open) = futures::channel::mpsc::unbounded::<()>();
+        tokio::spawn(async move {
+            let mut answers = scripted.into_iter();
+            while let Some(command) = receiver.next().await {
+                if let Command::Evaluate(_, _, answer) = command {
+                    let _ = answer.send(answers.next().expect("pump ran out of scripted answers"));
+                }
+            }
+        });
+        AppBrowser {
+            commands,
+            wake,
+            target: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn 동기_식은_첫_응답을_그대로_돌려주고_던진_오류는_err이_된다() {
+        let sync = scripted_pump(vec![Ok(json!({ "__sync": { "n": 7 } }))]).await;
+        assert_eq!(
+            evaluate_awaiting(sync, "1+1".to_owned()).await,
+            Ok(json!({ "n": 7 }))
+        );
+        let throwing = scripted_pump(vec![Ok(json!({ "__throw": "boom" }))]).await;
+        assert_eq!(
+            evaluate_awaiting(throwing, "nope()".to_owned()).await,
+            Err("boom".to_owned())
+        );
+    }
+
+    #[tokio::test]
+    async fn 프라미스는_슬롯_폴링으로_기다렸다가_json을_돌려준다() {
+        let browser = scripted_pump(vec![
+            Ok(json!({ "__pending": true })),
+            Ok(Value::Null), // first poll: the slot is still undefined
+            Ok(json!({ "ok": "{\"a\":1,\"b\":\"x\"}" })),
+            Ok(Value::Null), // cleanup after reading the slot
+        ])
+        .await;
+        assert_eq!(
+            evaluate_awaiting(browser, "(async()=>({a:1,b:'x'}))()".to_owned()).await,
+            Ok(json!({ "a": 1, "b": "x" }))
+        );
+    }
+
+    #[tokio::test]
+    async fn 프라미스가_거절되면_err_텍스트를_돌려준다() {
+        let browser = scripted_pump(vec![
+            Ok(json!({ "__pending": true })),
+            Ok(json!({ "err": "TypeError: x is not a function" })),
+            Ok(Value::Null),
+        ])
+        .await;
+        assert_eq!(
+            evaluate_awaiting(browser, "(async()=>{throw 1})()".to_owned()).await,
+            Err("TypeError: x is not a function".to_owned())
+        );
+    }
 
     #[test]
     fn 스크립트_결과를_json으로_바꾼다() {

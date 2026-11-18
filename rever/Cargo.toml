@@ -30,6 +30,9 @@ rever-ui-repeater = { path = "../rever-ui-repeater" }
 rever-ui-workflows = { path = "../rever-ui-workflows" }
 rever-cli-spec = { path = "../rever-cli-spec" }
 rever-cookie-import = { path = "../rever-cookie-import" }
+# Only `time`: the promise-poll in bridge.rs sleeps between page reads on the
+# MCP server's tokio runtime (no new dependency — tokio is already in the tree).
+tokio = { version = "1", features = ["time"] }
 gpui = { workspace = true }
 rever-ui-kit = { path = "../rever-ui-kit" }
 rever-ui-state = { path = "../rever-ui-state" }
@@ -58,3 +61,6 @@ url = "2.5"
 futures = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
