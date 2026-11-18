@@ -192,8 +192,9 @@ impl Read_ for TlsSocket<'_> {
 }
 
 /// Open a socket to `host:port`, write `payload` verbatim, and collect the raw
-/// response bytes.
-fn send_raw_over_socket(
+/// response bytes. Public so probes that must control the `Cookie` header
+/// (idor/noauth) can replay over a raw socket — fetch forbids that header.
+pub fn send_raw_over_socket(
     host: &str,
     port: u16,
     payload: &[u8],

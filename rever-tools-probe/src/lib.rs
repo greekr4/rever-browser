@@ -13,7 +13,9 @@ mod args;
 mod cmd;
 mod common;
 mod crlf;
+mod idor;
 mod nosqli;
+mod path;
 mod path_write;
 mod payload;
 mod pickle;
@@ -28,8 +30,13 @@ pub fn register(registry: &mut ToolRegistry) {
     registry.register(ssti::SstiProbe);
     registry.register(cmd::CmdProbe);
     registry.register(payload::PayloadProbe);
+    registry.register(path::PathProbe);
+    registry.register(path::LfiProbe);
     registry.register(path_write::PathWriteProbe);
     registry.register(pickle::PickleGadget);
+    registry.register(idor::NoauthProbe);
+    registry.register(idor::RedteamAltSessionSet);
+    registry.register(idor::IdorProbe);
 }
 
 /// The JSON Schema the MCP SDK derives from a zod shape.

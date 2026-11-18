@@ -10,6 +10,7 @@ pub mod raw_http;
 pub mod request_spec;
 pub mod send;
 
+pub use raw_http::{RawResponse, build_raw_request, parse_raw_response, send_raw_over_socket};
 pub use request_spec::{Mods, RequestSpec, build_request_spec, restore_marker};
 pub use send::{SendOutcome, send};
 
