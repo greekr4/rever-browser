@@ -76,6 +76,8 @@ pub fn spring(seconds: f32) -> f32 {
 pub enum DetailDrawerEvent {
     /// Put this text in the chat composer ("Send to chat").
     PushDraft(String),
+    /// Load this request (by id) into the repeater ("Send to repeater").
+    SendToRepeater(String),
     /// The width after a drag, to save under [`WIDTH_STORAGE_KEY`].
     Resized(f32),
 }
@@ -183,6 +185,9 @@ impl DetailDrawer {
                         |this, _, event: &TrafficDetailDrawerEvent, cx| match event {
                             TrafficDetailDrawerEvent::PushDraft(text) => {
                                 cx.emit(DetailDrawerEvent::PushDraft(text.clone()))
+                            }
+                            TrafficDetailDrawerEvent::SendToRepeater(id) => {
+                                cx.emit(DetailDrawerEvent::SendToRepeater(id.clone()))
                             }
                             TrafficDetailDrawerEvent::Close => this.close(cx),
                         },

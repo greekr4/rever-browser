@@ -22,6 +22,7 @@ use rever_ui_menus::ip_badge::{IpBadgeHost, IpResult};
 use rever_ui_state::ip_visibility::IpVisibilityStore;
 use rever_ui_apimap::api_map_panel::ApiMapPanel;
 use rever_ui_repeater::repeater_panel::{RepeaterPanel, RepeaterSender};
+use rever_ui_repeater::ws_repeater_panel::WsRepeaterPanel;
 use rever_ui_repeater::{RepeaterRequestSpec, RepeaterResponse, RepeaterStore};
 use rever_ui_state::{FileStorage, MemoryStorage, Storage};
 use rever_ui_storage::cookies_panel::CookiesPanel;
@@ -129,6 +130,9 @@ pub(crate) struct Views {
     pub storage: Entity<CookiesPanel>,
     pub apimap: Entity<ApiMapPanel>,
     pub repeater: Entity<RepeaterPanel>,
+    /// Kept so "send to repeater" can load a request the panel then syncs from.
+    pub repeater_store: Entity<RepeaterStore>,
+    pub wsrepeater: Entity<WsRepeaterPanel>,
     pub workflows: Entity<WorkflowPanel>,
 }
 
@@ -157,8 +161,7 @@ impl Views {
         cx.subscribe(&traffic, |this, _, event: &TrafficListEvent, cx| {
             match event {
                 TrafficListEvent::PushDraft(text) => this.push_draft(text, cx),
-                // The repeater is not ported; its panel opens, as in the Electron app, and says so.
-                TrafficListEvent::SendToRepeater(_) => this.open_panel = Some("repeater"),
+                TrafficListEvent::SendToRepeater(id) => this.load_repeater(id, cx),
             }
             cx.notify();
         })
@@ -172,6 +175,7 @@ impl Views {
             &drawer,
             |this, _, event: &DetailDrawerEvent, cx| match event {
                 DetailDrawerEvent::PushDraft(text) => this.push_draft(text, cx),
+                DetailDrawerEvent::SendToRepeater(id) => this.load_repeater(id, cx),
                 DetailDrawerEvent::Resized(width) => save(
                     this.stores.storage.as_ref(),
                     WIDTH_STORAGE_KEY,
@@ -207,11 +211,16 @@ impl Views {
         });
         let apimap =
             cx.new(|cx| ApiMapPanel::new(stores.traffic.clone(), lang, theme_mode, cx));
+        let repeater_store = cx.new(|_| RepeaterStore::new());
         let repeater = {
-            let store = cx.new(|_| RepeaterStore::new());
-            let sender = Arc::new(RepeaterBridge { browser });
-            cx.new(|cx| RepeaterPanel::new(store, sender, lang, theme_mode, cx))
+            let sender = Arc::new(RepeaterBridge {
+                browser: browser.clone(),
+            });
+            cx.new(|cx| RepeaterPanel::new(repeater_store.clone(), sender, lang, theme_mode, cx))
         };
+        let wsrepeater = cx.new(|cx| {
+            WsRepeaterPanel::new(stores.traffic.clone(), Arc::new(NoSockets), lang, theme_mode, cx)
+        });
         let workflows = {
             let store = cx.new(|_| WorkflowsStore::new(stores.storage.clone()));
             let registry = Rc::new(rever_ui_workflows::default_registry());
@@ -231,6 +240,8 @@ impl Views {
             storage,
             apimap,
             repeater,
+            repeater_store,
+            wsrepeater,
             workflows,
         }
     }

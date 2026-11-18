@@ -35,6 +35,7 @@ impl Browser {
             "storage" => views.storage.clone().into(),
             "apimap" => views.apimap.clone().into(),
             "repeater" => views.repeater.clone().into(),
+            "wsrepeater" => views.wsrepeater.clone().into(),
             "workflows" => views.workflows.clone().into(),
             _ => return None,
         })

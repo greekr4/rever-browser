@@ -150,6 +150,8 @@ pub fn response_body(data: &StoredRequest) -> ResponseBody<'_> {
 pub enum TrafficDetailDrawerEvent {
     /// Put this text in the chat composer ("Send to chat").
     PushDraft(String),
+    /// Load this request (by id) into the repeater ("Send to repeater").
+    SendToRepeater(String),
     Close,
 }
 
@@ -220,6 +222,14 @@ impl TrafficDetailDrawer {
             cx.emit(TrafficDetailDrawerEvent::PushDraft(send_to_chat_prompt(
                 data,
             )));
+        }
+    }
+
+    fn on_send_to_repeater(&mut self, cx: &mut Context<Self>) {
+        if let LoadState::Loaded(data) = &self.state {
+            cx.emit(TrafficDetailDrawerEvent::SendToRepeater(
+                data.request_id.clone(),
+            ));
         }
     }
 
@@ -395,6 +405,11 @@ impl Render for TrafficDetailDrawer {
                     .child(
                         button("detail-send", lang.t("drawer.sendToChat"), &t).on_click(
                             cx.listener(|this, _: &ClickEvent, _, cx| this.on_send_to_chat(cx)),
+                        ),
+                    )
+                    .child(
+                        button("detail-repeater", lang.t("traffic.sendToRepeater"), &t).on_click(
+                            cx.listener(|this, _: &ClickEvent, _, cx| this.on_send_to_repeater(cx)),
                         ),
                     )
                     .child(div().flex_1())

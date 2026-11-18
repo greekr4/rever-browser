@@ -596,6 +596,17 @@ impl Browser {
         self.tabs[self.active].id
     }
 
+    /// Load a captured request into the repeater panel's store and open the
+    /// panel (the "↻R" / "send to repeater" action).
+    pub fn load_repeater(&mut self, request_id: &str, cx: &mut Context<Self>) {
+        let stored = self.stores.traffic.lock().unwrap().get(request_id).cloned();
+        self.views.repeater_store.update(cx, |store, cx| {
+            store.load_from_traffic(request_id, stored.as_ref());
+            cx.notify();
+        });
+        self.open_panel = Some("repeater");
+    }
+
     /// The tab a targeted command names by index, or the active tab when the
     /// index is absent or out of range.
     fn resolve_tab(&self, target: Option<usize>) -> TabId {
@@ -712,6 +723,7 @@ impl Browser {
             self.views
                 .websocket
                 .update(cx, |panel, cx| panel.refresh(cx));
+            self.views.apimap.update(cx, |panel, cx| panel.refresh(cx));
         }
         self.pump_agent();
         self.run_tool_commands(window, cx);
