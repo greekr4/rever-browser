@@ -139,6 +139,8 @@ fn forward_tap(hub: Option<&cdp::Hub>, event: NetworkTapEvent) {
             headers,
             body,
             destination,
+            // The owning tab; this demo shell has one window, so it is unused.
+            webview_id: _,
         } => match hub {
             Some(hub) => hub.on_request(
                 &id,
@@ -187,6 +189,8 @@ fn forward_tap(hub: Option<&cdp::Hub>, event: NetworkTapEvent) {
                 preview(&body)
             ),
         },
+        // WebSocket events: this demo shell does not record them.
+        NetworkTapEvent::WebSocketOpened { .. } | NetworkTapEvent::WebSocketFrame { .. } => {}
     }
 }
 

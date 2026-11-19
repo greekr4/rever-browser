@@ -541,39 +541,19 @@ mod tests {
 
     /// Source `registerTool` names, with storage.ts `kind` templates expanded.
     fn source_tool_names() -> BTreeSet<String> {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/main/mcp/tools");
-        let call = Regex::new(r"registerTool\(\s*([^,\n]+)").unwrap();
-        let literal = Regex::new(r#"^['"]([a-z0-9_]+)['"]$"#).unwrap();
-        let template = Regex::new(r"^`\$\{kind\}_storage_(get|set|delete|clear)`$").unwrap();
-        let mut names = BTreeSet::new();
-        let mut unmatched: Vec<String> = Vec::new();
-        for entry in fs::read_dir(&dir).unwrap() {
-            let path = entry.unwrap().path();
-            let file = path.file_name().unwrap().to_string_lossy().into_owned();
-            if !file.ends_with(".ts") || file.ends_with(".test.ts") {
-                continue;
-            }
-            let text = fs::read_to_string(&path).unwrap();
-            for found in call.captures_iter(&text) {
-                let arg = found[1].trim();
-                if let Some(m) = literal.captures(arg) {
-                    names.insert(m[1].to_owned());
-                    continue;
-                }
-                if let Some(m) = template.captures(arg) {
-                    names.insert(format!("local_storage_{}", &m[1]));
-                    names.insert(format!("session_storage_{}", &m[1]));
-                    continue;
-                }
-                unmatched.push(format!("{file}: {arg}"));
-            }
-        }
-        assert_eq!(
-            unmatched,
-            Vec::<String>::new(),
-            "registerTool 인자 중 해석하지 못한 것"
-        );
-        names
+        // The TypeScript app is gone; this is the frozen registerTool name
+        // set of its final state (snapshot taken from history, 177 names).
+        let order: Vec<String> = serde_json::from_str(
+            &fs::read_to_string(snapshot("ts-tool-order.json")).unwrap(),
+        )
+        .unwrap();
+        order.into_iter().collect()
+    }
+
+    /// A file under the crate's snapshot/ — the TypeScript originals the port
+    /// was checked against, kept verbatim after the app's removal.
+    fn snapshot(name: &str) -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("snapshot").join(name)
     }
 
     #[test]
@@ -591,10 +571,7 @@ mod tests {
     // name is in, or the order `advertised_names` lists them in.
     #[test]
     fn 레지스트리는_타입스크립트_원문과_이름_버킷_순서가_같다() {
-        let source = fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/main/mcp/tool-profile.ts"),
-        )
-        .unwrap();
+        let source = fs::read_to_string(snapshot("tool-buckets.ts")).unwrap();
         let start = source.find("export const TOOL_BUCKETS").unwrap();
         let end = start + source[start..].find("\n}\n").unwrap();
         let entry = Regex::new(r"(?m)^  (\w+): ('core'|\[[^\]]*\]),?$").unwrap();
@@ -882,14 +859,8 @@ mod tests {
     // Not in the TypeScript tests: the description is sent to the model verbatim.
     #[test]
     fn tool_profile_set_설명은_다섯_줄이고_타입스크립트_원문과_같다() {
-        let source = fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/main/mcp/tool-profile.ts"),
-        )
-        .unwrap();
-        let start = source.find("TOOL_PROFILE_SET_DESCRIPTION = `").unwrap()
-            + "TOOL_PROFILE_SET_DESCRIPTION = `".len();
-        let end = start + source[start..].find('`').unwrap();
-        assert_eq!(TOOL_PROFILE_SET_DESCRIPTION, &source[start..end]);
+        let source = fs::read_to_string(snapshot("tool-profile-set-description.txt")).unwrap();
+        assert_eq!(TOOL_PROFILE_SET_DESCRIPTION, source.trim_end_matches(['\n', '\r']));
         assert_eq!(TOOL_PROFILE_SET_DESCRIPTION.lines().count(), 5);
     }
 

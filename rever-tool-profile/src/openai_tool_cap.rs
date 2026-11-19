@@ -103,11 +103,10 @@ pub fn cap_tools_for_openai<T>(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashSet;
     use std::fs;
     use std::path::Path;
 
-    use regex::Regex;
 
     use super::*;
     use crate::tool_profile::{ToolProfile, advertised_names, is_advertised};
@@ -230,69 +229,15 @@ mod tests {
         }
     }
 
-    /// Tool names in the order server.ts registers them.
+    /// Tool names in the order the TypeScript server registered them — frozen
+    /// from history (snapshot/ts-tool-order.json); the app itself is gone.
     fn registration_order() -> Vec<String> {
-        let mcp_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/main/mcp");
-        let server = fs::read_to_string(mcp_dir.join("server.ts")).unwrap();
-        let import = Regex::new(r"import \{ (register\w+) \} from '\./tools/([^']+)'").unwrap();
-        let imports: HashMap<&str, &str> = import
-            .captures_iter(&server)
-            .map(|m| {
-                let (_, [function, file]) = m.extract();
-                (function, file)
-            })
-            .collect();
-        let start = server.find("export function buildMcpServer").unwrap();
-        let end = server.find("\ninterface RunningServer").unwrap();
-        let body = &server[start..end];
-        let call = Regex::new(r"\b(register\w+)\(mcp\b").unwrap();
-        let mut names = Vec::new();
-        for m in call.captures_iter(body) {
-            let function = &m[1];
-            let file = imports
-                .get(function)
-                .unwrap_or_else(|| panic!("no import for {function}"));
-            let text =
-                fs::read_to_string(mcp_dir.join("tools").join(format!("{file}.ts"))).unwrap();
-            names.extend(tool_names_in_source(&text, file));
-        }
-        names
-    }
-
-    fn tool_names_in_source(text: &str, file: &str) -> Vec<String> {
-        let kind_loop =
-            Regex::new(r"for\s*\(\s*const\s+kind\s+of\s+\['local',\s*'session'\]").unwrap();
-        let call = Regex::new(r"registerTool\(\s*([^,\n]+)").unwrap();
-        let literal = Regex::new(r#"^['"]([a-z0-9_]+)['"]$"#).unwrap();
-        let template = Regex::new(r"^`\$\{kind\}_storage_(get|set|delete|clear)`$").unwrap();
-        let (head, tail) = match kind_loop.find(text) {
-            Some(m) => text.split_at(m.start()),
-            None => (text, ""),
-        };
-        let mut names = Vec::new();
-        for m in call.captures_iter(head) {
-            let arg = m[1].trim();
-            let name = literal
-                .captures(arg)
-                .unwrap_or_else(|| panic!("{file}: unrecognized registerTool arg: {arg}"));
-            names.push(name[1].to_owned());
-        }
-        let suffixes: Vec<String> = call
-            .captures_iter(tail)
-            .map(|m| {
-                let arg = m[1].trim();
-                let suffix = template.captures(arg).unwrap_or_else(|| {
-                    panic!("{file}: unrecognized registerTool arg in kind loop: {arg}")
-                });
-                suffix[1].to_owned()
-            })
-            .collect();
-        for kind in ["local", "session"] {
-            for suffix in &suffixes {
-                names.push(format!("{kind}_storage_{suffix}"));
-            }
-        }
-        names
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("snapshot")
+            .join("ts-tool-order.json");
+        fs::read_to_string(path)
+            .and_then(|text| Ok(serde_json::from_str(&text)?))
+            .unwrap()
     }
 
     // --- Not in the TypeScript tests. ---
