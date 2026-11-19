@@ -11,6 +11,8 @@
 
 </div>
 
+> **Work in progress.** The Rust rewrite (GPUI + Servo) replaced the Electron app on 2026-11-19. It builds from source only and has no installer yet. The GIFs on this page were recorded in the earlier Electron build, so the UI you get looks different.
+
 ---
 
 <div align="center">
@@ -101,8 +103,7 @@ The report exports to Markdown (**Save .md**) or pipes straight into the chat pa
 ## More features
 
 - **Live traffic capture.** A tap inside the engine's network stack records every request the browsed tab makes into a ring buffer — including WebSocket connections and frames. Bodies are stored with the entry, and image/video/font/CSS payloads are skipped to keep it lean.
-- **Pick your agent.** Five agents across four providers: Claude Code and Codex as local ACP binaries, plus Claude, OpenAI, and Grok driven directly through their APIs with your own key. Switch model from one unified picker.
-- **ACP or terminal mode.** Run the structured ACP chat, or drop to a real terminal running the local `claude` CLI with rever's MCP server wired in automatically, so the CLI agent gets the same browser and traffic tools.
+- **Claude Code as the agent.** The app runs your local `claude` CLI over stream-json with rever's MCP server wired in, so the agent gets every browser and traffic tool. Other agents are not wired up yet.
 - **Browser automation.** Accessibility snapshots with stable element refs, plus click, hover, type, scroll, drag, canvas draw, clipboard paste, file upload, key press, tab and viewport control, and live screenshots.
 - **Bundle, script & WASM analysis.** Grep, extract, detect the bundler, and deobfuscate captured JavaScript (no re-download) with a `webcrack`-backed deobfuscator; recover original TS/JS from source maps; flag anti-bot "VM" bundles; and disassemble `.wasm` modules to WAT, C-like, or full C. That last part closes the blind spot where request signing is compiled into WebAssembly.
 - **Macros & workflows.** Turn a sequence of tool calls into a named macro that replays deterministically with no LLM in the loop. In-app Macro, Pipeline, and Template editors build these one-click flows, and any captured request exports to a ready-to-run CLI command or Python client.
@@ -128,7 +129,7 @@ Playwright MCP has no script-body grep, crypto hooks, or Repeater, so analyzing 
 
 ## Tool surface
 
-**156 MCP tools across 44 domains**, all driven by the agent (or from a shell). By category:
+**170+ MCP tools**, all driven by the agent (or from a shell). By category:
 
 | Category | What it covers |
 |---|---|
@@ -170,7 +171,7 @@ cargo run -p port-harness  # inventory + behavior checks of the port
 
 ## Use Rever from Claude Code (the `/rever` skill)
 
-Rever ships a Claude Code skill so any `claude` session can drive a running Rever Browser and use its MCP tools. It lives in its own repo, [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill), installable with the [`skills`](https://www.npmjs.com/package/skills) CLI (no source checkout, so it works for DMG/EXE users):
+Rever ships a Claude Code skill so any `claude` session can drive a running Rever Browser and use its MCP tools. It lives in its own repo, [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill), installable with the [`skills`](https://www.npmjs.com/package/skills) CLI:
 
 ```bash
 npx skills add greekr4/rever-browser-skill --global --agent claude-code
@@ -196,7 +197,7 @@ See `docs/` for design notes.
 
 [MIT](./LICENSE). See [NOTICE](./NOTICE) for attribution.
 
-Every package in the dependency tree uses a permissive license (MIT, Apache-2.0, ISC, or BSD), none copyleft. External tools invoked as separate processes (not bundled): [claude-agent-acp](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp) (Apache-2.0), [codex-acp](https://www.npmjs.com/package/@agentclientprotocol/codex-acp) (Apache-2.0), [webcrack](https://www.npmjs.com/package/webcrack) (MIT).
+Every package in the dependency tree uses a permissive license (MIT, Apache-2.0, ISC, or BSD), none copyleft. External tool invoked as a separate process (not bundled): [webcrack](https://www.npmjs.com/package/webcrack) (MIT).
 
 ## Contributing
 

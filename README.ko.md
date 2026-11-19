@@ -11,6 +11,8 @@
 
 </div>
 
+> **개발 중입니다.** 2026-11-19에 Electron 앱을 Rust(GPUI + Servo)로 다시 만든 버전으로 바꿨습니다. 지금은 소스에서 빌드해야 하고 설치 파일은 아직 없습니다. 이 페이지의 GIF는 예전 Electron 빌드에서 녹화해서 실제 화면과 다릅니다.
+
 ---
 
 <div align="center">
@@ -100,9 +102,8 @@ element → API map (tab 3)
 
 ## 그외 기능들
 
-- **실시간 트래픽 캡처**: 브라우징 탭의 모든 `Network.*` 이벤트를 링 버퍼에 기록합니다. 바디는 지연 로딩하고, 이미지/비디오/폰트/CSS는 건너뛰어 가볍게 유지합니다.
-- **에이전트 선택**: 4개 프로바이더의 5개 에이전트. Claude Code·Codex는 로컬 ACP 바이너리로, Claude·OpenAI·Grok은 본인 키로 API를 직접 호출합니다. 모델은 통합 선택기에서 전환합니다.
-- **ACP 또는 터미널 모드**: 구조화된 ACP 채팅을 쓰거나, 로컬 `claude` CLI가 도는 실제 터미널로 전환합니다. rever의 MCP 서버가 자동 연결되어 CLI 에이전트도 같은 브라우저·트래픽 툴을 씁니다.
+- **실시간 트래픽 캡처**: 엔진 네트워크 스택 안의 탭이 브라우징 탭의 모든 요청을 링 버퍼에 기록합니다. WebSocket 연결과 프레임도 포함합니다. 바디는 항목과 함께 저장하고 이미지/비디오/폰트/CSS는 건너뛰어 가볍게 유지합니다.
+- **에이전트는 Claude Code**: 로컬 `claude` CLI를 stream-json으로 구동하고 rever의 MCP 서버를 자동 연결해서 에이전트가 모든 브라우저 툴과 트래픽 툴을 씁니다. 다른 에이전트는 아직 연결하지 않았습니다.
 - **브라우저 자동화**: 안정적 요소 ref를 가진 접근성 스냅샷, 그리고 클릭·호버·입력·스크롤·드래그·캔버스 드로잉·클립보드 붙여넣기·파일 업로드·키 입력·탭/뷰포트 제어·실시간 스크린샷.
 - **번들·스크립트·WASM 분석**: 캡처된 JavaScript를 재다운로드 없이 grep·추출·번들러 탐지·`webcrack` 기반 난독화 해제, 소스맵에서 원본 TS/JS 복원, 안티봇 "VM" 번들 식별, `.wasm` 모듈을 WAT / C유사 / 풀 C로 디스어셈블. 요청 서명이 WebAssembly로 컴파일된 사각지대까지 커버합니다.
 - **매크로 & 워크플로**: 툴 호출 시퀀스를 LLM 없이 결정적으로 재생되는 명명 매크로로 변환합니다. 인앱 Macro·Pipeline·Template 에디터로 원클릭 플로를 구성하고, 캡처한 요청은 바로 실행 가능한 CLI 명령이나 Python 클라이언트로 내보냅니다.
@@ -128,7 +129,7 @@ Playwright MCP엔 스크립트 바디 grep·crypto 후킹·Repeater가 없어 JS
 
 ## 툴 구성
 
-**44개 도메인에 걸친 156개 MCP 툴**, 전부 에이전트(또는 셸)로 구동합니다. 카테고리별:
+**170개 이상의 MCP 툴**, 전부 에이전트(또는 셸)로 구동합니다. 카테고리별:
 
 | 카테고리 | 다루는 것 |
 |---|---|
@@ -170,7 +171,7 @@ cargo run -p port-harness  # 포트 인벤토리 + 동작 검사
 
 ## Claude Code에서 Rever 사용 (`/rever` 스킬)
 
-Rever는 Claude Code 스킬을 제공해서, 어떤 `claude` 세션이든 실행 중인 Rever Browser를 조종하고 그 MCP 툴을 쓸 수 있습니다. 독립 레포 [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill)로 제공되며, [`skills`](https://www.npmjs.com/package/skills) CLI로 설치합니다 (소스 체크아웃이 필요 없어 DMG/EXE 사용자도 됩니다):
+Rever는 Claude Code 스킬을 제공해서, 어떤 `claude` 세션이든 실행 중인 Rever Browser를 조종하고 그 MCP 툴을 쓸 수 있습니다. 독립 레포 [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill)로 제공되며, [`skills`](https://www.npmjs.com/package/skills) CLI로 설치합니다:
 
 ```bash
 npx skills add greekr4/rever-browser-skill --global --agent claude-code
@@ -196,7 +197,7 @@ Rever Browser 앱을 실행하면(시작 시 MCP 엔드포인트를 게시) 아�
 
 [MIT](./LICENSE). 저작자 표시는 [NOTICE](./NOTICE) 참고.
 
-의존성 트리의 모든 패키지는 허용적 라이선스(MIT, Apache-2.0, ISC, BSD)를 쓰며 카피레프트는 없습니다. 별도 프로세스로 호출되는 외부 도구(번들/배포 안 함): [claude-agent-acp](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp) (Apache-2.0), [codex-acp](https://www.npmjs.com/package/@agentclientprotocol/codex-acp) (Apache-2.0), [webcrack](https://www.npmjs.com/package/webcrack) (MIT).
+의존성 트리의 모든 패키지는 허용적 라이선스(MIT, Apache-2.0, ISC, BSD)를 쓰며 카피레프트는 없습니다. 별도 프로세스로 호출되는 외부 도구(번들/배포 안 함): [webcrack](https://www.npmjs.com/package/webcrack) (MIT).
 
 ## 기여
 
