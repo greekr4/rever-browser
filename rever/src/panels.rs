@@ -198,8 +198,9 @@ impl Views {
         })
         .detach();
         let exceptions = cx.new(|cx| ExceptionsPanel::new(store.clone(), lang, theme_mode, cx));
+        let page_sockets = Arc::new(PageSockets { browser: browser.clone() });
         let websocket =
-            cx.new(|cx| WebSocketPanel::new(store, Arc::new(NoSockets), lang, theme_mode, cx));
+            cx.new(|cx| WebSocketPanel::new(store, page_sockets.clone(), lang, theme_mode, cx));
 
         let history = cx.new(|cx| HistoryPanel::new(stores.history.clone(), lang, theme_mode, cx));
         cx.subscribe(&history, |this, _, event: &OpenUrl, cx| {
@@ -226,7 +227,7 @@ impl Views {
             cx.new(|cx| RepeaterPanel::new(repeater_store.clone(), sender, lang, theme_mode, cx))
         };
         let wsrepeater = cx.new(|cx| {
-            WsRepeaterPanel::new(stores.traffic.clone(), Arc::new(NoSockets), lang, theme_mode, cx)
+            WsRepeaterPanel::new(stores.traffic.clone(), page_sockets, lang, theme_mode, cx)
         });
         let workflows = {
             let store = cx.new(|_| WorkflowsStore::new(stores.storage.clone()));
@@ -318,20 +319,72 @@ impl RepeaterSender for RepeaterBridge {
     }
 }
 
-/// The WebSocket panel's page side. The engine reports neither the page's sockets nor
-/// their frames yet, so there is nothing to list and nothing to send through.
-struct NoSockets;
+/// The WebSocket panel's page side, over the engine bridge: sockets come from
+/// the capture wrapper (`sockets_expression` installs it into the current
+/// document when missing), sends run on the page's own socket. Both calls
+/// block — the panel runs them off the main thread, as its host doc states.
+struct PageSockets {
+    browser: Arc<dyn rever_tools_api::tool::Browser>,
+}
 
-impl WsHost for NoSockets {
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WrapperEntry {
+    url: String,
+    ready_state: u8,
+}
+
+impl WsHost for PageSockets {
     fn sockets(&self) -> Result<Vec<LiveSocket>, String> {
-        Err(NOT_YET.to_owned())
+        let value = futures::executor::block_on(
+            self.browser
+                .evaluate(&rever_tools_traffic::websocket::sockets_expression()),
+        )?;
+        let json = value
+            .as_str()
+            .ok_or_else(|| "the page did not answer the socket list".to_owned())?;
+        let entries: Vec<WrapperEntry> = serde_json::from_str(json)
+            .map_err(|error| format!("unreadable socket list: {error}"))?;
+        Ok(entries
+            .into_iter()
+            .map(|entry| LiveSocket {
+                url: entry.url,
+                ready_state: entry.ready_state,
+                frame: "page".to_owned(),
+            })
+            .collect())
     }
 
-    fn send(&self, _: SendRequest) -> SendOutcome {
-        SendOutcome {
-            ok: false,
-            error: Some(NOT_YET.to_owned()),
-            reconnected: false,
+    fn send(&self, request: SendRequest) -> SendOutcome {
+        let expression = rever_tools_traffic::websocket::send_by_url_expression(
+            &request.url,
+            &request.payload,
+            request.as_binary,
+            request.reconnect,
+        );
+        let answer = futures::executor::block_on(self.browser.evaluate(&expression));
+        match answer {
+            Ok(serde_json::Value::String(word)) if word == "ok" => {
+                SendOutcome { ok: true, ..SendOutcome::default() }
+            }
+            Ok(serde_json::Value::String(word)) if word == "reopened" => SendOutcome {
+                ok: true,
+                reconnected: true,
+                ..SendOutcome::default()
+            },
+            Ok(serde_json::Value::String(word)) => {
+                SendOutcome { ok: false, error: Some(word), ..SendOutcome::default() }
+            }
+            Ok(other) => SendOutcome {
+                ok: false,
+                error: Some(other.to_string()),
+                ..SendOutcome::default()
+            },
+            Err(error) => SendOutcome {
+                ok: false,
+                error: Some(error),
+                ..SendOutcome::default()
+            },
         }
     }
 }
@@ -434,17 +487,39 @@ mod tests {
         assert_eq!(printed(object), "{\"k\":false}");
     }
 
+    /// A browser whose evaluate always answers one canned JSON value.
+    struct SocketsBrowser(serde_json::Value);
+
+    impl rever_tools_api::tool::Browser for SocketsBrowser {
+        fn evaluate<'a>(&'a self, _: &'a str) -> rever_tools_api::tool::BoxFuture<'a, Result<serde_json::Value, String>> {
+            let answer = self.0.clone();
+            Box::pin(async move { Ok(answer) })
+        }
+    }
+
     #[test]
-    fn 열린_소켓과_ip_조회는_아직_없다고_답한다() {
-        assert_eq!(NoSockets.sockets(), Err(NOT_YET.to_owned()));
-        let sent = NoSockets.send(SendRequest {
-            url: "wss://example.com/".into(),
-            payload: "ping".into(),
-            as_binary: false,
-            reconnect: false,
-        });
-        assert!(!sent.ok);
-        assert_eq!(sent.error.as_deref(), Some(NOT_YET));
+    fn 페이지_소켓_호스트는_래퍼_목록을_파싱하고_전송_답을_매핑한다() {
+        let host = PageSockets {
+            browser: Arc::new(SocketsBrowser(serde_json::Value::String(
+                r#"[{"id":0,"url":"ws://a.test/ws","readyState":1,"openedAt":1,"protocols":null}]"#.into(),
+            ))),
+        };
+        let sockets = host.sockets().unwrap();
+        assert_eq!((sockets[0].url.as_str(), sockets[0].ready_state, sockets[0].frame.as_str()), ("ws://a.test/ws", 1, "page"));
+
+        let ok = PageSockets {
+            browser: Arc::new(SocketsBrowser(serde_json::Value::String("ok".into()))),
+        };
+        assert!(ok.send(SendRequest { url: "ws://a.test/ws".into(), payload: "p".into(), as_binary: false, reconnect: false }).ok);
+        let reopened = PageSockets {
+            browser: Arc::new(SocketsBrowser(serde_json::Value::String("reopened".into()))),
+        };
+        assert!(reopened.send(SendRequest { url: "ws://a.test/ws".into(), payload: "p".into(), as_binary: false, reconnect: true }).reconnected);
+        let failed = PageSockets {
+            browser: Arc::new(SocketsBrowser(serde_json::Value::String("not-open:3".into()))),
+        };
+        let outcome = failed.send(SendRequest { url: "ws://a.test/ws".into(), payload: "p".into(), as_binary: false, reconnect: false });
+        assert!(!outcome.ok && outcome.error.as_deref() == Some("not-open:3"));
     }
 
     #[test]

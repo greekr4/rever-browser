@@ -128,7 +128,10 @@ fn get_ws_frames(ctx: &ToolContext, args: &Args) -> Result<ToolResult, String> {
 // so a frame can be sent on the page's own socket (auth and session are bound
 // to it).
 
-const WS_CAPTURE_SCRIPT: &str = r#"(() => {
+/// The constructor wrapper `ws_capture_enable` installs. Public so the app
+/// can install it as an init script at startup, which makes the sockets list
+/// and url-addressable sends work on every page without an explicit enable.
+pub const WS_CAPTURE_SCRIPT: &str = r#"(() => {
   if (window.__revWSCapture) return;
   const list = [];
   window.__revWSCapture = list;
@@ -227,6 +230,12 @@ tool!(
 const LIST_EXPRESSION: &str = "JSON.stringify((window.__revWSCapture||[]).map(e=>\
 ({id:e.id,url:e.url,readyState:e.ws.readyState,openedAt:e.openedAt,protocols:e.protocols||null})))";
 
+/// One evaluate that installs the wrapper when this document does not have it
+/// yet, then lists what it holds. What the WebSocket panel polls.
+pub fn sockets_expression() -> String {
+    format!("{WS_CAPTURE_SCRIPT};{LIST_EXPRESSION}")
+}
+
 async fn ws_capture_list(ctx: &ToolContext) -> Result<ToolResult, String> {
     match ctx.browser.evaluate(LIST_EXPRESSION).await? {
         Value::String(json) => {
@@ -273,13 +282,14 @@ tool!(
 /// Send on the socket the wrapper holds for `url` — the page's own socket, so
 /// auth and session ride with it. `reconnect` reopens (and records) a new one
 /// when the old socket closed or the wrapper never saw it.
-async fn ws_send_by_url(
-    ctx: &ToolContext,
+/// The expression ws_send runs by url — find the wrapper's socket, send on
+/// it, reopen when `reconnect` and it closed. Public for the panel's host.
+pub fn send_by_url_expression(
     url: &str,
     payload: &str,
     as_binary: bool,
     reconnect: bool,
-) -> Result<ToolResult, String> {
+) -> String {
     // asBinary: base64 → bytes. Text goes as a JSON string literal.
     let payload = if as_binary {
         format!("(()=>{{const raw=atob({});const b=new Uint8Array(raw.length);\
@@ -302,6 +312,18 @@ e.ws.send({payload}); return 'ok'; }})()",
         reconnect = reconnect,
         payload = payload,
     );
+    expression
+}
+
+/// What `send_by_url_expression` answers, mapped to the tool's result.
+async fn ws_send_by_url(
+    ctx: &ToolContext,
+    url: &str,
+    payload: &str,
+    as_binary: bool,
+    reconnect: bool,
+) -> Result<ToolResult, String> {
+    let expression = send_by_url_expression(url, payload, as_binary, reconnect);
     match ctx.browser.evaluate(&expression).await? {
         Value::String(answer) if answer == "ok" => Ok(ok("sent on the page socket".to_owned())),
         Value::String(answer) if answer == "reopened" => {

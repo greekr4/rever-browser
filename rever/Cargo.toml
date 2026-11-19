@@ -62,6 +62,7 @@ euclid = "0.22"
 url = "2.5"
 futures = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
+serde = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 
 [dev-dependencies]
