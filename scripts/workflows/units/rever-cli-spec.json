@@ -1,7 +1,0 @@
-{
-  "crate": "rever-cli-spec",
-  "files": [
-    "src/shared/cli-spec.ts"
-  ],
-  "notes": "This file defines the command-line surface of the `revb` CLI as data plus parsing/formatting helpers. Keep the data tables complete and in the same order."
-}

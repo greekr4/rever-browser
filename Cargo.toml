@@ -1,51 +1,7 @@
-# Rust workspace for the Electron-free rever: `rever` is the GPUI app, `servo-shell`
-# is the earlier winit spike that also serves CDP for the Electron app's external mode.
+# Rust workspace for rever: `crates/rever` is the GPUI app, every other crate is one concern.
 [workspace]
 resolver = "3"
-members = [
-    "port-harness",
-    "rever",
-    "rever-agent",
-    "rever-analysis",
-    "rever-chat-core",
-    "rever-cli-spec",
-    "rever-cookie-import",
-    "rever-core",
-    "rever-formats",
-    "rever-inject",
-    "rever-mcp",
-    "rever-scope",
-    "rever-snapshot",
-    "rever-tool-profile",
-    "rever-tools-api",
-    "rever-tools-automation",
-    "rever-tools-browser",
-    "rever-tools-debug",
-    "rever-tools-http",
-    "rever-tools-inspect",
-    "rever-tools-page",
-    "rever-tools-probe",
-    "rever-tools-redteam",
-    "rever-tools-scripts",
-    "rever-tools-traffic",
-    "rever-ui-apimap",
-    "rever-ui-chat",
-    "rever-ui-chrome",
-    "rever-ui-console",
-    "rever-ui-history",
-    "rever-ui-kit",
-    "rever-ui-markdown",
-    "rever-ui-menus",
-    "rever-ui-repeater",
-    "rever-ui-scan",
-    "rever-ui-setup",
-    "rever-ui-state",
-    "rever-ui-storage",
-    "rever-ui-traffic",
-    "rever-ui-websocket",
-    "rever-ui-workflows",
-    "servo-shell",
-]
+members = ["crates/*"]
 
 [workspace.dependencies]
 # runtime_shaders: compile Metal shaders at startup instead of at build time, so a build
