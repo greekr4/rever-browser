@@ -1,0 +1,69 @@
+[package]
+name = "rever"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "rever: an AI-agent browser for reverse-engineering web APIs (Rust + GPUI + Servo)"
+
+[dependencies]
+rever-core = { path = "../rever-core" }
+# The capture-not-send fence the request hook enforces.
+rever-scope = { path = "../rever-scope" }
+rever-agent = { path = "../rever-agent" }
+rever-tools-api = { path = "../rever-tools-api" }
+# The MCP server and the tool crates it serves; the risky-tool rules decide what the agent may call unasked.
+rever-mcp = { path = "../rever-mcp" }
+rever-tool-profile = { path = "../rever-tool-profile" }
+rever-tools-traffic = { path = "../rever-tools-traffic" }
+rever-tools-inspect = { path = "../rever-tools-inspect" }
+rever-tools-scripts = { path = "../rever-tools-scripts" }
+rever-tools-browser = { path = "../rever-tools-browser" }
+rever-tools-page = { path = "../rever-tools-page" }
+rever-tools-debug = { path = "../rever-tools-debug" }
+rever-tools-redteam = { path = "../rever-tools-redteam" }
+rever-tools-automation = { path = "../rever-tools-automation" }
+rever-tools-http = { path = "../rever-tools-http" }
+rever-tools-probe = { path = "../rever-tools-probe" }
+rever-ui-storage = { path = "../rever-ui-storage" }
+rever-ui-apimap = { path = "../rever-ui-apimap" }
+rever-ui-repeater = { path = "../rever-ui-repeater" }
+rever-ui-workflows = { path = "../rever-ui-workflows" }
+rever-cli-spec = { path = "../rever-cli-spec" }
+rever-cookie-import = { path = "../rever-cookie-import" }
+# Only `time`: the promise-poll in bridge.rs sleeps between page reads on the
+# MCP server's tokio runtime (no new dependency — tokio is already in the tree).
+tokio = { version = "1", features = ["time"] }
+gpui = { workspace = true }
+rever-ui-kit = { path = "../rever-ui-kit" }
+rever-ui-state = { path = "../rever-ui-state" }
+rever-ui-traffic = { path = "../rever-ui-traffic" }
+rever-ui-console = { path = "../rever-ui-console" }
+rever-ui-websocket = { path = "../rever-ui-websocket" }
+rever-ui-history = { path = "../rever-ui-history" }
+rever-ui-markdown = { path = "../rever-ui-markdown" }
+rever-ui-menus = { path = "../rever-ui-menus" }
+# EvalReply: the shape the console panel takes a script result in.
+rever-formats = { path = "../rever-formats" }
+# `subtlecrypto` is not in servo's `default` (that group is servoshell's), and
+# without it pages see `crypto.subtle === undefined` — signed-request flows die.
+servo = { version = "=0.8.0", features = ["subtlecrypto"] }
+# The cookie type of Servo's site data manager.
+cookie = "0.18"
+# The header and status types of a response the app answers a request with.
+http = "1"
+# URL patterns of breakpoints.
+regex = "1"
+base64 = "0.22"
+# The patched servo-net (see the workspace Cargo.toml): its tap carries request and response bodies.
+net = { package = "servo-net", version = "=0.8.0" }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "logging", "std", "tls12"] }
+dpi = "0.1"
+euclid = "0.22"
+url = "2.5"
+futures = "0.3"
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

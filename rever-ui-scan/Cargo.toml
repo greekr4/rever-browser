@@ -1,0 +1,17 @@
+[package]
+name = "rever-ui-scan"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "The Red Team scan popup and the AI action overlay"
+
+[dependencies]
+gpui = { workspace = true }
+rever-ui-kit = { path = "../rever-ui-kit" }
+rever-core = { path = "../rever-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[[example]]
+name = "preview_scan"
+path = "examples/preview.rs"

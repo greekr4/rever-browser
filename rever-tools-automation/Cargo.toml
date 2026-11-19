@@ -1,0 +1,29 @@
+[package]
+name = "rever-tools-automation"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "MCP tools for macros, saved CLI commands and workflows"
+
+[dependencies]
+rever-tools-api = { path = "../rever-tools-api" }
+rever-core = { path = "../rever-core" }
+# The CLI command spec: compile, describe, build request, extract, export.
+rever-cli-spec = { path = "../rever-cli-spec" }
+# The macro guard, and the catalog kinds it is keyed on.
+rever-tool-profile = { path = "../rever-tool-profile" }
+# Scope and fence checks, which the page applied to every request it sent.
+rever-scope = { path = "../rever-scope" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# The {{placeholder}} and code-fence patterns, and pipeline `matches` conditions.
+regex = "1"
+# WHATWG URL parsing, standing in for JavaScript's `new URL()`.
+url = "2"
+# Step waits and delays, and the per-call catalog (a task-local).
+tokio = { version = "1", features = ["rt", "time"] }
+# The default request sender, until the app plugs the repeater in.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "time", "test-util", "net", "io-util"] }

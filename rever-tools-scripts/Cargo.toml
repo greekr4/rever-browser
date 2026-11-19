@@ -1,0 +1,32 @@
+[package]
+name = "rever-tools-scripts"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "MCP tools for script and WASM analysis, execution traces, listeners and crypto tracing"
+
+[dependencies]
+rever-tools-api = { path = "../rever-tools-api" }
+rever-core = { path = "../rever-core" }
+# Script listing, grep, bundler detection and the webcrack runner.
+rever-analysis = { path = "../rever-analysis" }
+# exec-trace and listener formatting, and the script registry.
+rever-formats = { path = "../rever-formats" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# Agent-supplied JavaScript patterns are translated to this engine.
+regex = "1"
+# Captured binary bodies are stored as base64.
+base64 = "0.22"
+# TextDecoder's label table (euc-kr, shift_jis, …) for re-fetched bodies.
+encoding_rs = "0.8"
+# Stand in for the wabt npm package: WAT text and the section summary.
+wasmparser = "0.263"
+wasmprinter = "0.263"
+# Source maps referenced by URL are fetched over HTTP.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+# spawn_blocking: grep, webcrack and the wabt binaries block for seconds.
+tokio = { version = "1", features = ["rt"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

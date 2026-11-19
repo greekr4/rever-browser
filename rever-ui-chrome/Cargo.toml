@@ -1,0 +1,24 @@
+[package]
+name = "rever-ui-chrome"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Browser chrome widgets: tab bar with overflow, markup editor, resizable splitters, find bar"
+
+[dependencies]
+gpui = { workspace = true }
+rever-ui-kit = { path = "../rever-ui-kit" }
+# The tabs store's `Tab` and the `Storage` a splitter keeps its size in.
+rever-ui-state = { path = "../rever-ui-state" }
+# The markup editor's canvas: decodes the capture, holds the bitmap, encodes the PNG.
+image = { version = "0.25", default-features = false, features = ["png"] }
+# The capture arrives as a `data:image/png;base64,…` URL.
+base64 = "0.22"
+
+[dev-dependencies]
+# TestAppContext: clicks, drags and keys are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
+
+[[example]]
+name = "preview_chrome"
+path = "examples/preview.rs"

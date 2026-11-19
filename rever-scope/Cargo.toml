@@ -1,0 +1,14 @@
+[package]
+name = "rever-scope"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Red Team scope, fence and findings logic, ported from src/main/mcp"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# Linear-time matching for the patterns run over agent-written finding text.
+regex = "1"
+# WHATWG URL parsing, standing in for JavaScript's `new URL()`.
+url = "2"

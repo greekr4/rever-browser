@@ -1,0 +1,14 @@
+{
+  "crate": "rever-chat-core",
+  "files": [
+    "src/renderer/src/ai/acp-map-update.ts",
+    "src/renderer/src/ai/acp-permission.ts",
+    "src/renderer/src/ai/session-grants.ts",
+    "src/renderer/src/ai/acp-background.ts",
+    "src/renderer/src/ai/provider-notice.ts",
+    "src/renderer/src/ai/format-error.ts",
+    "src/renderer/src/ai/red-team-mode.ts",
+    "src/renderer/src/ai/redteam-categories.ts"
+  ],
+  "notes": "This crate has NO GPUI dependency. acp-map-update.ts turns agent session updates into UI message chunks (types from the `ai` and `@agentclientprotocol/sdk` npm packages): model both sides as serde enums/structs or serde_json::Value with the exact JSON shapes and field names. acp-permission.ts is a zustand store with a queue of permission prompts: port it as a struct with methods. Files that import src/shared/risky-tools.ts: that module is being ported by someone else into another crate right now, so do not depend on it; take the risky-tool decision as a function argument or trait where it is needed and say so in a comment."
+}

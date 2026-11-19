@@ -1,0 +1,10 @@
+[package]
+name = "rever-inject"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Scripts injected into pages (stealth, visualizer) and frame helpers, ported from src/main"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }

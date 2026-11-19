@@ -1,0 +1,164 @@
+[
+  {
+    "id": "e1",
+    "title": "GET https://api.shop.test/v1/items — public list",
+    "severity": "info",
+    "category": "endpoint",
+    "body": "Lists items.",
+    "evidenceIds": [
+      "req-1"
+    ],
+    "status": "candidate",
+    "tags": [],
+    "origin": "shop.test",
+    "createdAt": 1000
+  },
+  {
+    "id": "e2",
+    "title": "shop.test item list",
+    "severity": "low",
+    "category": "endpoint",
+    "body": "Same endpoint again: https://api.shop.test/v1/items/ — returns every item without auth, 가격 포함.",
+    "requestId": "req-2",
+    "evidenceIds": [],
+    "status": "candidate",
+    "tags": [
+      "inventory"
+    ],
+    "origin": "shop.test",
+    "createdAt": 2000
+  },
+  {
+    "id": "v1",
+    "title": "SQL injection in /v1/search q",
+    "severity": "high",
+    "category": "vuln",
+    "body": "  Error-based SQLi at https://api.shop.test/v1/search?q=1\ncontact admin@shop.test or 010-1234-5678  ",
+    "requestId": "req-3",
+    "evidenceIds": [
+      "req-4",
+      "e1"
+    ],
+    "reproCommand": " curl \"https://api.shop.test/v1/search?q=1%27\" -H \"X-User: tester@shop.test\" ",
+    "status": "validated",
+    "tags": [
+      "sqli",
+      "db"
+    ],
+    "origin": "shop.test",
+    "createdAt": 3000
+  },
+  {
+    "id": "v2",
+    "title": "Missing rate limit on login",
+    "severity": "medium",
+    "category": "auth",
+    "body": "No lockout after 50 attempts.",
+    "evidenceIds": [],
+    "status": "candidate",
+    "tags": [],
+    "origin": "shop.test",
+    "createdAt": 4000
+  },
+  {
+    "id": "v3",
+    "title": "Reflected XSS in /v1/echo msg",
+    "severity": "critical",
+    "category": "vuln",
+    "body": "Payload reflected at https://api.shop.test/v1/echo",
+    "evidenceIds": [
+      "req-9"
+    ],
+    "status": "candidate",
+    "tags": [
+      "xss"
+    ],
+    "origin": "shop.test",
+    "createdAt": 5000
+  },
+  {
+    "id": "n1",
+    "title": "CSS served without auth",
+    "severity": "low",
+    "category": "other",
+    "body": "Expected.",
+    "evidenceIds": [],
+    "status": "candidate",
+    "tags": [
+      "Negative"
+    ],
+    "origin": "shop.test",
+    "createdAt": 6000
+  },
+  {
+    "id": "n2",
+    "title": "Not a vuln",
+    "severity": "low",
+    "category": "vuln",
+    "body": "Ruled out.",
+    "evidenceIds": [],
+    "status": "false_positive",
+    "tags": [],
+    "origin": "shop.test",
+    "createdAt": 7000
+  },
+  {
+    "id": "r1",
+    "title": "Legacy TLS accepted",
+    "severity": "medium",
+    "category": "other",
+    "body": "TLS 1.0 on.",
+    "evidenceIds": [],
+    "status": "accepted_risk",
+    "tags": [],
+    "origin": "shop.test",
+    "createdAt": 8000
+  },
+  {
+    "id": "s1",
+    "title": "API key in bundle",
+    "severity": "high",
+    "category": "secret",
+    "body": "key=abc",
+    "evidenceIds": [
+      "req-7",
+      "req-8"
+    ],
+    "status": "validated",
+    "tags": [],
+    "origin": "shop.test",
+    "createdAt": 9000
+  },
+  {
+    "id": "o1",
+    "title": "Other site note",
+    "severity": "medium",
+    "category": "vuln",
+    "body": "On another site.",
+    "evidenceIds": [],
+    "status": "candidate",
+    "tags": [],
+    "origin": "localhost:1337",
+    "createdAt": 9500
+  },
+  {
+    "id": "l1",
+    "title": "Legacy note",
+    "severity": "low",
+    "body": "No category, tags, evidence or status.",
+    "origin": "127.0.0.1:1337",
+    "createdAt": 500,
+    "extra": {
+      "keep": true
+    }
+  },
+  {
+    "id": "l2",
+    "title": "No origin",
+    "severity": "info",
+    "category": null,
+    "body": "x",
+    "tags": null,
+    "createdAt": 9600
+  }
+]

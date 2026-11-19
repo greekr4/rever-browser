@@ -5,9 +5,7 @@
 ### API 리버스 엔지니어링을 위한 에이전트 네이티브 워크벤치.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
-[![Download](https://img.shields.io/github/v/release/greekr4/rever-browser?label=Download&color=8b5cf6)](https://github.com/greekr4/rever-browser/releases/latest)
-
-**[⬇ macOS 다운로드](https://github.com/greekr4/rever-browser/releases/latest)** · **[⬇ Windows 다운로드](https://github.com/greekr4/rever-browser/releases/latest)**
+[![Rust CI](https://github.com/greekr4/rever-browser/actions/workflows/rust-ci.yml/badge.svg)](./.github/workflows/rust-ci.yml)
 
 [English](./README.md)
 
@@ -23,7 +21,7 @@
 
 ## rever-browser란?
 
-`rever-browser`는 **실제 Chromium 탭**과 **ACP 코딩 에이전트**(기본값 Claude Code)를 결합한 Electron 데스크톱 앱입니다. 임베드된 `<webview>`에서 대상 사이트를 브라우징하면 앱이 Chrome DevTools Protocol로 모든 네트워크 요청을 기록하고, 에이전트는 그 트래픽을 읽고 사이트의 JavaScript·WASM을 분석하며, 인프로세스 **MCP 툴 서버**(44개 도메인에 걸친 156개 툴)로 탭을 직접 조종합니다.
+`rever-browser`는 **Rust**로 만든 데스크톱 앱입니다([GPUI](https://github.com/zed-industries/gpui) 셸 + [Servo](https://servo.org) 엔진). **실제 브라우저 탭**과 **에이전트**(기본값 `claude` CLI)를 결합합니다. 임베드된 탭에서 대상 사이트를 브라우징하면 엔진의 네트워크 탭이 모든 요청을 기록하고, 에이전트는 그 트래픽을 읽고 사이트의 JavaScript·WASM을 분석하며, 인프로세스 **MCP 툴 서버**(170개 이상 툴)로 탭을 직접 조종합니다.
 
 *"이 사이트는 어떤 요청을 보내지?"* 에서 *"서명된 API를 그대로 재현하는 원클릭 매크로"* 까지, 앱을 벗어나지 않고 갑니다. 그 과정은 한 단계씩, 지금 보고 있는 바로 그 탭에서 펼쳐집니다.
 
@@ -150,48 +148,24 @@ Playwright MCP엔 스크립트 바디 grep·crypto 후킹·Repeater가 없어 JS
 
 ## 요구 사항
 
-- [Bun](https://bun.sh): 패키지 매니저 (npm/pnpm 아님)
-- Node.js: 아래 ACP 에이전트 바이너리용
-- **PATH에 에이전트 바이너리** (ACP 에이전트만 필요하고, API 에이전트는 키만 있으면 됩니다):
-  - `claude-agent-acp`: 기본 Claude Code 에이전트. `npm i -g @agentclientprotocol/claude-agent-acp`
-  - `codex-acp`: Codex 에이전트. `npm i -g @agentclientprotocol/codex-acp`
-- `webcrack` (선택): `deobfuscate_script` 툴을 활성화
+- Rust 툴체인 (stable)
+- PATH의 `claude` (Claude Code CLI) — 내장 에이전트가 이 위에서 동작
+- `webcrack` (선택) — `deobfuscate_script` 툴 활성화
 
 ## 시작하기
 
-**그냥 쓰고 싶다면?** [최신 릴리스](https://github.com/greekr4/rever-browser/releases/latest)에서 빌드를 받고 에이전트 바이너리를 설치하세요 ([요구 사항](#요구-사항) 참고):
-
-- **macOS**: 칩에 맞는 `.dmg` 선택(Apple Silicon은 `arm64`, Intel은 `x64`), 열어서 **Rever Browser**를 **응용 프로그램**으로 드래그.
-
-  빌드가 서명되지 않아 Gatekeeper가 첫 실행을 막습니다. macOS가 *"손상되었습니다"* 라고 할 수 있는데, 다운로드가 깨진 게 아니라 격리 플래그입니다. 해제:
-
-  ```bash
-  xattr -dr com.apple.quarantine "/Applications/Rever Browser.app"
-  ```
-
-  또는 한 번 실행해 차단되게 둔 뒤 **시스템 설정 → 개인 정보 보호 및 보안 → 그래도 열기**. 설치당 한 번만 하면 됩니다.
-
-- **Windows** (`-setup.exe`): 설치 프로그램 실행. 서명이 없어 SmartScreen이 경고하면 **추가 정보 → 실행**.
-
-**소스에서 빌드:**
+**소스에서 빌드** (Rust 앱의 패키지 릴리스는 아직 없습니다 — 예전 다운로드는 은퇴한 Electron 빌드):
 
 ```bash
-bun install      # 의존성 설치
-bun run dev      # electron-vite 개발 시작 (main + preload + renderer, HMR)
+./scripts/apply-rust-patches.sh   # 벤더 크레이트 패치 (최초 1회)
+cargo run -p rever -- <url>       # 빌드 후 실행
 ```
 
-기타 명령:
+그 외 명령:
 
 ```bash
-bun run build      # out/ 로 프로덕션 빌드
-bun run typecheck  # tsconfig.node.json + tsconfig.web.json 타입 체크
-bun run test       # vitest 단위 테스트
-```
-
-main/preload 프로세스 코드 변경을 HMR이 못 잡으면, Electron을 죽이고 `bun run dev`를 재실행:
-
-```bash
-pgrep -f "Electron|electron-vite" | xargs -r kill -9
+cargo test --workspace     # 전 크레이트 단위 테스트
+cargo run -p port-harness  # 포트 인벤토리 + 동작 검사
 ```
 
 ## Claude Code에서 Rever 사용 (`/rever` 스킬)
@@ -206,17 +180,17 @@ Rever Browser 앱을 실행하면(시작 시 MCP 엔드포인트를 게시) 아�
 
 ## 아키텍처
 
-세 개의 Electron 프로세스가 엄격히 분리되며, 프로세스 간 작업은 전부 preload IPC를 거칩니다.
+하나의 Rust 워크스페이스입니다. `rever` 크레이트가 앱 본체(GPUI 창 + Servo 탭)이며, 각 관심사는 고유 크레이트(`rever-core`, `rever-mcp`, `rever-tools-*`, `rever-ui-*` 등)에 살아 있습니다.
 
-- **main** (`src/main/`): Node + Electron API. `<webview>`의 CDP 디버거를 소유하고, ACP 에이전트 프로세스를 띄우며, 에이전트가 콜백하는 인프로세스 HTTP MCP 서버를 호스팅합니다.
-- **preload** (`src/preload/index.ts`): 렌더러에 노출되는 표면의 단일 진실 원천. `contextBridge`로 `window.rev`를 노출합니다.
-- **renderer** (`src/renderer/src/`): React 19 + Vite. `<webview>` 태그와 채팅 UI를 호스팅합니다.
+- **엔진.** Servo를 패치해 벤더합니다(`patches/servo-net@0.8.0.patch`). 네트워크 탭이 모든 요청·응답 바디·WebSocket 프레임을 인프로세스로 전달합니다.
+- **MCP 서버.** `rever-mcp`가 툴 레지스트리를 랜덤 로컬포트 HTTP로 서빙하고(`mcp-endpoint.json`에 공개), 에이전트와 외부 클라이언트가 같은 툴을 씁니다.
+- **에이전트.** `claude` CLI를 stream-json으로 구동합니다. 권한 요청은 이 앱 자체의 비위험 MCP 툴만 자동 승인되며, 캡처-노전송 펜스가 최후의 안전망입니다.
 
-**트래픽 캡처:** `webview Network.* 이벤트 → main/chrome-cdp.ts → main/traffic-store.ts → renderer (TrafficList)`
+**트래픽 캡처:** 엔진 탭 → `TrafficStore`(링 버퍼) → 패널과 MCP 툴이 함께 읽습니다.
 
-**에이전트 루프:** `ChatPanel → ACPChatTransport → preload IPC → main/acp-session.ts → ACP 에이전트 자식 프로세스 → MCP 툴 → main/mcp/server.ts → 툴이 traffic-store 읽기 / CDP 조종`
+**에이전트 루프:** 채팅 → `AgentSession`(claude CLI) → HTTP로 MCP 툴 → 탭/스토어/페이지 입력.
 
-MCP 서버는 첫 에이전트 스폰 시 지연 시작되며 임의의 localhost 포트에 바인딩됩니다. 설계 노트는 `docs/` 참고.
+설계 노트는 `docs/`에 있습니다.
 
 ## 라이선스
 

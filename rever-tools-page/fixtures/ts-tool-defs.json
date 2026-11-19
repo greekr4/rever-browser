@@ -1,0 +1,561 @@
+[
+  {
+    "name": "dialog_history",
+    "description": "List recent JavaScript dialog events (alert/confirm/prompt) that the page tried to open. Useful to see what message a challenge popped — the agent never sees the modal because rever-browser auto-dismisses, but the content is recorded here. Also queries the in-page history captured by the script override.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "limit": {
+          "description": "Default 50",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 200
+        }
+      }
+    }
+  },
+  {
+    "name": "dialog_set_auto_dismiss",
+    "description": "Toggle whether native JS dialogs are auto-dismissed. Default true (recommended). Turn off if you want to see real alert/confirm/prompt modals.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled"
+      ]
+    }
+  },
+  {
+    "name": "dialog_clear_history",
+    "description": "Clear the CDP-side dialog history buffer.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "dialog_inject_override",
+    "description": "Re-inject the alert/confirm/prompt override into the active page. Useful if a page replaced window.alert with its own implementation after load.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "dom_set_attr",
+    "description": "Set an attribute on the first element matching a CSS selector. Useful for CSS-puzzle challenges (e.g. moving an element via style.left).",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string"
+        },
+        "attr": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selector",
+        "attr",
+        "value"
+      ]
+    }
+  },
+  {
+    "name": "dom_set_style",
+    "description": "Set an inline CSS style property on the first match.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string"
+        },
+        "property": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selector",
+        "property",
+        "value"
+      ]
+    }
+  },
+  {
+    "name": "dom_set_text",
+    "description": "Set textContent on the first match.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selector",
+        "text"
+      ]
+    }
+  },
+  {
+    "name": "dom_remove",
+    "description": "Remove all elements matching a CSS selector from the DOM.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selector"
+      ]
+    }
+  },
+  {
+    "name": "cookie_set",
+    "description": "Set or overwrite a cookie on the active page. Use to tamper with auth/session/level cookies for testing.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "url": {
+          "description": "Cookie URL/origin (defaults to active page origin)",
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "secure": {
+          "type": "boolean"
+        },
+        "httpOnly": {
+          "type": "boolean"
+        },
+        "sameSite": {
+          "type": "string",
+          "enum": [
+            "Strict",
+            "Lax",
+            "None"
+          ]
+        },
+        "expires": {
+          "description": "Unix seconds (omit for session)",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ]
+    }
+  },
+  {
+    "name": "cookie_delete",
+    "description": "Delete cookies by name (optionally scoped to url/domain/path).",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    }
+  },
+  {
+    "name": "cookie_list",
+    "description": "List cookies for given URLs (or the active origin).",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "urls": {
+          "maxItems": 500,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "local_storage_get",
+    "description": "Get all localStorage keys/values for the active page.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "local_storage_set",
+    "description": "Set a key in localStorage.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ]
+    }
+  },
+  {
+    "name": "local_storage_delete",
+    "description": "Remove a key from localStorage.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ]
+    }
+  },
+  {
+    "name": "local_storage_clear",
+    "description": "Clear all localStorage entries for the active page.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "session_storage_get",
+    "description": "Get all sessionStorage keys/values for the active page.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "session_storage_set",
+    "description": "Set a key in sessionStorage.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ]
+    }
+  },
+  {
+    "name": "session_storage_delete",
+    "description": "Remove a key from sessionStorage.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ]
+    }
+  },
+  {
+    "name": "session_storage_clear",
+    "description": "Clear all sessionStorage entries for the active page.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "sw_list",
+    "description": "List Service Worker registrations on the active page (scope, active script URL, state).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "sw_unregister",
+    "description": "Unregister a Service Worker by scope. Useful when SW caching interferes with reversing.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "description": "Scope URL"
+        }
+      },
+      "required": [
+        "scope"
+      ]
+    }
+  },
+  {
+    "name": "sw_caches",
+    "description": "List Cache API entries (Service Worker / fetch caches) for the active page.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "inject_add",
+    "description": "Add a persistent JavaScript snippet that will be injected on every page load for matching hosts. Optionally registers immediately on the current page.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for this snippet"
+        },
+        "hostGlob": {
+          "type": "string",
+          "description": "Host glob pattern, e.g. \"*.example.com\" or \"api.example.com\""
+        },
+        "code": {
+          "type": "string",
+          "description": "JavaScript code to inject"
+        },
+        "enabled": {
+          "description": "Whether to enable immediately (default true)",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "hostGlob",
+        "code"
+      ]
+    }
+  },
+  {
+    "name": "inject_list",
+    "description": "List all saved injection snippets.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "inject_remove",
+    "description": "Remove an injection snippet by ID.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Snippet ID from inject_list"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "inject_toggle",
+    "description": "Enable or disable an injection snippet.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Snippet ID from inject_list"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "New enabled state"
+        }
+      },
+      "required": [
+        "id",
+        "enabled"
+      ]
+    }
+  },
+  {
+    "name": "inject_run_now",
+    "description": "Run a one-shot JavaScript snippet in the current page immediately (not persisted).",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "JavaScript code to run now"
+        }
+      },
+      "required": [
+        "code"
+      ]
+    }
+  },
+  {
+    "name": "vision_judge",
+    "description": "Capture a screenshot of the current page and ask a vision model to judge it. Use for things the accessibility snapshot cannot show: whether an action visually succeeded (did the search run? did results render?), whether a modal/captcha/ad overlay is blocking the page, reading text baked into images/canvas, or locating an element visually. Returns the model's answer as text. Uses Claude if an Anthropic key is set, otherwise OpenAI.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string",
+          "description": "What to decide from the screenshot, e.g. \"Did the search for 오늘 날씨 actually run and show results?\" or \"Is anything covering the search box?\""
+        },
+        "model": {
+          "description": "Optional vision model override for the selected provider (default: claude-sonnet-5 for Anthropic, gpt-4o for OpenAI).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question"
+      ]
+    }
+  },
+  {
+    "name": "override_add",
+    "description": "Register a local override: when a URL matching `urlPattern` is requested, fulfill it with `body` (or contents of `file`) instead of hitting the network. Equivalent to DevTools \"Local Overrides\". Use to neutralize anti-bot scripts, replace a bundle with a beautified copy, or patch a comparison.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "urlPattern": {
+          "type": "string",
+          "description": "CDP wildcard pattern, e.g. \"*/static/main.js\""
+        },
+        "body": {
+          "description": "Inline replacement body",
+          "type": "string"
+        },
+        "file": {
+          "description": "Local file path to load as the body (mutually exclusive with body)",
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "urlPattern"
+      ]
+    }
+  },
+  {
+    "name": "override_list",
+    "description": "List active local overrides.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "override_remove",
+    "description": "Remove a local override by ID.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "list_downloads",
+    "description": "List files the page downloaded (newest last): filename, url, mime, bytes, state (progressing/completed/cancelled/interrupted) and savePath. Downloads are saved to ~/Downloads/Rever without a save dialog unless the user turned on \"ask where to save\".",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "limit": {
+          "description": "Default 20",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 100
+        }
+      }
+    }
+  },
+  {
+    "name": "wait_for_download",
+    "description": "Wait until a download finishes and return it (savePath, bytes, state). Call right after the click that starts a download. Returns a download that finished in the last 30s if you have not seen it yet, so calling it after a fast download is fine. Each download is returned once.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "timeoutMs": {
+          "description": "Default 30000",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 120000
+        }
+      }
+    }
+  }
+]

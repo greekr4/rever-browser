@@ -1,0 +1,62 @@
+[
+  {
+    "id": "o1",
+    "title": "Other site note",
+    "severity": "medium",
+    "category": "vuln",
+    "body": "On another site.",
+    "evidenceIds": [],
+    "status": "candidate",
+    "tags": [],
+    "origin": "localhost:1337",
+    "createdAt": 9500
+  },
+  {
+    "id": "n2",
+    "title": "Not a vuln",
+    "severity": "low",
+    "category": "vuln",
+    "body": "Ruled out.",
+    "evidenceIds": [],
+    "status": "false_positive",
+    "tags": [],
+    "origin": "shop.test",
+    "createdAt": 7000
+  },
+  {
+    "id": "v3",
+    "title": "Reflected XSS in /v1/echo msg",
+    "severity": "critical",
+    "category": "vuln",
+    "body": "Payload reflected at https://api.shop.test/v1/echo",
+    "evidenceIds": [
+      "req-9"
+    ],
+    "status": "candidate",
+    "tags": [
+      "xss"
+    ],
+    "origin": "shop.test",
+    "createdAt": 5000
+  },
+  {
+    "id": "v1",
+    "title": "SQL injection in /v1/search q",
+    "severity": "high",
+    "category": "vuln",
+    "body": "  Error-based SQLi at https://api.shop.test/v1/search?q=1\ncontact admin@shop.test or 010-1234-5678  ",
+    "requestId": "req-3",
+    "evidenceIds": [
+      "req-4",
+      "e1"
+    ],
+    "reproCommand": " curl \"https://api.shop.test/v1/search?q=1%27\" -H \"X-User: tester@shop.test\" ",
+    "status": "validated",
+    "tags": [
+      "sqli",
+      "db"
+    ],
+    "origin": "shop.test",
+    "createdAt": 3000
+  }
+]

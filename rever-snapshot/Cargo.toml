@@ -1,0 +1,12 @@
+[package]
+name = "rever-snapshot"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Page snapshots with element refs, frames and layout, for the browser tools"
+
+[dependencies]
+rever-tools-api = { path = "../rever-tools-api" }
+rever-core = { path = "../rever-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }

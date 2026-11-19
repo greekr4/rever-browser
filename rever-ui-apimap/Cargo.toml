@@ -1,0 +1,21 @@
+[package]
+name = "rever-ui-apimap"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "The API map panel"
+
+[dependencies]
+gpui = { workspace = true }
+rever-ui-kit = { path = "../rever-ui-kit" }
+rever-core = { path = "../rever-core" }
+# Groups captured XHR/Fetch requests into endpoints by method, origin and path template.
+rever-analysis = { path = "../rever-analysis" }
+
+[dev-dependencies]
+# TestAppContext: clicks and hover are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
+
+[[example]]
+name = "preview_apimap"
+path = "examples/preview.rs"

@@ -1,0 +1,33 @@
+[package]
+name = "rever-ui-workflows"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "The workflows panel and its macro, pipeline, CLI and template editors"
+
+[dependencies]
+gpui = { workspace = true }
+rever-ui-kit = { path = "../rever-ui-kit" }
+rever-core = { path = "../rever-core" }
+# Storage (the localStorage stand-in) and the JSON pretty-printer.
+rever-ui-state = { path = "../rever-ui-state" }
+# CliData and the helpers the CLI editor and the agent bridge call.
+rever-cli-spec = { path = "../rever-cli-spec" }
+serde = { version = "1", features = ["derive"] }
+# preserve_order: JSON.parse keeps key order. float_roundtrip: a number must parse to
+# the double JSON.parse gives.
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+# The {{var}} placeholder pattern of both resolvers.
+regex = "1"
+# Grapheme boundaries for the multi-line field's cursor, as in the kit's text field.
+unicode-segmentation = "1"
+# `new URL(entry.url)` for the request list of the CLI editor.
+url = "2"
+
+[dev-dependencies]
+# TestAppContext: clicks and typing are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
+
+[[example]]
+name = "preview_workflows"
+path = "examples/preview.rs"

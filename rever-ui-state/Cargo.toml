@@ -1,0 +1,14 @@
+[package]
+name = "rever-ui-state"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Interface state stores (tabs, settings, drafts) ported from src/renderer/src/stores, without GPUI"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# preserve_order: JSON.parse keeps key order, which the pretty-printer must show.
+# float_roundtrip: a re-printed number has to be the double JSON.parse would have read.
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+# WHATWG URL parsing, standing in for JavaScript's `new URL()`.
+url = "2"

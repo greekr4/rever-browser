@@ -1,0 +1,17 @@
+[package]
+name = "rever-cli-spec"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "The revb command-line spec, ported from src/shared/cli-spec.ts"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# raw_value: a captured JSON body is read one top-level field at a time, so a number
+# keeps its source text and prints the way JavaScript's String(value) does.
+serde_json = { version = "1", features = ["raw_value", "preserve_order"] }
+# Flags are listed in the order the JS objects held them.
+indexmap = { version = "2", features = ["serde"] }
+regex = "1"
+# WHATWG URL parsing, standing in for JavaScript's `new URL()` and URLSearchParams.
+url = "2"

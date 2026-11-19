@@ -1,0 +1,349 @@
+diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/http_loader.rs b/http_loader.rs
+--- a/http_loader.rs	2026-11-18 21:19:35
++++ b/http_loader.rs	2026-11-18 21:19:35
+@@ -648,6 +648,8 @@
+         Ok(request) => request,
+         Err(error) => return Err(NetworkError::HttpError(error.to_string())),
+     };
++    // rever patch: the embedder may change the headers of a request it held back.
++    crate::tap::edit_request(url, method, headers);
+     *request.headers_mut() = headers.clone();
+ 
+     let connect_end = CrossProcessInstant::now();
+@@ -658,6 +660,24 @@
+     let host = request.uri().host().unwrap_or("").to_owned();
+     let override_manager = context.state.override_manager.clone();
+     #[cfg(feature = "devtools")]
++    let (tap_id, tap_url, tap_method, tap_headers, tap_bytes, tap_destination, tap_webview_id) = (
++        request_id.map(|id| id.to_string()).unwrap_or_default(),
++        url.clone(),
++        method.clone(),
++        headers.clone(),
++        devtools_bytes.clone(),
++        format!("{destination:?}"),
++        // Stable per-tab key the embedder stamps onto the captured request so
++        // list_requests can filter by tab. A fixed-seed hash of the WebViewId:
++        // the embedder hashes the same id the same way, so the keys match.
++        fetch_params.request.target_webview_id.map(|id| {
++            use std::hash::{Hash, Hasher};
++            let mut hasher = std::hash::DefaultHasher::new();
++            id.hash(&mut hasher);
++            hasher.finish()
++        }),
++    );
++    #[cfg(feature = "devtools")]
+     let (request_id, pipeline_id, closure_url, method, send_start, headers) = (
+         request_id.map(|value| value.to_owned()),
+         pipeline_id,
+@@ -680,6 +700,16 @@
+         .and_then(move |res| {
+             // TODO(#21271) response_start: immediately after receiving first byte of response
+             #[cfg(feature = "devtools")]
++            crate::tap::emit(crate::tap::NetworkTapEvent::Request {
++                id: tap_id,
++                url: tap_url,
++                method: tap_method,
++                headers: tap_headers,
++                body: tap_bytes.lock().clone(),
++                destination: tap_destination,
++                webview_id: tap_webview_id,
++            });
++            #[cfg(feature = "devtools")]
+             let msg = if let Some(request_id) = request_id {
+                 let send_end = CrossProcessInstant::now();
+                 if let Some(pipeline_id) = pipeline_id {
+@@ -2332,6 +2362,13 @@
+         request.url()
+     );
+     response.headers = response_stream.headers().clone();
++    // rever patch: the embedder may change the response headers, and ask for the
++    // body to be kept back until it is complete so that it can be replaced.
++    let hold_body = crate::tap::response_headers(&request.url(), &mut response.headers);
++    if hold_body {
++        // The length of the body that will be delivered is not known yet.
++        response.headers.remove(http::header::CONTENT_LENGTH);
++    }
+     response.referrer = request.referrer.to_url().cloned();
+     response.referrer_policy = request.referrer_policy;
+ 
+@@ -2406,7 +2443,9 @@
+                 }
+                 if let ResponseBody::Receiving(ref mut body) = *response_body_accumulator.lock() {
+                     body.extend_from_slice(&chunk);
+-                    let _ = done_sender.send(Data::Payload(chunk));
++                    if !hold_body {
++                        let _ = done_sender.send(Data::Payload(chunk));
++                    }
+                 }
+                 future::ready(Ok(response_body_accumulator))
+             })
+@@ -2419,11 +2458,34 @@
+                 };
+                 // This allocation may be retained by the http-cache.
+                 completed_body.shrink_to_fit();
++                // rever patch: a body that was kept back is delivered in one piece,
++                // as the embedder returns it.
++                #[cfg(feature = "devtools")]
++                if hold_body {
++                    completed_body = crate::tap::response_body(
++                        &devtools_request.url(),
++                        &devtools_request.method,
++                        status.raw_code(),
++                        &headers,
++                        completed_body,
++                    );
++                    let _ = done_sender2.send(Data::Payload(completed_body.clone().into()));
++                }
+                 // If devtools is disabled avoid cloning, since the result would
+                 // be unused anyway.
+                 #[cfg(feature = "devtools")]
+-                let devtools_response_body =
+-                    devtools_chan.is_some().then(|| completed_body.clone());
++                let devtools_response_body = (devtools_chan.is_some() || crate::tap::active())
++                    .then(|| completed_body.clone());
++                #[cfg(feature = "devtools")]
++                if let Some(body) = &devtools_response_body {
++                    crate::tap::emit(crate::tap::NetworkTapEvent::Response {
++                        id: devtools_request.id.0.to_string(),
++                        url: devtools_request.url(),
++                        status: status.raw_code(),
++                        headers: headers.clone(),
++                        body: body.clone(),
++                    });
++                }
+                 *body = ResponseBody::Done(completed_body);
+                 #[cfg(feature = "devtools")]
+                 send_response_values_to_devtools(
+diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/lib.rs b/lib.rs
+--- a/lib.rs	2026-11-18 21:19:35
++++ b/lib.rs	2026-11-18 21:19:35
+@@ -23,6 +23,7 @@
+ pub mod request_interceptor;
+ pub mod resource_thread;
+ pub mod subresource_integrity;
++pub mod tap;
+ #[cfg(feature = "test-util")]
+ pub mod test_util;
+ mod websocket_loader;
+diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/tap.rs b/tap.rs
+--- a/tap.rs	1970-01-01 09:00:00
++++ b/tap.rs	2026-11-18 21:19:35
+@@ -0,0 +1,95 @@
++/* rever patch (not upstream): hand request and response bodies to the embedder
++ * in-process. The network threads live in the embedder's process, so a
++ * process-wide callback is enough for a proof of concept. */
++
++use std::sync::OnceLock;
++
++use http::{HeaderMap, Method};
++use servo_url::ServoUrl;
++
++/// `id` is the fetch's request id, shared by a request and its response.
++pub enum NetworkTapEvent {
++    Request {
++        id: String,
++        url: ServoUrl,
++        method: Method,
++        headers: HeaderMap,
++        body: Vec<u8>,
++        /// Debug name of the fetch destination ("Document", "Script", "None" for XHR/fetch, ...).
++        destination: String,
++        /// The initiating WebView (tab) as a u64 (namespace<<32 | index), so the
++        /// embedder can stamp the request with the tab it belongs to. None for
++        /// requests with no target webview.
++        webview_id: Option<u64>,
++    },
++    Response { id: String, url: ServoUrl, status: u16, headers: HeaderMap, body: Vec<u8> },
++    /// A WebSocket connection finished its handshake. `id` is the same id the
++    /// frames of this connection carry, and `webview_id` is the owning tab.
++    WebSocketOpened { id: String, url: ServoUrl, webview_id: Option<u64> },
++    /// One WebSocket frame. `outgoing` is page→server; `payload` is raw bytes
++    /// (text frames are valid UTF-8).
++    WebSocketFrame { id: String, outgoing: bool, binary: bool, payload: Vec<u8> },
++}
++
++type Tap = Box<dyn Fn(NetworkTapEvent) + Send + Sync>;
++static TAP: OnceLock<Tap> = OnceLock::new();
++
++/// Install the callback once, before the first page load. It runs on network threads.
++pub fn set_network_tap(tap: impl Fn(NetworkTapEvent) + Send + Sync + 'static) {
++    let _ = TAP.set(Box::new(tap));
++}
++
++pub(crate) fn active() -> bool {
++    TAP.get().is_some()
++}
++
++pub(crate) fn emit(event: NetworkTapEvent) {
++    if let Some(tap) = TAP.get() {
++        tap(event);
++    }
++}
++
++/// What the embedder may change on the way: all three run on network threads.
++pub struct NetworkEditors {
++    /// Before a request is sent: may change its headers.
++    pub request: Box<dyn Fn(&ServoUrl, &Method, &mut HeaderMap) + Send + Sync>,
++    /// When the headers of a response arrive: may change them. True keeps the
++    /// body back until it is complete and hands it to `response_body`.
++    pub response_headers: Box<dyn Fn(&ServoUrl, &mut HeaderMap) -> bool + Send + Sync>,
++    /// The whole body of a response that was kept back: returns the body to deliver.
++    /// It may wait for a decision; the task that delivers this one response waits with it.
++    pub response_body:
++        Box<dyn Fn(&ServoUrl, &Method, u16, &HeaderMap, Vec<u8>) -> Vec<u8> + Send + Sync>,
++}
++
++static EDITORS: OnceLock<NetworkEditors> = OnceLock::new();
++
++/// Install the editors once, before the first page load.
++pub fn set_network_editors(editors: NetworkEditors) {
++    let _ = EDITORS.set(editors);
++}
++
++pub(crate) fn edit_request(url: &ServoUrl, method: &Method, headers: &mut HeaderMap) {
++    if let Some(editors) = EDITORS.get() {
++        (editors.request)(url, method, headers);
++    }
++}
++
++pub(crate) fn response_headers(url: &ServoUrl, headers: &mut HeaderMap) -> bool {
++    EDITORS
++        .get()
++        .is_some_and(|editors| (editors.response_headers)(url, headers))
++}
++
++pub(crate) fn response_body(
++    url: &ServoUrl,
++    method: &Method,
++    status: u16,
++    headers: &HeaderMap,
++    body: Vec<u8>,
++) -> Vec<u8> {
++    match EDITORS.get() {
++        Some(editors) => (editors.response_body)(url, method, status, headers, body),
++        None => body,
++    }
++}
+diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/websocket_loader.rs b/websocket_loader.rs
+--- a/websocket_loader.rs	2026-11-18 21:19:35
++++ b/websocket_loader.rs	2026-11-18 21:19:35
+@@ -172,6 +172,7 @@
+ fn setup_dom_listener(
+     dom_action_receiver: CallbackSetter<WebSocketDomAction>,
+     initiated_close: Arc<AtomicBool>,
++    #[cfg(feature = "devtools")] tap_id: String,
+ ) -> UnboundedReceiver<DomMsg> {
+     let (sender, receiver) = unbounded_channel();
+ 
+@@ -180,11 +181,26 @@
+         trace!("handling WS DOM action: {:?}", dom_action);
+         match dom_action {
+             WebSocketDomAction::SendMessage(MessageData::Text(data)) => {
++                // rever patch: outgoing frames ride the network tap.
++                #[cfg(feature = "devtools")]
++                crate::tap::emit(crate::tap::NetworkTapEvent::WebSocketFrame {
++                    id: tap_id.clone(),
++                    outgoing: true,
++                    binary: false,
++                    payload: data.as_bytes().to_vec(),
++                });
+                 if let Err(e) = sender.send(DomMsg::Send(Message::Text(data.into()))) {
+                     warn!("Error sending websocket message: {:?}", e);
+                 }
+             },
+             WebSocketDomAction::SendMessage(MessageData::Binary(data)) => {
++                #[cfg(feature = "devtools")]
++                crate::tap::emit(crate::tap::NetworkTapEvent::WebSocketFrame {
++                    id: tap_id.clone(),
++                    outgoing: true,
++                    binary: true,
++                    payload: data.clone(),
++                });
+                 if let Err(e) = sender.send(DomMsg::Send(Message::Binary(data.into()))) {
+                     warn!("Error sending websocket message: {:?}", e);
+                 }
+@@ -212,6 +228,7 @@
+     mut dom_receiver: UnboundedReceiver<DomMsg>,
+     resource_event_sender: ProfileGenericCallback<WebSocketNetworkEvent>,
+     mut stream: WebSocketStream<ConnectStream>,
++    #[cfg(feature = "devtools")] tap_id: String,
+ ) {
+     loop {
+         select! {
+@@ -256,6 +273,13 @@
+                 };
+                 match msg {
+                     Message::Text(s) => {
++                        #[cfg(feature = "devtools")]
++                        crate::tap::emit(crate::tap::NetworkTapEvent::WebSocketFrame {
++                            id: tap_id.clone(),
++                            outgoing: false,
++                            binary: false,
++                            payload: s.as_bytes().to_vec(),
++                        });
+                         let message = MessageData::Text(s.as_str().to_owned());
+                         if let Err(e) = resource_event_sender
+                             .send(WebSocketNetworkEvent::MessageReceived(message))
+@@ -266,6 +290,13 @@
+                     }
+ 
+                     Message::Binary(v) => {
++                        #[cfg(feature = "devtools")]
++                        crate::tap::emit(crate::tap::NetworkTapEvent::WebSocketFrame {
++                            id: tap_id.clone(),
++                            outgoing: false,
++                            binary: true,
++                            payload: v.to_vec(),
++                        });
+                         let message = MessageData::Binary(v.to_vec());
+                         if let Err(e) = resource_event_sender
+                             .send(WebSocketNetworkEvent::MessageReceived(message))
+@@ -313,7 +344,26 @@
+     trace!("starting WS connection to {}", client.url());
+ 
+     let initiated_close = Arc::new(AtomicBool::new(false));
+-    let dom_receiver = setup_dom_listener(dom_action_receiver, initiated_close.clone());
++    // rever patch: the tap id this connection's frames carry, and the owning
++    // tab hashed the same way http_loader hashes it (see the tap Request emit).
++    #[cfg(feature = "devtools")]
++    let (tap_id, tap_webview_id) = (
++        client.id.0.to_string(),
++        client.target_webview_id.map(|id| {
++            use std::hash::{Hash, Hasher};
++            let mut hasher = std::hash::DefaultHasher::new();
++            id.hash(&mut hasher);
++            hasher.finish()
++        }),
++    );
++    #[cfg(feature = "devtools")]
++    let tap_url = client.url().clone();
++    let dom_receiver = setup_dom_listener(
++        dom_action_receiver,
++        initiated_close.clone(),
++        #[cfg(feature = "devtools")]
++        tap_id.clone(),
++    );
+ 
+     let url = client.url();
+     let host = replace_host(url.host_str().expect("URL has no host"));
+@@ -363,7 +413,19 @@
+         }
+ 
+         trace!("about to start ws loop for {}", url);
+-        spawn_task(run_ws_loop(dom_receiver, resource_event_sender, stream));
++        #[cfg(feature = "devtools")]
++        crate::tap::emit(crate::tap::NetworkTapEvent::WebSocketOpened {
++            id: tap_id.clone(),
++            url: tap_url,
++            webview_id: tap_webview_id,
++        });
++        spawn_task(run_ws_loop(
++            dom_receiver,
++            resource_event_sender,
++            stream,
++            #[cfg(feature = "devtools")]
++            tap_id,
++        ));
+     } else {
+         trace!("client closed connection for {}, not running loop", url);
+     }

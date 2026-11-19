@@ -1,0 +1,25 @@
+[package]
+name = "rever-ui-storage"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "The storage panel: cookies, local and session storage"
+
+[dependencies]
+gpui = { workspace = true }
+rever-ui-kit = { path = "../rever-ui-kit" }
+rever-core = { path = "../rever-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# `new URL(origin).hostname` for a new cookie's domain.
+url = "2"
+# The wall-clock time of an answered dialog (`toLocaleTimeString`).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[dev-dependencies]
+# TestAppContext: clicks, typing and the confirm prompt are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
+
+[[example]]
+name = "preview_storage"
+path = "examples/preview.rs"

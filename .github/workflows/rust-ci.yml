@@ -1,0 +1,30 @@
+name: Rust CI
+
+# The Electron app is gone; the Rust workspace is the product. Tests on every
+# push and PR. Release packaging (GPUI + Servo) is not set up yet — a dmg
+# workflow returns when the shell ships.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      # Servo's dav1d-sys links the system library through pkg-config.
+      - name: Install system libraries
+        run: brew install dav1d pkgconf
+      - name: Apply crate patches
+        run: ./scripts/apply-rust-patches.sh
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Workspace tests
+        run: cargo test --workspace
+      - name: The app builds
+        run: cargo build -p rever

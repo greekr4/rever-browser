@@ -1,0 +1,191 @@
+[
+  {
+    "name": "browser_draw",
+    "args": {
+      "ref": "r1"
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_draw: [\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"from\"\n    ],\n    \"message\": \"Invalid input: expected object, received undefined\"\n  },\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"to\"\n    ],\n    \"message\": \"Invalid input: expected object, received undefined\"\n  }\n]"
+  },
+  {
+    "name": "browser_draw",
+    "args": {
+      "ref": "r1",
+      "from": {
+        "x": "a"
+      },
+      "to": 5
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_draw: [\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"from\",\n      \"x\"\n    ],\n    \"message\": \"Invalid input: expected number, received string\"\n  },\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"from\",\n      \"y\"\n    ],\n    \"message\": \"Invalid input: expected number, received undefined\"\n  },\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"to\"\n    ],\n    \"message\": \"Invalid input: expected object, received number\"\n  }\n]"
+  },
+  {
+    "name": "browser_draw",
+    "args": {
+      "ref": "r1",
+      "from": {
+        "x": 1,
+        "y": null
+      },
+      "to": []
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_draw: [\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"from\",\n      \"y\"\n    ],\n    \"message\": \"Invalid input: expected number, received null\"\n  },\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"to\"\n    ],\n    \"message\": \"Invalid input: expected object, received array\"\n  }\n]"
+  },
+  {
+    "name": "dom_extract",
+    "args": {
+      "selector": "a",
+      "limit": 0
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool dom_extract: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_small\",\n    \"minimum\": 1,\n    \"inclusive\": true,\n    \"path\": [\n      \"limit\"\n    ],\n    \"message\": \"Too small: expected number to be >=1\"\n  }\n]"
+  },
+  {
+    "name": "dom_extract",
+    "args": {
+      "selector": "a",
+      "limit": 501
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool dom_extract: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 500,\n    \"inclusive\": true,\n    \"path\": [\n      \"limit\"\n    ],\n    \"message\": \"Too big: expected number to be <=500\"\n  }\n]"
+  },
+  {
+    "name": "dom_extract",
+    "args": {
+      "selector": "a",
+      "limit": 1.5
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool dom_extract: [\n  {\n    \"expected\": \"int\",\n    \"format\": \"safeint\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"limit\"\n    ],\n    \"message\": \"Invalid input: expected int, received number\"\n  }\n]"
+  },
+  {
+    "name": "dom_extract",
+    "args": {
+      "selector": "a",
+      "fields": [
+        "bad",
+        "text"
+      ],
+      "attrs": [
+        1
+      ]
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool dom_extract: [\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"text\",\n      \"href\",\n      \"src\",\n      \"value\",\n      \"html\"\n    ],\n    \"path\": [\n      \"fields\",\n      0\n    ],\n    \"message\": \"Invalid option: expected one of \\\"text\\\"|\\\"href\\\"|\\\"src\\\"|\\\"value\\\"|\\\"html\\\"\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"attrs\",\n      0\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  }\n]"
+  },
+  {
+    "name": "dom_extract",
+    "args": {
+      "selector": "a",
+      "fields": "text"
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool dom_extract: [\n  {\n    \"expected\": \"array\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"fields\"\n    ],\n    \"message\": \"Invalid input: expected array, received string\"\n  }\n]"
+  },
+  {
+    "name": "browser_wait_for",
+    "args": {
+      "timeoutMs": 0
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_wait_for: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_small\",\n    \"minimum\": 0,\n    \"inclusive\": false,\n    \"path\": [\n      \"timeoutMs\"\n    ],\n    \"message\": \"Too small: expected number to be >0\"\n  }\n]"
+  },
+  {
+    "name": "browser_wait_for",
+    "args": {
+      "timeoutMs": 30001
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_wait_for: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 30000,\n    \"inclusive\": true,\n    \"path\": [\n      \"timeoutMs\"\n    ],\n    \"message\": \"Too big: expected number to be <=30000\"\n  }\n]"
+  },
+  {
+    "name": "browser_wait_for",
+    "args": {
+      "timeoutMs": -1.5
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_wait_for: [\n  {\n    \"expected\": \"int\",\n    \"format\": \"safeint\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"timeoutMs\"\n    ],\n    \"message\": \"Invalid input: expected int, received number\"\n  }\n]"
+  },
+  {
+    "name": "browser_navigate",
+    "args": {
+      "url": "x",
+      "tab": 1.5
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_navigate: [\n  {\n    \"expected\": \"int\",\n    \"format\": \"safeint\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"tab\"\n    ],\n    \"message\": \"Invalid input: expected int, received number\"\n  }\n]"
+  },
+  {
+    "name": "browser_navigate",
+    "args": {
+      "url": "x",
+      "tab": 1e+300
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_navigate: [\n  {\n    \"code\": \"too_big\",\n    \"maximum\": 9007199254740991,\n    \"note\": \"Integers must be within the safe integer range.\",\n    \"origin\": \"int\",\n    \"inclusive\": true,\n    \"path\": [\n      \"tab\"\n    ],\n    \"message\": \"Too big: expected int to be <=9007199254740991\"\n  }\n]"
+  },
+  {
+    "name": "browser_navigate",
+    "args": {
+      "url": "x",
+      "tab": -1e+300
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_navigate: [\n  {\n    \"code\": \"too_small\",\n    \"minimum\": -9007199254740991,\n    \"note\": \"Integers must be within the safe integer range.\",\n    \"origin\": \"int\",\n    \"inclusive\": true,\n    \"path\": [\n      \"tab\"\n    ],\n    \"message\": \"Too small: expected int to be >=-9007199254740991\"\n  }\n]"
+  },
+  {
+    "name": "browser_navigate",
+    "args": {
+      "url": "x",
+      "tab": "1"
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_navigate: [\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"tab\"\n    ],\n    \"message\": \"Invalid input: expected number, received string\"\n  }\n]"
+  },
+  {
+    "name": "browser_press_key",
+    "args": {
+      "key": "a",
+      "modifiers": [
+        "Hyper"
+      ],
+      "repeat": "2"
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_press_key: [\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"Alt\",\n      \"Control\",\n      \"Meta\",\n      \"Shift\"\n    ],\n    \"path\": [\n      \"modifiers\",\n      0\n    ],\n    \"message\": \"Invalid option: expected one of \\\"Alt\\\"|\\\"Control\\\"|\\\"Meta\\\"|\\\"Shift\\\"\"\n  },\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"repeat\"\n    ],\n    \"message\": \"Invalid input: expected number, received string\"\n  }\n]"
+  },
+  {
+    "name": "browser_tabs",
+    "args": {
+      "action": "close"
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_tabs: [\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"list\",\n      \"select\",\n      \"open\"\n    ],\n    \"path\": [\n      \"action\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"list\\\"|\\\"select\\\"|\\\"open\\\"\"\n  }\n]"
+  },
+  {
+    "name": "browser_tabs",
+    "args": {},
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_tabs: [\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"list\",\n      \"select\",\n      \"open\"\n    ],\n    \"path\": [\n      \"action\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"list\\\"|\\\"select\\\"|\\\"open\\\"\"\n  }\n]"
+  },
+  {
+    "name": "browser_scroll_element",
+    "args": {
+      "ref": "r1"
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_scroll_element: [\n  {\n    \"expected\": \"number\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"deltaY\"\n    ],\n    \"message\": \"Invalid input: expected number, received undefined\"\n  }\n]"
+  },
+  {
+    "name": "browser_handle_dialog",
+    "args": {},
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_handle_dialog: [\n  {\n    \"expected\": \"boolean\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"accept\"\n    ],\n    \"message\": \"Invalid input: expected boolean, received undefined\"\n  }\n]"
+  },
+  {
+    "name": "browser_file_upload",
+    "args": {
+      "ref": "r1",
+      "paths": "a"
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_file_upload: [\n  {\n    \"expected\": \"array\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"paths\"\n    ],\n    \"message\": \"Invalid input: expected array, received string\"\n  }\n]"
+  },
+  {
+    "name": "ui_crawl",
+    "args": null,
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool ui_crawl: [\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [],\n    \"message\": \"Invalid input: expected object, received undefined\"\n  }\n]"
+  },
+  {
+    "name": "ui_crawl",
+    "args": {
+      "maxElements": 2.5
+    },
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool ui_crawl: [\n  {\n    \"expected\": \"int\",\n    \"format\": \"safeint\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"maxElements\"\n    ],\n    \"message\": \"Invalid input: expected int, received number\"\n  }\n]"
+  },
+  {
+    "name": "browser_scroll",
+    "args": "text",
+    "text": "MCP error -32602: Input validation error: Invalid arguments for tool browser_scroll: [\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [],\n    \"message\": \"Invalid input: expected object, received string\"\n  }\n]"
+  }
+]

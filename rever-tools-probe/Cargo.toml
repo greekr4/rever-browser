@@ -1,0 +1,27 @@
+[package]
+name = "rever-tools-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Active injection/fuzzing probe tools (SQLi, CRLF, SSTI, …); every send funnels through rever-tools-http's fence-gated send()"
+
+[dependencies]
+rever-tools-api = { path = "../rever-tools-api" }
+rever-core = { path = "../rever-core" }
+# The one send path, plus request-spec building — carries the scope/fence net.
+rever-tools-http = { path = "../rever-tools-http" }
+rever-scope = { path = "../rever-scope" }
+serde = { version = "1", features = ["derive"] }
+# preserve_order: tool output lists keys in the order the TypeScript wrote them.
+serde_json = { version = "1", features = ["preserve_order"] }
+# Slot-marking / kv-injection rewrites (the TS used `new RegExp`).
+regex = "1"
+# encodeURIComponent: a custom AsciiSet keeping A-Za-z0-9 - _ . ! ~ * ' ( ).
+percent-encoding = "2"
+# path_write_probe: URL / URLSearchParams rewriting (the TS used `new URL`).
+url = "2"
+# pickle_gadget: base64 encoding of the payload bytes.
+base64 = "0.22"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }

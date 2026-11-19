@@ -25,8 +25,11 @@ import tempfile
 import time
 import urllib.request
 
-ENDPOINT = os.path.expanduser(
-    "~/Library/Application Support/rever-browser/mcp-endpoint.json"
+# REVER_USER_DATA_DIR moves the app's data folder (tests, the Rust app's self-check).
+ENDPOINT = os.path.join(
+    os.environ.get("REVER_USER_DATA_DIR")
+    or os.path.expanduser("~/Library/Application Support/rever-browser"),
+    "mcp-endpoint.json",
 )
 
 

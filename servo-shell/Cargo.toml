@@ -1,0 +1,19 @@
+[package]
+name = "rever-servo-shell"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Spike: can a Servo-embedded shell give rever the hooks it gets from CDP today?"
+
+[dependencies]
+servo = "=0.8.0"
+winit = "0.30.13"
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "logging", "std", "tls12"] }
+euclid = "0.22"
+url = "2.5"
+serde_json = "1"
+tungstenite = "0.30"
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# Patch-route experiment: lets the shell install the tap added in vendor/servo-net.
+net = { package = "servo-net", version = "=0.8.0" }

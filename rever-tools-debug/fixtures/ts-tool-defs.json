@@ -1,0 +1,365 @@
+[
+  {
+    "name": "intercept_add",
+    "description": "Add a network intercept rule. mode=log: auto-continues and records; mode=block: cancels the request; mode=modify: holds the request for manual intercept_continue/fulfill/fail.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "urlPattern": {
+          "type": "string",
+          "description": "CDP wildcard URL pattern, e.g. \"*/api/v1/*\""
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "log",
+            "block",
+            "modify"
+          ],
+          "description": "Intercept mode"
+        },
+        "stage": {
+          "description": "Intercept stage (default: Request)",
+          "type": "string",
+          "enum": [
+            "Request",
+            "Response"
+          ]
+        },
+        "modifyHeaders": {
+          "description": "Headers to inject (modify mode)",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "replaceBody": {
+          "description": "Body to replace (modify mode)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "urlPattern",
+        "mode"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "intercept_list",
+    "description": "List all active intercept rules.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "intercept_remove",
+    "description": "Remove an intercept rule by ID.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Rule ID from intercept_list"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "intercept_pending",
+    "description": "List requests currently paused by a modify-mode intercept rule.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "intercept_continue",
+    "description": "Continue a paused request (optionally overriding headers, body, URL, or method).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "description": "Fetch requestId from intercept_pending"
+        },
+        "headers": {
+          "description": "Override request headers",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ]
+          }
+        },
+        "postData": {
+          "description": "Override request body",
+          "type": "string"
+        },
+        "url": {
+          "description": "Override URL",
+          "type": "string"
+        },
+        "method": {
+          "description": "Override HTTP method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "intercept_fulfill",
+    "description": "Fulfill a paused request with a custom response.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "description": "Fetch requestId from intercept_pending"
+        },
+        "responseCode": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991,
+          "description": "HTTP status code"
+        },
+        "headers": {
+          "description": "Response headers",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ]
+          }
+        },
+        "body": {
+          "description": "Response body (will be base64-encoded)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId",
+        "responseCode"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "intercept_fail",
+    "description": "Fail (abort) a paused request.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "description": "Fetch requestId from intercept_pending"
+        },
+        "errorReason": {
+          "description": "CDP error reason (default: BlockedByClient)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "replay_request",
+    "description": "Replay a captured request via Node fetch (independent of the browser). Cookies are pulled from the page and injected automatically, but explicit header overrides win — set a header to \"\" to remove it. For a truly unauthenticated replay you must blank BOTH {\"cookie\":\"\",\"authorization\":\"\"}: the page cookie may itself authenticate the request (e.g. a JWT extracted from a cookie server-side). The result lists `credentialsSent` so you can see what was actually attached.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "description": "requestId to replay"
+        },
+        "overrides": {
+          "description": "Optional overrides for the replayed request (strict: unknown keys error)",
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string"
+            },
+            "headers": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "body": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "requestId"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "bp_add",
+    "description": "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger — breakpoints/stepping are a no-op (even a literal `debugger;` will not halt). Prefer crypto_trace / console_eval instrumentation instead. Set a breakpoint at a URL glob + line number. The page will pause when execution reaches the location.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "urlGlob": {
+          "type": "string",
+          "description": "URL glob pattern, e.g. \"*/main.*.js\""
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "0-indexed line number"
+        },
+        "column": {
+          "description": "0-indexed column number",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "condition": {
+          "description": "Conditional expression (JS); only pause when truthy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "urlGlob",
+        "line"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "bp_list",
+    "description": "List all active breakpoints.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "bp_remove",
+    "description": "Remove a breakpoint by its short ID (from bp_list).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Short breakpoint ID from bp_list"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "bp_status",
+    "description": "Return the current debugger pause state. If paused, shows the top call frames.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "bp_resume",
+    "description": "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger, so there is never a pause to resume from. Prefer crypto_trace / console_eval instrumentation instead. Resume execution after a breakpoint pause.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "bp_step_over",
+    "description": "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger — stepping is a no-op (even a literal `debugger;` will not halt). Prefer crypto_trace / console_eval instrumentation instead. Step over the current line (must be paused at a breakpoint).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "bp_step_into",
+    "description": "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger — stepping is a no-op (even a literal `debugger;` will not halt). Prefer crypto_trace / console_eval instrumentation instead. Step into the next function call (must be paused at a breakpoint).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "bp_step_out",
+    "description": "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger — stepping is a no-op (even a literal `debugger;` will not halt). Prefer crypto_trace / console_eval instrumentation instead. Step out of the current function (must be paused at a breakpoint).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "bp_eval_in_frame",
+    "description": "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger, so there is never a paused frame to evaluate in (even a literal `debugger;` will not halt). Prefer crypto_trace / console_eval instrumentation instead. Evaluate a JavaScript expression in a specific call frame while paused at a breakpoint.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "frameIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Index into the paused call frames (0 = top frame)"
+        },
+        "expression": {
+          "type": "string",
+          "description": "JavaScript expression to evaluate in that frame"
+        }
+      },
+      "required": [
+        "frameIndex",
+        "expression"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  }
+]

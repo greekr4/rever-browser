@@ -1,0 +1,485 @@
+[
+  {
+    "name": "list_macros",
+    "description": "List the macros saved in the Workflows panel (id, name, description, step count).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "get_macro",
+    "description": "Read one saved macro in full, including every step and its variables.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Macro id from list_macros"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "create_macro",
+    "description": "Save a new macro: a named sequence of MCP tool calls replayed deterministically with no LLM in the loop. Use this to turn actions you just performed into a reusable macro — list the same tool calls, in order, with the arguments you used.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Short name shown in the Workflows panel"
+        },
+        "description": {
+          "description": "What this macro does",
+          "type": "string"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "tool": {
+                "type": "string",
+                "description": "MCP tool name, e.g. \"browser_click\""
+              },
+              "input": {
+                "description": "Tool arguments. String values may contain {{var}} placeholders.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "waitFor": {
+                "description": "CSS selector to wait for before this step runs",
+                "type": "string"
+              },
+              "delay": {
+                "description": "Extra pause (ms) before this step runs — useful for pacing a demo",
+                "type": "number"
+              },
+              "waitTimeout": {
+                "description": "Max ms to wait for waitFor",
+                "type": "number"
+              },
+              "saveAs": {
+                "description": "Store this step result in the run vars under this name",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tool"
+            ]
+          },
+          "description": "Tool calls in execution order"
+        },
+        "vars": {
+          "description": "JSON object (as text) supplying values for {{var}} placeholders",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "steps"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "update_macro",
+    "description": "Overwrite fields of a saved macro. Passing `steps` replaces the whole list — call get_macro first, then send the edited sequence. To drop steps by position, prefer remove_macro_steps.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Macro id from list_macros"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "steps": {
+          "description": "Replaces every existing step",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "tool": {
+                "type": "string",
+                "description": "MCP tool name, e.g. \"browser_click\""
+              },
+              "input": {
+                "description": "Tool arguments. String values may contain {{var}} placeholders.",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "waitFor": {
+                "description": "CSS selector to wait for before this step runs",
+                "type": "string"
+              },
+              "delay": {
+                "description": "Extra pause (ms) before this step runs — useful for pacing a demo",
+                "type": "number"
+              },
+              "waitTimeout": {
+                "description": "Max ms to wait for waitFor",
+                "type": "number"
+              },
+              "saveAs": {
+                "description": "Store this step result in the run vars under this name",
+                "type": "string"
+              }
+            },
+            "required": [
+              "tool"
+            ]
+          }
+        },
+        "vars": {
+          "description": "JSON object (as text) for {{var}} placeholders",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "remove_macro_steps",
+    "description": "Delete steps from a saved macro by their zero-based position, keeping the rest. Use for \"drop this action from the macro\". Returns the macro as it now stands.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Macro id from list_macros"
+        },
+        "indexes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "description": "Zero-based step positions to delete, as shown by get_macro"
+        }
+      },
+      "required": [
+        "id",
+        "indexes"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "run_macro",
+    "description": "Replay a saved macro on the active tab: its tool calls run in order and stop at the first failure. Returns each step's status and output. Use when the user asks to run a macro by name — call list_macros first to find its id.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Macro id from list_macros"
+        },
+        "vars": {
+          "description": "JSON object (as text) overriding the macro's saved {{var}} values for this run",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "delete_macro",
+    "description": "Delete a saved macro entirely.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Macro id from list_macros"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "cli_arm",
+    "description": "Start, stop, or list a recording window of XHR and Fetch calls on the active tab. The list is request ids only and does not save a workflow. Static files are left out. Pass the ids you mean to keep to cli_compile.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "start",
+            "stop",
+            "list"
+          ],
+          "description": "start begins a window, stop ends it, list returns the calls inside it"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "cli_compile",
+    "description": "Turn explicit captured request ids into one site CLI in the Workflows panel. Only those ids are included. Writes stay off. Pass extract to teach every new command which HTML fields to return. Returns the workflow id and command names, never header or body values.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "requestIds": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "requestId values from list_requests or cli_arm"
+        },
+        "name": {
+          "description": "Name shown in the Workflows panel",
+          "type": "string"
+        },
+        "site": {
+          "description": "Site slug. Defaults to the host",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "baseUrl": {
+          "description": "Origin to keep. Other origins are dropped",
+          "type": "string"
+        },
+        "names": {
+          "description": "Command name per requestId, named for what it does, e.g. { \"123.4\": \"search\" }. Omit for names derived from the path",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "extract": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "type": "string",
+              "description": "CSS selector that matches each row"
+            },
+            "limit": {
+              "description": "Rows to return. Default 5, maximum 20",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "fields": {
+              "minItems": 1,
+              "maxItems": 6,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Field name, such as title or link"
+                  },
+                  "selector": {
+                    "description": "CSS selector relative to the row. Omit to use the row itself",
+                    "type": "string"
+                  },
+                  "attr": {
+                    "description": "Attribute to read, such as href. Omit to read the text",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "selector",
+            "fields"
+          ],
+          "description": "Fields to read from an HTML response. Saved on the command."
+        }
+      },
+      "required": [
+        "requestIds"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "cli_list",
+    "description": "List saved site CLIs: id, site, command names, effects, and whether writes are on. No header values or secrets.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "cli_describe",
+    "description": "Describe one saved CLI, or one of its commands: method, path, effect, flags, session header names, saved extract, and evidence request ids. The reply ends with the cli_run object (id, command, inputs). Inputs are blank here. The Workflows panel fills them from the captured request. Cookie values are never included.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "CLI id from cli_list or cli_compile"
+        },
+        "command": {
+          "description": "One command name. Omit to describe every command",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "cli_run",
+    "description": "Run one saved CLI command inside the logged-in tab. Cookies stay in the tab. Read commands send immediately. Write and unknown commands send only when writes are on for that CLI. A failure after a write was sent returns action_outcome_unknown and is not retried. Pass extract once to teach the command which fields to read from an HTML page. Later runs use the saved extract and return those fields instead of the page. Without extract, an HTML page comes back as a short preview.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "CLI id from cli_list or cli_compile"
+        },
+        "command": {
+          "type": "string",
+          "description": "Command name from cli_describe"
+        },
+        "inputs": {
+          "description": "Flag values keyed by flag name. Required path flags must be present",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "extract": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "type": "string",
+              "description": "CSS selector that matches each row"
+            },
+            "limit": {
+              "description": "Rows to return. Default 5, maximum 20",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "fields": {
+              "minItems": 1,
+              "maxItems": 6,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Field name, such as title or link"
+                  },
+                  "selector": {
+                    "description": "CSS selector relative to the row. Omit to use the row itself",
+                    "type": "string"
+                  },
+                  "attr": {
+                    "description": "Attribute to read, such as href. Omit to read the text",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "selector",
+            "fields"
+          ],
+          "description": "Fields to read from an HTML response. Saved on the command."
+        }
+      },
+      "required": [
+        "id",
+        "command"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "cli_writes",
+    "description": "Turn writes on or off for one saved CLI. Ask the user once before turning writes on. This only flips the saved flag. It does not send a request.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "CLI id from cli_list or cli_compile"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "true allows write and unknown commands to send"
+        }
+      },
+      "required": [
+        "id",
+        "enabled"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "cli_export",
+    "description": "Return a curl script for a saved CLI. Flags are placeholders. Captured secrets and cookie values are not included.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "CLI id from cli_list or cli_compile"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  }
+]

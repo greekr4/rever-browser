@@ -1,0 +1,9 @@
+{
+  "crate": "rever-inject",
+  "files": [
+    "src/main/stealth-init.ts",
+    "src/main/mcp/visualizer.ts",
+    "src/main/mcp/oopif.ts"
+  ],
+  "notes": "stealth-init.ts and visualizer.ts mostly hold JavaScript that is injected into web pages. Carry that JavaScript over byte for byte as Rust string constants (raw strings), including constants interpolated into it such as the spoofed Chrome version; where the TypeScript builds the script from pieces, build it the same way and add a test that the assembled script contains the pieces and, where bun is available, that it equals what the TypeScript produces. oopif.ts describes frame sessions over the Chrome DevTools Protocol: port its pure helpers and types; anything that needs a live CDP session takes it as a trait object or closure argument."
+}

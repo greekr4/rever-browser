@@ -1,0 +1,11 @@
+[package]
+name = "rever-ui-kit"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Shared GPUI building blocks for rever's interface: theme, icons, strings, text field"
+
+[dependencies]
+gpui = { workspace = true }
+unicode-segmentation = "1"
+sys-locale = "0.3"

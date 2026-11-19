@@ -1,0 +1,24 @@
+[package]
+name = "rever-ui-setup"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Onboarding, browser import, profile menu and proxy settings"
+
+[dependencies]
+gpui = { workspace = true }
+rever-ui-kit = { path = "../rever-ui-kit" }
+# Tabs with their proxy config, the agent catalog, and the Storage trait.
+rever-ui-state = { path = "../rever-ui-state" }
+# Look/LookFn and `fill`, shared with the other toolbar widgets.
+rever-ui-menus = { path = "../rever-ui-menus" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+# TestAppContext: clicks, outside presses and the host calls are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
+serde_json = "1"
+
+[[example]]
+name = "preview_setup"
+path = "examples/preview.rs"

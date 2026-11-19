@@ -1,0 +1,13 @@
+[package]
+name = "rever-formats"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Decoders and matchers for captured data (protobuf, console, intercept rules, traces), ported from src/main"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+base64 = "0.22"
+# A decoded protobuf message lists its fields in wire order, like the JS object did.
+indexmap = { version = "2", features = ["serde"] }

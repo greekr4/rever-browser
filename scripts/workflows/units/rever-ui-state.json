@@ -1,0 +1,24 @@
+{
+  "crate": "rever-ui-state",
+  "files": [
+    "src/renderer/src/stores/tabs.ts",
+    "src/renderer/src/stores/notify.ts",
+    "src/renderer/src/stores/scan-mode.ts",
+    "src/renderer/src/stores/chat-history.ts",
+    "src/renderer/src/stores/chat-draft.ts",
+    "src/renderer/src/stores/chat-collapsed.ts",
+    "src/renderer/src/stores/agent-choice.ts",
+    "src/renderer/src/stores/agent-mode.ts",
+    "src/renderer/src/stores/browser-mode.ts",
+    "src/renderer/src/stores/app-theme.ts",
+    "src/renderer/src/stores/webview-theme.ts",
+    "src/renderer/src/stores/viewport.ts",
+    "src/renderer/src/stores/ip-visibility.ts",
+    "src/renderer/src/stores/navigation-request.ts",
+    "src/renderer/src/stores/approval-audit.ts",
+    "src/renderer/src/lib/ws-sequence.ts",
+    "src/renderer/src/lib/format-json.ts",
+    "src/renderer/src/constants.ts"
+  ],
+  "notes": "These are zustand stores from a React app; this crate has NO GPUI dependency. Port each store as a plain struct holding the state with methods for its actions (same names in snake_case, same rules such as 'never close the last tab'). Where a store persists itself (zustand `persist` or direct localStorage calls), keep the same storage key and the same JSON shape, behind a small `Storage` trait defined once in this crate (get/set/remove a string by key) with an in-memory implementation for tests and a file-backed one (one JSON file holding all keys, written atomically); the store takes `&dyn Storage` when loading and saving. Stores that call `window.rev.*` (IPC to the main process) take that dependency as a trait or closure argument. Do not port React hooks; skip code that only exists to trigger re-rendering."
+}

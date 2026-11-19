@@ -1,0 +1,32 @@
+[package]
+name = "rever-tools-http"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Outbound HTTP primitives for tools: raw HTTP and gRPC request senders (fence-gated)"
+
+[dependencies]
+rever-tools-api = { path = "../rever-tools-api" }
+rever-core = { path = "../rever-core" }
+# raw_http is gated to loopback / lab hosts.
+rever-scope = { path = "../rever-scope" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# raw_http opens its own TCP/TLS socket to send bytes verbatim.
+rustls = "0.23"
+rustls-pki-types = "1"
+# grpc_call speaks HTTP/2 with trailers (grpc-status), which needs a raw h2 client.
+tokio = { version = "1", features = ["rt", "net", "io-util", "time", "macros"] }
+tokio-rustls = "0.26"
+h2 = "0.4"
+http = "1"
+bytes = "1"
+base64 = "0.22"
+# send.rs: the one send path the probes funnel through (scope/fence-gated).
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "deflate", "brotli"] }
+# fuzz.rs: intruder bodyHash + burst's concurrent fan-out.
+sha1 = "0.10"
+futures = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }

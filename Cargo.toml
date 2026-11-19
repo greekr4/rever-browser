@@ -1,0 +1,82 @@
+# Rust workspace for the Electron-free rever: `rever` is the GPUI app, `servo-shell`
+# is the earlier winit spike that also serves CDP for the Electron app's external mode.
+[workspace]
+resolver = "3"
+members = [
+    "port-harness",
+    "rever",
+    "rever-agent",
+    "rever-analysis",
+    "rever-chat-core",
+    "rever-cli-spec",
+    "rever-cookie-import",
+    "rever-core",
+    "rever-formats",
+    "rever-inject",
+    "rever-mcp",
+    "rever-scope",
+    "rever-snapshot",
+    "rever-tool-profile",
+    "rever-tools-api",
+    "rever-tools-automation",
+    "rever-tools-browser",
+    "rever-tools-debug",
+    "rever-tools-http",
+    "rever-tools-inspect",
+    "rever-tools-page",
+    "rever-tools-probe",
+    "rever-tools-redteam",
+    "rever-tools-scripts",
+    "rever-tools-traffic",
+    "rever-ui-apimap",
+    "rever-ui-chat",
+    "rever-ui-chrome",
+    "rever-ui-console",
+    "rever-ui-history",
+    "rever-ui-kit",
+    "rever-ui-markdown",
+    "rever-ui-menus",
+    "rever-ui-repeater",
+    "rever-ui-scan",
+    "rever-ui-setup",
+    "rever-ui-state",
+    "rever-ui-storage",
+    "rever-ui-traffic",
+    "rever-ui-websocket",
+    "rever-ui-workflows",
+    "servo-shell",
+]
+
+[workspace.dependencies]
+# runtime_shaders: compile Metal shaders at startup instead of at build time, so a build
+# does not need Xcode's separately downloaded Metal toolchain. Every crate that uses GPUI
+# takes it from here, so GPUI is never built without the feature.
+gpui = { version = "0.2.2", features = ["runtime_shaders"] }
+
+# Patched crates; scripts/apply-rust-patches.sh recreates vendor/ from patches/.
+[patch.crates-io]
+# Network tap: hands request and response bodies to the embedder.
+servo-net = { path = "vendor/servo-net" }
+# AVIF images: Servo 0.8 decodes none. Needs libdav1d and pkg-config on the build machine.
+servo-pixels = { path = "vendor/servo-pixels" }
+# The debugging server must not panic on a stack frame of evaluated code.
+servo-devtools = { path = "vendor/servo-devtools" }
+# One freetype-sys version for both GPUI and Servo.
+zed-font-kit = { path = "vendor/zed-font-kit" }
+# Without log's serde key-value feature, which breaks Servo's CSS engine at compile time.
+gpui = { path = "vendor/gpui" }
+gpui_http_client = { path = "vendor/gpui_http_client" }
+gpui_sum_tree = { path = "vendor/gpui_sum_tree" }
+gpui_util = { path = "vendor/gpui_util" }
+
+# Unoptimized, the app stalls: the per-frame pixel conversion holds the main
+# thread, and Servo's layout and WebRender take whole frames to answer a scroll.
+# Dependencies are built once, so optimizing them costs one long build; the
+# workspace's own crates other than the app stay fast to rebuild.
+[profile.dev.package.rever]
+opt-level = 2
+
+[profile.dev.package."*"]
+opt-level = 2
+# Line numbers in backtraces without the size of full debug info.
+debug = "line-tables-only"

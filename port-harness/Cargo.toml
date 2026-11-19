@@ -1,0 +1,9 @@
+[package]
+name = "port-harness"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Scoreboard for the TypeScript/Electron → Rust/GPUI port: inventory, coverage, behavior checks"
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }

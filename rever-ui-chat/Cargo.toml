@@ -1,0 +1,31 @@
+[package]
+name = "rever-ui-chat"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Chat panel parts: tabs, history menu, model picker, provider icons, permission prompt"
+
+[dependencies]
+gpui = { workspace = true }
+rever-ui-kit = { path = "../rever-ui-kit" }
+rever-core = { path = "../rever-core" }
+# The agent and model tables, saved conversations, and `JSON.stringify(value, null, 2)`.
+rever-ui-state = { path = "../rever-ui-state" }
+# The permission queue's ids.
+rever-chat-core = { path = "../rever-chat-core" }
+# `Look` (theme + language per render) and `{name}` placeholder filling.
+rever-ui-menus = { path = "../rever-ui-menus" }
+# Profile ids and the risky-tool rules the permission prompt shows.
+rever-tool-profile = { path = "../rever-tool-profile" }
+# The live model list as the main process reads it from an agent's CLI.
+rever-agent = { path = "../rever-agent" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+# TestAppContext: clicks and keys are tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }
+
+[[example]]
+name = "preview_chat"
+path = "examples/preview.rs"

@@ -1,0 +1,14 @@
+[package]
+name = "rever-core"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "rever's engine-independent logic (traffic store, analysis), ported from src/main"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+base64 = "0.22"
+indexmap = { version = "2", features = ["serde"] }
+regex = "1"
+url = "2"
