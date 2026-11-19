@@ -1,15 +1,19 @@
 name: Rust CI
 
-# The Electron app is gone; the Rust workspace is the product. Tests on every
-# push and PR. Release packaging (GPUI + Servo) is not set up yet — a dmg
-# workflow returns when the shell ships.
+# Tests on pushes to main and on PRs. A branch push without a PR runs nothing,
+# so one PR is one cold Servo build, not two. Release packaging is not set up yet.
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
+
+# A new commit on the same PR cancels the run it replaces.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -23,7 +27,11 @@ jobs:
       - name: Apply crate patches
         run: ./scripts/apply-rust-patches.sh
       - uses: dtolnay/rust-toolchain@stable
+      # Caches are about 2GB against a 10GB repo limit. Only main saves, so branch
+      # caches never evict the one every PR restores from.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Workspace tests
         run: cargo test --workspace
       - name: The app builds
