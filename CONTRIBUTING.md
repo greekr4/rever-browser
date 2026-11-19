@@ -9,7 +9,7 @@ Thanks for taking the time to contribute.
 cargo run -p rever -- <url>       # build and launch the app
 ```
 
-See `CLAUDE.md` for the architecture overview (crates, engine tap, MCP server layout) before touching `rever/` or the `rever-tools-*` crates.
+See `CLAUDE.md` for the architecture overview (crates, engine tap, MCP server layout) before touching `crates/rever/` or the `crates/rever-tools-*` crates.
 
 ## Before opening a PR
 
