@@ -432,6 +432,20 @@ pub fn auth_prompt(target: &str, user: &str, pass: &str) -> String {
     )
 }
 
+/// Phase 0b — the attacker tenant. Stashed via redteam_alt_session_set so
+/// idor_probe can cross-check; the owner session is restored afterwards so
+/// discovery crawls the data-rich tenant.
+pub fn alt_tenant_prompt(origin: &str, user: &str, pass: &str) -> String {
+    format!(
+        "BOLA/IDOR 를 확정하려면 2번째(공격자) 테넌트가 필요하다. 순서대로: 1) cookie_list({{ urls: [\"{origin}\"] }}) 로 현재 소유자 세션 쿠키(이름=값들)를 읽어 전부 기억한다. 2) 회원가입(register/signup) 폼으로 가서 새 계정 사용자명 \"{user}\", 비밀번호 \"{pass}\" (이메일 필드가 있으면 \"{user}@example.com\")로 가입하고 로그인한다. 3) cookie_list({{ urls: [\"{origin}\"] }}) 로 이 새 계정의 세션 쿠키를 읽어, 전체를 \"name1=value1; name2=value2\" 형식으로 합쳐 redteam_alt_session_set({{ cookie: \"<합친 값>\" }}) 로 저장한다. 4) 1)에서 기억한 소유자 쿠키를 각각 cookie_set({{ name, value, url: \"{origin}\", httpOnly: true }}) 로 복원해 원래(데이터 있는) 세션으로 되돌린다 — 이후 크롤이 소유자로 돌아야 한다. 저장까지 성공하면 'ALT_READY' 한 단어만, 회원가입이 불가하거나 실패하면 'NO_ALT' 한 단어만 출력."
+    )
+}
+
+/// Phase 3.7 — prove impact by chaining confirmed vulns (disposable targets).
+pub fn escalate_prompt() -> String {
+    "에스컬레이션 단계 — 확인된 취약점의 최종 임팩트를 증명한다. 먼저 finding_list(category:\"vuln\") 로 severity critical/high 인 항목을 최대 5개 고른다(임팩트 태그가 이미 붙은 것은 건너뛴다). 각각에 대해 취약점 종류를 넘어 체인을 실행한다: SSTI 면 템플릿·플래그·환경변수 파일 읽기, 경로 쓰기(path_write)면 템플릿/소스 덮어쓰기 후 렌더 확인, SQLi 면 실제 데이터 한 행 추출(UNION 또는 에러 기반), BOLA 면 타 테넌트 리소스 본문 인용, broken auth 면 인증 없는 접근으로 보호 데이터 확보. 도구는 ssti_probe/replay_request/raw_http/grpc_call/pickle_gadget 등 프로브 프로파일 전부 허용. 이 타겟은 일회성(사용자 소유)이므로 파일 쓰기·삭제를 포함한 파괴적 행동도 허용된다. 임팩트가 증명되면 finding_add(category:\"vuln\", severity:\"critical\", tags:[\"impact\"]) 로 원본 finding id 를 evidenceIds 에 넣어 기록하고, 증명에 실패하면 새로 기록하지 않는다. 끝나면 증명된 임팩트 개수만 한 줄로 답한다.".to_owned()
+}
+
 pub fn discovery_prompt(target: &str, scope_host: &str, pages: u32) -> String {
     format!(
         "scope_set({{ hosts: [\"{scope_host}\"] }}) 로 범위를 고정하고 browser_navigate(\"{target}\") 후 browser_snapshot. 이후 이 타겟 탭에서는 다른 페이지로 이동하지 말 것 — browser_navigate 로 벗어나지 않는다. 점검할 다른 페이지는 스캔이 각각 새 탭으로 열어 워커가 거기서 더 깊이 탐색한다. list_requests 로 이 앱이 호출하는 자체 API 호스트(예: 다른 localhost 포트의 백엔드, api.* 서브도메인)를 확인하면 scope_add 로 범위에 추가한다 — 단 서드파티(분석/광고/CDN)는 추가하지 않는다. 랜딩 스냅샷과 list_requests 에 보이는 같은 사이트 링크/경로를 점검할 만한 페이지로 최대 {pages}개 모은다. 설명 없이 절대경로 URL들의 JSON 배열 한 줄만 출력."
@@ -550,11 +564,15 @@ impl Turn {
 #[derive(Debug, PartialEq)]
 enum Phase {
     Auth,
+    /// The attacker tenant for BOLA cross-checks (redteam only, authed).
+    AltTenant,
     Discovery,
     ScopeExpand,
     Workers,
     ProbeCollect,
     ProbeWorkers,
+    /// Prove impact by chaining confirmed vulns (redteam, disposable targets).
+    Escalate,
     Report,
     Done,
     Failed(String),
@@ -714,13 +732,29 @@ impl ScanRun {
                     if authed { "인증 세션 확보됨" } else { "인증 게이트 없음 (공개 스캔)" },
                     None,
                 );
-                let site = scope_key(&self.target).unwrap_or_default();
-                let scope_host = url::Url::parse(&self.target)
-                    .map(|parsed| parsed.host_str().unwrap_or_default().to_owned())
-                    .unwrap_or_else(|_| self.target.clone());
-                self.log(LineKind::Phase, format!("탐색 단계 — {site}"), None);
-                self.start_turn(spawn, &discovery_prompt(&self.target, &scope_host, self.pages));
-                self.phase = Phase::Discovery;
+                if authed && self.intensity == "full" {
+                    // A second identity is what confirms BOLA/IDOR: anonymous is
+                    // denied, but can a different tenant read the owner's object?
+                    self.log(LineKind::Phase, "대체 테넌트 등록", None);
+                    self.start_turn(spawn, &alt_tenant_prompt(&self.origin(), &throwaway_user(), &throwaway_pass()));
+                    self.phase = Phase::AltTenant;
+                } else {
+                    self.start_discovery(spawn);
+                }
+            }
+            Phase::AltTenant if turn_done => {
+                let text = self.take_turn_text();
+                let ready = text.contains("ALT_READY") && !text.contains("NO_ALT");
+                self.log(
+                    LineKind::Phase,
+                    if ready {
+                        "공격자 테넌트 준비됨 — idor_probe 교차 검증 가능"
+                    } else {
+                        "대체 테넌트 없음 (IDOR 은 후보로 남음)"
+                    },
+                    None,
+                );
+                self.start_discovery(spawn);
             }
             Phase::Discovery if turn_done => {
                 let text = self.take_turn_text();
@@ -781,8 +815,18 @@ impl ScanRun {
             Phase::ProbeWorkers => {
                 self.pump_pool(spawn, &mut actions);
                 if self.pool.is_empty() && self.queue.is_empty() {
-                    self.start_report(spawn);
+                    if self.intensity == "full" && self.aggressive {
+                        self.log(LineKind::Phase, "에스컬레이션 — 임팩트 증명", None);
+                        self.start_turn(spawn, &escalate_prompt());
+                        self.phase = Phase::Escalate;
+                    } else {
+                        self.start_report(spawn);
+                    }
                 }
+            }
+            Phase::Escalate if turn_done => {
+                self.take_turn_text();
+                self.start_report(spawn);
             }
             Phase::Report if turn_done => {
                 let turn = self.turn.take().expect("turn finished");
@@ -847,6 +891,23 @@ impl ScanRun {
                 self.log(LineKind::Error, error, label);
             }
         }
+    }
+
+    fn start_discovery(&mut self, spawn: &mut Spawner) {
+        let site = scope_key(&self.target).unwrap_or_default();
+        let scope_host = url::Url::parse(&self.target)
+            .map(|parsed| parsed.host_str().unwrap_or_default().to_owned())
+            .unwrap_or_else(|_| self.target.clone());
+        self.log(LineKind::Phase, format!("탐색 단계 — {site}"), None);
+        self.start_turn(spawn, &discovery_prompt(&self.target, &scope_host, self.pages));
+        self.phase = Phase::Discovery;
+    }
+
+    /// The target's origin (scheme://host[:port]).
+    fn origin(&self) -> String {
+        url::Url::parse(&self.target)
+            .map(|parsed| parsed.origin().ascii_serialization())
+            .unwrap_or_else(|_| self.target.clone())
     }
 
     fn enter_workers(&mut self, spawn: &mut Spawner, actions: &mut Vec<ScanAction>) {

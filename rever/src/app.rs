@@ -96,7 +96,12 @@ fn start_mcp(
     traffic: Arc<Mutex<TrafficStore>>,
     browser: Arc<bridge::AppBrowser>,
     debug_endpoint: crate::debug::Endpoint,
-) -> (Option<McpServer>, Arc<InterceptState>, Arc<DownloadState>) {
+) -> (
+    Option<McpServer>,
+    Arc<InterceptState>,
+    Arc<DownloadState>,
+    Arc<rever_tools_api::tool::ToolContext>,
+) {
     let mut registry = ToolRegistry::default();
     rever_tools_traffic::register(&mut registry);
     rever_tools_inspect::register(&mut registry);
@@ -112,6 +117,7 @@ fn start_mcp(
     // The server publishes its endpoint file here.
     let _ = std::fs::create_dir_all(&data_dir);
     let context = Arc::new(ToolContext::new(traffic, browser.clone(), data_dir));
+    let context_for_app = context.clone();
     // The intercept and override tools decide requests through the page engine.
     // The breakpoint tools debug pages through Servo's own debugging server.
     let debug = context.state::<DebugState>();
@@ -156,7 +162,7 @@ fn start_mcp(
     let server = rever_mcp::start(Arc::new(registry), context)
         .inspect_err(|error| eprintln!("[mcp] {error}"))
         .ok();
-    (server, intercept, downloads)
+    (server, intercept, downloads, context_for_app)
 }
 
 /// `/^https?:\/\//i`: the pages that can be bookmarked.
@@ -480,6 +486,8 @@ pub(crate) struct Browser {
     /// Serves the tools to the agent CLI and to outside clients (mcp-endpoint.json);
     /// `None` when it could not start. Dropping it stops the server.
     mcp: Option<McpServer>,
+    /// The tools' shared context — the scan clears this site's findings through it.
+    tool_context: Arc<ToolContext>,
     pub page_focus: FocusHandle,
     pub lang: Lang,
     pub theme_mode: ThemeMode,
@@ -558,7 +566,7 @@ impl Browser {
         let tool_browser = Arc::new(bridge::AppBrowser::new(tool_tx, wake.clone()));
         let traffic = Arc::new(Mutex::new(TrafficStore::default()));
         let debug_endpoint = crate::debug::Endpoint::default();
-        let (mcp, intercept, downloads) =
+        let (mcp, intercept, downloads, tool_context) =
             start_mcp(traffic.clone(), tool_browser.clone(), debug_endpoint.clone());
         let traffic_changed = Arc::new(AtomicBool::new(false));
         {
@@ -695,6 +703,7 @@ impl Browser {
             tool_tx: tool_tx_app,
             close_scan_tabs: false,
             mcp,
+            tool_context,
             page_focus: cx.focus_handle(),
             lang,
             theme_mode,
@@ -1344,9 +1353,10 @@ impl Browser {
             .get("intensity")
             .and_then(serde_json::Value::as_str)
             .unwrap_or("readonly");
+        // "redteam" is the TypeScript name of what the dialog calls "full".
         let intensity = match intensity {
             "probe" => "probe",
-            "full" => "full",
+            "full" | "redteam" => "full",
             _ => "readonly",
         };
         let autostart = payload
@@ -1426,6 +1436,14 @@ impl Browser {
         // A finished scan stays on screen (its report); Start replaces it.
         if target.is_empty() || self.agent_busy || self.redteam_running {
             return;
+        }
+        // Fresh-scan guarantee: findings persist per site, which cannot tell two
+        // apps on the same origin apart — drop this site's old findings first.
+        // (The TS also cleared the target host's cookies; the Rust auth bootstrap
+        // registers a throwaway account anyway, so v1 leaves cookies alone.)
+        let cleared = rever_tools_redteam::findings::clear_findings_for_site(&self.tool_context, &target);
+        if cleared > 0 {
+            eprintln!("[scan] dropped {cleared} old finding(s) for this site");
         }
         crate::agent::REDTEAM_SCAN.store(true, Ordering::Relaxed);
         self.scan_tabs.clear();
