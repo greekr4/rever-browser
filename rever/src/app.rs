@@ -473,6 +473,10 @@ pub(crate) struct Browser {
     wake: UnboundedSender<()>,
     /// Requests from MCP tools, answered in `pump`.
     tool_commands: UnboundedReceiver<bridge::Command>,
+    /// The sending end, for the app's own commands (the scan's tab opens).
+    tool_tx: UnboundedSender<bridge::Command>,
+    /// The scan asked for its tabs to be closed; the wake loop does it.
+    close_scan_tabs: bool,
     /// Serves the tools to the agent CLI and to outside clients (mcp-endpoint.json);
     /// `None` when it could not start. Dropping it stops the server.
     mcp: Option<McpServer>,
@@ -509,8 +513,10 @@ pub(crate) struct Browser {
     pub redteam_drag: Option<(f32, f32)>,
     /// A scan turn is streaming into the dialog (not the chat panel).
     pub redteam_running: bool,
-    /// The scan's live activity, shown inside the dialog.
-    pub redteam_log: String,
+    /// The running (or just-finished) scan orchestrator, when there is one.
+    pub scan: Option<crate::scan::ScanRun>,
+    /// URLs of the tabs the scan opened; closed when it finishes.
+    pub scan_tabs: Vec<String>,
     /// Dialog size; the bottom-right corner drags it.
     pub redteam_w: f32,
     pub redteam_h: f32,
@@ -548,6 +554,7 @@ impl Browser {
         let (wake, mut woken) = futures::channel::mpsc::unbounded::<()>();
         let agent_wake = wake.clone();
         let (tool_tx, tool_commands) = futures::channel::mpsc::unbounded();
+        let tool_tx_app = tool_tx.clone();
         let tool_browser = Arc::new(bridge::AppBrowser::new(tool_tx, wake.clone()));
         let traffic = Arc::new(Mutex::new(TrafficStore::default()));
         let debug_endpoint = crate::debug::Endpoint::default();
@@ -685,6 +692,8 @@ impl Browser {
             agent_busy: false,
             wake: agent_wake,
             tool_commands,
+            tool_tx: tool_tx_app,
+            close_scan_tabs: false,
             mcp,
             page_focus: cx.focus_handle(),
             lang,
@@ -705,7 +714,8 @@ impl Browser {
             redteam_pos: (0.0, 0.0),
             redteam_drag: None,
             redteam_running: false,
-            redteam_log: String::new(),
+            scan: None,
+            scan_tabs: Vec::new(),
             redteam_w: 560.0,
             redteam_h: 380.0,
             redteam_size_drag: None,
@@ -854,6 +864,18 @@ impl Browser {
             self.views.apimap.update(cx, |panel, cx| panel.refresh(cx));
         }
         self.pump_agent();
+        self.pump_scan(cx);
+        if self.close_scan_tabs {
+            self.close_scan_tabs = false;
+            let urls = std::mem::take(&mut self.scan_tabs);
+            let mut index = self.tabs.len();
+            while index > 0 {
+                index -= 1;
+                if self.tabs.len() > 1 && urls.contains(&self.tabs[index].url) {
+                    self.close_tab(index, window, cx);
+                }
+            }
+        }
         self.run_tool_commands(window, cx);
         cx.notify();
     }
@@ -1104,6 +1126,9 @@ impl Browser {
     /// Spawn the agent if needed and send `text` as a turn, without touching the
     /// chat log — the Red Team dialog uses this so the scan streams into itself.
     fn start_agent_turn(&mut self, text: &str) -> Result<(), String> {
+        if self.redteam_running {
+            return Err("a red-team scan is running — stop it first".to_owned());
+        }
         if self.agent.is_none() {
             // The same sandbox folder the Electron app gives its agents.
             let scratch = data_dir().join("agent-scratch");
@@ -1393,30 +1418,90 @@ impl Browser {
         }
     }
 
-    /// Run the configured scan by starting an agent turn directly (no visible
-    /// chat message): the agent calls `redteam_start`. Its reply streams into
-    /// the chat panel.
+    /// Run the configured scan: the ported scan-store orchestrator (auth →
+    /// discovery → per-tab workers → probes → report), streaming into the
+    /// dialog. Worker turns are their own CLI sessions.
     pub fn start_redteam(&mut self, cx: &mut Context<Self>) {
         let target = self.views.redteam_target.read(cx).text().trim().to_owned();
-        if target.is_empty() || self.agent_busy {
+        // A finished scan stays on screen (its report); Start replaces it.
+        if target.is_empty() || self.agent_busy || self.redteam_running {
             return;
         }
-        let scope = match self.redteam_intensity {
-            "readonly" => "Recon only: read the captured traffic, map the API (list_endpoints / list_requests / get_request), inspect auth and scripts. Do NOT send probes or payloads.",
-            "probe" => "Access: recon, then fire the injection/auth probes (sqli/nosqli/ssti/cmd/idor/path/etc.) at the discovered endpoints. The capture-not-send fence still blocks mutations on non-loopback hosts.",
-            _ => "Red Team: recon, then the full probe set plus active checks. The fence still gates mutations off loopback/lab.",
-        };
-        let message = format!(
-            "Run a {} red-team scan of {target} (up to {} pages). {scope} Work quietly — do not narrate your steps. When finished, reply with ONLY a concise markdown report of the findings (severity, endpoint, evidence).",
-            self.redteam_intensity, self.redteam_pages
-        );
-        self.redteam_log.clear();
+        crate::agent::REDTEAM_SCAN.store(true, Ordering::Relaxed);
+        self.scan_tabs.clear();
+        self.scan = Some(crate::scan::ScanRun::new(
+            &target,
+            self.redteam_pages,
+            self.redteam_intensity,
+        ));
         self.redteam_running = true;
-        if let Err(error) = self.start_agent_turn(&message) {
-            self.agent = None;
-            self.redteam_running = false;
-            self.redteam_log = format!("error: {error}");
+        self.pump_scan(cx);
+        cx.notify();
+    }
+
+    /// Ask the running scan to stop; its next pump jumps to the report.
+    pub fn stop_redteam(&mut self, cx: &mut Context<Self>) {
+        if let Some(scan) = self.scan.as_mut() {
+            scan.stop();
         }
+        self.pump_scan(cx);
+    }
+
+    /// Advance the scan one tick: spawn what the phases need, execute the
+    /// actions it returns (open/close its tabs), and finish it cleanly.
+    fn pump_scan(&mut self, cx: &mut Context<Self>) {
+        let Some(mut scan) = self.scan.take() else {
+            return;
+        };
+        let scratch = data_dir().join("agent-scratch");
+        let mcp = self
+            .mcp
+            .as_ref()
+            .map(|mcp| (mcp.url.clone(), mcp.auth_header.clone()));
+        let wake = self.wake.clone();
+        let mut spawn = move |prompt: &str| {
+            let _ = prompt;
+            let wake = wake.clone();
+            let mcp = mcp.as_ref().map(|(url, auth)| (url.as_str(), auth.as_str()));
+            crate::agent::AgentSession::spawn(&scratch, mcp, move || {
+                let _ = wake.unbounded_send(());
+            })
+        };
+        // The URLs in the store, for the discovery scope follow-up.
+        let captured: Vec<String> = self
+            .stores
+            .traffic
+            .lock()
+            .unwrap()
+            .list(&ListFilter {
+                limit: Some(500),
+                ..ListFilter::default()
+            })
+            .into_iter()
+            .map(|request| request.url.clone())
+            .collect();
+        for action in scan.pump(&mut spawn, &captured) {
+            match action {
+                crate::scan::ScanAction::OpenTab(url) => {
+                    // A background tab, opened through the same command the
+                    // MCP tools use; the answer (its index) is not needed.
+                    let (answer, _) = oneshot::channel();
+                    let _ = self
+                        .tool_tx
+                        .unbounded_send(bridge::Command::OpenTab(url.clone(), answer));
+                    let _ = self.wake.unbounded_send(());
+                    self.scan_tabs.push(url);
+                }
+                // Closing needs the window (image teardown); the wake loop
+                // picks the flag up right after this pump.
+                crate::scan::ScanAction::CloseScanTabs => self.close_scan_tabs = true,
+            }
+        }
+        self.redteam_running = scan.running();
+        if !scan.running() {
+            crate::agent::REDTEAM_SCAN.store(false, Ordering::Relaxed);
+        }
+        self.scan = Some(scan);
         cx.notify();
     }
 
@@ -1669,22 +1754,18 @@ impl Browser {
         for event in agent.drain() {
             match event {
                 AgentEvent::Text(text) => {
-                    if self.redteam_running {
-                        self.redteam_log.push_str(&text);
-                    } else if let Some(line) = self.chat.last_mut().filter(|line| !line.from_user) {
+                    if let Some(line) = self.chat.last_mut().filter(|line| !line.from_user) {
                         line.text.push_str(&text);
                     }
                 }
                 AgentEvent::Done => {
                     self.agent_busy = false;
-                    self.redteam_running = false;
                 }
+                // The chat turn ignores tool traffic; the scan's own pump reads it.
+                AgentEvent::ToolCall(..) | AgentEvent::ToolResult(..) => {}
                 AgentEvent::Failed(error) => {
                     // A failure outside a turn (the CLI exiting after a finished one) is not shown.
-                    if self.redteam_running {
-                        self.redteam_log.push_str(&format!("\nerror: {error}"));
-                        self.redteam_running = false;
-                    } else if self.agent_busy {
+                    if self.agent_busy {
                         self.turn_failed(&error);
                     }
                     self.agent_busy = false;

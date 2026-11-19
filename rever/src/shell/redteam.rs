@@ -5,7 +5,7 @@
 
 use gpui::{
     AnyElement, ClickEvent, Context, DragMoveEvent, FontWeight, Hsla, MouseButton, MouseDownEvent,
-    div, prelude::*, px, rgb,
+    div, prelude::*, px, relative, rgb,
 };
 use rever_ui_kit::theme::Theme;
 
@@ -140,13 +140,16 @@ impl Browser {
         let running = self.redteam_running;
         let start = if running {
             div()
+                .id("redteam-stop")
                 .px(px(14.0))
                 .py(px(6.0))
                 .rounded(px(6.0))
-                .bg(theme.surface_3)
-                .text_color(theme.text_dim)
+                .bg(theme.status_error)
+                .text_color(theme.bg)
                 .font_weight(FontWeight::SEMIBOLD)
-                .child(lang.t("scan.panel.running"))
+                .cursor_pointer()
+.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.stop_redteam(cx)))
+                .child(format!("■ {}", lang.t("scan.panel.stop")))
                 .into_any_element()
         } else {
             div()
@@ -163,14 +166,77 @@ impl Browser {
                 .into_any_element()
         };
 
-        // The scan's live activity / report, streamed into the dialog itself.
-        let log_text = if !self.redteam_log.is_empty() {
-            self.redteam_log.clone()
+        // The scan's structured activity log: one line per event, the worker it
+        // came from as a short [tag], findings in the warning colour, phase
+        // lines set apart; the finished report renders as Markdown.
+        let mut lines: Vec<AnyElement> = Vec::new();
+        if let Some(scan) = &self.scan {
+            for line in &scan.log {
+                let (color, weight, spaced) = match line.kind {
+                    crate::scan::LineKind::Phase => (theme.text, FontWeight::SEMIBOLD, true),
+                    crate::scan::LineKind::Tool => (theme.text_dim, FontWeight::NORMAL, false),
+                    crate::scan::LineKind::Finding => (rgb(0xe0_a3_3e).into(), FontWeight::NORMAL, true),
+                    crate::scan::LineKind::Error => (theme.status_error.into(), FontWeight::NORMAL, true),
+                };
+                let tag = line
+                    .tab
+                    .as_ref()
+                    .map(|tab| format!("[{tab}]"))
+                    .unwrap_or_default();
+                lines.push(
+                    div()
+                        .when(spaced, |line| line.mt(px(6.0)))
+                        .flex()
+                        .items_start()
+                        .gap(px(6.0))
+                        .when_some(
+                            (!tag.is_empty()).then_some(tag),
+                            |row, tag| {
+                                row.child(
+                                    div()
+                                        .flex_none()
+                                        .max_w(px(110.0))
+                                        .truncate()
+                                        .text_color(theme.text_dim)
+                                        .child(tag),
+                                )
+                            },
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_color(color)
+                                .font_weight(weight)
+                                .line_height(relative(1.35))
+                                .child(line.text.clone()),
+                        )
+                        .into_any_element(),
+                );
+            }
+            if !running && !scan.report.is_empty() {
+                lines.push(
+                    div()
+                        .mt(px(10.0))
+                        .pt(px(10.0))
+                        .border_t_1()
+                        .border_color(theme.border)
+                        .text_color(theme.text)
+                        .child(
+                            rever_ui_markdown::markdown::markdown(&scan.report, theme)
+                                .id("redteam-report")
+                                .lang(lang),
+                        )
+                        .into_any_element(),
+                );
+            }
         } else if running {
-            lang.t("scan.panel.running").to_owned()
-        } else {
-            String::new()
-        };
+            lines.push(
+                div()
+                    .text_color(theme.text_dim)
+                    .child(lang.t("scan.panel.running"))
+                    .into_any_element(),
+            );
+        }
         let log = div()
             .id("redteam-log")
             .flex_1()
@@ -183,7 +249,7 @@ impl Browser {
             .text_size(px(11.0))
             .text_color(theme.text_dim)
             .font_family("monospace")
-            .child(log_text);
+            .children(lines);
 
         let dialog = div()
             .absolute()

@@ -7846,6 +7846,7 @@ dependencies = [
  "rever-ui-websocket",
  "rever-ui-workflows",
  "rustls",
+ "serde",
  "serde_json",
  "servo",
  "servo-net",

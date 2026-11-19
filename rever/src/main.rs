@@ -16,6 +16,7 @@ mod debug;
 mod engine;
 mod intercept;
 mod panels;
+mod scan;
 mod shell;
 mod storage_host;
 

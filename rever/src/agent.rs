@@ -23,13 +23,53 @@ use serde_json::{Value, json};
 
 const SESSION_ID: &str = "rever";
 
+/// True while a user-confirmed Red Team scan runs: the app's own risky MCP
+/// tools (probes, mutated replays) auto-approve for its worker turns. The
+/// capture-not-send fence stays the safety net — off loopback it still answers
+/// mutations with a synthetic 204. Chat turns cannot run concurrently with a
+/// scan, so the global cannot leak into an ordinary turn.
+pub static REDTEAM_SCAN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[derive(Debug, PartialEq)]
 pub enum AgentEvent {
     /// A piece of the reply, in order.
     Text(String),
+    /// A tool call started carrying its full input: (name, input).
+    ToolCall(String, Value),
+    /// A tool call finished: (name, the result text).
+    ToolResult(String, String),
     /// The turn finished normally.
     Done,
     /// The turn or the CLI itself failed; the session is no longer usable.
     Failed(String),
+}
+
+/// The tool events one ACP update carries: `tool_call` names the call,
+/// `tool_call_update` carries its input (in_progress) or output (completed).
+/// `names` maps call ids to names across the stream.
+fn tool_events(update: &Value, names: &mut std::collections::HashMap<String, String>) -> Vec<AgentEvent> {
+    let id = update["toolCallId"].as_str().unwrap_or_default().to_owned();
+    match update["sessionUpdate"].as_str() {
+        Some("tool_call") => {
+            let name = update["title"].as_str().unwrap_or_default().to_owned();
+            if !id.is_empty() && !name.is_empty() {
+                names.insert(id, name);
+            }
+            Vec::new()
+        }
+        Some("tool_call_update") => {
+            let name = names.get(&id).cloned().unwrap_or_default();
+            if let Some(input) = update.get("rawInput").filter(|value| !value.is_null()) {
+                Vec::from([AgentEvent::ToolCall(name, input.clone())])
+            } else if let Some(output) = update["rawOutput"].as_str() {
+                Vec::from([AgentEvent::ToolResult(name, output.to_owned())])
+            } else {
+                Vec::new()
+            }
+        }
+        _ => Vec::new(),
+    }
 }
 
 pub struct AgentSession {
@@ -37,6 +77,8 @@ pub struct AgentSession {
     stdin: ChildStdin,
     inbox: Arc<Mutex<Vec<Value>>>,
     state: TranslateState,
+    /// toolCallId → tool name, so a `tool_call_update` can be attributed.
+    tool_names: std::collections::HashMap<String, String>,
 }
 
 /// The CLI's arguments. `mcp` is the app's MCP server as (url, Authorization header);
@@ -61,8 +103,9 @@ fn auto_allowed(request: &Value) -> bool {
         .strip_prefix("mcp__")
         .and_then(|rest| rest.strip_prefix(MCP_SERVER_NAME))
         .is_some_and(|rest| rest.starts_with("__"));
-    name == "ToolSearch"
-        || (own && !is_risky_tool_request(&to_permission_request(SESSION_ID, request)))
+    let risky = is_risky_tool_request(&to_permission_request(SESSION_ID, request));
+    let redteam = REDTEAM_SCAN.load(std::sync::atomic::Ordering::Relaxed);
+    name == "ToolSearch" || (own && (!risky || redteam))
 }
 
 /// `REVER_CLAUDE_CLI` wins; otherwise `claude` on PATH, then the usual install
@@ -146,6 +189,7 @@ impl AgentSession {
             stdin,
             inbox,
             state: TranslateState::default(),
+            tool_names: std::collections::HashMap::new(),
         })
     }
 
@@ -197,6 +241,8 @@ impl AgentSession {
                             if let Some(text) = update["content"]["text"].as_str() {
                                 events.push(AgentEvent::Text(text.to_owned()));
                             }
+                        } else {
+                            events.extend(tool_events(update, &mut self.tool_names));
                         }
                     }
                 }
@@ -247,6 +293,46 @@ mod tests {
 
     fn request(tool: &str, input: Value) -> Value {
         json!({ "subtype": "can_use_tool", "tool_name": tool, "input": input })
+    }
+
+    #[test]
+    fn 툴_호출은_이름을_등록하고_입력과_출력_이벤트를_만든다() {
+        let mut names = std::collections::HashMap::new();
+        let named = json!({
+            "sessionUpdate": "tool_call", "toolCallId": "t1", "title": "finding_add"
+        });
+        assert!(tool_events(&named, &mut names).is_empty());
+        assert_eq!(names.get("t1").map(String::as_str), Some("finding_add"));
+
+        let input = json!({
+            "sessionUpdate": "tool_call_update", "toolCallId": "t1",
+            "rawInput": { "title": "XSS in q" }, "status": "in_progress"
+        });
+        assert_eq!(
+            tool_events(&input, &mut names),
+            vec![AgentEvent::ToolCall("finding_add".into(), json!({ "title": "XSS in q" }))]
+        );
+
+        let output = json!({
+            "sessionUpdate": "tool_call_update", "toolCallId": "t1",
+            "rawOutput": "added #7", "status": "completed"
+        });
+        assert_eq!(
+            tool_events(&output, &mut names),
+            vec![AgentEvent::ToolResult("finding_add".into(), "added #7".to_owned())]
+        );
+    }
+
+    #[test]
+    fn 등록_안_된_호출_식별자는_빈_이름으로_이벤트를_낸다() {
+        let mut names = std::collections::HashMap::new();
+        let output = json!({
+            "sessionUpdate": "tool_call_update", "toolCallId": "ghost", "rawOutput": "x"
+        });
+        assert_eq!(
+            tool_events(&output, &mut names),
+            vec![AgentEvent::ToolResult(String::new(), "x".to_owned())]
+        );
     }
 
     #[test]
