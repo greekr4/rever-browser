@@ -17,6 +17,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      # Servo's dav1d-sys links the system library through pkg-config.
+      - name: Install system libraries
+        run: brew install dav1d pkgconf
       - name: Apply crate patches
         run: ./scripts/apply-rust-patches.sh
       - uses: dtolnay/rust-toolchain@stable
