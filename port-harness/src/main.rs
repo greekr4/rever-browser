@@ -130,7 +130,11 @@ fn main() {
         .map(|dir| dir.flatten().count())
         .unwrap_or(0);
 
-    println!("== Inventory (TypeScript/Electron app) ==");
+    if ts.is_empty() {
+        println!("== Inventory (TypeScript/Electron app) ==\n  (removed — the Rust port is the app; history and main keep the original)");
+    } else {
+        println!("== Inventory (TypeScript/Electron app) ==");
+    }
     println!(
         "  main process    {:>4} files  {:>6} lines",
         count("src/main/"),

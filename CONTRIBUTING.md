@@ -5,26 +5,20 @@ Thanks for taking the time to contribute.
 ## Getting set up
 
 ```bash
-bun install      # install dependencies (use bun, not npm/pnpm)
-bun run dev      # electron-vite dev — main + preload + renderer with HMR
+./scripts/apply-rust-patches.sh   # fetch + patch the vendored crates (first run)
+cargo run -p rever -- <url>       # build and launch the app
 ```
 
-If HMR doesn't pick up a change to main- or preload-process code, kill the Electron process and re-run `bun run dev`:
-
-```bash
-pgrep -f "Electron|electron-vite" | xargs -r kill -9
-```
-
-See `CLAUDE.md` for the architecture overview (process boundaries, data flows, MCP server layout) before touching `src/main/` or `src/preload/`.
+See `CLAUDE.md` for the architecture overview (crates, engine tap, MCP server layout) before touching `rever/` or the `rever-tools-*` crates.
 
 ## Before opening a PR
 
 ```bash
-bun run typecheck  # tsc on tsconfig.node.json + tsconfig.web.json
-bun run test        # vitest (unit tests)
+cargo test --workspace   # every crate's unit tests
+cargo build -p rever     # the app itself compiles
 ```
 
-Both must pass. If your change touches a browser tool (MCP tools, CDP, snapshot/click/type), see `docs/agent-testing.md` for how to exercise it against `test-fixtures/` — don't rely on typecheck/unit tests alone for that surface.
+Both must pass. If your change touches a browser tool (MCP tools, the engine tap, snapshot/click/type), see `docs/agent-testing.md` for how to exercise it against `test-fixtures/` — don't rely on unit tests alone for that surface.
 
 ## Commit messages
 
