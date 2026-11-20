@@ -1,6 +1,6 @@
-diff --color --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/formatting_contexts.rs b/formatting_contexts.rs
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/formatting_contexts.rs b/formatting_contexts.rs
 --- a/formatting_contexts.rs	2006-07-24 10:21:28
-+++ b/formatting_contexts.rs	2026-11-20 11:02:46
++++ b/formatting_contexts.rs	2026-11-20 16:06:43
 @@ -27,7 +27,9 @@
      self, ComputeInlineContentSizes, ContentSizes, InlineContentSizesResult, LazySize,
      SizeConstraint,
@@ -96,9 +96,275 @@ diff --color --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/f
      }
  
      pub(crate) fn attached_to_tree(&self, layout_box: WeakLayoutBox) {
-diff --color --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/style_ext.rs b/style_ext.rs
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/replaced.rs b/replaced.rs
+--- a/replaced.rs	2006-07-24 10:21:28
++++ b/replaced.rs	2026-11-20 16:06:43
+@@ -19,6 +19,8 @@
+ use servo_base::id::{BrowsingContextId, PipelineId};
+ use servo_url::ServoUrl;
+ use style::Zero;
++use style_traits::ToCss;
++use style::color::{AbsoluteColor, ColorSpace};
+ use style::attr::AttrValue;
+ use style::computed_values::object_fit::T as ObjectFit;
+ use style::context::TreeCountingCaches;
+@@ -31,6 +33,7 @@
+ use style::url::ComputedUrl;
+ use style::values::CSSFloat;
+ use style::values::computed::image::Image as ComputedImage;
++use style::values::computed::svg::{SVGOpacity, SVGPaint, SVGPaintKind};
+ use style::values::computed::{Content, Context, ToComputedValue};
+ use style::values::generics::counters::{GenericContentItem, GenericContentItems};
+ use url::Url;
+@@ -50,6 +53,181 @@
+ use crate::style_ext::{AspectRatio, Clamp, ComputedValuesExt, LayoutStyle};
+ use crate::{ConstraintSpace, ContainingBlock, SharedStyle};
+ 
++/// rever: an inline `<svg>` is drawn from its serialized markup, away from the page's
++/// styles: `currentColor` came out black and a `fill` or `stroke` given by a CSS class
++/// was ignored, so icons were invisible on dark backgrounds or drawn solid black.
++/// The paint the cascade gave each element is written into the markup as a `style`
++/// attribute, which is where the rasterizer can read it.
++fn svg_with_page_styles(source: ServoUrl, styles: &[String]) -> ServoUrl {
++    let decoded = DataUrl::process(source.as_str())
++        .ok()
++        .and_then(|data| data.decode_to_vec().ok())
++        .and_then(|(bytes, _)| String::from_utf8(bytes).ok());
++    let Some(markup) = decoded else {
++        return source;
++    };
++    let styled = svg_markup_with_styles(&markup, styles);
++    // Percent-encoded rather than base64: nothing here needs a new dependency for it.
++    let mut url = String::from("data:image/svg+xml,");
++    for byte in styled.bytes() {
++        match byte {
++            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
++                url.push(byte as char)
++            },
++            _ => url.push_str(&format!("%{byte:02X}")),
++        }
++    }
++    ServoUrl::parse(&url).unwrap_or(source)
++}
++
++/// Where each element's start tag begins in serialized XML, in document order: the
++/// offset just past the tag's name, and the offset of its `style="` value if it has one.
++fn svg_start_tags(markup: &str) -> Vec<(usize, Option<usize>)> {
++    let bytes = markup.as_bytes();
++    let mut tags = Vec::new();
++    let mut at = 0;
++    while let Some(open) = markup[at..].find('<').map(|found| at + found) {
++        let rest = &markup[open..];
++        // Comments, CDATA, declarations and end tags are stepped over whole.
++        let skip = |end: &str| rest.find(end).map_or(markup.len(), |found| open + found + end.len());
++        if rest.starts_with("<!--") {
++            at = skip("-->");
++        } else if rest.starts_with("<![CDATA[") {
++            at = skip("]]>");
++        } else if rest.starts_with("</") || rest.starts_with("<!") || rest.starts_with("<?") {
++            at = skip(">");
++        } else {
++            let name_end = rest
++                .find(|c: char| c.is_whitespace() || c == '>' || c == '/')
++                .map_or(markup.len(), |found| open + found);
++            // The tag ends at the first `>` outside a quoted attribute value.
++            let (mut end, mut quote, mut style) = (name_end, None, None);
++            while end < bytes.len() {
++                match (quote, bytes[end]) {
++                    (None, b'>') => break,
++                    (None, b'"' | b'\'') => quote = Some(bytes[end]),
++                    (Some(open_quote), byte) if byte == open_quote => quote = None,
++                    (None, b' ') if markup[end..].starts_with(" style=\"") => {
++                        style = Some(end + " style=\"".len());
++                    },
++                    _ => {},
++                }
++                end += 1;
++            }
++            tags.push((name_end, style));
++            at = (end + 1).min(markup.len());
++        }
++    }
++    tags
++}
++
++/// The markup with `styles[n]` added to its n-th element. When the elements do not line
++/// up with the styles (a `<use>` was expanded into copies), only the root is styled.
++fn svg_markup_with_styles(markup: &str, styles: &[String]) -> String {
++    let tags = svg_start_tags(markup);
++    let styled = if tags.len() == styles.len() { tags.len() } else { 1 };
++    let mut out = String::with_capacity(markup.len() + 64 * styled);
++    let mut copied = 0;
++    for (&(name_end, style), declarations) in tags.iter().zip(styles).take(styled) {
++        if declarations.is_empty() {
++            continue;
++        }
++        // Declarations of the element's own `style` attribute come after these and win,
++        // as they did in the cascade these were read from.
++        let (at, text) = match style {
++            Some(value_start) => (value_start, format!("{declarations};")),
++            None => (name_end, format!(" style=\"{declarations}\"")),
++        };
++        out.push_str(&markup[copied..at]);
++        out.push_str(&text);
++        copied = at;
++    }
++    out.push_str(&markup[copied..]);
++    out
++}
++
++fn svg_color_css(color: AbsoluteColor) -> String {
++    let rgb = color.to_color_space(ColorSpace::Srgb);
++    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
++    format!(
++        "rgba({},{},{},{})",
++        channel(rgb.components.0),
++        channel(rgb.components.1),
++        channel(rgb.components.2),
++        rgb.alpha.clamp(0.0, 1.0)
++    )
++}
++
++/// The paint declarations in which `own` differs from `base` (the parent's style, or the
++/// initial values for the root `<svg>`). Only differences are written: a value that was
++/// merely inherited must not override a presentation attribute such as `fill="none"`,
++/// which the rasterizer applies itself. `with_color` also writes `color`, which
++/// `currentColor` resolves against.
++fn svg_paint_declarations(own: &ComputedValues, base: &ComputedValues, with_color: bool) -> String {
++    let color = own.get_inherited_text().color;
++    let paint = |paint: &SVGPaint| match &paint.kind {
++        SVGPaintKind::None => Some("none".to_owned()),
++        SVGPaintKind::Color(paint_color) => {
++            Some(svg_color_css(paint_color.resolve_to_absolute(&color)))
++        },
++        // A paint server keeps its own reference; context values have no meaning here.
++        _ => None,
++    };
++    let opacity = |opacity: &SVGOpacity| match opacity {
++        SVGOpacity::Opacity(value) => Some(value.to_string()),
++        _ => None,
++    };
++    let (own_svg, base_svg) = (own.get_inherited_svg(), base.get_inherited_svg());
++    let mut declarations = Vec::new();
++    if with_color || color != base.get_inherited_text().color {
++        declarations.push(format!("color:{}", svg_color_css(color)));
++    }
++    if own_svg.fill != base_svg.fill {
++        declarations.extend(paint(&own_svg.fill).map(|value| format!("fill:{value}")));
++    }
++    if own_svg.stroke != base_svg.stroke {
++        declarations.extend(paint(&own_svg.stroke).map(|value| format!("stroke:{value}")));
++    }
++    if own_svg.fill_opacity != base_svg.fill_opacity {
++        declarations.extend(opacity(&own_svg.fill_opacity).map(|value| format!("fill-opacity:{value}")));
++    }
++    if own_svg.stroke_opacity != base_svg.stroke_opacity {
++        declarations
++            .extend(opacity(&own_svg.stroke_opacity).map(|value| format!("stroke-opacity:{value}")));
++    }
++    if own_svg.stroke_width != base_svg.stroke_width {
++        declarations.push(format!("stroke-width:{}", own_svg.stroke_width.to_css_string()));
++    }
++    declarations.join(";")
++}
++
++/// The declarations for the elements under `parent`, in document order. An element the
++/// style system skipped gets none, and its children are compared with the nearest
++/// styled ancestor.
++fn svg_descendant_styles(
++    parent: ServoLayoutNode<'_>,
++    parent_style: &ComputedValues,
++    context: &LayoutContext,
++    styles: &mut Vec<String>,
++) {
++    for child in parent.dom_children() {
++        let Some(element) = child.as_element() else {
++            continue;
++        };
++        let styled = element
++            .style_data()
++            .is_some_and(|data| data.element_data.borrow().has_styles());
++        if styled {
++            let style = element.style(&context.style_context);
++            styles.push(svg_paint_declarations(&style, parent_style, false));
++            svg_descendant_styles(child, &style, context, styles);
++        } else {
++            styles.push(String::new());
++            svg_descendant_styles(child, parent_style, context, styles);
++        }
++    }
++}
++
+ #[derive(Debug, MallocSizeOf)]
+ pub(crate) struct ReplacedContents {
+     base_fragment_info: BaseFragmentInfo,
+@@ -309,6 +487,14 @@
+             Some(svg_source_result) => svg_source_result.ok(),
+         };
+ 
++        // rever: `parent_style` is this `<svg>`'s own style (the parent of its lengths).
++        let svg_source = svg_source.map(|source| {
++            let initial = context.style_context.stylist.device().default_computed_values();
++            let mut styles = vec![svg_paint_declarations(&parent_style, initial, true)];
++            svg_descendant_styles(node, &parent_style, context, &mut styles);
++            svg_with_page_styles(source, &styles)
++        });
++
+         let cached_image = svg_source.and_then(|svg_source| {
+             context
+                 .image_resolver
+@@ -844,4 +1030,48 @@
+     }
+ 
+     Url::parse(string).ok()
++}
++
++#[cfg(test)]
++mod svg_style_tests {
++    use super::{svg_markup_with_styles, svg_start_tags};
++
++    fn styles(list: &[&str]) -> Vec<String> {
++        list.iter().map(|text| (*text).to_owned()).collect()
++    }
++
++    #[test]
++    fn 스타일은_순서가_같은_요소에_들어간다() {
++        let markup = r#"<svg viewBox="0 0 36 36"><circle class="a"/><path d="M1 1"/></svg>"#;
++        assert_eq!(svg_start_tags(markup).len(), 3);
++        assert_eq!(
++            svg_markup_with_styles(markup, &styles(&["color:red", "fill:rgba(0,0,0,0.35)", ""])),
++            r#"<svg style="color:red" viewBox="0 0 36 36"><circle style="fill:rgba(0,0,0,0.35)" class="a"/><path d="M1 1"/></svg>"#
++        );
++    }
++
++    #[test]
++    fn 이미_있는_style_속성은_남고_우선한다() {
++        let markup = r#"<svg><g style="fill:blue"/></svg>"#;
++        assert_eq!(
++            svg_markup_with_styles(markup, &styles(&["", "fill:red"])),
++            r#"<svg><g style="fill:red;fill:blue"/></svg>"#
++        );
++    }
++
++    #[test]
++    fn 요소_수가_맞지_않으면_루트에만_넣는다() {
++        // A `<use>` was expanded: three start tags, two styles.
++        let markup = "<svg><g><path/></g></svg>";
++        assert_eq!(
++            svg_markup_with_styles(markup, &styles(&["color:red", "fill:red"])),
++            "<svg style=\"color:red\"><g><path/></g></svg>"
++        );
++    }
++
++    #[test]
++    fn 주석과_닫는_태그와_따옴표_안_꺾쇠는_요소가_아니다() {
++        let markup = r#"<svg><!-- <g> --><text x="1>2">a</text><![CDATA[<b>]]></svg>"#;
++        assert_eq!(svg_start_tags(markup).len(), 2);
++    }
+ }
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/style_ext.rs b/style_ext.rs
 --- a/style_ext.rs	2006-07-24 10:21:28
-+++ b/style_ext.rs	2026-11-20 11:02:46
++++ b/style_ext.rs	2026-11-20 16:06:43
 @@ -759,6 +759,15 @@
              return true;
          }
