@@ -10,6 +10,8 @@ rever-core = { path = "../rever-core" }
 # The capture-not-send fence the request hook enforces.
 rever-scope = { path = "../rever-scope" }
 rever-agent = { path = "../rever-agent" }
+# The overlay that draws what the agent does on the page (cursor, highlights, sweeps).
+rever-inject = { path = "../rever-inject" }
 rever-tools-api = { path = "../rever-tools-api" }
 # The MCP server and the tool crates it serves; the risky-tool rules decide what the agent may call unasked.
 rever-mcp = { path = "../rever-mcp" }

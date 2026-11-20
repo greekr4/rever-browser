@@ -7481,6 +7481,7 @@ dependencies = [
  "rever-cookie-import",
  "rever-core",
  "rever-formats",
+ "rever-inject",
  "rever-mcp",
  "rever-scope",
  "rever-tool-profile",

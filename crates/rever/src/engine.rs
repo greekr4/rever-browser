@@ -257,6 +257,12 @@ impl Engine {
         let id = TabId(self.next_id.get());
         self.next_id.set(id.0 + 1);
         let scripts = Rc::new(UserContentManager::new(&self.servo));
+        // `window.__reverAi`: the tools call it to show what the agent does on the page.
+        // Windows the page opens share this manager, so they get it too.
+        scripts.add_script(Rc::new(UserScript::new(
+            rever_inject::visualizer::VISUALIZER_INIT_SCRIPT.to_owned(),
+            None,
+        )));
         let webview = WebViewBuilder::new(&self.servo, context.clone())
             .user_content_manager(scripts.clone())
             .url(url)
