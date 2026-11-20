@@ -407,6 +407,11 @@ impl Engine {
         }
     }
 
+    /// The cursor the page asks for under the pointer (`cursor: pointer`, text, ...).
+    pub fn cursor(&self, id: TabId) -> servo::Cursor {
+        self.page(id).map(|page| page.webview.cursor()).unwrap_or_default()
+    }
+
     /// Chrome's zoom steps: `None` resets to 100%, otherwise one step in or out.
     pub fn zoom(&self, id: TabId, step_in: Option<bool>) {
         let Some(page) = self.page(id) else { return };

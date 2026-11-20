@@ -7,7 +7,8 @@ use euclid::Point2D;
 use std::ops::Range;
 
 use gpui::{
-    AnyElement, Bounds, ClickEvent, Context, Corners, ElementInputHandler, EntityInputHandler,
+    AnyElement, Bounds, ClickEvent, Context, Corners, CursorStyle, ElementInputHandler,
+    EntityInputHandler,
     KeyDownEvent, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     Pixels, Point, ScrollDelta, ScrollWheelEvent, UTF16Selection, Window, canvas, div, prelude::*,
     px,
@@ -15,7 +16,8 @@ use gpui::{
 use rever_core::input::w3c_key_name;
 use rever_ui_kit::theme::Theme;
 use servo::{
-    Code, CompositionEvent, CompositionState, ContextMenuItem, ImeEvent, InputEvent, Key, KeyState,
+    Code, CompositionEvent, CompositionState, ContextMenuItem, Cursor, ImeEvent, InputEvent, Key,
+    KeyState,
     KeyboardEvent, Location, Modifiers, MouseButtonAction, MouseButtonEvent, SelectElementOption,
     SelectElementOptionOrOptgroup, WebViewPoint, WheelDelta, WheelEvent, WheelMode,
 };
@@ -59,6 +61,7 @@ impl Browser {
             .track_focus(&self.page_focus)
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
+            .cursor(cursor_style(self.engine.cursor(self.active_id())))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
@@ -559,6 +562,54 @@ impl Browser {
     }
 }
 
+/// The system cursor for the one a page asks for. The ones macOS has no shape for
+/// (help, wait, zoom, ...) stay the arrow.
+fn cursor_style(cursor: Cursor) -> CursorStyle {
+    match cursor {
+        Cursor::None => CursorStyle::None,
+        Cursor::Pointer => CursorStyle::PointingHand,
+        Cursor::ContextMenu => CursorStyle::ContextualMenu,
+        Cursor::Text => CursorStyle::IBeam,
+        Cursor::VerticalText => CursorStyle::IBeamCursorForVerticalLayout,
+        Cursor::Crosshair => CursorStyle::Crosshair,
+        Cursor::Alias => CursorStyle::DragLink,
+        Cursor::Copy => CursorStyle::DragCopy,
+        Cursor::NoDrop | Cursor::NotAllowed => CursorStyle::OperationNotAllowed,
+        Cursor::Grab => CursorStyle::OpenHand,
+        Cursor::Grabbing => CursorStyle::ClosedHand,
+        Cursor::EResize => CursorStyle::ResizeRight,
+        Cursor::WResize => CursorStyle::ResizeLeft,
+        Cursor::NResize => CursorStyle::ResizeUp,
+        Cursor::SResize => CursorStyle::ResizeDown,
+        Cursor::EwResize => CursorStyle::ResizeLeftRight,
+        Cursor::NsResize => CursorStyle::ResizeUpDown,
+        Cursor::ColResize => CursorStyle::ResizeColumn,
+        Cursor::RowResize => CursorStyle::ResizeRow,
+        Cursor::NeResize | Cursor::SwResize | Cursor::NeswResize => {
+            CursorStyle::ResizeUpRightDownLeft
+        }
+        Cursor::NwResize | Cursor::SeResize | Cursor::NwseResize => {
+            CursorStyle::ResizeUpLeftDownRight
+        }
+        _ => CursorStyle::Arrow,
+    }
+}
+
 fn utf16_len(text: &str) -> usize {
     text.encode_utf16().count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 페이지가_요청한_커서는_시스템_커서로_바뀐다() {
+        assert_eq!(cursor_style(Cursor::Pointer), CursorStyle::PointingHand);
+        assert_eq!(cursor_style(Cursor::Text), CursorStyle::IBeam);
+        assert_eq!(cursor_style(Cursor::Default), CursorStyle::Arrow);
+        assert_eq!(cursor_style(Cursor::NotAllowed), CursorStyle::OperationNotAllowed);
+        // macOS에 모양이 없는 커서는 화살표로 둔다.
+        assert_eq!(cursor_style(Cursor::Wait), CursorStyle::Arrow);
+    }
 }
