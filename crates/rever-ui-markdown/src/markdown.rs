@@ -1413,10 +1413,13 @@ impl Painter {
         context: &Context,
     ) -> AnyElement {
         let columns = head.len().max(1);
-        // No column template: the tracks are implicit and `auto`, sized by their
-        // content as a browser sizes table columns. Cells are placed explicitly.
+        // Equal columns that share the box's width. Tracks sized by their content, as a
+        // browser sizes table columns, came out wider than the panel: GPUI measures a
+        // text's narrowest width as its unwrapped width, so the cells never wrapped
+        // and the table ran past the edge. Cells are placed explicitly.
         let mut grid = div()
             .grid()
+            .grid_cols(columns as u16)
             .w_full()
             .min_w(px(columns as f32 * TABLE_MIN_COLUMN_PX));
         let lines = std::iter::once(head).chain(rows.iter().map(Vec::as_slice));

@@ -627,6 +627,14 @@ pub(crate) struct Browser {
     chat_model: Option<(String, String)>,
     /// When the running turn started, for the "working" line.
     pub turn_started: Option<Instant>,
+    /// The chat panel is folded away; the toolbar button brings it back.
+    pub chat_collapsed: bool,
+    /// The chat panel covers the page.
+    pub chat_expanded: bool,
+    /// The panel's width as the user dragged it; the window can ask for less.
+    pub chat_width: f32,
+    /// While the panel's left edge is dragged: (pointer x at start, width at start).
+    pub chat_drag: Option<(f32, f32)>,
 }
 
 impl Browser {
@@ -877,6 +885,10 @@ impl Browser {
             chat_agent,
             chat_model,
             turn_started: None,
+            chat_collapsed: false,
+            chat_expanded: false,
+            chat_width: crate::shell::CHAT_WIDTH,
+            chat_drag: None,
         }
     }
 
@@ -1727,6 +1739,37 @@ impl Browser {
         }
         self.scan = Some(scan);
         cx.notify();
+    }
+
+    /// The name of the agent the conversation runs on, for the chat panel's tab.
+    pub fn chat_agent_name(&self) -> &'static str {
+        let agent = rever_ui_state::constants::ACP_AGENTS
+            .iter()
+            .find(|agent| agent.id == self.chat_agent);
+        agent.map_or("Chat", |agent| agent.name)
+    }
+
+    /// Fold the chat panel away, or bring it back at its own width.
+    pub fn toggle_chat(&mut self, cx: &mut Context<Self>) {
+        self.chat_collapsed = !self.chat_collapsed;
+        self.chat_expanded = false;
+        cx.notify();
+    }
+
+    /// Let the chat panel cover the page, or give the page its room back.
+    pub fn toggle_chat_expanded(&mut self, cx: &mut Context<Self>) {
+        self.chat_expanded = !self.chat_expanded;
+        self.chat_collapsed = false;
+        cx.notify();
+    }
+
+    /// Resize the chat panel while its left edge is dragged (dragging left, so a
+    /// smaller x, makes it wider). The window's width limits it when it is drawn.
+    pub fn on_chat_drag(&mut self, x: f32, cx: &mut Context<Self>) {
+        if let Some((start_x, start_width)) = self.chat_drag {
+            self.chat_width = (start_width + (start_x - x)).max(crate::shell::CHAT_MIN_WIDTH);
+            cx.notify();
+        }
     }
 
     /// Resize the open panel while its top edge is dragged (dragging up, so a

@@ -19,7 +19,8 @@ use gpui::{
 };
 use rever_ui_kit::theme::Theme;
 
-use self::chat::CHAT_WIDTH;
+use self::chat::chat_panel_width;
+pub(crate) use self::chat::{CHAT_MIN_WIDTH, CHAT_WIDTH};
 use crate::app::Browser;
 
 /// The bookmark star of App.tsx's address bar.
@@ -39,6 +40,13 @@ impl AssetSource for Assets {
             // The tab of a page without an icon, as in Chrome.
             "icons/globe.svg" => ("none", GLOBE.to_owned()),
             "icons/arrow-down.svg" => ("none", "<path d=\"M12 5v14M19 12l-7 7-7-7\"/>".to_owned()),
+            // The chat panel's controls: fold it away, let it cover the page, bring it back.
+            "icons/panel-right.svg" => (
+                "none",
+                "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M15 3v18\"/>".to_owned(),
+            ),
+            "icons/expand.svg" => ("none", "<path d=\"M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7\"/>".to_owned()),
+            "icons/shrink.svg" => ("none", "<path d=\"M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7\"/>".to_owned()),
             // Three quarters of a circle: turned, it is the chat's "working" spinner.
             "icons/loader.svg" => ("none", "<path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/>".to_owned()),
             _ => return rever_ui_kit::icons::Assets.load(path),
@@ -101,6 +109,13 @@ impl Render for Browser {
             })
             .child(self.chip_bar(&theme, cx))
             .child(self.views.drawer.clone());
+        // The chat panel takes what the user gave it, as far as the window allows.
+        let chat_width = chat_panel_width(
+            window.viewport_size().width.into(),
+            self.chat_width,
+            self.chat_collapsed,
+            self.chat_expanded,
+        );
         // The two columns are placed by their edges, not as items of a flex row: a row
         // first measures each item at its narrowest, and GPUI keeps a text cut to an
         // ellipsis at that width (the history rows came out as "…").
@@ -109,7 +124,7 @@ impl Render for Browser {
             .top_0()
             .bottom_0()
             .left_0()
-            .right(px(CHAT_WIDTH))
+            .right(px(chat_width))
             .flex()
             .flex_col()
             .child(self.toolbar(&theme, cx))
@@ -119,7 +134,7 @@ impl Render for Browser {
             .top_0()
             .bottom_0()
             .right_0()
-            .child(self.chat_panel(&theme, cx));
+            .child(self.chat_panel(&theme, chat_width, cx));
         let root = div()
             .size_full()
             .flex()
@@ -134,8 +149,10 @@ impl Render for Browser {
                     .flex_1()
                     .min_h_0()
                     .relative()
-                    .child(left)
-                    .child(chat)
+                    // A chat that covers the page leaves the page column out; a folded
+                    // chat leaves itself out.
+                    .when(!self.chat_expanded || self.chat_collapsed, |area| area.child(left))
+                    .when(chat_width > 0.0, |area| area.child(chat))
                     .children(self.redteam_dialog(&theme, cx)),
             );
         self.shortcut_handlers(root, cx)

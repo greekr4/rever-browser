@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, ClickEvent, Context, Transformation, div, percentage,
-    prelude::*, px, svg,
+    Animation, AnimationExt, AnyElement, ClickEvent, Context, DragMoveEvent, MouseButton,
+    MouseDownEvent, Transformation, div, percentage, prelude::*, px, svg,
 };
 use rever_ui_kit::theme::Theme;
 use rever_ui_markdown::markdown;
@@ -12,7 +12,30 @@ use rever_ui_markdown::markdown;
 use super::{icon, icon_button};
 use crate::app::{Browser, ChatLine, link_target, shows_end};
 
-pub(super) const CHAT_WIDTH: f32 = 420.0;
+/// The chat panel's width until the user drags its edge.
+pub(crate) const CHAT_WIDTH: f32 = 420.0;
+/// Narrower than this the composer's controls no longer fit in a row.
+pub(crate) const CHAT_MIN_WIDTH: f32 = 320.0;
+/// What the page keeps beside the chat panel, when the window has it to give.
+const PAGE_MIN_WIDTH: f32 = 360.0;
+
+/// Dragged from the panel's left edge to resize it.
+struct ChatDrag;
+
+
+/// How wide the chat panel is drawn in a window `window` wide: nothing when folded,
+/// the whole window when expanded, else the user's width, cut back so the page keeps
+/// some room and never past the window itself.
+pub(super) fn chat_panel_width(window: f32, wanted: f32, collapsed: bool, expanded: bool) -> f32 {
+    if collapsed {
+        return 0.0;
+    }
+    if expanded {
+        return window;
+    }
+    let most = (window - PAGE_MIN_WIDTH).max(CHAT_MIN_WIDTH);
+    wanted.clamp(CHAT_MIN_WIDTH, most).min(window)
+}
 const CHAT_EMPTY: &str = "Open a site in the browser and ask me to analyze its API traffic, or describe an action you just performed and I'll dig into the requests it triggered.";
 
 /// Opacity of a pulsing dot at `progress` (0..1) of its cycle.
@@ -30,7 +53,12 @@ fn elapsed_label(seconds: u64) -> String {
 }
 
 impl Browser {
-    pub(super) fn chat_panel(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn chat_panel(
+        &self,
+        theme: &Theme,
+        width: f32,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let lang = self.lang;
         let has_text = !self.views.composer.read(cx).text().is_empty();
         let at_end = shows_end(
@@ -41,6 +69,7 @@ impl Browser {
         let footer_chip = |name: &'static str, label: &'static str| {
             div()
                 .flex()
+                .flex_none()
                 .items_center()
                 .gap(px(5.0))
                 .text_size(px(12.0))
@@ -112,7 +141,7 @@ impl Browser {
                         .justify_end()
                         .child(
                             div()
-                                .max_w(px(CHAT_WIDTH - 80.0))
+                                .max_w(px(width - 80.0))
                                 .px(px(12.0))
                                 .py(px(8.0))
                                 .rounded(px(12.0))
@@ -150,7 +179,8 @@ impl Browser {
             index += 1;
         }
         div()
-            .w(px(CHAT_WIDTH))
+            .relative()
+            .w(px(width))
             .h_full()
             .flex()
             .flex_col()
@@ -158,6 +188,31 @@ impl Browser {
             .bg(theme.bg)
             .border_l_1()
             .border_color(theme.border_2)
+            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<ChatDrag>, _, cx| {
+                this.on_chat_drag(f32::from(event.event.position.x), cx)
+            }))
+            // A handle over the left edge resizes the panel; an expanded panel has no
+            // edge to drag.
+            .when(!self.chat_expanded, |panel| {
+                panel.child(
+                    div()
+                        .id("chat-resize")
+                        .absolute()
+                        .left(px(-3.0))
+                        .top_0()
+                        .bottom_0()
+                        .w(px(6.0))
+                        .cursor_col_resize()
+                        .hover(|style| style.bg(gpui::rgba(0x4a8fff66)))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, event: &MouseDownEvent, _, _| {
+                                this.chat_drag = Some((f32::from(event.position.x), width));
+                            }),
+                        )
+                        .on_drag(ChatDrag, |_, _, _, cx| cx.new(|_| gpui::Empty)),
+                )
+            })
             .child(
                 // `.chat-tabs`
                 div()
@@ -179,7 +234,7 @@ impl Browser {
                             .rounded_t(px(8.0))
                             .bg(theme.surface_3)
                             .text_size(px(12.0))
-                            .child("Claude Code")
+                            .child(self.chat_agent_name())
                             .child(icon("close", 10.0, theme.text_dim)),
                     )
                     .child(div().pb(px(2.0)).child(icon_button(
@@ -187,7 +242,29 @@ impl Browser {
                         "plus",
                         28.0,
                         theme,
-                    ))),
+                    )))
+                    .child(div().flex_1())
+                    // Let the panel cover the page, or fold it away.
+                    .child(
+                        div().pb(px(2.0)).child(
+                            icon_button(
+                                "chat-expand",
+                                if self.chat_expanded { "shrink" } else { "expand" },
+                                28.0,
+                                theme,
+                            )
+                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                this.toggle_chat_expanded(cx)
+                            })),
+                        ),
+                    )
+                    .child(
+                        div().pb(px(2.0)).child(
+                            icon_button("chat-collapse", "panel-right", 28.0, theme).on_click(
+                                cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_chat(cx)),
+                            ),
+                        ),
+                    ),
             )
             .child(
                 div()
@@ -318,9 +395,18 @@ impl Browser {
                                 .flex()
                                 .items_center()
                                 .gap(px(14.0))
-                                .child(footer_chip("shield", lang.t("chat.perm.auto")))
-                                .child(footer_chip("wrench", "Recon"))
-                                .child(div().flex_1())
+                                // In a narrow panel these give way, not the send button.
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(14.0))
+                                        .child(footer_chip("shield", lang.t("chat.perm.auto")))
+                                        .child(footer_chip("wrench", "Recon")),
+                                )
                                 .child(self.model_picker.clone())
                                 .child(
                                     // `.composer-send`
@@ -347,6 +433,24 @@ impl Browser {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 채팅_패널은_창이_허락하는_만큼만_넓어진다() {
+        // 넓은 창: 사용자가 정한 너비 그대로.
+        assert_eq!(chat_panel_width(1440.0, 420.0, false, false), 420.0);
+        assert_eq!(chat_panel_width(1440.0, 700.0, false, false), 700.0);
+        // 페이지에 360은 남긴다.
+        assert_eq!(chat_panel_width(900.0, 700.0, false, false), 540.0);
+        // 좁은 창: 최소 너비를 지키되 창을 넘지는 않는다.
+        assert_eq!(chat_panel_width(500.0, 420.0, false, false), 320.0);
+        assert_eq!(chat_panel_width(280.0, 420.0, false, false), 280.0);
+    }
+
+    #[test]
+    fn 접으면_너비가_없고_펼치면_창_전체다() {
+        assert_eq!(chat_panel_width(1440.0, 420.0, true, false), 0.0);
+        assert_eq!(chat_panel_width(1440.0, 420.0, false, true), 1440.0);
+    }
 
     #[test]
     fn 작업_시간은_초로_쓰다가_1분부터_분과_초로_쓴다() {
