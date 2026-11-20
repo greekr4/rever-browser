@@ -1118,10 +1118,18 @@ impl Browser {
         let mut console_changed = false;
         let mut opened = false;
         let mut tabs_changed = false;
+        // Tabs behind the active one that built a frame.
+        let mut behind = Vec::new();
         let mut closed = Vec::new();
         for event in self.engine.pump() {
             match event {
-                EngineEvent::FrameReady(tab) => frame_ready |= tab == active,
+                EngineEvent::FrameReady(tab) if tab == active => frame_ready = true,
+                EngineEvent::FrameReady(tab) => {
+                    // Once a pump however many frames it built.
+                    if !behind.contains(&tab) {
+                        behind.push(tab);
+                    }
+                }
                 EngineEvent::Closed(id) => closed.push(id),
                 EngineEvent::Opened(id) => {
                     self.tabs.push(Tab {
@@ -1206,6 +1214,9 @@ impl Browser {
         }
         if frame_ready {
             self.capture(window);
+        }
+        for tab in behind {
+            self.engine.settle(tab);
         }
         if tabs_changed {
             self.save_session();

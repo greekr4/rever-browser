@@ -330,6 +330,17 @@ impl Engine {
         std::mem::take(&mut *self.controls.borrow_mut())
     }
 
+    /// Let a tab that is not on screen take in the frames it has built. WebRender
+    /// hands every built frame to the tab's renderer, which takes them in only when it
+    /// paints: a tab that was never painted kept each frame it ever built (128KB and
+    /// more apiece), and a page animating in the background grew without end.
+    pub fn settle(&self, id: TabId) {
+        if let Some(page) = self.page(id) {
+            page.webview.paint();
+            page.context.present();
+        }
+    }
+
     pub fn frame(&self, id: TabId) -> Option<RgbaImage> {
         let page = self.page(id)?;
         page.webview.paint();
