@@ -221,6 +221,9 @@ impl Engine {
             // Off by default in Servo; React sites call it on load and fail without it.
             .preferences(servo::Preferences {
                 dom_intersection_observer_enabled: true,
+                // GitHub spreads `adoptedStyleSheets` of every root it styles; without the
+                // property that throws, and its components never get their data.
+                dom_adoptedstylesheet_enabled: true,
                 // The debugger tools drive pages through Servo's debugging server.
                 devtools_server_enabled: true,
                 // On this machine only. Servo reports the port it was told, not the
