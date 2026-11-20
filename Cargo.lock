@@ -7474,6 +7474,7 @@ dependencies = [
  "gpui",
  "http",
  "image",
+ "objc",
  "regex",
  "rever-agent",
  "rever-cli-spec",

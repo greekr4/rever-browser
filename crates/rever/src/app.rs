@@ -398,6 +398,8 @@ pub(crate) struct Tab {
     pub url: String,
     /// The latest page frame, in the BGRA layout GPUI paints.
     pub frame: Option<Arc<RenderImage>>,
+    /// The page's icon, in the same layout.
+    pub favicon: Option<Arc<RenderImage>>,
 }
 
 pub(crate) struct ChatLine {
@@ -548,6 +550,8 @@ pub(crate) struct Browser {
     /// The text the input method is still composing in the page (한 before it
     /// becomes 한글); `None` when nothing is being composed.
     pub composing: Option<String>,
+    /// Addresses of closed tabs, newest last, for Cmd+Shift+T.
+    closed_tabs: Vec<String>,
 }
 
 impl Browser {
@@ -684,6 +688,7 @@ impl Browser {
                 title: "".into(),
                 url: url.to_string(),
                 frame: None,
+                favicon: None,
             }],
             active: 0,
             chat: Vec::new(),
@@ -736,6 +741,7 @@ impl Browser {
             debug_endpoint,
             held_requests,
             composing: None,
+            closed_tabs: Vec::new(),
         }
     }
 
@@ -778,6 +784,7 @@ impl Browser {
                         title: "".into(),
                         url: String::new(),
                         frame: None,
+                        favicon: None,
                     });
                     opened = true;
                 }
@@ -794,6 +801,19 @@ impl Browser {
                         });
                     }
                     tab.title = title.into();
+                }
+                EngineEvent::Favicon(tab, mut icon) => {
+                    let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab) else {
+                        continue;
+                    };
+                    // GPUI paints BGRA.
+                    for pixel in icon.chunks_exact_mut(4) {
+                        pixel.swap(0, 2);
+                    }
+                    let icon = Arc::new(RenderImage::new(vec![Frame::new(icon)]));
+                    if let Some(old) = tab.favicon.replace(icon) {
+                        let _ = window.drop_image(old);
+                    }
                 }
                 EngineEvent::Url(tab, url) => {
                     // Do not overwrite what the user is typing.
@@ -957,6 +977,7 @@ impl Browser {
             title: "".into(),
             url: address,
             frame: None,
+            favicon: None,
         });
         self.select_tab(self.tabs.len() - 1, window, cx);
     }
@@ -982,8 +1003,11 @@ impl Browser {
         }
         let tab = self.tabs.remove(index);
         self.engine.close(tab.id);
-        if let Some(frame) = tab.frame {
-            let _ = window.drop_image(frame);
+        if is_web_url(&tab.url) {
+            self.closed_tabs.push(tab.url.clone());
+        }
+        for image in [tab.frame, tab.favicon].into_iter().flatten() {
+            let _ = window.drop_image(image);
         }
         let next = if index < self.active {
             self.active - 1
@@ -991,6 +1015,13 @@ impl Browser {
             self.active.min(self.tabs.len() - 1)
         };
         self.select_tab(next, window, cx);
+    }
+
+    /// Cmd+Shift+T: open the most recently closed tab again.
+    pub fn reopen_closed_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(url) = self.closed_tabs.pop().and_then(|url| Url::parse(&url).ok()) {
+            self.open_tab(url, window, cx);
+        }
     }
 
     pub fn toggle_panel(&mut self, panel: &'static str, cx: &mut Context<Self>) {
@@ -1683,6 +1714,7 @@ impl Browser {
                                 title: "".into(),
                                 url: address,
                                 frame: None,
+                                favicon: None,
                             });
                             Ok(self.tabs.len() - 1)
                         });

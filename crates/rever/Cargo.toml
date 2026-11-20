@@ -65,5 +65,9 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 serde = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 
+# Setting the Dock icon when run without an .app bundle (already in the tree through GPUI).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "0.2"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }

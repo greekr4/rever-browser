@@ -6,7 +6,10 @@ mod chat;
 mod chip_bar;
 mod page;
 mod redteam;
+pub(crate) mod shortcuts;
 mod tab_strip;
+
+pub(crate) use tab_strip::STRIP_HEIGHT;
 mod toolbar;
 
 use std::borrow::Cow;
@@ -22,20 +25,25 @@ use crate::app::Browser;
 /// The bookmark star of App.tsx's address bar.
 const STAR: &str = "12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2";
 
+/// A globe: a circle, one meridian and the equator.
+const GLOBE: &str = "<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"/><path d=\"M2 12h20\"/>";
+
 /// The kit's icons plus the bookmark star, which the kit does not carry.
 pub(crate) struct Assets;
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
-        let fill = match path {
-            "icons/star.svg" => "none",
-            "icons/star-filled.svg" => "black",
+        let (fill, shape) = match path {
+            "icons/star.svg" => ("none", format!("<polygon points=\"{STAR}\"/>")),
+            "icons/star-filled.svg" => ("black", format!("<polygon points=\"{STAR}\"/>")),
+            // The tab of a page without an icon, as in Chrome.
+            "icons/globe.svg" => ("none", GLOBE.to_owned()),
             _ => return rever_ui_kit::icons::Assets.load(path),
         };
         let svg = format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"{fill}\" \
              stroke=\"black\" stroke-width=\"2\" stroke-linecap=\"round\" \
-             stroke-linejoin=\"round\"><polygon points=\"{STAR}\"/></svg>"
+             stroke-linejoin=\"round\">{shape}</svg>"
         );
         Ok(Some(Cow::Owned(svg.into_bytes())))
     }
@@ -109,7 +117,7 @@ impl Render for Browser {
             .bottom_0()
             .right_0()
             .child(self.chat_panel(&theme, cx));
-        div()
+        let root = div()
             .size_full()
             .flex()
             .flex_col()
@@ -117,7 +125,7 @@ impl Render for Browser {
             .text_color(theme.text)
             .text_size(px(13.0))
             .font_family(".SystemUIFont")
-            .child(self.tab_strip(&theme, cx))
+            .child(self.tab_strip(&theme, window, cx))
             .child(
                 div()
                     .flex_1()
@@ -126,7 +134,8 @@ impl Render for Browser {
                     .child(left)
                     .child(chat)
                     .children(self.redteam_dialog(&theme, cx)),
-            )
+            );
+        self.shortcut_handlers(root, cx)
     }
 }
 
@@ -140,6 +149,7 @@ mod tests {
         assert!(String::from_utf8_lossy(&outline).contains("fill=\"none\""));
         let filled = Assets.load("icons/star-filled.svg").unwrap().unwrap();
         assert!(String::from_utf8_lossy(&filled).contains("fill=\"black\""));
+        assert!(Assets.load("icons/globe.svg").unwrap().is_some());
         assert!(Assets.load("icons/traffic.svg").unwrap().is_some());
         assert!(Assets.load("icons/missing.svg").unwrap().is_none());
     }

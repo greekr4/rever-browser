@@ -26,6 +26,8 @@ pub enum EngineEvent {
     /// The page closed itself with `window.close()`.
     Closed(TabId),
     Title(TabId, String),
+    /// The page's icon, as RGBA.
+    Favicon(TabId, RgbaImage),
     Url(TabId, String),
     Console {
         level: String,
@@ -119,6 +121,12 @@ impl WebViewDelegate for Delegate {
 
     fn notify_page_title_changed(&self, _: WebView, title: Option<String>) {
         self.push(EngineEvent::Title(self.tab, title.unwrap_or_default()));
+    }
+
+    fn notify_favicon_changed(&self, webview: WebView) {
+        if let Some(icon) = webview.favicon().and_then(|image| favicon_rgba(&image)) {
+            self.push(EngineEvent::Favicon(self.tab, icon));
+        }
     }
 
     fn notify_url_changed(&self, _: WebView, url: Url) {
@@ -393,6 +401,24 @@ impl Engine {
         }
     }
 
+    /// Chrome's zoom steps: `None` resets to 100%, otherwise one step in or out.
+    pub fn zoom(&self, id: TabId, step_in: Option<bool>) {
+        let Some(page) = self.page(id) else { return };
+        let current = page.webview.page_zoom();
+        let next = match step_in {
+            None => Some(1.0),
+            Some(true) => ZOOM_STEPS.iter().copied().find(|z| *z > current + 0.001),
+            Some(false) => ZOOM_STEPS
+                .iter()
+                .rev()
+                .copied()
+                .find(|z| *z < current - 0.001),
+        };
+        if let Some(zoom) = next {
+            page.webview.set_page_zoom(zoom);
+        }
+    }
+
     /// Evaluate JavaScript in the tab; `done` runs later, on the main thread.
     pub fn evaluate(
         &self,
@@ -440,4 +466,32 @@ impl Engine {
             page.webview.notify_input_event(event);
         }
     }
+}
+
+/// Chrome's zoom levels.
+const ZOOM_STEPS: [f32; 15] = [
+    0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0,
+];
+
+/// Servo hands the icon in one of several layouts; the tab strip wants RGBA.
+fn favicon_rgba(image: &servo::Image) -> Option<RgbaImage> {
+    use servo::PixelFormat;
+    let data = image.data();
+    let rgba: Vec<u8> = match image.format {
+        PixelFormat::RGBA8 => data.to_vec(),
+        PixelFormat::BGRA8 => data
+            .chunks_exact(4)
+            .flat_map(|p| [p[2], p[1], p[0], p[3]])
+            .collect(),
+        PixelFormat::RGB8 => data
+            .chunks_exact(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect(),
+        PixelFormat::KA8 => data
+            .chunks_exact(2)
+            .flat_map(|p| [p[0], p[0], p[0], p[1]])
+            .collect(),
+        PixelFormat::K8 => data.iter().flat_map(|k| [*k, *k, *k, 255]).collect(),
+    };
+    RgbaImage::from_raw(image.width, image.height, rgba)
 }
