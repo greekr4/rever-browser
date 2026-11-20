@@ -729,26 +729,32 @@ mod tests {
 
     /// A request the click of this moment sets off: the fake page answers at once.
     fn fire_request(ctx: &ToolContext, id: &str, method: &str, url: &str) {
+        fire_request_at(ctx, id, method, url, now_ms());
+    }
+
+    fn fire_request_at(ctx: &ToolContext, id: &str, method: &str, url: &str, at: u64) {
         let patch = RequestPatch {
             request_id: id.to_owned(),
             url: Some(url.to_owned()),
             method: Some(method.to_owned()),
             resource_type: Some("Fetch".to_owned()),
-            started_at: Some(now_ms()),
-            completed_at: Some(now_ms()),
+            started_at: Some(at),
+            completed_at: Some(at),
             ..RequestPatch::default()
         };
-        lock(&ctx.traffic).upsert(patch, now_ms());
+        lock(&ctx.traffic).upsert(patch, at);
     }
 
     #[tokio::test(start_paused = true)]
     async fn 누른_요소가_일으킨_요청을_엔드포인트로_모은다() {
         let _scope = SCOPE.lock().await;
         let (_, ctx) = context(crawl_browser(&["Load"], Vec::new()));
-        // Newest first: requests of the same millisecond list in reverse.
-        fire_request(&ctx, "3", "POST", "https://a.test/api/items");
-        fire_request(&ctx, "2", "GET", "https://a.test/api/items?page=2");
-        fire_request(&ctx, "1", "get", "https://a.test/api/items?page=1");
+        // Newest first: requests of the same millisecond list in reverse. One reading of
+        // the clock for all three, or a millisecond passing between them flips the order.
+        let at = now_ms();
+        fire_request_at(&ctx, "3", "POST", "https://a.test/api/items", at);
+        fire_request_at(&ctx, "2", "GET", "https://a.test/api/items?page=2", at);
+        fire_request_at(&ctx, "1", "get", "https://a.test/api/items?page=1", at);
 
         // No scope is set, so nothing counts as held by the fence.
         let result = crawl(&ctx, 40).await;
