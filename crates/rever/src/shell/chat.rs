@@ -3,14 +3,14 @@
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, Context, Transformation, div, percentage, prelude::*, px,
-    svg,
+    Animation, AnimationExt, AnyElement, ClickEvent, Context, Transformation, div, percentage,
+    prelude::*, px, svg,
 };
 use rever_ui_kit::theme::Theme;
 use rever_ui_markdown::markdown;
 
 use super::{icon, icon_button};
-use crate::app::{Browser, ChatLine, link_target};
+use crate::app::{Browser, ChatLine, link_target, shows_end};
 
 pub(super) const CHAT_WIDTH: f32 = 420.0;
 const CHAT_EMPTY: &str = "Open a site in the browser and ask me to analyze its API traffic, or describe an action you just performed and I'll dig into the requests it triggered.";
@@ -33,6 +33,10 @@ impl Browser {
     pub(super) fn chat_panel(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let lang = self.lang;
         let has_text = !self.views.composer.read(cx).text().is_empty();
+        let at_end = shows_end(
+            self.chat_scroll.offset().y.into(),
+            self.chat_scroll.max_offset().height.into(),
+        );
         let this = cx.weak_entity();
         let footer_chip = |name: &'static str, label: &'static str| {
             div()
@@ -214,6 +218,39 @@ impl Browser {
                     ),
             )
             .child(
+                // The log, and over it the way back down for a reader who scrolled up.
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .relative()
+                    .flex()
+                    .flex_col()
+                    .when(!at_end, |area| {
+                        area.child(
+                            div()
+                                .id("chat-to-end")
+                                .absolute()
+                                .bottom(px(10.0))
+                                .right(px(16.0))
+                                .size(px(30.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded_full()
+                                .border_1()
+                                .border_color(theme.border_2)
+                                .bg(theme.chrome_toolbar)
+                                .shadow_md()
+                                .cursor_pointer()
+                                .occlude()
+                                .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                    this.chat_scroll.scroll_to_bottom();
+                                    cx.notify();
+                                }))
+                                .child(icon("arrow-down", 15.0, theme.text_2)),
+                        )
+                    })
+                    .child(
                 div()
                     .id("chat-log")
                     .track_scroll(&self.chat_scroll)
@@ -262,6 +299,7 @@ impl Browser {
                                 )),
                         )
                     }),
+                    ),
             )
             .child(
                 div().p(px(12.0)).flex_none().child(

@@ -417,6 +417,13 @@ pub(crate) struct ChatLine {
     pub tool: Option<bool>,
 }
 
+/// Whether a scrolled list shows its end: within a few lines of it counts, so a reader
+/// who is at the newest line stays there as more arrives. `offset` is zero at the top
+/// and negative below it, as GPUI reports it.
+pub(crate) fn shows_end(offset: f32, max_offset: f32) -> bool {
+    -offset >= max_offset - 40.0
+}
+
 /// `mcp__rever-traffic__list_requests` is shown as `list_requests`.
 fn tool_label(name: &str) -> &str {
     name.rsplit("__").next().unwrap_or(name)
@@ -1297,6 +1304,8 @@ impl Browser {
         self.views
             .composer
             .update(cx, |input, cx| input.set_text("", cx));
+        // Sending is a move to the newest line, wherever the reader was.
+        self.chat_scroll.scroll_to_bottom();
         if let Err(error) = self.start_turn(text) {
             self.agent = None;
             self.turn_failed(&error);
@@ -1967,11 +1976,19 @@ impl Browser {
         let Some(agent) = self.agent.as_mut() else {
             return;
         };
+        // The lock: new lines pull the conversation down only for a reader who is at its
+        // end. Someone who scrolled up to read keeps their place.
+        let follow = shows_end(
+            self.chat_scroll.offset().y.into(),
+            self.chat_scroll.max_offset().height.into(),
+        );
         for event in agent.drain() {
             // A scan streams into its own dialog, not into the conversation.
             if !self.redteam_running {
                 apply_agent_event(&mut self.chat, &event);
-                self.chat_scroll.scroll_to_bottom();
+                if follow {
+                    self.chat_scroll.scroll_to_bottom();
+                }
             }
             match event {
                 AgentEvent::Text(_) | AgentEvent::ToolCall(..) | AgentEvent::ToolResult(..) => {}
@@ -2219,6 +2236,16 @@ mod tests {
         // 턴이 끝나면 남은 도구도 모두 끝난 것으로 본다.
         apply_agent_event(&mut chat, &AgentEvent::Done);
         assert_eq!(chat[3].tool, Some(true));
+    }
+
+    #[test]
+    fn 끝에서_몇_줄_안이면_끝을_보고_있는_것이다() {
+        // 내용 높이가 화면보다 600 크다: 맨 아래의 offset은 -600.
+        assert!(shows_end(-600.0, 600.0));
+        assert!(shows_end(-570.0, 600.0));
+        assert!(!shows_end(-300.0, 600.0), "위로 올려 읽는 중이면 따라가지 않는다");
+        // 스크롤할 것이 없는 짧은 대화는 늘 끝이다.
+        assert!(shows_end(0.0, 0.0));
     }
 
     #[test]

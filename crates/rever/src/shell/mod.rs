@@ -38,6 +38,7 @@ impl AssetSource for Assets {
             "icons/star-filled.svg" => ("black", format!("<polygon points=\"{STAR}\"/>")),
             // The tab of a page without an icon, as in Chrome.
             "icons/globe.svg" => ("none", GLOBE.to_owned()),
+            "icons/arrow-down.svg" => ("none", "<path d=\"M12 5v14M19 12l-7 7-7-7\"/>".to_owned()),
             // Three quarters of a circle: turned, it is the chat's "working" spinner.
             "icons/loader.svg" => ("none", "<path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/>".to_owned()),
             _ => return rever_ui_kit::icons::Assets.load(path),
