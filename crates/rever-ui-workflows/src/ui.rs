@@ -440,6 +440,7 @@ pub(crate) fn select_label(options: &[SelectOption], value: &str) -> SharedStrin
 /// Stands in for `<select>`: a box showing the current option that opens a list under
 /// itself. The view keeps which select is open (`open`), toggles it in `on_toggle`, and
 /// gets the picked value in `on_pick` (the list is already closed by then).
+#[expect(clippy::too_many_arguments, reason = "one call draws one select: the arguments are its props")]
 pub(crate) fn select<V: 'static>(
     key: impl Into<SharedString>,
     value: &str,

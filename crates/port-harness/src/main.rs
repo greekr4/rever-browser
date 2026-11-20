@@ -8,6 +8,7 @@
 //!   * a Rust file counts as the port of a TypeScript file when it says
 //!     "Port of `src/...`" in a comment;
 //!   * an MCP tool counts as ported when a Rust file registers it as `ToolDef::new("name"`.
+//!
 //! Behavior checks launch the real app against a fixture server started here.
 //! The result is also written to target/port-status.json. Exit code 1 if a check fails.
 

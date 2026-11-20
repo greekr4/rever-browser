@@ -54,10 +54,11 @@ pub fn node_label<S: AsRef<str>>(node_name: &str, attributes: &[S]) -> String {
         return "window".into();
     }
     let pairs = || {
-        attributes.chunks_exact(2).filter_map(|pair| match pair {
-            [name, value] => Some((name.as_ref(), value.as_ref())),
-            _ => None,
-        })
+        attributes
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|[name, value]| (name.as_ref(), value.as_ref()))
     };
     let mut label = node_name.to_lowercase();
     for (name, value) in pairs() {

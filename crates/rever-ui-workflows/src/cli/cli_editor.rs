@@ -24,7 +24,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use url::Url;
 
-use crate::core::registry::EditorProps;
+use crate::core::registry::{EditorProps, OnChange};
 use crate::core::types::Workflow;
 use crate::host::{CliRunPayload, CliRunResult, TrafficCall, WorkflowHost};
 use crate::js::js_trim;
@@ -152,7 +152,7 @@ enum Reveal {
 pub struct CliEditor {
     workflow: Workflow,
     data: CliData,
-    on_change: Rc<dyn Fn(Workflow, &mut App)>,
+    on_change: OnChange,
     host: Rc<dyn WorkflowHost>,
     lang: Lang,
     theme_mode: ThemeMode,

@@ -174,6 +174,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[expect(clippy::await_holding_lock, reason = "the guard keeps tests off the process-wide scope; a test runtime has one thread, so nothing else waits on it")]
     async fn 스코프_밖_url은_전송하지_않고_거절한다() {
         let _serial = serial();
         rever_scope::scope::set_scope(&["allowed.test"]);
@@ -184,6 +185,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[expect(clippy::await_holding_lock, reason = "the guard keeps tests off the process-wide scope; a test runtime has one thread, so nothing else waits on it")]
     async fn 펜스가_활성이면_변경_요청을_보내지_않고_204로_기록한다() {
         let _serial = serial();
         rever_scope::fence::acquire_fence();

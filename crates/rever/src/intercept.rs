@@ -39,12 +39,15 @@ pub type Held = Rc<RefCell<HashMap<String, WebResourceLoad>>>;
 /// network task that carries it waits with it.
 const RESPONSE_HOLD: Duration = Duration::from_secs(60);
 
+/// A request the agent let go with changed headers: its method, its URL, the headers.
+type RequestEdit = (String, String, Vec<(String, String)>);
+
 /// What the network threads and the tools share.
 #[derive(Default)]
 pub struct NetEdits {
     /// Header changes for a request the agent let go, by method and URL: the next
     /// such request to be sent takes them.
-    requests: Mutex<Vec<(String, String, Vec<(String, String)>)>>,
+    requests: Mutex<Vec<RequestEdit>>,
     /// The responses whose body waits for the agent, by the id the tools use.
     responses: Mutex<HashMap<String, Sender<Decision>>>,
     next_response: AtomicU64,

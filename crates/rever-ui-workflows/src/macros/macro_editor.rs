@@ -15,7 +15,7 @@ use rever_ui_kit::theme::ThemeMode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::core::registry::EditorProps;
+use crate::core::registry::{EditorProps, OnChange};
 use crate::core::types::{Workflow, new_id, now_ms};
 use crate::host::{McpToolInfo, StepStatus, WorkflowHost, WorkflowRunStep, WorkflowStepProgress};
 use crate::js::{js_number, js_trim, number_value, stringify_pretty, utf16_prefix};
@@ -221,7 +221,7 @@ struct StepFields {
 pub struct MacroEditor {
     workflow: Workflow,
     data: MacroData,
-    on_change: Rc<dyn Fn(Workflow, &mut App)>,
+    on_change: OnChange,
     host: Rc<dyn WorkflowHost>,
     lang: Lang,
     theme_mode: ThemeMode,

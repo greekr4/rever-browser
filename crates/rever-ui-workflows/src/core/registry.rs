@@ -12,13 +12,19 @@ use rever_ui_kit::theme::ThemeMode;
 use super::types::Workflow;
 use crate::host::{WorkflowHost, WorkflowRunStep, WorkflowStepProgress};
 
+/// Called with the whole working copy after every edit.
+pub type OnChange = Rc<dyn Fn(Workflow, &mut App)>;
+
+/// What a list item's primary action does with its workflow.
+pub type ActionFn = fn(&Workflow) -> Result<WorkflowAction, String>;
+
 /// `WorkflowEditorProps`, plus what the React editors took from context: the IPC
 /// surface, the language and the theme.
 #[derive(Clone)]
 pub struct EditorProps {
     pub workflow: Workflow,
     /// Called with the whole working copy after every edit.
-    pub on_change: Rc<dyn Fn(Workflow, &mut App)>,
+    pub on_change: OnChange,
     pub host: Rc<dyn WorkflowHost>,
     pub lang: Lang,
     pub theme_mode: ThemeMode,
@@ -55,7 +61,7 @@ pub struct WorkflowKind {
     pub editor: EditorFactory,
     /// Optional primary action shown per-item in the list (e.g. "Use", "Run").
     pub action_label: Option<&'static str>,
-    pub action: Option<fn(&Workflow) -> Result<WorkflowAction, String>>,
+    pub action: Option<ActionFn>,
 }
 
 #[derive(Clone, Default)]

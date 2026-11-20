@@ -678,13 +678,13 @@ mod tests {
 
     type Events = Rc<RefCell<Vec<TrafficDetailDrawerEvent>>>;
 
-    fn open<'a>(
+    fn open(
         patch: Option<RequestPatch>,
-        cx: &'a mut TestAppContext,
+        cx: &mut TestAppContext,
     ) -> (
         Entity<TrafficDetailDrawer>,
         Events,
-        &'a mut VisualTestContext,
+        &mut VisualTestContext,
     ) {
         let mut store = TrafficStore::default();
         if let Some(patch) = patch {

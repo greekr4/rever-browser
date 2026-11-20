@@ -74,8 +74,11 @@ pub fn menu_frame(opening: bool, progress: f32) -> (f32, f32) {
     (shown.clamp(0.0, 1.0), TRAVEL * (1.0 - shown))
 }
 
+/// Opens the picked address.
+type OnNavigate = Rc<dyn Fn(&str, &mut Window, &mut App)>;
+
 pub struct BotCheckButton {
-    on_navigate: Rc<dyn Fn(&str, &mut Window, &mut App)>,
+    on_navigate: OnNavigate,
     look: LookFn,
     open: bool,
     /// The menu is still drawn while it animates out (`AnimatePresence`).
@@ -397,15 +400,15 @@ mod view_tests {
     use super::*;
     use crate::ui::testing::{center, elsewhere, look, stage};
 
-    /// The button; the list holds every URL `on_navigate` was given.
-    fn button(
-        cx: &mut TestAppContext,
-    ) -> (
+    /// The button, every URL `on_navigate` was given, the presses outside it, the window.
+    type Staged<'a> = (
         Entity<BotCheckButton>,
         Rc<RefCell<Vec<String>>>,
         Rc<Cell<usize>>,
-        &mut VisualTestContext,
-    ) {
+        &'a mut VisualTestContext,
+    );
+
+    fn button(cx: &mut TestAppContext) -> Staged<'_> {
         let visited: Rc<RefCell<Vec<String>>> = Rc::default();
         let (button, presses, cx) = stage(cx, {
             let visited = visited.clone();

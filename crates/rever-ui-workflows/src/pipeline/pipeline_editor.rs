@@ -16,7 +16,7 @@ use rever_ui_kit::theme::ThemeMode;
 
 use super::resolve::resolve_pipeline;
 use super::types::{CondOn, CondOp, PipeCond, PipeNode, PipelineData, node_id};
-use crate::core::registry::EditorProps;
+use crate::core::registry::{EditorProps, OnChange};
 use crate::core::types::Workflow;
 use crate::host::{BranchTaken, McpToolInfo, PipeProgress, PipeStatus, WorkflowHost};
 use crate::js::utf16_prefix;
@@ -224,7 +224,7 @@ enum NodeField {
 pub struct PipelineEditor {
     workflow: Workflow,
     data: PipelineData,
-    on_change: Rc<dyn Fn(Workflow, &mut App)>,
+    on_change: OnChange,
     host: Rc<dyn WorkflowHost>,
     lang: Lang,
     theme_mode: ThemeMode,
@@ -478,6 +478,7 @@ impl PipelineEditor {
     }
 
     /// A `<select>` of this editor: `key` names it, `pick` gets the chosen value.
+    #[expect(clippy::too_many_arguments, reason = "one call draws one select: the arguments are its props")]
     fn select(
         &self,
         key: String,

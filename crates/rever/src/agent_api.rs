@@ -460,13 +460,12 @@ impl Shared {
     fn turn(&self, text: &str) -> Result<(), String> {
         let key = (self.api_key)().ok_or(self.config.missing_key)?;
         let mut conversation = self.conversation.lock().unwrap();
-        if conversation.mcp.is_none() {
-            if let Some((url, auth)) = &self.mcp {
+        if conversation.mcp.is_none()
+            && let Some((url, auth)) = &self.mcp {
                 let mut client = McpClient::connect(url, auth)?;
                 let tools = client.list_tools()?;
                 conversation.mcp = Some((client, tools));
             }
-        }
         conversation.messages.push(json!({ "role": "user", "content": text }));
         loop {
             let model = self.model.lock().unwrap().clone();

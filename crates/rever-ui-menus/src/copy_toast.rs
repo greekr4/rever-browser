@@ -111,10 +111,13 @@ impl CopyState {
     }
 }
 
+/// The visible page's rect in window coordinates, `None` when no page is showing.
+type PageRect = Box<dyn Fn(&App) -> Option<Rect>>;
+
 pub struct CopyToast {
     state: CopyState,
     /// The visible page's rect in window coordinates, `None` when no page is showing.
-    webview_rect: Box<dyn Fn(&App) -> Option<Rect>>,
+    webview_rect: PageRect,
     look: LookFn,
 }
 

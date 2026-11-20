@@ -399,7 +399,7 @@ impl ToolRegistry {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::task::{Context, Poll, Wake, Waker};
+    use std::task::{Context, Poll, Waker};
 
     use serde_json::json;
 
@@ -408,12 +408,7 @@ mod tests {
 
     /// Run a future that never waits on anything, without an async runtime.
     fn now<T>(mut future: BoxFuture<'_, T>) -> T {
-        struct Noop;
-        impl Wake for Noop {
-            fn wake(self: Arc<Self>) {}
-        }
-        let waker = Waker::from(Arc::new(Noop));
-        match future.as_mut().poll(&mut Context::from_waker(&waker)) {
+        match future.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
             Poll::Ready(value) => value,
             Poll::Pending => panic!("the future waited on something"),
         }

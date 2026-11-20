@@ -294,7 +294,7 @@ pub fn send_by_url_expression(
     let payload = if as_binary {
         format!("(()=>{{const raw=atob({});const b=new Uint8Array(raw.length);\
 for(let i=0;i<raw.length;i++)b[i]=raw.charCodeAt(i);return b}})()",
-            Value::from(payload).to_string())
+            Value::from(payload))
     } else {
         Value::from(payload).to_string()
     };
@@ -308,7 +308,7 @@ if (!e) {{ if (!{reconnect}) return 'no-such-capture'; \
 e = {{ id: list.length, url, ws: new WebSocket(url), openedAt: Date.now() }}; list.push(e); \
 e.ws.onopen = () => e.ws.send({payload}); return 'reopened'; }}\
 e.ws.send({payload}); return 'ok'; }})()",
-        url = Value::from(url).to_string(),
+        url = Value::from(url),
         reconnect = reconnect,
         payload = payload,
     );

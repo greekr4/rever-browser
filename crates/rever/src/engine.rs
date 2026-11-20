@@ -497,15 +497,15 @@ fn favicon_rgba(image: &servo::Image) -> Option<RgbaImage> {
     let rgba: Vec<u8> = match image.format {
         PixelFormat::RGBA8 => data.to_vec(),
         PixelFormat::BGRA8 => data
-            .chunks_exact(4)
+            .as_chunks::<4>().0.iter()
             .flat_map(|p| [p[2], p[1], p[0], p[3]])
             .collect(),
         PixelFormat::RGB8 => data
-            .chunks_exact(3)
+            .as_chunks::<3>().0.iter()
             .flat_map(|p| [p[0], p[1], p[2], 255])
             .collect(),
         PixelFormat::KA8 => data
-            .chunks_exact(2)
+            .as_chunks::<2>().0.iter()
             .flat_map(|p| [p[0], p[0], p[0], p[1]])
             .collect(),
         PixelFormat::K8 => data.iter().flat_map(|k| [*k, *k, *k, 255]).collect(),

@@ -1,6 +1,5 @@
 //! Port of `src/renderer/src/workflows/template/TemplateEditor.tsx` — a prompt template's name and body.
 
-use std::rc::Rc;
 
 use gpui::{AnyView, App, Context, Entity, Window, div, prelude::*, px};
 use rever_ui_kit::i18n::Lang;
@@ -8,7 +7,7 @@ use rever_ui_kit::text_input::TextInput;
 use rever_ui_kit::theme::ThemeMode;
 use serde_json::{Value, json};
 
-use crate::core::registry::EditorProps;
+use crate::core::registry::{EditorProps, OnChange};
 use crate::core::types::Workflow;
 use crate::text_area::TextArea;
 use crate::ui::{Tokens, area_box, input_box, new_area, new_input, text};
@@ -34,7 +33,7 @@ impl TemplateData {
 
 pub struct TemplateEditor {
     workflow: Workflow,
-    on_change: Rc<dyn Fn(Workflow, &mut App)>,
+    on_change: OnChange,
     name: Entity<TextInput>,
     body: Entity<TextArea>,
     theme_mode: ThemeMode,
@@ -136,6 +135,7 @@ mod tests {
 #[cfg(test)]
 mod view_tests {
     use std::cell::RefCell;
+    use std::rc::Rc;
 
     use gpui::{Modifiers, TestAppContext};
 

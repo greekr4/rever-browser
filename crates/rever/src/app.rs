@@ -1160,7 +1160,7 @@ impl Browser {
                         self.views.bookmark_bar.update(cx, |_, cx| cx.notify());
                     }
                     // GPUI paints BGRA.
-                    for pixel in icon.chunks_exact_mut(4) {
+                    for pixel in icon.as_chunks_mut::<4>().0 {
                         pixel.swap(0, 2);
                     }
                     let icon = Arc::new(RenderImage::new(vec![Frame::new(icon)]));
@@ -1287,7 +1287,7 @@ impl Browser {
             self.last_rgba = Some(image.clone());
         }
         // GPUI paints BGRA.
-        for pixel in image.chunks_exact_mut(4) {
+        for pixel in image.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
         }
         let frame = Arc::new(RenderImage::new(vec![Frame::new(image)]));
@@ -2499,6 +2499,35 @@ fn menu_props(browser: &WeakEntity<Browser>, cx: &App) -> AppMenuProps {
     }
 }
 
+fn answer_dialog(dialog: SimpleDialog, accept: bool, text: Option<&str>) {
+    match dialog {
+        SimpleDialog::Prompt(mut prompt) if accept => {
+            if let Some(text) = text {
+                prompt.set_current_value(text);
+            }
+            prompt.confirm();
+        }
+        dialog if accept => dialog.confirm(),
+        dialog => dialog.dismiss(),
+    }
+}
+
+/// Where the page is drawn inside the area the interface gave it: all of it, or
+/// in mobile mode a phone-wide column in the middle.
+///
+/// shortcut: mobile mode keeps the window's height and pixel density, where the
+/// TypeScript emulated 390x844 at 3x; add those when a site needs the exact device.
+pub fn page_area(bounds: Bounds<Pixels>, mobile: bool) -> Bounds<Pixels> {
+    if !mobile {
+        return bounds;
+    }
+    let width = bounds.size.width.min(gpui::px(crate::engine::MOBILE_WIDTH));
+    let mut area = bounds;
+    area.origin.x += (bounds.size.width - width) / 2.0;
+    area.size.width = width;
+    area
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2739,33 +2768,4 @@ mod tests {
     fn 히스토리의_탭_아이디는_t와_번호다() {
         assert_eq!(history_tab_id(TabId(3)), "t3");
     }
-}
-
-fn answer_dialog(dialog: SimpleDialog, accept: bool, text: Option<&str>) {
-    match dialog {
-        SimpleDialog::Prompt(mut prompt) if accept => {
-            if let Some(text) = text {
-                prompt.set_current_value(text);
-            }
-            prompt.confirm();
-        }
-        dialog if accept => dialog.confirm(),
-        dialog => dialog.dismiss(),
-    }
-}
-
-/// Where the page is drawn inside the area the interface gave it: all of it, or
-/// in mobile mode a phone-wide column in the middle.
-///
-/// shortcut: mobile mode keeps the window's height and pixel density, where the
-/// TypeScript emulated 390x844 at 3x; add those when a site needs the exact device.
-pub fn page_area(bounds: Bounds<Pixels>, mobile: bool) -> Bounds<Pixels> {
-    if !mobile {
-        return bounds;
-    }
-    let width = bounds.size.width.min(gpui::px(crate::engine::MOBILE_WIDTH));
-    let mut area = bounds;
-    area.origin.x += (bounds.size.width - width) / 2.0;
-    area.size.width = width;
-    area
 }

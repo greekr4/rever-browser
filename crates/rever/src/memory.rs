@@ -46,7 +46,7 @@ pub fn megabytes(bytes: u64) -> String {
     let digits = (bytes / (1024 * 1024)).to_string();
     let mut text = String::new();
     for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
             text.push(',');
         }
         text.push(digit);

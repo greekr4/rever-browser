@@ -130,8 +130,7 @@ fn short_tag(url: &str) -> String {
     let parsed = url::Url::parse(url).ok();
     let segment = parsed
         .as_ref()
-        .map(|url| url.path().split('/').filter(|s| !s.is_empty()).last())
-        .flatten()
+        .and_then(|url| url.path().split('/').rfind(|s| !s.is_empty()))
         .map(decode);
     let tag = segment
         .or_else(|| {
@@ -341,7 +340,7 @@ fn has_id_param(url: &str) -> bool {
         let key = k.to_ascii_lowercase();
         let key_id = |name: &str| {
             name.split('_')
-                .last()
+                .next_back()
                 .is_some_and(|last| matches!(last, "id" | "uid" | "uuid" | "user" | "account" | "order" | "pid" | "no" | "seq"))
         };
         key_id(&key)
@@ -453,9 +452,7 @@ pub fn discovery_prompt(target: &str, scope_host: &str, pages: u32) -> String {
 }
 
 pub fn worker_prompt(url: &str, crawl: bool, aggressive: bool) -> String {
-    let crawl_line = crawl
-            .then(|| "- 먼저 ui_crawl({tab:N}) 를 한 번 호출한다 — 페이지의 모든 버튼/링크를 결정적으로 눌러 숨은 API 를 드러내고 버튼→API 맵을 만든다(펜스가 변이 요청을 204 로 막아 서버는 안전). 반환된 'endpoints discovered' 가 캡처되어 이후 점검 대상에 포함된다. 그 다음 아래를 진행한다.\n")
-            .unwrap_or("");
+    let crawl_line = if crawl { "- 먼저 ui_crawl({tab:N}) 를 한 번 호출한다 — 페이지의 모든 버튼/링크를 결정적으로 눌러 숨은 API 를 드러내고 버튼→API 맵을 만든다(펜스가 변이 요청을 204 로 막아 서버는 안전). 반환된 'endpoints discovered' 가 캡처되어 이후 점검 대상에 포함된다. 그 다음 아래를 진행한다.\n" } else { "" };
     let rules_line = if aggressive {
         "- 오직 rever 도구만 사용한다. Terminal/Bash/셸/curl/wget 및 ToolSearch 금지(scope 를 우회한다). 다른 탭 열기/닫기/선택 금지. 이 타겟은 일회성(사용자 소유)이므로 제출·삭제·결제 컨트롤을 포함한 모든 조작이 허용된다 — 숨은 API 를 드러내는 버튼은 주저 없이 눌러라.\n"
     } else {
@@ -995,7 +992,7 @@ mod tests {
     }
 
     #[test]
-    fn 쿼리를_가진_발견_링크가_같은_경로의_맨_GET을_대체한다() {
+    fn 쿼리를_가진_발견_링크가_같은_경로의_맨_get을_대체한다() {
         let endpoints = vec!["GET https://a.test/x".to_owned(), "POST https://a.test/y".to_owned()];
         let links = vec!["https://a.test/x?q=1".to_owned()];
         assert_eq!(

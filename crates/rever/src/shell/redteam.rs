@@ -175,8 +175,8 @@ impl Browser {
                 let (color, weight, spaced) = match line.kind {
                     crate::scan::LineKind::Phase => (theme.text, FontWeight::SEMIBOLD, true),
                     crate::scan::LineKind::Tool => (theme.text_dim, FontWeight::NORMAL, false),
-                    crate::scan::LineKind::Finding => (rgb(0xe0_a3_3e).into(), FontWeight::NORMAL, true),
-                    crate::scan::LineKind::Error => (theme.status_error.into(), FontWeight::NORMAL, true),
+                    crate::scan::LineKind::Finding => (rgb(0xe0_a3_3e), FontWeight::NORMAL, true),
+                    crate::scan::LineKind::Error => (theme.status_error, FontWeight::NORMAL, true),
                 };
                 let tag = line
                     .tab
