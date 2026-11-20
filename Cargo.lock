@@ -7474,12 +7474,15 @@ dependencies = [
  "gpui",
  "http",
  "image",
+ "objc",
  "regex",
+ "reqwest",
  "rever-agent",
  "rever-cli-spec",
  "rever-cookie-import",
  "rever-core",
  "rever-formats",
+ "rever-inject",
  "rever-mcp",
  "rever-scope",
  "rever-tool-profile",
@@ -7495,6 +7498,7 @@ dependencies = [
  "rever-tools-scripts",
  "rever-tools-traffic",
  "rever-ui-apimap",
+ "rever-ui-chat",
  "rever-ui-console",
  "rever-ui-history",
  "rever-ui-kit",
@@ -9309,8 +9313,6 @@ dependencies = [
 [[package]]
 name = "servo-layout"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02047fd51cca1b92cfd38bc4663c9f11f6ebf99cd2d5550bac507a0a2b77addc"
 dependencies = [
  "accesskit",
  "app_units",

@@ -1,0 +1,117 @@
+diff --color --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/formatting_contexts.rs b/formatting_contexts.rs
+--- a/formatting_contexts.rs	2006-07-24 10:21:28
++++ b/formatting_contexts.rs	2026-11-20 11:02:46
+@@ -27,7 +27,9 @@
+     self, ComputeInlineContentSizes, ContentSizes, InlineContentSizesResult, LazySize,
+     SizeConstraint,
+ };
+-use crate::style_ext::{AspectRatio, Display, DisplayInside, LayoutStyle};
++use crate::style_ext::{
++    AspectRatio, Clamp, ComputedValuesExt, Display, DisplayInside, LayoutStyle,
++};
+ use crate::table::Table;
+ use crate::taffy::TaffyContainer;
+ use crate::{
+@@ -451,6 +453,48 @@
+         preferred_aspect_ratio: Option<AspectRatio>,
+         lazy_block_size: &LazySize,
+     ) -> IndependentFormattingContextLayoutResult {
++        // rever: with a preferred aspect ratio and an automatic block size, the ratio
++        // decides the block size. The contents are laid out against it, so a child's
++        // `height: 100%` resolves, and the box is at least that tall.
++        let ratio_block_size =
++            self.block_size_from_aspect_ratio(preferred_aspect_ratio, containing_block_for_children);
++        let sized_by_ratio;
++        let containing_block_for_children = match ratio_block_size {
++            Some(block_size) => {
++                sized_by_ratio = ContainingBlock {
++                    size: ContainingBlockSize {
++                        inline: containing_block_for_children.size.inline,
++                        block: SizeConstraint::Definite(block_size),
++                    },
++                    style: containing_block_for_children.style,
++                };
++                &sized_by_ratio
++            },
++            None => containing_block_for_children,
++        };
++        let mut result = self.layout_contents(
++            layout_context,
++            positioning_context,
++            containing_block_for_children,
++            containing_block,
++            preferred_aspect_ratio,
++            lazy_block_size,
++        );
++        if let Some(block_size) = ratio_block_size {
++            result.content_block_size = result.content_block_size.max(block_size);
++        }
++        result
++    }
++
++    fn layout_contents(
++        &self,
++        layout_context: &LayoutContext,
++        positioning_context: &mut PositioningContext,
++        containing_block_for_children: &ContainingBlock,
++        containing_block: &ContainingBlock,
++        preferred_aspect_ratio: Option<AspectRatio>,
++        lazy_block_size: &LazySize,
++    ) -> IndependentFormattingContextLayoutResult {
+         match &self.contents {
+             IndependentFormattingContextContents::Replaced(replaced, widget) => {
+                 let mut replaced_layout = replaced.layout(
+@@ -630,9 +674,32 @@
+             IndependentFormattingContextContents::Replaced(replaced, _) => {
+                 replaced.preferred_aspect_ratio(self.style(), padding_border_sums)
+             },
+-            // TODO: support preferred aspect ratios on non-replaced boxes.
+-            _ => None,
++            // rever: the `aspect-ratio` property on a non-replaced box (upstream: TODO).
++            _ => self
++                .style()
++                .preferred_aspect_ratio(None, padding_border_sums),
+         }
++    }
++
++    /// rever: the block size the preferred aspect ratio gives a non-replaced box whose
++    /// block size is otherwise automatic, from the inline size it was given.
++    /// <https://drafts.csswg.org/css-sizing-4/#aspect-ratio-automatic>
++    fn block_size_from_aspect_ratio(
++        &self,
++        preferred_aspect_ratio: Option<AspectRatio>,
++        containing_block_for_children: &ContainingBlock,
++    ) -> Option<Au> {
++        if self.is_replaced() {
++            return None;
++        }
++        let SizeConstraint::MinMax(min, max) = containing_block_for_children.size.block else {
++            return None;
++        };
++        let size = preferred_aspect_ratio?.compute_dependent_size(
++            LogicalAxis::Block,
++            containing_block_for_children.size.inline,
++        );
++        Some(size.clamp_between_extremums(min, max))
+     }
+ 
+     pub(crate) fn attached_to_tree(&self, layout_box: WeakLayoutBox) {
+diff --color --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/style_ext.rs b/style_ext.rs
+--- a/style_ext.rs	2006-07-24 10:21:28
++++ b/style_ext.rs	2026-11-20 11:02:46
+@@ -759,6 +759,15 @@
+             return true;
+         }
+ 
++        // rever: `aspect-ratio` on a non-replaced box is resolved where independent
++        // formatting contexts are laid out (formatting_contexts.rs), so a box with a
++        // ratio becomes one. The specification does not ask for that; the visible
++        // difference is that its margins do not collapse with its children's.
++        if matches!(self.get_aspect_ratio().ratio, PreferredRatio::Ratio(ratio) if !ratio.is_degenerate())
++        {
++            return true;
++        }
++
+         // TODO: We need to handle CSS Contain here.
+         false
+     }

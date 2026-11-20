@@ -10,6 +10,8 @@ rever-core = { path = "../rever-core" }
 # The capture-not-send fence the request hook enforces.
 rever-scope = { path = "../rever-scope" }
 rever-agent = { path = "../rever-agent" }
+# The overlay that draws what the agent does on the page (cursor, highlights, sweeps).
+rever-inject = { path = "../rever-inject" }
 rever-tools-api = { path = "../rever-tools-api" }
 # The MCP server and the tool crates it serves; the risky-tool rules decide what the agent may call unasked.
 rever-mcp = { path = "../rever-mcp" }
@@ -42,6 +44,8 @@ rever-ui-websocket = { path = "../rever-ui-websocket" }
 rever-ui-history = { path = "../rever-ui-history" }
 rever-ui-markdown = { path = "../rever-ui-markdown" }
 rever-ui-menus = { path = "../rever-ui-menus" }
+# The composer's model chip and its menu.
+rever-ui-chat = { path = "../rever-ui-chat" }
 # EvalReply: the shape the console panel takes a script result in.
 rever-formats = { path = "../rever-formats" }
 # `subtlecrypto` is not in servo's `default` (that group is servoshell's), and
@@ -57,6 +61,8 @@ base64 = "0.22"
 # The patched servo-net (see the workspace Cargo.toml): its tap carries request and response bodies.
 net = { package = "servo-net", version = "=0.8.0" }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "logging", "std", "tls12"] }
+# The provider APIs and the app's own MCP server, called from a session's turn thread.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 dpi = "0.1"
 euclid = "0.22"
 url = "2.5"
@@ -64,6 +70,10 @@ futures = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
+
+# Setting the Dock icon when run without an .app bundle (already in the tree through GPUI).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }

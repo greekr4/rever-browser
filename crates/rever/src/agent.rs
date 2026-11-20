@@ -72,6 +72,33 @@ fn tool_events(update: &Value, names: &mut std::collections::HashMap<String, Str
     }
 }
 
+/// A chat session with one agent, whichever way it is reached: the Claude Code CLI,
+/// an ACP binary, or a provider's API. The app pumps [`ChatAgent::drain`] whenever the
+/// session woke it.
+pub trait ChatAgent {
+    /// Hand the agent the user's message; its answer arrives through `drain`.
+    fn send(&mut self, text: &str) -> Result<(), String>;
+    /// Everything that happened since the last call.
+    fn drain(&mut self) -> Vec<AgentEvent>;
+    /// Use another model from the next message on, keeping the conversation.
+    fn set_model(&mut self, model: &str) -> Result<(), String>;
+}
+
+impl ChatAgent for AgentSession {
+    fn send(&mut self, text: &str) -> Result<(), String> {
+        AgentSession::send(self, text)
+            .map_err(|error| format!("Claude Code CLI is not accepting input: {error}"))
+    }
+
+    fn drain(&mut self) -> Vec<AgentEvent> {
+        AgentSession::drain(self)
+    }
+
+    fn set_model(&mut self, model: &str) -> Result<(), String> {
+        AgentSession::set_model(self, model).map_err(|error| error.to_string())
+    }
+}
+
 pub struct AgentSession {
     child: Child,
     stdin: ChildStdin,
@@ -84,11 +111,11 @@ pub struct AgentSession {
 /// The CLI's arguments. `mcp` is the app's MCP server as (url, Authorization header);
 /// when it could not start the config is left out. `--strict-mcp-config` stays either
 /// way, so the user's own MCP servers are not loaded.
-fn cli_args(mcp: Option<(&str, &str)>) -> Vec<String> {
+fn cli_args(mcp: Option<(&str, &str)>, model: Option<&str>) -> Vec<String> {
     if let Some((url, auth_header)) = mcp {
-        return claude_cli_args(url, auth_header, None);
+        return claude_cli_args(url, auth_header, model);
     }
-    let mut args = claude_cli_args("", "", None);
+    let mut args = claude_cli_args("", "", model);
     if let Some(at) = args.iter().position(|arg| arg == "--mcp-config") {
         args.drain(at..(at + 2).min(args.len()));
     }
@@ -110,7 +137,11 @@ fn auto_allowed(request: &Value) -> bool {
 
 /// `REVER_CLAUDE_CLI` wins; otherwise `claude` on PATH, then the usual install
 /// folders (an app started from the Finder has a minimal PATH).
-fn spawn_cli(cwd: &Path, mcp: Option<(&str, &str)>) -> Result<Child, String> {
+fn spawn_cli(
+    cwd: &Path,
+    mcp: Option<(&str, &str)>,
+    model: Option<&str>,
+) -> Result<Child, String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let candidates = match std::env::var("REVER_CLAUDE_CLI") {
         Ok(path) if !path.is_empty() => vec![path],
@@ -124,7 +155,7 @@ fn spawn_cli(cwd: &Path, mcp: Option<(&str, &str)>) -> Result<Child, String> {
     let mut last_error = String::new();
     for candidate in candidates {
         let spawned = Command::new(&candidate)
-            .args(cli_args(mcp))
+            .args(cli_args(mcp, model))
             .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -140,15 +171,27 @@ fn spawn_cli(cwd: &Path, mcp: Option<(&str, &str)>) -> Result<Child, String> {
     ))
 }
 
+/// The stream-json control request that changes the session's model, as one line.
+fn set_model_request(model: &str) -> String {
+    let request = json!({
+        "type": "control_request",
+        "request_id": format!("rever-set-model-{model}"),
+        "request": { "subtype": "set_model", "model": model },
+    });
+    format!("{request}\n")
+}
+
 impl AgentSession {
     /// `wake` is called from a reader thread whenever [`AgentSession::drain`] has something new.
+    /// `model` is the CLI's `--model`; `None` leaves the CLI's own default.
     pub fn spawn(
         cwd: &Path,
         mcp: Option<(&str, &str)>,
+        model: Option<&str>,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> Result<Self, String> {
         std::fs::create_dir_all(cwd).map_err(|error| format!("{}: {error}", cwd.display()))?;
-        let mut child = spawn_cli(cwd, mcp)?;
+        let mut child = spawn_cli(cwd, mcp, model)?;
         let (Some(stdin), Some(stdout), Some(mut stderr)) =
             (child.stdin.take(), child.stdout.take(), child.stderr.take())
         else {
@@ -195,6 +238,12 @@ impl AgentSession {
 
     pub fn send(&mut self, text: &str) -> std::io::Result<()> {
         self.stdin.write_all(user_message(text).as_bytes())?;
+        self.stdin.flush()
+    }
+
+    /// Switch the running session to another model; the conversation is kept.
+    pub fn set_model(&mut self, model: &str) -> std::io::Result<()> {
+        self.stdin.write_all(set_model_request(model).as_bytes())?;
         self.stdin.flush()
     }
 
@@ -265,7 +314,7 @@ mod tests {
 
     #[test]
     fn mcp_설정만_빼고_나머지_인자는_그대로_둔다() {
-        let args = cli_args(None);
+        let args = cli_args(None, None);
         assert!(
             !args
                 .iter()
@@ -282,8 +331,23 @@ mod tests {
     }
 
     #[test]
+    fn 고른_모델은_시작_인자와_전환_요청에_들어간다() {
+        let args = cli_args(None, Some("claude-opus-5-5"));
+        let at = args.iter().position(|arg| arg == "--model").unwrap();
+        assert_eq!(args[at + 1], "claude-opus-5-5");
+        assert!(!cli_args(None, None).iter().any(|arg| arg == "--model"));
+
+        let line = set_model_request("claude-opus-5-5");
+        assert!(line.ends_with('\n'), "한 줄에 한 요청이다");
+        let request: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(request["type"], "control_request");
+        assert_eq!(request["request"]["subtype"], "set_model");
+        assert_eq!(request["request"]["model"], "claude-opus-5-5");
+    }
+
+    #[test]
     fn mcp_서버가_있으면_주소와_인증_헤더를_설정에_넣는다() {
-        let args = cli_args(Some(("http://127.0.0.1:9/mcp", "Bearer t")));
+        let args = cli_args(Some(("http://127.0.0.1:9/mcp", "Bearer t")), None);
         let at = args.iter().position(|arg| arg == "--mcp-config").unwrap();
         let config: Value = serde_json::from_str(&args[at + 1]).unwrap();
         let server = &config["mcpServers"][MCP_SERVER_NAME];

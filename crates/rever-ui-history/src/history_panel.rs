@@ -5,6 +5,8 @@
 //! entry emits [`OpenUrl`] where the component called the navigation-request store.
 
 use std::ops::Range;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use chrono::{Datelike, Local, NaiveDate, TimeZone, Utc};
 use gpui::{
@@ -200,6 +202,28 @@ pub fn favicon_url(host: &str) -> String {
     format!("https://www.google.com/s2/favicons?domain={host}&sz=32")
 }
 
+/// Where the host keeps the icons of the pages it has shown, one `<host>.png` each.
+static FAVICON_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// The host saves a page's icon under [`favicon_file`]; those are shown before asking
+/// the network, which needs an HTTP client the application may not have.
+pub fn set_favicon_dir(dir: PathBuf) {
+    let _ = FAVICON_DIR.set(dir);
+}
+
+/// The file the icon of `host` is saved in; `None` until [`set_favicon_dir`].
+pub fn favicon_file(host: &str) -> Option<PathBuf> {
+    favicon_file_in(FAVICON_DIR.get()?, host)
+}
+
+fn favicon_file_in(dir: &Path, host: &str) -> Option<PathBuf> {
+    // A host name has no path separator, but this must never leave the directory.
+    if host.is_empty() || host.contains(['/', '\\']) || host == ".." {
+        return None;
+    }
+    Some(dir.join(format!("{host}.png")))
+}
+
 /// The `Favicon` component, shared with the bookmark bar: the site's icon, a grey square
 /// for a URL without a host, and an empty square of the same size while the icon is
 /// loading or when it cannot be loaded. The icon is fetched with the application's HTTP
@@ -208,8 +232,11 @@ pub(crate) fn favicon(url: &str, placeholder: Rgba) -> AnyElement {
     let square = || div().size(px(16.0)).flex_none().rounded(px(2.0));
     match favicon_host(url) {
         None => square().bg(placeholder).into_any_element(),
-        Some(host) => img(favicon_url(&host))
-            .size(px(16.0))
+        Some(host) => match favicon_file(&host).filter(|file| file.is_file()) {
+            Some(file) => img(file),
+            None => img(favicon_url(&host)),
+        }
+        .size(px(16.0))
             .flex_none()
             .rounded(px(2.0))
             .with_fallback(move || square().into_any_element())
@@ -908,6 +935,19 @@ mod tests {
         assert_eq!(favicon_host("about:blank"), None);
         assert_eq!(favicon_host("not a url"), None);
         assert_eq!(favicon_host(""), None);
+    }
+
+    #[test]
+    fn 저장된_파비콘은_폴더_안의_호스트_이름_파일이다() {
+        let dir = Path::new("/data/favicons");
+        assert_eq!(
+            favicon_file_in(dir, "github.com"),
+            Some(PathBuf::from("/data/favicons/github.com.png"))
+        );
+        // 폴더 밖을 가리킬 수 있는 이름은 받지 않는다.
+        assert_eq!(favicon_file_in(dir, "../etc"), None);
+        assert_eq!(favicon_file_in(dir, ".."), None);
+        assert_eq!(favicon_file_in(dir, ""), None);
     }
 
     #[test]

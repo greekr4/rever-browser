@@ -13,7 +13,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::{
-    App, ClipboardItem, Context, Entity, EventEmitter, Focusable, FontWeight, MouseDownEvent, Rgba,
+    App, ClipboardItem, Context, Corner, Entity, EventEmitter, Focusable, FontWeight, MouseDownEvent, Rgba,
     Task, Window, anchored, deferred, div, point, prelude::*, px, rgba, svg,
 };
 use rever_ui_kit::i18n::Lang;
@@ -214,10 +214,14 @@ pub fn group_models(catalog: &[LiveModel], query: &str, health: &Health) -> Vec<
 /// Where the popover goes, in window coordinates.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Placement {
+    /// The popover's top edge, or its bottom edge when it opens `above` the button.
     pub top: f32,
     pub left: f32,
     pub width: f32,
     pub max_height: f32,
+    /// The React picker sat in the chat header and always opened downward; in the Rust
+    /// app it also sits in the composer, at the bottom of the window.
+    pub above: bool,
 }
 
 /// Fixed placement inside the chat column: an absolute popover got clipped by its
@@ -228,11 +232,24 @@ pub fn popover_placement(trigger: Rect, column: Option<Span>, viewport: (f32, f3
         right: viewport.0,
     });
     let width = (col.right - col.left - 16.0).min(320.0);
+    let left = (col.left + 8.0).max(trigger.left.min(col.right - width - 8.0));
+    // The side of the button with more room.
+    let above = trigger.top > viewport.1 - trigger.bottom;
+    if above {
+        return Placement {
+            top: trigger.top - 6.0,
+            left,
+            width,
+            max_height: trigger.top - 18.0,
+            above,
+        };
+    }
     Placement {
         top: trigger.bottom + 6.0,
-        left: (col.left + 8.0).max(trigger.left.min(col.right - width - 8.0)),
+        left,
         width,
         max_height: viewport.1 - trigger.bottom - 18.0,
+        above,
     }
 }
 
@@ -878,6 +895,11 @@ impl Render for ModelPicker {
             deferred(
                 anchored()
                     .snap_to_window()
+                    .anchor(if place.above {
+                        Corner::BottomLeft
+                    } else {
+                        Corner::TopLeft
+                    })
                     .position(point(px(place.left), px(place.top)))
                     .child(popover),
             )
@@ -1043,7 +1065,7 @@ mod tests {
         let opus = group_models(&catalog(), " OPUS ", &health);
         assert_eq!(ids(&opus), ["anthropic", "claude-code"]);
         assert_eq!(opus[0].models.len(), 1);
-        assert_eq!(opus[0].models[0].name, "Claude Opus 4.8");
+        assert_eq!(opus[0].models[0].name, "Claude Opus 5.5");
         // An agent name keeps all of that agent's models.
         let codex = group_models(&catalog(), "codex", &health);
         assert_eq!(ids(&codex), ["codex"]);
@@ -1196,9 +1218,26 @@ mod tests {
                 top: 44.0,
                 left: 100.0,
                 width: 320.0,
-                max_height: 584.0
+                max_height: 584.0,
+                above: false,
             }
         );
+    }
+
+    #[test]
+    fn 버튼이_창_아래쪽에_있으면_팝오버는_위로_열린다() {
+        // 컴포저의 칩: 아래로는 60픽셀뿐이고 위로는 800픽셀이 있다.
+        let chip = Rect {
+            left: 700.0,
+            top: 800.0,
+            right: 800.0,
+            bottom: 828.0,
+        };
+        let place = popover_placement(chip, None, (1000.0, 888.0));
+        assert!(place.above);
+        // top은 팝오버의 아래 끝: 버튼 위 6픽셀.
+        assert_eq!(place.top, 794.0);
+        assert_eq!(place.max_height, 782.0);
     }
 
     #[test]

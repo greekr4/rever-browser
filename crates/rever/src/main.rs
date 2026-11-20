@@ -10,18 +10,26 @@
 //! from the app, `shell` draws the window.
 
 mod agent;
+mod agent_acp;
+mod agent_api;
+mod api_keys;
 mod app;
 mod bridge;
+mod chat_agents;
 mod debug;
 mod engine;
 mod intercept;
+mod mcp_client;
 mod panels;
 mod scan;
 mod shell;
 mod storage_host;
 
 use app::{Browser, DEFAULT_URL, Launch, PANEL_GROUPS};
-use gpui::{App, Application, Bounds, WindowBounds, WindowOptions, prelude::*, px, size};
+use gpui::{
+    App, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, prelude::*, px,
+    size,
+};
 use rever_core::address::normalize_address;
 use rever_ui_kit::text_input;
 use url::Url;
@@ -57,10 +65,22 @@ fn main() {
         .with_assets(shell::Assets)
         .run(move |cx: &mut App| {
             text_input::bind_keys(cx);
+            shell::shortcuts::bind_keys(cx);
+            #[cfg(target_os = "macos")]
+            set_dock_icon();
             let bounds = Bounds::centered(None, size(px(1440.0), px(900.0)), cx);
             cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    // Chrome's look: no title bar, the traffic lights sit in the tab strip.
+                    titlebar: Some(TitlebarOptions {
+                        title: None,
+                        appears_transparent: true,
+                        traffic_light_position: Some(point(
+                            px(14.0),
+                            px((shell::STRIP_HEIGHT - 12.0) / 2.0),
+                        )),
+                    }),
                     ..Default::default()
                 },
                 |window, cx| cx.new(|cx| Browser::new(launch, window, cx)),
@@ -68,4 +88,25 @@ fn main() {
             .expect("could not open the main window");
             cx.activate(true);
         });
+}
+
+/// Run from `cargo run` there is no .app bundle, so macOS shows a generic "exec" icon in
+/// the Dock. Hand it the app icon instead.
+#[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)] // objc 0.2's macros test a cfg newer compilers do not know.
+fn set_dock_icon() {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+    const ICON: &[u8] = include_bytes!("../../../resources/icon-macos.png");
+    unsafe {
+        let data: *mut Object =
+            msg_send![class!(NSData), dataWithBytes: ICON.as_ptr() length: ICON.len()];
+        let image: *mut Object = msg_send![class!(NSImage), alloc];
+        let image: *mut Object = msg_send![image, initWithData: data];
+        if image.is_null() {
+            return;
+        }
+        let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+        let () = msg_send![app, setApplicationIconImage: image];
+    }
 }

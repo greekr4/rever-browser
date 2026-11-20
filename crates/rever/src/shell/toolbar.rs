@@ -59,6 +59,9 @@ impl Browser {
             )
             .child(self.ip_badge.clone())
             .child(icon_button("profile", "profile", 32.0, theme))
+            .child(icon_button("toggle-chat", "panel-right", 32.0, theme).on_click(
+                cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_chat(cx)),
+            ))
             .child(self.menu.clone());
         div()
             .flex_none()

@@ -23,7 +23,10 @@ jobs:
       - uses: actions/checkout@v4
       # Servo's dav1d-sys links the system library through pkg-config.
       - name: Install system libraries
-        run: brew install dav1d pkgconf
+        id: libs
+        run: |
+          brew install dav1d pkgconf
+          echo "dav1d=$(pkg-config --modversion dav1d)" >> "$GITHUB_OUTPUT"
       - name: Apply crate patches
         run: ./scripts/apply-rust-patches.sh
       - uses: dtolnay/rust-toolchain@stable
@@ -31,6 +34,9 @@ jobs:
       # caches never evict the one every PR restores from.
       - uses: Swatinem/rust-cache@v2
         with:
+          # dav1d-sys keeps the versioned Homebrew path it was built against, so a
+          # cache from another dav1d version fails at link time.
+          key: dav1d-${{ steps.libs.outputs.dav1d }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Workspace tests
         run: cargo test --workspace

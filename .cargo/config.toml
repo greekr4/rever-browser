@@ -1,0 +1,5 @@
+# `cargo run` and `cargo test` start their binaries through this script. Once a day it
+# starts scripts/sweep-target.py in the background, which deletes build output cargo no
+# longer uses (it reached 79GB without it).
+[target.'cfg(unix)']
+runner = "scripts/cargo-runner.sh"

@@ -15,6 +15,8 @@ gpui = { version = "0.2.2", features = ["runtime_shaders"] }
 servo-net = { path = "vendor/servo-net" }
 # AVIF images: Servo 0.8 decodes none. Needs libdav1d and pkg-config on the build machine.
 servo-pixels = { path = "vendor/servo-pixels" }
+# `aspect-ratio` on boxes that are not images: Servo 0.8 ignores it there.
+servo-layout = { path = "vendor/servo-layout" }
 # The debugging server must not panic on a stack frame of evaluated code.
 servo-devtools = { path = "vendor/servo-devtools" }
 # One freetype-sys version for both GPUI and Servo.

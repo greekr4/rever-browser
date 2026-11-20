@@ -11,12 +11,17 @@ pub enum Lang {
     Ko,
 }
 
-/// Strings that exist only while the port is in progress.
-const PORT_STRINGS: &[(&str, &str, &str)] = &[(
-    "port.panelNotYet",
-    "This panel is not available in the Rust app yet.",
-    "이 패널은 아직 Rust 앱으로 옮겨지지 않았습니다.",
-)];
+/// Strings the Rust app added: the Electron dictionaries (`locales.rs`) never had them.
+const PORT_STRINGS: &[(&str, &str, &str)] = &[
+    ("chat.tools.ran", "Ran {n} tools", "도구 {n}개 실행함"),
+    ("chat.tools.running", "Running {n} tools", "도구 {n}개 실행 중"),
+    ("chat.working", "Working…", "작업 중…"),
+    (
+        "port.panelNotYet",
+        "This panel is not available in the Rust app yet.",
+        "이 패널은 아직 Rust 앱으로 옮겨지지 않았습니다.",
+    ),
+];
 
 impl Lang {
     /// `REVER_LANG=ko|en` wins; otherwise the OS locale decides (Korean → ko, else

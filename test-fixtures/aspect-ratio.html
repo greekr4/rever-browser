@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>aspect-ratio on boxes that are not images</title>
+<style>
+  .col { display: flex; flex-direction: column; width: 400px; background: #eef; margin: 8px; }
+  .ratio { aspect-ratio: 2 / 1; background: #9c9; }
+  .rel { position: relative; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; width: 840px; }
+  .w100 { width: 100%; }
+  .abs { position: absolute; inset: 0; }
+</style>
+<!-- Every .ratio box is 400 wide, so each must come out 200 tall. -->
+<div class="col"><div id="plain" class="ratio"></div></div>
+<div class="col"><div id="relative" class="ratio rel"></div></div>
+<div class="col"><div id="abs-child" class="ratio rel"><div class="abs"></div></div></div>
+<div class="col"><p>text</p><div id="after-text" class="ratio rel" style="margin-top:24px"></div></div>
+<div class="col" style="height:auto;min-height:0;padding-bottom:24px;overflow:hidden"><div id="overflow-hidden" class="ratio rel"></div></div>
+<div class="grid">
+  <div class="col w100" style="margin:0"><div id="in-grid" class="ratio rel"></div></div>
+  <div class="col w100" style="margin:0;overflow:hidden"><div id="in-grid-overflow" class="ratio rel"></div></div>
+</div>
+<div class="grid">
+  <div class="col w100" style="margin:0;grid-column:span 2;width:100%"><div id="in-grid-span" class="ratio rel"></div></div>
+</div>
+<div style="width:400px"><div id="block" class="ratio"></div></div>

@@ -293,7 +293,7 @@ mod tests {
             .filter(|m| !LIVE_AGENTS.contains(&m.agent_id))
             .count();
         assert_eq!(all.len(), fallback_rows + 3);
-        assert_eq!(all[0].name, "Claude Opus 4.8");
+        assert_eq!(all[0].name, "Claude Opus 5.5");
         assert_eq!(
             names(&all[fallback_rows..]),
             ["GPT-6", "GPT-6 mini", "Opus"]

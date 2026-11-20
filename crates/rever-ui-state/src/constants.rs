@@ -182,15 +182,11 @@ pub const MODEL_CATALOG: &[CatalogModel] = &[
     // are confirmed on first spawn (see [acp:newSession] in the dev log).
     model(AcpAgentId::Codex, "gpt-5-codex", "GPT-5 Codex"),
     model(AcpAgentId::Codex, "gpt-5", "GPT-5"),
-    // Claude API — exact ids (mirror of ANTHROPIC_MODELS in the main process).
-    model(AcpAgentId::Anthropic, "claude-opus-4-8", "Claude Opus 4.8"),
-    model(AcpAgentId::Anthropic, "claude-sonnet-5", "Claude Sonnet 5"),
-    model(
-        AcpAgentId::Anthropic,
-        "claude-haiku-4-5",
-        "Claude Haiku 4.5",
-    ),
-    model(AcpAgentId::Anthropic, "claude-fable-5", "Claude Fable 5"),
+    // Claude API — exact ids of the current generation.
+    model(AcpAgentId::Anthropic, "claude-opus-5-5", "Claude Opus 5.5"),
+    model(AcpAgentId::Anthropic, "claude-sonnet-5-5", "Claude Sonnet 5.5"),
+    model(AcpAgentId::Anthropic, "claude-haiku-5-5", "Claude Haiku 5.5"),
+    model(AcpAgentId::Anthropic, "claude-fable-5-2", "Claude Fable 5.2"),
     // OpenAI API — exact ids (mirror of OPENAI_MODELS in the main process).
     model(AcpAgentId::Openai, "gpt-4o", "GPT-4o"),
     model(AcpAgentId::Openai, "gpt-4o-mini", "GPT-4o mini"),
@@ -309,9 +305,9 @@ mod tests {
                 r#"[{"agentId":"claude-code","modelId":"default","name":"Default"},{"agentId":"claude-code","modelId":"fable","name":"Fable"},"#,
                 r#"{"agentId":"claude-code","modelId":"opus","name":"Opus"},{"agentId":"claude-code","modelId":"sonnet","name":"Sonnet"},"#,
                 r#"{"agentId":"claude-code","modelId":"haiku","name":"Haiku"},{"agentId":"codex","modelId":"gpt-5-codex","name":"GPT-5 Codex"},"#,
-                r#"{"agentId":"codex","modelId":"gpt-5","name":"GPT-5"},{"agentId":"anthropic","modelId":"claude-opus-4-8","name":"Claude Opus 4.8"},"#,
-                r#"{"agentId":"anthropic","modelId":"claude-sonnet-5","name":"Claude Sonnet 5"},{"agentId":"anthropic","modelId":"claude-haiku-4-5","name":"Claude Haiku 4.5"},"#,
-                r#"{"agentId":"anthropic","modelId":"claude-fable-5","name":"Claude Fable 5"},{"agentId":"openai","modelId":"gpt-4o","name":"GPT-4o"},"#,
+                r#"{"agentId":"codex","modelId":"gpt-5","name":"GPT-5"},{"agentId":"anthropic","modelId":"claude-opus-5-5","name":"Claude Opus 5.5"},"#,
+                r#"{"agentId":"anthropic","modelId":"claude-sonnet-5-5","name":"Claude Sonnet 5.5"},{"agentId":"anthropic","modelId":"claude-haiku-5-5","name":"Claude Haiku 5.5"},"#,
+                r#"{"agentId":"anthropic","modelId":"claude-fable-5-2","name":"Claude Fable 5.2"},{"agentId":"openai","modelId":"gpt-4o","name":"GPT-4o"},"#,
                 r#"{"agentId":"openai","modelId":"gpt-4o-mini","name":"GPT-4o mini"},{"agentId":"openai","modelId":"o3","name":"o3"},"#,
                 r#"{"agentId":"openai","modelId":"o4-mini","name":"o4-mini"},{"agentId":"grok","modelId":"grok-4.7","name":"Grok 4.7"},"#,
                 r#"{"agentId":"grok","modelId":"grok-4.6","name":"Grok 4.6"},{"agentId":"grok","modelId":"grok-4.5","name":"Grok 4.5"},"#,
