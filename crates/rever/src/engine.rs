@@ -224,6 +224,9 @@ impl Engine {
                 // GitHub spreads `adoptedStyleSheets` of every root it styles; without the
                 // property that throws, and its components never get their data.
                 dom_adoptedstylesheet_enabled: true,
+                // Variable fonts (one file for every weight, as next/font ships them):
+                // without this every weight is drawn at the font's default.
+                layout_css_font_variations_enabled: true,
                 // The debugger tools drive pages through Servo's debugging server.
                 devtools_server_enabled: true,
                 // On this machine only. Servo reports the port it was told, not the
