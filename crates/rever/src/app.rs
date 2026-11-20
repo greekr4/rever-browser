@@ -171,7 +171,13 @@ fn start_mcp(
             })
         });
     }
-    let server = rever_mcp::start(Arc::new(registry), context)
+    // Macros and workflow steps call the other tools by name through the registry;
+    // without it saving or running one failed with "not connected to workflows yet".
+    let registry = Arc::new(registry);
+    context
+        .state::<rever_tools_automation::bridge::ToolRegistryHandle>()
+        .set(registry.clone());
+    let server = rever_mcp::start(registry, context)
         .inspect_err(|error| eprintln!("[mcp] {error}"))
         .ok();
     (server, intercept, downloads, context_for_app)
@@ -603,6 +609,8 @@ pub(crate) struct Browser {
     pub ip_badge: Entity<IpBadge>,
     /// Set by the network tap's threads when the capture store changed.
     traffic_changed: Arc<AtomicBool>,
+    /// When the workflows file last changed, as far as the Workflows panel has seen.
+    workflows_modified: Option<std::time::SystemTime>,
     /// Answers to what the console panel ran in the page, collected until the next pump.
     eval_results: Rc<RefCell<Vec<Result<JSValue, String>>>>,
     /// The Claude Code CLI, started with the first chat message.
@@ -820,7 +828,14 @@ impl Browser {
         } else {
             theme_from_stored(app_theme.mode())
         };
-        let views = Views::new(&stores, lang, theme_mode, tool_browser.clone(), cx);
+        let views = Views::new(
+            &stores,
+            lang,
+            theme_mode,
+            tool_browser.clone(),
+            tool_context.clone(),
+            cx,
+        );
         views
             .address
             .update(cx, |input, cx| input.set_text(url.to_string(), cx));
@@ -939,6 +954,7 @@ impl Browser {
             menu,
             ip_badge,
             traffic_changed,
+            workflows_modified: None,
             eval_results: Rc::default(),
             agent: None,
             agent_busy: false,
@@ -1153,6 +1169,18 @@ impl Browser {
                 .websocket
                 .update(cx, |panel, cx| panel.refresh(cx));
             self.views.apimap.update(cx, |panel, cx| panel.refresh(cx));
+        }
+        // The agent's macro tools write the workflows file from the MCP server's
+        // thread: the panel reads it again when the file has changed.
+        let modified = std::fs::metadata(panels::workflows_file())
+            .and_then(|file| file.modified())
+            .ok();
+        if modified != self.workflows_modified {
+            self.workflows_modified = modified;
+            self.views.workflows_store.update(cx, |store, cx| {
+                store.reload();
+                cx.notify();
+            });
         }
         self.pump_agent();
         self.pump_scan(cx);
@@ -1379,7 +1407,14 @@ impl Browser {
         let address = self.views.address.read(cx).text().to_owned();
         let draft = self.views.composer.read(cx).text().to_owned();
         self.views =
-            Views::new(&self.stores, self.lang, self.theme_mode, self.storage_browser.clone(), cx);
+            Views::new(
+                &self.stores,
+                self.lang,
+                self.theme_mode,
+                self.storage_browser.clone(),
+                self.tool_context.clone(),
+                cx,
+            );
         self.views
             .address
             .update(cx, |input, cx| input.set_text(address, cx));

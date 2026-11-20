@@ -136,6 +136,7 @@ pub(crate) struct Views {
     pub repeater_store: Entity<RepeaterStore>,
     pub wsrepeater: Entity<WsRepeaterPanel>,
     pub workflows: Entity<WorkflowPanel>,
+    pub workflows_store: Entity<WorkflowsStore>,
 }
 
 impl Views {
@@ -144,6 +145,7 @@ impl Views {
         lang: Lang,
         theme_mode: ThemeMode,
         browser: Arc<dyn rever_tools_api::tool::Browser>,
+        tools: Arc<rever_tools_api::tool::ToolContext>,
         cx: &mut Context<Browser>,
     ) -> Self {
         let address = cx.new(|cx| TextInput::new(lang.t("toolbar.addressPlaceholder"), cx));
@@ -229,10 +231,17 @@ impl Views {
         let wsrepeater = cx.new(|cx| {
             WsRepeaterPanel::new(stores.traffic.clone(), page_sockets, lang, theme_mode, cx)
         });
+        let workflows_store = cx.new(|_| {
+            WorkflowsStore::new(Rc::new(WorkflowsFile {
+                path: workflows_file(),
+                earlier: stores.storage.clone(),
+            }))
+        });
         let workflows = {
-            let store = cx.new(|_| WorkflowsStore::new(stores.storage.clone()));
+            let store = workflows_store.clone();
             let registry = Rc::new(rever_ui_workflows::default_registry());
-            cx.new(|cx| WorkflowPanel::new(store, registry, Rc::new(NoWorkflows), lang, theme_mode, cx))
+            let host = Rc::new(WorkflowTools { context: tools });
+            cx.new(|cx| WorkflowPanel::new(store, registry, host, lang, theme_mode, cx))
         };
 
         Self {
@@ -252,26 +261,117 @@ impl Views {
             repeater_store,
             wsrepeater,
             workflows,
+            workflows_store,
         }
     }
 }
 
-/// The workflows panel's host. The panel renders (list/edit workflows from the
-/// registry), but running them + the CLI compiler need the agent/MCP wiring that
-/// isn't ported into the GPUI shell yet, so those return "not yet".
-struct NoWorkflows;
+/// The file the macro and CLI tools keep the workflows in.
+pub fn workflows_file() -> std::path::PathBuf {
+    crate::app::data_dir().join(rever_tools_automation::store::WORKFLOWS_FILE)
+}
 
-impl WorkflowHost for NoWorkflows {
-    fn list_tools(&self, _: &mut App) -> Task<Vec<McpToolInfo>> {
-        Task::ready(Vec::new())
+/// The Workflows panel's storage: the tools' file, so the workflow the agent saves is
+/// the one the panel lists. Both sides write the same JSON.
+struct WorkflowsFile {
+    path: std::path::PathBuf,
+    /// Where the panel kept the list before it shared the file.
+    earlier: Rc<dyn rever_ui_state::Storage>,
+}
+
+impl rever_ui_state::Storage for WorkflowsFile {
+    fn get(&self, key: &str) -> Option<String> {
+        std::fs::read_to_string(&self.path)
+            .ok()
+            .or_else(|| self.earlier.get(key))
     }
+
+    fn set(&self, _: &str, value: &str) -> std::io::Result<()> {
+        // Written beside the file and moved over it: a tool never reads half a list.
+        // Not the tools' own temporary name, so the two never write the same file.
+        let temporary = self.path.with_extension("json.panel.tmp");
+        std::fs::write(&temporary, value)?;
+        std::fs::rename(&temporary, &self.path)
+    }
+
+    fn remove(&self, _: &str) -> std::io::Result<()> {
+        std::fs::remove_file(&self.path)
+    }
+}
+
+/// The panel and the workflow executor each port the same TypeScript types: their
+/// JSON form carries a value from one to the other.
+fn recast<T: serde::Serialize, U: serde::de::DeserializeOwned>(value: &T) -> Result<U, String> {
+    serde_json::to_value(value)
+        .and_then(serde_json::from_value)
+        .map_err(|error| error.to_string())
+}
+
+/// The workflows panel's host: a macro runs through the tools the agent calls.
+/// Pipelines and the CLI compiler are not connected yet and answer "not yet".
+struct WorkflowTools {
+    context: Arc<rever_tools_api::tool::ToolContext>,
+}
+
+impl WorkflowHost for WorkflowTools {
+    fn list_tools(&self, _: &mut App) -> Task<Vec<McpToolInfo>> {
+        use rever_tools_automation::bridge::{ToolRegistryHandle, list_mcp_tools};
+        let allowed = list_mcp_tools(&self.context).unwrap_or_default();
+        let registry = self.context.state::<ToolRegistryHandle>().get();
+        let tools = registry
+            .map(|registry| registry.defs())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|def| allowed.contains(&def.name))
+            .map(|def| McpToolInfo {
+                name: def.name,
+                description: Some(def.description),
+                input_schema: def.input_schema,
+            })
+            .collect();
+        Task::ready(tools)
+    }
+
     fn run(
         &self,
-        _: Vec<WorkflowRunStep>,
-        _: OnProgress<WorkflowStepProgress>,
-        _: &mut App,
+        steps: Vec<WorkflowRunStep>,
+        on_progress: OnProgress<WorkflowStepProgress>,
+        cx: &mut App,
     ) -> Task<Result<Vec<WorkflowStepProgress>, String>> {
-        Task::ready(Err(NOT_YET.to_owned()))
+        use futures::StreamExt;
+        use rever_tools_automation::workflow_executor::{
+            RunOptions, RunStep, StepProgress, run_workflow,
+        };
+        let steps: Vec<RunStep> = match recast(&steps) {
+            Ok(steps) => steps,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let context = self.context.clone();
+        let (progress, mut seen) = futures::channel::mpsc::unbounded::<StepProgress>();
+        let (done, finished) = futures::channel::oneshot::channel();
+        // The executor waits on tokio timers, and its tools are answered by this
+        // window's thread, which must stay free: it gets a thread and a runtime.
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build();
+            let result = runtime.map_err(|error| error.to_string()).map(|runtime| {
+                let mut report = |step| {
+                    let _ = progress.unbounded_send(step);
+                };
+                runtime.block_on(run_workflow(&context, &steps, &mut report, &RunOptions::default()))
+            });
+            let _ = done.send(result);
+        });
+        cx.spawn(async move |cx| {
+            while let Some(step) = seen.next().await {
+                if let Ok(step) = recast(&step) {
+                    let _ = cx.update(|cx| on_progress(step, cx));
+                }
+            }
+            let steps = finished.await.map_err(|_| "the run stopped".to_owned())??;
+            steps.iter().map(recast).collect()
+        })
     }
     fn run_pipeline(
         &self,
@@ -281,7 +381,9 @@ impl WorkflowHost for NoWorkflows {
     ) -> Task<Result<bool, String>> {
         Task::ready(Err(NOT_YET.to_owned()))
     }
-    fn cancel(&self, _: &mut App) {}
+    fn cancel(&self, _: &mut App) {
+        rever_tools_automation::workflow_executor::cancel_workflow(&self.context);
+    }
     fn compile_cli(
         &self,
         _: Vec<String>,
