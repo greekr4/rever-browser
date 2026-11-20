@@ -25,7 +25,7 @@ mod scan;
 mod shell;
 mod storage_host;
 
-use app::{Browser, DEFAULT_URL, Launch, PANEL_GROUPS};
+use app::{Browser, Launch, PANEL_GROUPS};
 use gpui::{
     App, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, prelude::*, px,
     size,
@@ -35,7 +35,8 @@ use rever_ui_kit::text_input;
 use url::Url;
 
 fn main() {
-    let mut url = DEFAULT_URL.to_owned();
+    // No URL: the app opens what the last run left open.
+    let mut url = None;
     let (mut self_check, mut open_panel, mut say) = (None, None, None);
     for arg in std::env::args().skip(1) {
         if let Some(dir) = arg.strip_prefix("--self-check=") {
@@ -50,10 +51,12 @@ fn main() {
                 .copied()
                 .find(|panel| *panel == name);
         } else {
-            url = arg;
+            url = Some(arg);
         }
     }
-    let url = Url::parse(&normalize_address(&url)).expect("the URL argument is not a valid URL");
+    let url = url.map(|url| {
+        Url::parse(&normalize_address(&url)).expect("the URL argument is not a valid URL")
+    });
     let launch = Launch {
         url,
         open_panel,

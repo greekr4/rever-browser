@@ -49,6 +49,9 @@ use rever_ui_state::app_theme::{self, AppThemeStore};
 use rever_ui_state::chat_collapsed::ChatCollapsedStore;
 use rever_ui_state::chat_history::{ChatHistory, new_conversation_id};
 use rever_ui_state::constants::AcpAgentId;
+use rever_ui_state::tabs::{
+    STORE_KEY as TABS_KEY, Tab as SessionTab, parse_saved_tabs, serialize_tabs,
+};
 use serde_json::{Value, json};
 use servo::{
     ColorPicker, ContextMenu, ContextMenuAction, EmbedderControl, JSValue, RgbColor,
@@ -547,9 +550,36 @@ fn apply_agent_event(chat: &mut Vec<ChatLine>, event: &AgentEvent) {
     }
 }
 
+/// The pages to open at start, with the titles their tabs show until they load, and
+/// which of them is shown: the URL of the command line, else the tabs the last run
+/// left open (as Chrome continues where you left off), else the home page.
+fn start_pages(asked: Option<Url>, saved: Option<&str>) -> (Vec<(Url, String)>, usize) {
+    let home = |url: Option<Url>| {
+        let url = url.unwrap_or_else(|| Url::parse(DEFAULT_URL).expect("the home page is a URL"));
+        (vec![(url, String::new())], 0)
+    };
+    let Some(saved) = parse_saved_tabs(saved).filter(|_| asked.is_none()) else {
+        return home(asked);
+    };
+    // The saved index is untrusted; the cast saturates.
+    let wanted = saved.active_index.max(0.0) as usize;
+    let (mut pages, mut active) = (Vec::new(), 0);
+    for (index, tab) in saved.tabs.into_iter().enumerate() {
+        if let Ok(url) = Url::parse(&tab.url) {
+            // A tab whose address no longer parses is skipped: the one before it is shown.
+            if index <= wanted {
+                active = pages.len();
+            }
+            pages.push((url, tab.title.unwrap_or_default()));
+        }
+    }
+    if pages.is_empty() { home(None) } else { (pages, active) }
+}
+
 /// What the command line asked for.
 pub(crate) struct Launch {
-    pub url: Url,
+    /// The page to open; `None` continues where the last run left off.
+    pub url: Option<Url>,
     pub open_panel: Option<&'static str>,
     pub self_check: Option<String>,
     /// A chat message to send shortly after start (port harness).
@@ -692,6 +722,8 @@ pub(crate) struct Browser {
     pub composing: Option<String>,
     /// Addresses of closed tabs, newest last, for Cmd+Shift+T.
     closed_tabs: Vec<String>,
+    /// The open tabs as last written for the next start.
+    saved_session: String,
     /// Keeps the conversation at its newest line while a reply streams.
     pub chat_scroll: gpui::ScrollHandle,
     /// The model chip of the composer: every agent's models in one list.
@@ -788,9 +820,29 @@ impl Browser {
             held_requests.clone(),
             note,
         ));
-        let first = engine
-            .open(url.clone(), PhysicalSize::new(800, 600))
-            .expect("the page engine could not start");
+        // A --self-check run is a test: it must not add its pages to the user's history.
+        let stores = Stores::new(traffic.clone(), self_check.is_none(), cx);
+        let (pages, active) = start_pages(url, stores.storage.get(TABS_KEY).as_deref());
+        let mut tabs = Vec::new();
+        for (url, title) in pages {
+            let opened = engine.open(url.clone(), PhysicalSize::new(800, 600));
+            // The engine has to start; a later tab that does not open is left out.
+            let id = if tabs.is_empty() {
+                opened.expect("the page engine could not start")
+            } else {
+                let Ok(id) = opened else { continue };
+                id
+            };
+            tabs.push(Tab {
+                id,
+                title: title.into(),
+                url: url.to_string(),
+                frame: None,
+                favicon: None,
+            });
+        }
+        let active = active.min(tabs.len() - 1);
+        let url = tabs[active].url.clone();
 
         // Servo and the tap wake this task from their threads; the work happens here, on the main thread.
         cx.spawn_in(window, async move |this, cx| {
@@ -825,8 +877,6 @@ impl Browser {
             .detach();
         }
 
-        // A --self-check run is a test: it must not add its pages to the user's history.
-        let stores = Stores::new(traffic, self_check.is_none(), cx);
         let app_theme = AppThemeStore::load(stores.storage.as_ref());
         // REVER_THEME wins over the saved choice, for previews and captures.
         let theme_mode = if std::env::var("REVER_THEME").is_ok_and(|mode| !mode.is_empty()) {
@@ -844,7 +894,7 @@ impl Browser {
         );
         views
             .address
-            .update(cx, |input, cx| input.set_text(url.to_string(), cx));
+            .update(cx, |input, cx| input.set_text(url, cx));
 
         let this = cx.weak_entity();
         // The menus read language and theme on every render, so a switch shows at once.
@@ -943,14 +993,9 @@ impl Browser {
         // The bot-check floating button is hidden in the browser, so it is not built.
         Self {
             engine,
-            tabs: vec![Tab {
-                id: first,
-                title: "".into(),
-                url: url.to_string(),
-                frame: None,
-                favicon: None,
-            }],
-            active: 0,
+            tabs,
+            active,
+            saved_session: String::new(),
             chat,
             open_panel,
             page_bounds: Rc::new(Cell::new(Bounds::default())),
@@ -1053,6 +1098,7 @@ impl Browser {
         let mut frame_ready = false;
         let mut console_changed = false;
         let mut opened = false;
+        let mut tabs_changed = false;
         let mut closed = Vec::new();
         for event in self.engine.pump() {
             match event {
@@ -1081,6 +1127,7 @@ impl Browser {
                         });
                     }
                     tab.title = title.into();
+                    tabs_changed = true;
                 }
                 EngineEvent::Favicon(tab, mut icon) => {
                     let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab) else {
@@ -1112,6 +1159,7 @@ impl Browser {
                         continue;
                     };
                     tab.url = url.clone();
+                    tabs_changed = true;
                     let entry = NewHistoryEntry {
                         tab_id: history_tab_id(tab.id),
                         url,
@@ -1139,6 +1187,9 @@ impl Browser {
         }
         if frame_ready {
             self.capture(window);
+        }
+        if tabs_changed {
+            self.save_session();
         }
         // The debugger tools connect to Servo's debugging server once it is up.
         if self.debug_endpoint.lock().unwrap().is_none() {
@@ -1292,7 +1343,33 @@ impl Browser {
             .update(cx, |input, cx| input.set_text(url, cx));
         self.fit_page(window, cx);
         self.capture(window);
+        self.save_session();
         cx.notify();
+    }
+
+    /// Remember the open tabs for the next start. Written only when they changed.
+    fn save_session(&mut self) {
+        let tabs: Vec<SessionTab> = self
+            .tabs
+            .iter()
+            .map(|tab| SessionTab {
+                id: tab.id.0.to_string(),
+                url: tab.url.clone(),
+                title: tab.title.to_string(),
+                web_contents_id: None,
+                initial_url: String::new(),
+                proxy: None,
+                partition: None,
+                profile_id: None,
+            })
+            .collect();
+        let saved = serialize_tabs(&tabs, &self.active_id().0.to_string());
+        if saved != self.saved_session {
+            if let Err(error) = self.stores.storage.set(TABS_KEY, &saved) {
+                eprintln!("rever: the open tabs were not saved: {error}");
+            }
+            self.saved_session = saved;
+        }
     }
 
     pub fn close_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -2406,6 +2483,30 @@ fn menu_props(browser: &WeakEntity<Browser>, cx: &App) -> AppMenuProps {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 시작할_때는_주소_인자가_먼저고_없으면_지난번_탭을_다시_연다() {
+        let saved = r#"{"tabs":[{"url":"https://a.test/","title":"A"},{"url":"not a url"},{"url":"https://c.test/x","title":"C"}],"activeIndex":2}"#;
+        let urls = |pages: &[(Url, String)]| -> Vec<String> {
+            pages.iter().map(|(url, _)| url.to_string()).collect()
+        };
+        // 지난번 탭: 읽을 수 없는 주소는 빼고, 보던 탭을 그대로 고른다.
+        let (pages, active) = start_pages(None, Some(saved));
+        assert_eq!(urls(&pages), ["https://a.test/", "https://c.test/x"]);
+        assert_eq!((active, pages[1].1.as_str()), (1, "C"));
+        // 주소 인자가 있으면 그것만 연다.
+        let asked = Url::parse("https://asked.test/").unwrap();
+        let (pages, active) = start_pages(Some(asked), Some(saved));
+        assert_eq!((urls(&pages), active), (vec!["https://asked.test/".to_owned()], 0));
+        // 저장된 것이 없거나 쓸 수 없으면 홈 페이지다.
+        for nothing in [None, Some("{}"), Some(r#"{"tabs":[{"url":"??"}]}"#)] {
+            let (pages, active) = start_pages(None, nothing);
+            assert_eq!((urls(&pages), active), (vec![DEFAULT_URL.to_owned()], 0));
+        }
+        // 보던 탭 번호가 범위를 넘으면 마지막 탭이다.
+        let far = r#"{"tabs":[{"url":"https://a.test/"},{"url":"https://b.test/"}],"activeIndex":9}"#;
+        assert_eq!(start_pages(None, Some(far)).1, 1);
+    }
 
     #[test]
     fn 웹소켓_이벤트는_연결을_항목으로_프레임을_붙여_기록한다() {
