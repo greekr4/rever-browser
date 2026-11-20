@@ -87,6 +87,51 @@ impl Browser {
             .children(self.context_menu_list(theme, cx))
             .children(self.prompt_overlay(theme, cx))
             .children(self.color_overlay(theme, cx))
+            .children(self.memory_overlay(theme))
+    }
+
+    /// The development build's memory readout, in the page's bottom-left corner. It
+    /// takes no clicks: they go through to the page.
+    fn memory_overlay(&self, theme: &Theme) -> Option<AnyElement> {
+        use crate::memory::megabytes;
+        let now = self.memory.latest()?;
+        let line = |label: &'static str, bytes: u64| {
+            div()
+                .flex()
+                .justify_between()
+                .gap(px(10.0))
+                .child(self.lang.t(label))
+                .child(megabytes(bytes))
+        };
+        let graph = div()
+            .h(px(22.0))
+            .flex()
+            .items_end()
+            .children(self.memory.bars().into_iter().map(|share| {
+                div().w(px(1.0)).h(px((share * 22.0).max(1.0))).bg(theme.accent)
+            }));
+        Some(
+            div()
+                .absolute()
+                .left(px(10.0))
+                .bottom(px(10.0))
+                .w(px(132.0))
+                .p(px(6.0))
+                .flex()
+                .flex_col()
+                .gap(px(2.0))
+                .rounded(px(6.0))
+                .bg(theme.bg)
+                .border_1()
+                .border_color(theme.border)
+                .opacity(0.9)
+                .text_size(px(11.0))
+                .text_color(theme.text_dim)
+                .child(line("dev.memory", now))
+                .child(line("dev.memory.peak", self.memory.peak()))
+                .child(graph)
+                .into_any_element(),
+        )
     }
 
     /// The `<input type=color>` overlay: a `#rrggbb` field (Servo gives no native

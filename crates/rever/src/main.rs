@@ -20,6 +20,7 @@ mod debug;
 mod engine;
 mod intercept;
 mod mcp_client;
+mod memory;
 mod panels;
 mod scan;
 mod shell;

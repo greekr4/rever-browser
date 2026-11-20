@@ -724,6 +724,8 @@ pub(crate) struct Browser {
     closed_tabs: Vec<String>,
     /// The open tabs as last written for the next start.
     saved_session: String,
+    /// What the process holds, for the development build's overlay.
+    pub memory: crate::memory::MemoryWatch,
     /// Keeps the conversation at its newest line while a reply streams.
     pub chat_scroll: gpui::ScrollHandle,
     /// The model chip of the composer: every agent's models in one list.
@@ -820,6 +822,22 @@ impl Browser {
             held_requests.clone(),
             note,
         ));
+        // A development build watches its own memory; the shell draws it over the page.
+        if cfg!(debug_assertions) {
+            cx.spawn(async move |this, cx| {
+                while let Some(bytes) = crate::memory::footprint() {
+                    let recorded = this.update(cx, |this, cx| {
+                        this.memory.record(bytes);
+                        cx.notify();
+                    });
+                    if recorded.is_err() {
+                        break;
+                    }
+                    cx.background_executor().timer(Duration::from_secs(1)).await;
+                }
+            })
+            .detach();
+        }
         // A --self-check run is a test: it must not add its pages to the user's history.
         let stores = Stores::new(traffic.clone(), self_check.is_none(), cx);
         let (pages, active) = start_pages(url, stores.storage.get(TABS_KEY).as_deref());
@@ -996,6 +1014,7 @@ impl Browser {
             tabs,
             active,
             saved_session: String::new(),
+            memory: Default::default(),
             chat,
             open_panel,
             page_bounds: Rc::new(Cell::new(Bounds::default())),
