@@ -822,8 +822,59 @@ impl Reader<'_> {
             }
             state.spans.pop();
         }
-        state.spans
+        loose_bold(state.spans)
     }
+}
+
+/// CommonMark does not close `**` that follows punctuation and precedes a letter, so
+/// `**API(추정)**를` stays literal: common in Korean, where a particle follows the
+/// closing mark. Such a pair left in a span's text is made bold here. A mark next to
+/// a space on its inner side is still not one, as in CommonMark.
+fn loose_bold(spans: Vec<Span>) -> Vec<Span> {
+    let mut out = Vec::with_capacity(spans.len());
+    for span in spans {
+        if span.code || span.bold || !span.text.contains("**") {
+            out.push(span);
+            continue;
+        }
+        let mut rest = span.text.as_str();
+        let mut plain = String::new();
+        while let Some(open) = rest.find("**") {
+            let inner = &rest[open + 2..];
+            let close = inner.match_indices("**").map(|(at, _)| at).find(|&at| {
+                at > 0 && !inner[..at].ends_with(char::is_whitespace)
+            });
+            match close {
+                Some(close) if !inner.starts_with(char::is_whitespace) => {
+                    plain.push_str(&rest[..open]);
+                    if !plain.is_empty() {
+                        out.push(Span {
+                            text: std::mem::take(&mut plain),
+                            ..span.clone()
+                        });
+                    }
+                    out.push(Span {
+                        text: inner[..close].to_owned(),
+                        bold: true,
+                        ..span.clone()
+                    });
+                    rest = &inner[close + 2..];
+                }
+                _ => {
+                    plain.push_str(&rest[..open + 2]);
+                    rest = inner;
+                }
+            }
+        }
+        plain.push_str(rest);
+        if !plain.is_empty() {
+            out.push(Span {
+                text: plain,
+                ..span
+            });
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -2233,6 +2284,33 @@ mod tests {
         assert_eq!(inline("[x](a.b:80)"), vec![link("x", "")]);
         assert_eq!(inline("[x](//a.b:80/c)"), vec![link("x", "//a.b:80/c")]);
         assert_eq!(inline("[x](#frag)"), vec![link("x", "#frag")]);
+    }
+
+    #[test]
+    fn 구두점_뒤에서_닫히는_굵게도_굵게로_보인다() {
+        let bold = |text: &str| Span {
+            text: text.into(),
+            bold: true,
+            ..Span::default()
+        };
+        // CommonMark는 `)` 뒤 `를` 앞의 `**`를 닫는 표시로 보지 않는다.
+        assert_eq!(
+            inline("**API(추정)**를 쓴다"),
+            vec![bold("API(추정)"), plain("를 쓴다")]
+        );
+        assert_eq!(
+            inline("결론은 **\"서명 필요\"**입니다. **끝.**이다"),
+            vec![
+                plain("결론은 "),
+                bold("\"서명 필요\""),
+                plain("입니다. "),
+                bold("끝."),
+                plain("이다")
+            ]
+        );
+        // 짝이 없는 표시와 코드 안의 표시는 그대로 둔다.
+        assert_eq!(inline("2 ** 3"), vec![plain("2 ** 3")]);
+        assert_eq!(inline("열린 **표시만"), vec![plain("열린 **표시만")]);
     }
 
     #[test]

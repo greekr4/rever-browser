@@ -407,6 +407,56 @@ pub(crate) struct ChatLine {
     pub text: String,
     /// A turn that failed: drawn as an error, not as the agent's Markdown.
     pub failed: bool,
+    /// A tool the agent called: `text` is its name. `Some(true)` once it returned.
+    pub tool: Option<bool>,
+}
+
+/// `mcp__rever-traffic__list_requests` is shown as `list_requests`.
+fn tool_label(name: &str) -> &str {
+    name.rsplit("__").next().unwrap_or(name)
+}
+
+/// One event of the agent's turn applied to the conversation. Text grows the reply
+/// it belongs to; a tool call is a line of its own, so text after it starts a new reply.
+fn apply_agent_event(chat: &mut Vec<ChatLine>, event: &AgentEvent) {
+    let finish_tools = |chat: &mut Vec<ChatLine>| {
+        for line in chat.iter_mut().filter(|line| line.tool == Some(false)) {
+            line.tool = Some(true);
+        }
+    };
+    match event {
+        AgentEvent::Text(text) => {
+            let reply = chat
+                .last_mut()
+                .filter(|line| !line.from_user && !line.failed && line.tool.is_none());
+            match reply {
+                Some(line) => line.text.push_str(text),
+                None => chat.push(ChatLine {
+                    from_user: false,
+                    text: text.clone(),
+                    failed: false,
+                    tool: None,
+                }),
+            }
+        }
+        AgentEvent::ToolCall(name, _) => chat.push(ChatLine {
+            from_user: false,
+            text: tool_label(name).to_owned(),
+            failed: false,
+            tool: Some(false),
+        }),
+        AgentEvent::ToolResult(name, _) => {
+            let label = tool_label(name);
+            let call = chat
+                .iter_mut()
+                .rev()
+                .find(|line| line.tool == Some(false) && line.text == label);
+            if let Some(line) = call {
+                line.tool = Some(true);
+            }
+        }
+        AgentEvent::Done | AgentEvent::Failed(_) => finish_tools(chat),
+    }
 }
 
 /// What the command line asked for.
@@ -552,6 +602,10 @@ pub(crate) struct Browser {
     pub composing: Option<String>,
     /// Addresses of closed tabs, newest last, for Cmd+Shift+T.
     closed_tabs: Vec<String>,
+    /// Keeps the conversation at its newest line while a reply streams.
+    pub chat_scroll: gpui::ScrollHandle,
+    /// When the running turn started, for the "working" line.
+    pub turn_started: Option<Instant>,
 }
 
 impl Browser {
@@ -745,6 +799,8 @@ impl Browser {
             held_requests,
             composing: None,
             closed_tabs: Vec::new(),
+            chat_scroll: gpui::ScrollHandle::new(),
+            turn_started: None,
         }
     }
 
@@ -1142,6 +1198,7 @@ impl Browser {
             from_user: true,
             text: text.to_owned(),
             failed: false,
+            tool: None,
         });
         self.views
             .composer
@@ -1158,6 +1215,7 @@ impl Browser {
             from_user: false,
             text: format!("⚠ {}: {error}", self.lang.t("chat.turnFailed")),
             failed: true,
+            tool: None,
         });
     }
 
@@ -1169,6 +1227,7 @@ impl Browser {
             from_user: false,
             text: String::new(),
             failed: false,
+            tool: None,
         });
         Ok(())
     }
@@ -1196,6 +1255,7 @@ impl Browser {
             .send(text)
             .map_err(|error| format!("Claude Code CLI is not accepting input: {error}"))?;
         self.agent_busy = true;
+        self.turn_started = Some(Instant::now());
         Ok(())
     }
 
@@ -1812,17 +1872,16 @@ impl Browser {
             return;
         };
         for event in agent.drain() {
+            // A scan streams into its own dialog, not into the conversation.
+            if !self.redteam_running {
+                apply_agent_event(&mut self.chat, &event);
+                self.chat_scroll.scroll_to_bottom();
+            }
             match event {
-                AgentEvent::Text(text) => {
-                    if let Some(line) = self.chat.last_mut().filter(|line| !line.from_user) {
-                        line.text.push_str(&text);
-                    }
-                }
+                AgentEvent::Text(_) | AgentEvent::ToolCall(..) | AgentEvent::ToolResult(..) => {}
                 AgentEvent::Done => {
                     self.agent_busy = false;
                 }
-                // The chat turn ignores tool traffic; the scan's own pump reads it.
-                AgentEvent::ToolCall(..) | AgentEvent::ToolResult(..) => {}
                 AgentEvent::Failed(error) => {
                     // A failure outside a turn (the CLI exiting after a finished one) is not shown.
                     if self.agent_busy {
@@ -1859,7 +1918,7 @@ impl Browser {
             }),
             "requests": requests,
             "mcpUrl": self.mcp.as_ref().map(|mcp| mcp.url.as_str()),
-            "chat": self.chat.iter().map(|line| serde_json::json!({ "fromUser": line.from_user, "text": line.text })).collect::<Vec<_>>(),
+            "chat": self.chat.iter().filter(|line| line.tool.is_none()).map(|line| serde_json::json!({ "fromUser": line.from_user, "text": line.text })).collect::<Vec<_>>(),
         });
         let _ = std::fs::write(format!("{dir}/state.json"), state.to_string());
     }
@@ -2009,6 +2068,38 @@ mod tests {
         assert_eq!(console_kind("warn"), "warning");
         assert_eq!(console_kind("error"), "error");
         assert_eq!(console_kind("log"), "log");
+    }
+
+    #[test]
+    fn 도구_호출은_대화에_한_줄씩_남고_뒤의_글은_새_답으로_시작한다() {
+        let mut chat = vec![ChatLine {
+            from_user: false,
+            text: String::new(),
+            failed: false,
+            tool: None,
+        }];
+        let call = |name: &str| AgentEvent::ToolCall(name.into(), serde_json::Value::Null);
+        apply_agent_event(&mut chat, &AgentEvent::Text("확인".into()));
+        apply_agent_event(&mut chat, &AgentEvent::Text("합니다".into()));
+        apply_agent_event(&mut chat, &call("mcp__rever-traffic__list_requests"));
+        apply_agent_event(&mut chat, &AgentEvent::Text("결과".into()));
+        let lines: Vec<(&str, Option<bool>)> =
+            chat.iter().map(|line| (line.text.as_str(), line.tool)).collect();
+        assert_eq!(
+            lines,
+            [("확인합니다", None), ("list_requests", Some(false)), ("결과", None)]
+        );
+        // 결과가 오면 그 도구만 끝난 것으로 바뀐다.
+        apply_agent_event(&mut chat, &call("browser_click"));
+        apply_agent_event(
+            &mut chat,
+            &AgentEvent::ToolResult("mcp__rever-traffic__list_requests".into(), String::new()),
+        );
+        assert_eq!(chat[1].tool, Some(true));
+        assert_eq!(chat[3].tool, Some(false));
+        // 턴이 끝나면 남은 도구도 모두 끝난 것으로 본다.
+        apply_agent_event(&mut chat, &AgentEvent::Done);
+        assert_eq!(chat[3].tool, Some(true));
     }
 
     #[test]

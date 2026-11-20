@@ -1,14 +1,33 @@
 //! The chat panel on the right: the conversation and the composer.
 
-use gpui::{Context, div, prelude::*, px};
+use std::time::Duration;
+
+use gpui::{
+    Animation, AnimationExt, AnyElement, Context, Transformation, div, percentage, prelude::*, px,
+    svg,
+};
 use rever_ui_kit::theme::Theme;
 use rever_ui_markdown::markdown;
 
 use super::{icon, icon_button};
-use crate::app::{Browser, link_target};
+use crate::app::{Browser, ChatLine, link_target};
 
 pub(super) const CHAT_WIDTH: f32 = 420.0;
 const CHAT_EMPTY: &str = "Open a site in the browser and ask me to analyze its API traffic, or describe an action you just performed and I'll dig into the requests it triggered.";
+
+/// Opacity of a pulsing dot at `progress` (0..1) of its cycle.
+fn pulse(progress: f32) -> f32 {
+    let wave = (progress * std::f32::consts::TAU).sin() * 0.5 + 0.5;
+    0.25 + 0.75 * wave
+}
+
+/// How long the turn has run: `42s`, then `2m 5s`.
+fn elapsed_label(seconds: u64) -> String {
+    match seconds / 60 {
+        0 => format!("{seconds}s"),
+        minutes => format!("{minutes}m {}s", seconds % 60),
+    }
+}
 
 impl Browser {
     pub(super) fn chat_panel(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
@@ -25,6 +44,107 @@ impl Browser {
                 .child(icon(name, 13.0, theme.text_dim))
                 .child(label)
         };
+        // The conversation: the user's bubbles, the agent's replies as Markdown, and each
+        // run of tool calls folded into one line, as Orca's chat shows them.
+        let mut rows: Vec<AnyElement> = Vec::new();
+        let mut index = 0;
+        while index < self.chat.len() {
+            let line = &self.chat[index];
+            if line.tool.is_some() {
+                let calls: Vec<&ChatLine> = self.chat[index..]
+                    .iter()
+                    .take_while(|line| line.tool.is_some())
+                    .collect();
+                let running = calls.iter().rev().find(|call| call.tool == Some(false));
+                let key = if running.is_some() {
+                    "chat.tools.running"
+                } else {
+                    "chat.tools.ran"
+                };
+                rows.push(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(7.0))
+                        .text_size(px(13.0))
+                        .text_color(theme.text_dim)
+                        .child(icon("wrench", 13.0, theme.text_dim))
+                        .child(lang.t(key).replace("{n}", &calls.len().to_string()))
+                        .map(|row| match running {
+                            // The call in flight, and a dot that pulses until it returns.
+                            Some(call) => row
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .truncate()
+                                        .font_family("Menlo")
+                                        .text_size(px(12.0))
+                                        .child(call.text.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .size(px(6.0))
+                                        .flex_none()
+                                        .rounded_full()
+                                        .bg(theme.accent)
+                                        .with_animation(
+                                            ("chat-tool-running", index),
+                                            Animation::new(Duration::from_secs(1)).repeat(),
+                                            |dot, progress| dot.opacity(pulse(progress)),
+                                        ),
+                                ),
+                            None => row.child("✓"),
+                        })
+                        .into_any_element(),
+                );
+                index += calls.len();
+                continue;
+            }
+            if line.from_user {
+                // `.chat-user-bubble`
+                rows.push(
+                    div()
+                        .flex()
+                        .justify_end()
+                        .child(
+                            div()
+                                .max_w(px(CHAT_WIDTH - 80.0))
+                                .px(px(12.0))
+                                .py(px(8.0))
+                                .rounded(px(12.0))
+                                .border_1()
+                                .border_color(theme.border_2)
+                                .bg(theme.surface_2)
+                                .child(line.text.clone()),
+                        )
+                        .into_any_element(),
+                );
+            } else if line.failed {
+                rows.push(
+                    div()
+                        .text_size(px(12.0))
+                        .text_color(theme.status_error)
+                        .child(line.text.clone())
+                        .into_any_element(),
+                );
+            } else if !line.text.is_empty() {
+                // Parsed again on every render, so a streaming reply grows in place.
+                let this = this.clone();
+                rows.push(
+                    markdown(&line.text, theme)
+                        .id(("chat-message", index))
+                        .lang(lang)
+                        .on_link(move |href, window, cx| {
+                            let Some(url) = link_target(href) else {
+                                return;
+                            };
+                            let _ = this.update(cx, |this, cx| this.open_tab(url, window, cx));
+                        })
+                        .into_any_element(),
+                );
+            }
+            index += 1;
+        }
         div()
             .w(px(CHAT_WIDTH))
             .h_full()
@@ -96,6 +216,7 @@ impl Browser {
             .child(
                 div()
                     .id("chat-log")
+                    .track_scroll(&self.chat_scroll)
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
@@ -107,44 +228,40 @@ impl Browser {
                     .when(self.chat.is_empty(), |log| {
                         log.child(div().text_color(theme.text_dim).child(CHAT_EMPTY))
                     })
-                    .children(self.chat.iter().enumerate().map(|(index, line)| {
-                        if line.from_user {
-                            // `.chat-user-bubble`
+                    .children(rows)
+                    // A spinner while the agent works, so a silent stretch reads as work.
+                    .when(self.agent_busy, |log| {
+                        let seconds = self.turn_started.map_or(0, |at| at.elapsed().as_secs());
+                        log.child(
                             div()
                                 .flex()
-                                .justify_end()
+                                .items_center()
+                                .gap(px(8.0))
+                                .text_size(px(13.0))
+                                .text_color(theme.text_dim)
                                 .child(
-                                    div()
-                                        .max_w(px(CHAT_WIDTH - 80.0))
-                                        .px(px(12.0))
-                                        .py(px(8.0))
-                                        .rounded(px(14.0))
-                                        .bg(theme.surface_2)
-                                        .child(line.text.clone()),
+                                    svg()
+                                        .path("icons/loader.svg")
+                                        .size(px(14.0))
+                                        .flex_none()
+                                        .text_color(theme.text_dim)
+                                        .with_animation(
+                                            "chat-working",
+                                            Animation::new(Duration::from_secs(1)).repeat(),
+                                            |spinner, progress| {
+                                                spinner.with_transformation(Transformation::rotate(
+                                                    percentage(progress),
+                                                ))
+                                            },
+                                        ),
                                 )
-                                .into_any_element()
-                        } else if line.failed {
-                            div()
-                                .text_size(px(12.0))
-                                .text_color(theme.status_error)
-                                .child(line.text.clone())
-                                .into_any_element()
-                        } else {
-                            // Parsed again on every render, so a streaming reply grows in place.
-                            let this = this.clone();
-                            markdown(&line.text, theme)
-                                .id(("chat-message", index))
-                                .lang(lang)
-                                .on_link(move |href, window, cx| {
-                                    let Some(url) = link_target(href) else {
-                                        return;
-                                    };
-                                    let _ =
-                                        this.update(cx, |this, cx| this.open_tab(url, window, cx));
-                                })
-                                .into_any_element()
-                        }
-                    })),
+                                .child(format!(
+                                    "{} {}",
+                                    lang.t("chat.working"),
+                                    elapsed_label(seconds)
+                                )),
+                        )
+                    }),
             )
             .child(
                 div().p(px(12.0)).flex_none().child(
@@ -191,5 +308,18 @@ impl Browser {
                         ),
                 ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 작업_시간은_초로_쓰다가_1분부터_분과_초로_쓴다() {
+        assert_eq!(elapsed_label(0), "0s");
+        assert_eq!(elapsed_label(59), "59s");
+        assert_eq!(elapsed_label(60), "1m 0s");
+        assert_eq!(elapsed_label(778), "12m 58s");
     }
 }
