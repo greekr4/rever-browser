@@ -33,6 +33,9 @@ use rever_tools_debug::debugger::DebugState;
 use rever_tools_debug::intercept::InterceptState;
 use rever_tools_page::downloads::DownloadState;
 use rever_tools_redteam::scan::RendererBridge;
+use rever_ui_chat::chat_history_menu::{
+    ChatHistoryEvent, ChatHistoryMenu, ChatHistoryMenuProps, HistoryRow,
+};
 use rever_ui_chat::model_catalog::ModelCatalogStore;
 use rever_ui_chat::model_picker::{ModelPicker, ModelPickerEvent, ModelPickerProps};
 use rever_ui_history::history::NewHistoryEntry;
@@ -43,7 +46,10 @@ use rever_ui_menus::app_menu::{AppMenu, AppMenuItem, AppMenuProps};
 use rever_ui_menus::ip_badge::IpBadge;
 use rever_ui_menus::ui::{Look, LookFn, fill};
 use rever_ui_state::app_theme::{self, AppThemeStore};
+use rever_ui_state::chat_collapsed::ChatCollapsedStore;
+use rever_ui_state::chat_history::{ChatHistory, new_conversation_id};
 use rever_ui_state::constants::AcpAgentId;
+use serde_json::{Value, json};
 use servo::{
     ColorPicker, ContextMenu, ContextMenuAction, EmbedderControl, JSValue, RgbColor,
     SelectElement, SimpleDialog,
@@ -424,6 +430,69 @@ pub(crate) fn shows_end(offset: f32, max_offset: f32) -> bool {
     -offset >= max_offset - 40.0
 }
 
+/// The conversation as the history store keeps it: one message per line, shaped like
+/// the Electron app's `UIMessage`s so the store's title (the first user text) works.
+/// The empty reply line a turn starts with is not kept.
+fn lines_to_messages(chat: &[ChatLine]) -> Vec<Value> {
+    chat.iter()
+        .filter(|line| line.from_user || line.tool.is_some() || !line.text.is_empty())
+        .map(|line| {
+            let role = if line.from_user { "user" } else { "assistant" };
+            let part = match line.tool {
+                Some(_) => json!({ "type": "dynamic-tool", "toolName": line.text, "state": "output-available" }),
+                None => json!({ "type": "text", "text": line.text }),
+            };
+            json!({ "role": role, "parts": [part], "failed": line.failed })
+        })
+        .collect()
+}
+
+/// The lines of a saved conversation. A tool that was still running when it was saved
+/// reads as finished: nothing is running after a restart.
+fn messages_to_lines(messages: &[Value]) -> Vec<ChatLine> {
+    messages
+        .iter()
+        .filter_map(|message| {
+            let part = message["parts"].get(0)?;
+            let tool = part["type"] == "dynamic-tool";
+            let text = if tool { &part["toolName"] } else { &part["text"] };
+            Some(ChatLine {
+                from_user: message["role"] == "user",
+                text: text.as_str()?.to_owned(),
+                failed: message["failed"] == true,
+                tool: tool.then_some(true),
+            })
+        })
+        .collect()
+}
+
+/// How much of the earlier conversation a new session is told, in characters.
+const EARLIER_LIMIT: usize = 8_000;
+
+/// What a session that has not seen the conversation is sent: the earlier lines as a
+/// transcript, then the new message. A session started after a restart, a reopened
+/// conversation or a change of agent would otherwise answer as if nothing was said.
+fn with_earlier(earlier: &[ChatLine], text: &str) -> String {
+    let mut transcript = String::new();
+    for line in earlier.iter().filter(|line| line.tool.is_none() && !line.failed) {
+        if line.text.is_empty() {
+            continue;
+        }
+        let who = if line.from_user { "User" } else { "Assistant" };
+        transcript.push_str(&format!("{who}: {}\n\n", line.text));
+    }
+    if transcript.is_empty() {
+        return text.to_owned();
+    }
+    // The newest part is what matters when it does not all fit.
+    let skip = transcript.chars().count().saturating_sub(EARLIER_LIMIT);
+    let recent: String = transcript.chars().skip(skip).collect();
+    format!(
+        "[Earlier in this conversation, for context]\n{}[End of the earlier conversation]\n\n{text}",
+        recent
+    )
+}
+
 /// `mcp__rever-traffic__list_requests` is shown as `list_requests`.
 fn tool_label(name: &str) -> &str {
     name.rsplit("__").next().unwrap_or(name)
@@ -627,6 +696,12 @@ pub(crate) struct Browser {
     chat_model: Option<(String, String)>,
     /// When the running turn started, for the "working" line.
     pub turn_started: Option<Instant>,
+    /// The saved conversations, and the "history" chip that lists them.
+    chat_history: ChatHistory,
+    pub history_menu: Entity<ChatHistoryMenu>,
+    /// The id the conversation on screen is saved under.
+    conversation_id: String,
+    chat_collapsed_store: ChatCollapsedStore,
     /// The chat panel is folded away; the toolbar button brings it back.
     pub chat_collapsed: bool,
     /// The chat panel covers the page.
@@ -766,6 +841,29 @@ impl Browser {
             let host = Rc::new(IpHost::new(stores.storage.clone()));
             cx.new(|cx| IpBadge::new(host, look.clone(), cx))
         };
+        // The conversation the app was closed with comes back, and the rest is one
+        // click away in the history menu.
+        let chat_history = ChatHistory::load(stores.storage.as_ref());
+        let (conversation_id, chat) = match chat_history.conversations().first() {
+            // A self-check run starts from nothing, whatever was saved.
+            Some(latest) if self_check.is_none() => {
+                (latest.id.clone(), messages_to_lines(&latest.messages))
+            }
+            _ => (fresh_conversation_id(), Vec::new()),
+        };
+        let chat_collapsed_store = ChatCollapsedStore::load(stores.storage.as_ref());
+        let history_menu = cx.new(|_| {
+            let this = this.clone();
+            ChatHistoryMenu::new(move |cx| history_props(&this, cx), look.clone())
+        });
+        cx.subscribe(&history_menu, |this, menu, event: &ChatHistoryEvent, cx| {
+            match event {
+                ChatHistoryEvent::Open(id) => this.open_conversation(id, cx),
+                ChatHistoryEvent::Remove(id) => this.remove_conversation(id, cx),
+            }
+            menu.update(cx, |menu, cx| menu.set_open(false, cx));
+        })
+        .detach();
         let chat_agent = stores
             .storage
             .get(AGENT_STORAGE_KEY)
@@ -828,7 +926,7 @@ impl Browser {
                 favicon: None,
             }],
             active: 0,
-            chat: Vec::new(),
+            chat,
             open_panel,
             page_bounds: Rc::new(Cell::new(Bounds::default())),
             stores,
@@ -885,7 +983,11 @@ impl Browser {
             chat_agent,
             chat_model,
             turn_started: None,
-            chat_collapsed: false,
+            chat_history,
+            history_menu,
+            conversation_id,
+            chat_collapsed: chat_collapsed_store.collapsed(),
+            chat_collapsed_store,
             chat_expanded: false,
             chat_width: crate::shell::CHAT_WIDTH,
             chat_drag: None,
@@ -1318,10 +1420,17 @@ impl Browser {
             .update(cx, |input, cx| input.set_text("", cx));
         // Sending is a move to the newest line, wherever the reader was.
         self.chat_scroll.scroll_to_bottom();
-        if let Err(error) = self.start_turn(text) {
+        // A session that has not seen the conversation gets it with the message.
+        let earlier = &self.chat[..self.chat.len() - 1];
+        let prompt = match self.agent {
+            Some(_) => text.to_owned(),
+            None => with_earlier(earlier, text),
+        };
+        if let Err(error) = self.start_turn(&prompt) {
             self.agent = None;
             self.turn_failed(&error);
         }
+        self.save_conversation();
         cx.notify();
     }
 
@@ -1741,6 +1850,63 @@ impl Browser {
         cx.notify();
     }
 
+    /// Write the conversation on screen to the history store.
+    fn save_conversation(&mut self) {
+        // A self-check run is the port harness's, not a conversation to keep.
+        if self.self_check.is_some() {
+            return;
+        }
+        let messages = lines_to_messages(&self.chat);
+        let saved = self.chat_history.save(
+            self.stores.storage.as_ref(),
+            &self.conversation_id,
+            self.chat_agent,
+            messages,
+            now_ms(),
+        );
+        if let Err(error) = saved {
+            eprintln!("rever: the conversation was not saved: {error}");
+        }
+    }
+
+    /// Start an empty conversation; the one on screen stays in the history.
+    pub fn new_conversation(&mut self, cx: &mut Context<Self>) {
+        if self.agent_busy {
+            return;
+        }
+        self.chat.clear();
+        self.agent = None;
+        self.conversation_id = fresh_conversation_id();
+        cx.notify();
+    }
+
+    /// Show a saved conversation. Its agent session is gone, so the next message
+    /// starts one and tells it what was said (`with_earlier`).
+    fn open_conversation(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.agent_busy {
+            return;
+        }
+        let Some(saved) = self.chat_history.conversations().iter().find(|c| c.id == id) else {
+            return;
+        };
+        self.chat = messages_to_lines(&saved.messages);
+        self.conversation_id = saved.id.clone();
+        self.agent = None;
+        self.chat_scroll.scroll_to_bottom();
+        cx.notify();
+    }
+
+    fn remove_conversation(&mut self, id: &str, cx: &mut Context<Self>) {
+        if let Err(error) = self.chat_history.remove(self.stores.storage.as_ref(), id) {
+            eprintln!("rever: the conversation was not removed: {error}");
+        }
+        // Removing the one on screen leaves an empty conversation.
+        if id == self.conversation_id && !self.agent_busy {
+            self.new_conversation(cx);
+        }
+        cx.notify();
+    }
+
     /// The name of the agent the conversation runs on, for the chat panel's tab.
     pub fn chat_agent_name(&self) -> &'static str {
         let agent = rever_ui_state::constants::ACP_AGENTS
@@ -1753,13 +1919,19 @@ impl Browser {
     pub fn toggle_chat(&mut self, cx: &mut Context<Self>) {
         self.chat_collapsed = !self.chat_collapsed;
         self.chat_expanded = false;
+        let storage = self.stores.storage.as_ref();
+        if let Err(error) = self.chat_collapsed_store.set_collapsed(storage, self.chat_collapsed) {
+            eprintln!("rever: the chat panel's state was not saved: {error}");
+        }
         cx.notify();
     }
 
     /// Let the chat panel cover the page, or give the page its room back.
     pub fn toggle_chat_expanded(&mut self, cx: &mut Context<Self>) {
         self.chat_expanded = !self.chat_expanded;
-        self.chat_collapsed = false;
+        if std::mem::take(&mut self.chat_collapsed) {
+            let _ = self.chat_collapsed_store.set_collapsed(self.stores.storage.as_ref(), false);
+        }
         cx.notify();
     }
 
@@ -2025,6 +2197,7 @@ impl Browser {
             self.chat_scroll.offset().y.into(),
             self.chat_scroll.max_offset().height.into(),
         );
+        let mut turn_ended = false;
         for event in agent.drain() {
             // A scan streams into its own dialog, not into the conversation.
             if !self.redteam_running {
@@ -2037,17 +2210,23 @@ impl Browser {
                 AgentEvent::Text(_) | AgentEvent::ToolCall(..) | AgentEvent::ToolResult(..) => {}
                 AgentEvent::Done => {
                     self.agent_busy = false;
+                    turn_ended = true;
                 }
                 AgentEvent::Failed(error) => {
                     // A failure outside a turn (the CLI exiting after a finished one) is not shown.
                     if self.agent_busy {
                         self.turn_failed(&error);
+                        turn_ended = true;
                     }
                     self.agent_busy = false;
                     self.agent = None;
-                    return;
+                    break;
                 }
             }
+        }
+        // The reply is kept once it is whole, not at every streamed piece.
+        if turn_ended && !self.redteam_running {
+            self.save_conversation();
         }
     }
 
@@ -2087,6 +2266,27 @@ const LIVE_MODEL_AGENTS: [&str; 2] = ["claude-code", "codex"];
 const AGENT_STORAGE_KEY: &str = "rever.chat.agent";
 const MODEL_STORAGE_KEY: &str = "rever.chat.model";
 const MODEL_NAME_STORAGE_KEY: &str = "rever.chat.modelName";
+
+/// An id for a conversation that starts now.
+fn fresh_conversation_id() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.subsec_nanos());
+    // The id's random part only tells apart conversations started in one millisecond.
+    new_conversation_id(now_ms(), f64::from(nanos) / 1e9)
+}
+
+fn history_props(browser: &WeakEntity<Browser>, cx: &App) -> ChatHistoryMenuProps {
+    browser
+        .read_with(cx, |this, _| ChatHistoryMenuProps {
+            conversations: this.chat_history.conversations().iter().map(HistoryRow::from).collect(),
+            current_id: Some(this.conversation_id.clone()),
+            // A conversation is not swapped out under a running turn.
+            disabled: this.agent_busy,
+            column: None,
+        })
+        .unwrap_or_default()
+}
 
 fn picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
     let (agent_id, model_name, busy) = browser
@@ -2279,6 +2479,72 @@ mod tests {
         // 턴이 끝나면 남은 도구도 모두 끝난 것으로 본다.
         apply_agent_event(&mut chat, &AgentEvent::Done);
         assert_eq!(chat[3].tool, Some(true));
+    }
+
+    #[test]
+    fn 대화는_저장했다가_그대로_다시_읽힌다() {
+        let line = |from_user, text: &str, failed, tool| ChatLine {
+            from_user,
+            text: text.into(),
+            failed,
+            tool,
+        };
+        let chat = vec![
+            line(true, "요청 수 알려줘", false, None),
+            line(false, "", false, None),
+            line(false, "list_requests", false, Some(false)),
+            line(false, "**1건**입니다", false, None),
+            line(false, "⚠ 턴 실패: 끊김", true, None),
+        ];
+        let messages = lines_to_messages(&chat);
+        // 빈 답 줄은 저장하지 않고, 첫 사용자 글이 제목이 될 수 있는 모양이다.
+        assert_eq!(messages.len(), 4);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[0]["parts"][0]["text"], "요청 수 알려줘");
+
+        let restored = messages_to_lines(&messages);
+        let seen: Vec<(bool, &str, bool, Option<bool>)> = restored
+            .iter()
+            .map(|line| (line.from_user, line.text.as_str(), line.failed, line.tool))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                (true, "요청 수 알려줘", false, None),
+                // 돌던 도구는 다시 켠 뒤에는 끝난 것으로 보인다.
+                (false, "list_requests", false, Some(true)),
+                (false, "**1건**입니다", false, None),
+                (false, "⚠ 턴 실패: 끊김", true, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn 새_세션에는_앞_대화를_붙여서_보낸다() {
+        let line = |from_user, text: &str, tool| ChatLine {
+            from_user,
+            text: text.into(),
+            failed: false,
+            tool,
+        };
+        // 앞 대화가 없으면 보낸 글 그대로다.
+        assert_eq!(with_earlier(&[], "안녕"), "안녕");
+        let earlier = [
+            line(true, "내 이름은 태균", None),
+            line(false, "list_requests", Some(true)),
+            line(false, "반갑습니다", None),
+        ];
+        let prompt = with_earlier(&earlier, "내 이름이 뭐지?");
+        assert!(prompt.contains("User: 내 이름은 태균"));
+        assert!(prompt.contains("Assistant: 반갑습니다"));
+        assert!(!prompt.contains("list_requests"), "도구 줄은 넣지 않는다");
+        assert!(prompt.ends_with("내 이름이 뭐지?"));
+
+        // 긴 대화는 최근 부분만 들어간다.
+        let long = [line(true, &"가".repeat(20_000), None), line(false, "마지막 답", None)];
+        let prompt = with_earlier(&long, "질문");
+        assert!(prompt.chars().count() < EARLIER_LIMIT + 200);
+        assert!(prompt.contains("마지막 답"));
     }
 
     #[test]

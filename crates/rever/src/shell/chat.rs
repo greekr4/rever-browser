@@ -284,13 +284,21 @@ impl Browser {
                     } else {
                         "ready"
                     })
-                    .child(format!("{} (0)", lang.t("chat.history")))
+                    .child(self.history_menu.clone())
                     .child(
                         div()
+                            .id("chat-new")
                             .px(px(8.0))
                             .py(px(3.0))
                             .rounded(px(6.0))
                             .bg(theme.surface_2)
+                            // A conversation is not dropped under a running turn.
+                            .when(self.agent_busy, |button| button.opacity(0.42))
+                            .when(!self.agent_busy, |button| {
+                                button.cursor_pointer().on_click(cx.listener(
+                                    |this, _: &ClickEvent, _, cx| this.new_conversation(cx),
+                                ))
+                            })
                             .child(lang.t("chat.newShort")),
                     ),
             )
