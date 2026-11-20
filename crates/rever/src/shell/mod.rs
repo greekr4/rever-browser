@@ -98,6 +98,28 @@ fn icon_button(
 impl Render for Browser {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::resolve(self.theme_mode, window.appearance());
+        // Opening and closing the bottom panel slides to the new height, as the chat does.
+        let panel_target = if self.open_panel.is_some() {
+            self.panel_height
+        } else {
+            0.0
+        };
+        let panel_height = match self.panel_slide {
+            Some((started, from)) if started.elapsed() < CHAT_SLIDE => {
+                window.request_animation_frame();
+                let progress = started.elapsed().as_secs_f32() / CHAT_SLIDE.as_secs_f32();
+                slide_width(from, panel_target, progress)
+            }
+            _ => {
+                self.panel_slide = None;
+                panel_target
+            }
+        };
+        let panel_sliding = self.panel_slide.is_some();
+        self.panel_drawn = panel_height;
+        self.panel_last = self.open_panel.or(self.panel_last);
+        // A panel that is sliding shut is drawn until it is gone.
+        let shown_panel = self.panel_last.filter(|_| panel_height > 0.0);
         // The box App.tsx positions the bottom panel, the chip bar and the detail drawer in.
         let page_box = div()
             .flex_1()
@@ -106,8 +128,17 @@ impl Render for Browser {
             .flex()
             .flex_col()
             .child(self.page(&theme, cx))
-            .when_some(self.open_panel, |column, panel| {
-                column.child(self.panel(panel, &theme, cx))
+            .when_some(shown_panel, |column, panel| {
+                // Drawn at its full height and clipped while it slides, like a drawer:
+                // its rows do not squeeze at every frame.
+                column.child(
+                    div()
+                        .h(px(panel_height))
+                        .flex_none()
+                        // Only while it slides: the resize handle reaches past the top edge.
+                        .when(panel_sliding, |clip| clip.overflow_hidden())
+                        .child(self.panel(panel, &theme, cx)),
+                )
             })
             .child(self.chip_bar(&theme, cx))
             .child(self.views.drawer.clone());

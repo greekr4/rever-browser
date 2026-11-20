@@ -722,6 +722,12 @@ pub(crate) struct Browser {
     /// when the slide started and the width it started from.
     pub chat_drawn: f32,
     pub chat_slide: Option<(Instant, f32)>,
+    /// The bottom panel's slide open or shut: when it began and the height it began at.
+    pub panel_slide: Option<(Instant, f32)>,
+    /// The height the bottom panel was last drawn at.
+    pub panel_drawn: f32,
+    /// The panel last open: it is still the one drawn while it slides shut.
+    pub panel_last: Option<&'static str>,
 }
 
 impl Browser {
@@ -1013,6 +1019,9 @@ impl Browser {
             chat_drag: None,
             chat_drawn: 0.0,
             chat_slide: None,
+            panel_slide: None,
+            panel_drawn: 0.0,
+            panel_last: None,
         }
     }
 
@@ -1028,7 +1037,7 @@ impl Browser {
             store.load_from_traffic(request_id, stored.as_ref());
             cx.notify();
         });
-        self.open_panel = Some("repeater");
+        self.set_open_panel(Some("repeater"), cx);
     }
 
     /// The tab a targeted command names by index, or the active tab when the
@@ -1340,11 +1349,17 @@ impl Browser {
     }
 
     pub fn toggle_panel(&mut self, panel: &'static str, cx: &mut Context<Self>) {
-        self.open_panel = if self.open_panel == Some(panel) {
-            None
-        } else {
-            Some(panel)
-        };
+        let next = (self.open_panel != Some(panel)).then_some(panel);
+        self.set_open_panel(next, cx);
+    }
+
+    /// Open, switch or close the bottom panel. Opening and closing slide; switching
+    /// from one panel to another does not.
+    pub fn set_open_panel(&mut self, panel: Option<&'static str>, cx: &mut Context<Self>) {
+        if self.open_panel.is_some() != panel.is_some() {
+            self.panel_slide = Some((Instant::now(), self.panel_drawn));
+        }
+        self.open_panel = panel;
         cx.notify();
     }
 

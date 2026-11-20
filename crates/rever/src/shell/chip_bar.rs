@@ -135,8 +135,7 @@ impl Browser {
                             .cursor_pointer()
                             .hover(move |style| style.bg(hover))
                             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                this.open_panel = None;
-                                cx.notify();
+                                this.set_open_panel(None, cx);
                             }))
                             .child("✕"),
                     ),
