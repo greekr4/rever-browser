@@ -10,11 +10,16 @@
 //! from the app, `shell` draws the window.
 
 mod agent;
+mod agent_acp;
+mod agent_api;
+mod api_keys;
 mod app;
 mod bridge;
+mod chat_agents;
 mod debug;
 mod engine;
 mod intercept;
+mod mcp_client;
 mod panels;
 mod scan;
 mod shell;

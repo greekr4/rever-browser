@@ -283,12 +283,7 @@ impl Browser {
                                 .child(footer_chip("shield", lang.t("chat.perm.auto")))
                                 .child(footer_chip("wrench", "Recon"))
                                 .child(div().flex_1())
-                                .child(
-                                    div()
-                                        .text_size(px(12.0))
-                                        .text_color(theme.text_dim)
-                                        .child("Claude Code"),
-                                )
+                                .child(self.model_picker.clone())
                                 .child(
                                     // `.composer-send`
                                     div()

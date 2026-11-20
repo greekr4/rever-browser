@@ -18,6 +18,8 @@ use gpui::{
 };
 use image::{Frame, RgbaImage};
 use net::tap::NetworkTapEvent;
+use rever_agent::claude_cli::ClaudeCliFinder;
+use rever_agent::model_catalog::ModelCatalog;
 use rever_core::address::normalize_address;
 use rever_core::paths::user_data_dir;
 use rever_core::traffic::{
@@ -31,6 +33,8 @@ use rever_tools_debug::debugger::DebugState;
 use rever_tools_debug::intercept::InterceptState;
 use rever_tools_page::downloads::DownloadState;
 use rever_tools_redteam::scan::RendererBridge;
+use rever_ui_chat::model_catalog::ModelCatalogStore;
+use rever_ui_chat::model_picker::{ModelPicker, ModelPickerEvent, ModelPickerProps};
 use rever_ui_history::history::NewHistoryEntry;
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::text_input::{Submitted, TextInput};
@@ -39,13 +43,15 @@ use rever_ui_menus::app_menu::{AppMenu, AppMenuItem, AppMenuProps};
 use rever_ui_menus::ip_badge::IpBadge;
 use rever_ui_menus::ui::{Look, LookFn, fill};
 use rever_ui_state::app_theme::{self, AppThemeStore};
+use rever_ui_state::constants::AcpAgentId;
 use servo::{
     ColorPicker, ContextMenu, ContextMenuAction, EmbedderControl, JSValue, RgbColor,
     SelectElement, SimpleDialog,
 };
 use url::Url;
 
-use crate::agent::{AgentEvent, AgentSession};
+use crate::agent::{AgentEvent, ChatAgent};
+use crate::chat_agents::{self, PickerHost};
 use crate::bridge;
 use crate::engine::{Engine, EngineEvent, TabId};
 use crate::panels::{self, IpHost, Stores, Views};
@@ -524,7 +530,7 @@ pub(crate) struct Browser {
     /// Answers to what the console panel ran in the page, collected until the next pump.
     eval_results: Rc<RefCell<Vec<Result<JSValue, String>>>>,
     /// The Claude Code CLI, started with the first chat message.
-    agent: Option<AgentSession>,
+    agent: Option<Box<dyn ChatAgent>>,
     pub agent_busy: bool,
     /// How many init scripts tools have added; the count is the next script's id.
     /// Wakes `pump` from other threads.
@@ -604,6 +610,14 @@ pub(crate) struct Browser {
     closed_tabs: Vec<String>,
     /// Keeps the conversation at its newest line while a reply streams.
     pub chat_scroll: gpui::ScrollHandle,
+    /// The model chip of the composer: every agent's models in one list.
+    pub model_picker: Entity<ModelPicker>,
+    /// The model lists the picker shows; the CLIs' own answers are put in here.
+    model_store: Rc<RefCell<ModelCatalogStore>>,
+    /// The agent the conversation runs on.
+    chat_agent: AcpAgentId,
+    /// The chosen model's id and name; `None` leaves the agent's default.
+    chat_model: Option<(String, String)>,
     /// When the running turn started, for the "working" line.
     pub turn_started: Option<Instant>,
 }
@@ -737,6 +751,57 @@ impl Browser {
             let host = Rc::new(IpHost::new(stores.storage.clone()));
             cx.new(|cx| IpBadge::new(host, look.clone(), cx))
         };
+        let chat_agent = stores
+            .storage
+            .get(AGENT_STORAGE_KEY)
+            .and_then(|id| chat_agents::agent_by_id(&id))
+            .unwrap_or(AcpAgentId::ClaudeCode);
+        let chat_model = stores
+            .storage
+            .get(MODEL_STORAGE_KEY)
+            .filter(|id| !id.is_empty())
+            .map(|id| {
+                let name = stores.storage.get(MODEL_NAME_STORAGE_KEY).unwrap_or_else(|| id.clone());
+                (id, name)
+            });
+        // The lists on disk first, so the picker is full at once.
+        let catalog = ModelCatalog::new(&data_dir());
+        let model_store = Rc::new(RefCell::new(ModelCatalogStore::new()));
+        for agent in LIVE_MODEL_AGENTS {
+            model_store.borrow_mut().put(agent, catalog.cached(agent).as_ref());
+        }
+        let model_picker = cx.new(|cx| {
+            let this = this.clone();
+            let host = Rc::new(PickerHost { models: model_store.clone() });
+            ModelPicker::new(move |cx| picker_props(&this, cx), host, look.clone(), cx)
+        });
+        cx.subscribe(&model_picker, |this, _, event: &ModelPickerEvent, cx| {
+            if let ModelPickerEvent::Selected { agent_id, model_id, name, .. } = event {
+                this.choose_model(*agent_id, model_id, name, cx);
+            }
+        })
+        .detach();
+        // The CLIs themselves know their models; asked once per start, off the main thread.
+        if self_check.is_none() {
+            cx.spawn(async move |this, cx| {
+                let fresh = cx
+                    .background_executor()
+                    .spawn(async move {
+                        let (cli, version) = (ClaudeCliFinder::new(), env!("CARGO_PKG_VERSION"));
+                        LIVE_MODEL_AGENTS.map(|agent| {
+                            (agent, catalog.refresh(agent, &cli, version, || now_ms() as i64))
+                        })
+                    })
+                    .await;
+                let _ = this.update(cx, |this, cx| {
+                    for (agent, list) in &fresh {
+                        this.model_store.borrow_mut().put(agent, list.as_ref());
+                    }
+                    this.model_picker.update(cx, |_, cx| cx.notify());
+                });
+            })
+            .detach();
+        }
         // The bot-check floating button is hidden in the browser, so it is not built.
         Self {
             engine,
@@ -800,6 +865,10 @@ impl Browser {
             composing: None,
             closed_tabs: Vec::new(),
             chat_scroll: gpui::ScrollHandle::new(),
+            model_picker,
+            model_store,
+            chat_agent,
+            chat_model,
             turn_started: None,
         }
     }
@@ -1083,6 +1152,31 @@ impl Browser {
         self.select_tab(next, window, cx);
     }
 
+    /// The picker's choice: remembered, and used from the next message on. A model of
+    /// the same agent goes to the running session, which keeps the conversation;
+    /// another agent starts its own session, which has not seen it.
+    fn choose_model(&mut self, agent: AcpAgentId, model_id: &str, name: &str, cx: &mut Context<Self>) {
+        let same_agent = self.chat_agent == agent;
+        self.chat_agent = agent;
+        self.chat_model = Some((model_id.to_owned(), name.to_owned()));
+        for (key, value) in [
+            (AGENT_STORAGE_KEY, agent.as_str()),
+            (MODEL_STORAGE_KEY, model_id),
+            (MODEL_NAME_STORAGE_KEY, name),
+        ] {
+            if let Err(error) = self.stores.storage.set(key, value) {
+                eprintln!("rever: {key} was not saved: {error}");
+            }
+        }
+        // A session that cannot take the model is replaced at the next turn.
+        let kept = same_agent
+            && self.agent.as_mut().is_none_or(|agent| agent.set_model(model_id).is_ok());
+        if !kept {
+            self.agent = None;
+        }
+        cx.notify();
+    }
+
     /// Cmd+Shift+T: open the most recently closed tab again.
     pub fn reopen_closed_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(url) = self.closed_tabs.pop().and_then(|url| Url::parse(&url).ok()) {
@@ -1246,14 +1340,16 @@ impl Browser {
                 .mcp
                 .as_ref()
                 .map(|mcp| (mcp.url.as_str(), mcp.auth_header.as_str()));
-            self.agent = Some(AgentSession::spawn(&scratch, mcp, move || {
+            let model = self.chat_model.as_ref().map(|(id, _)| id.as_str());
+            let profile = self.mcp.as_ref().map(|mcp| mcp.tool_profile().clone());
+            let wake = move || {
                 let _ = wake.unbounded_send(());
-            })?);
+            };
+            self.agent =
+                Some(chat_agents::spawn_agent(self.chat_agent, model, &scratch, mcp, profile, wake)?);
         }
         let agent = self.agent.as_mut().ok_or("no agent session")?;
-        agent
-            .send(text)
-            .map_err(|error| format!("Claude Code CLI is not accepting input: {error}"))?;
+        agent.send(text)?;
         self.agent_busy = true;
         self.turn_started = Some(Instant::now());
         Ok(())
@@ -1582,7 +1678,7 @@ impl Browser {
             let _ = prompt;
             let wake = wake.clone();
             let mcp = mcp.as_ref().map(|(url, auth)| (url.as_str(), auth.as_str()));
-            crate::agent::AgentSession::spawn(&scratch, mcp, move || {
+            crate::agent::AgentSession::spawn(&scratch, mcp, None, move || {
                 let _ = wake.unbounded_send(());
             })
         };
@@ -1926,6 +2022,29 @@ impl Browser {
 
 /// The "⋮" menu, as App.tsx fills it. Items whose feature the Rust app does not have yet
 /// (page theme, notifications, viewport, view source) are listed disabled.
+/// The agents whose own CLIs report a model list, by the catalog's ids.
+const LIVE_MODEL_AGENTS: [&str; 2] = ["claude-code", "codex"];
+const AGENT_STORAGE_KEY: &str = "rever.chat.agent";
+const MODEL_STORAGE_KEY: &str = "rever.chat.model";
+const MODEL_NAME_STORAGE_KEY: &str = "rever.chat.modelName";
+
+fn picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
+    let (agent_id, model_name, busy) = browser
+        .read_with(cx, |this, _| {
+            let name = this.chat_model.as_ref().map(|(_, name)| name.clone());
+            (this.chat_agent, name, this.agent_busy)
+        })
+        .unwrap_or((AcpAgentId::ClaudeCode, None, false));
+    ModelPickerProps {
+        agent_id,
+        model_name,
+        // One turn at a time: the model changes between turns.
+        disabled: busy,
+        new_tab: false,
+        column: None,
+    }
+}
+
 fn menu_props(browser: &WeakEntity<Browser>, cx: &App) -> AppMenuProps {
     let (theme_mode, lang) = browser
         .read_with(cx, |this, _| (this.theme_mode, this.lang))
