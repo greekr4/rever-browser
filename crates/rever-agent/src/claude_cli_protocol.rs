@@ -100,9 +100,11 @@ pub fn claude_cli_args(mcp_url: &str, auth_header: &str, model: Option<&str>) ->
         // sub-agent runs in its own context without that tab's CDP/ref state, so it
         // can't usefully help — in the Red Team scan its only effect was workers
         // burning 180-420s on a nested agent. Disallowing an absent tool is a no-op,
-        // so this is safe even if the built-in name ever changes.
+        // so this is safe even if the built-in name ever changes. `Agent` is that
+        // tool's newer name. `Workflow` runs a script of sub-agents: asked to "make a
+        // workflow", the model reached for it instead of this app's macros.
         "--disallowed-tools",
-        "Task",
+        "Task,Agent,Workflow",
         "--permission-mode",
         "manual",
         // Route every permission prompt to us as a can_use_tool control_request.
@@ -410,6 +412,16 @@ pub fn permission_response(request_id: &str, answer: &Value, input: Option<&Valu
     }))
 }
 
+/// A refusal the app makes on its own. The model repeats `message` to the user, so
+/// it must not read as the user's decision.
+pub fn deny_response(request_id: &str, message: &str) -> String {
+    let response = json!({ "behavior": "deny", "message": message });
+    line(&json!({
+        "type": "control_response",
+        "response": { "subtype": "success", "request_id": request_id, "response": response }
+    }))
+}
+
 pub fn error_response(request_id: &str, error: &str) -> String {
     line(&json!({
         "type": "control_response",
@@ -496,7 +508,7 @@ mod tests {
     #[test]
     fn 중첩_하위_에이전트_task_도구를_차단한다() {
         let args = claude_cli_args("u", "a", None);
-        assert!(args.join(" ").contains("--disallowed-tools Task"));
+        assert!(args.join(" ").contains("--disallowed-tools Task,Agent,Workflow"));
     }
 
     // ── translate ──
@@ -733,6 +745,11 @@ mod tests {
             Some(&json!({})),
         ));
         assert_eq!(cancelled["response"]["response"]["behavior"], "deny");
+        let refused = parse(deny_response("r4", "not allowed here"));
+        assert_eq!(
+            refused["response"]["response"],
+            json!({ "behavior": "deny", "message": "not allowed here" })
+        );
     }
 
     // ── modelState ──

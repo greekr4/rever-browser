@@ -112,7 +112,7 @@ tool!(
     CreateMacro,
     ToolDef::new(
         "create_macro",
-        "Save a new macro: a named sequence of MCP tool calls replayed deterministically with no LLM in the loop. Use this to turn actions you just performed into a reusable macro — list the same tool calls, in order, with the arguments you used.",
+        "Save a new macro, which is what the user calls a workflow (it appears in the Workflows panel): a named sequence of MCP tool calls replayed deterministically with no LLM in the loop. Use this to turn actions you just performed into a reusable macro — list the same tool calls, in order, with the arguments you used.",
         schema(
             json!({
                 "name": { "type": "string", "description": "Short name shown in the Workflows panel" },
