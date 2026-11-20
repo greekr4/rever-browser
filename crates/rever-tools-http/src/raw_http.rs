@@ -184,7 +184,7 @@ struct TlsSocket<'a> {
 
 impl Read_ for TlsSocket<'_> {
     fn set_read_timeout(&mut self, timeout: Option<Duration>) {
-        let _ = self.tls.sock.set_read_timeout(timeout);
+        self.tls.sock.set_read_timeout(timeout);
     }
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
         self.tls.read(buffer)

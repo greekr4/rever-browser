@@ -139,10 +139,13 @@ pub fn toast_content(lang: Lang, event: &PageEvent) -> (String, Option<i64>) {
     }
 }
 
+/// Shows a finished download in the file manager, by its id.
+type Reveal = Rc<dyn Fn(i64, &mut Window, &mut App)>;
+
 pub struct PageEventToast {
     queue: PageEventQueue,
     /// `window.rev.downloads.reveal(id)`
-    reveal: Rc<dyn Fn(i64, &mut Window, &mut App)>,
+    reveal: Reveal,
     look: LookFn,
 }
 

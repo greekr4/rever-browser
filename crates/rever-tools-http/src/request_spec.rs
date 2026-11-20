@@ -317,7 +317,6 @@ mod tests {
             method: "GET".to_owned(),
             headers: headers(&[("X-Mark", "%C2%A7")]),
             body: Some("b=%c2%A7".to_owned()),
-            ..RequestSpec::default()
         };
         let restored = restore_marker(spec);
         assert_eq!(restored.url, "https://x.test/a?q=§");

@@ -49,6 +49,9 @@ use rever_ui_state::app_theme::{self, AppThemeStore};
 use rever_ui_state::chat_collapsed::ChatCollapsedStore;
 use rever_ui_state::chat_history::{ChatHistory, new_conversation_id};
 use rever_ui_state::constants::AcpAgentId;
+use rever_ui_state::tabs::{
+    STORE_KEY as TABS_KEY, Tab as SessionTab, parse_saved_tabs, serialize_tabs,
+};
 use serde_json::{Value, json};
 use servo::{
     ColorPicker, ContextMenu, ContextMenuAction, EmbedderControl, JSValue, RgbColor,
@@ -171,7 +174,13 @@ fn start_mcp(
             })
         });
     }
-    let server = rever_mcp::start(Arc::new(registry), context)
+    // Macros and workflow steps call the other tools by name through the registry;
+    // without it saving or running one failed with "not connected to workflows yet".
+    let registry = Arc::new(registry);
+    context
+        .state::<rever_tools_automation::bridge::ToolRegistryHandle>()
+        .set(registry.clone());
+    let server = rever_mcp::start(registry, context)
         .inspect_err(|error| eprintln!("[mcp] {error}"))
         .ok();
     (server, intercept, downloads, context_for_app)
@@ -541,9 +550,36 @@ fn apply_agent_event(chat: &mut Vec<ChatLine>, event: &AgentEvent) {
     }
 }
 
+/// The pages to open at start, with the titles their tabs show until they load, and
+/// which of them is shown: the URL of the command line, else the tabs the last run
+/// left open (as Chrome continues where you left off), else the home page.
+fn start_pages(asked: Option<Url>, saved: Option<&str>) -> (Vec<(Url, String)>, usize) {
+    let home = |url: Option<Url>| {
+        let url = url.unwrap_or_else(|| Url::parse(DEFAULT_URL).expect("the home page is a URL"));
+        (vec![(url, String::new())], 0)
+    };
+    let Some(saved) = parse_saved_tabs(saved).filter(|_| asked.is_none()) else {
+        return home(asked);
+    };
+    // The saved index is untrusted; the cast saturates.
+    let wanted = saved.active_index.max(0.0) as usize;
+    let (mut pages, mut active) = (Vec::new(), 0);
+    for (index, tab) in saved.tabs.into_iter().enumerate() {
+        if let Ok(url) = Url::parse(&tab.url) {
+            // A tab whose address no longer parses is skipped: the one before it is shown.
+            if index <= wanted {
+                active = pages.len();
+            }
+            pages.push((url, tab.title.unwrap_or_default()));
+        }
+    }
+    if pages.is_empty() { home(None) } else { (pages, active) }
+}
+
 /// What the command line asked for.
 pub(crate) struct Launch {
-    pub url: Url,
+    /// The page to open; `None` continues where the last run left off.
+    pub url: Option<Url>,
     pub open_panel: Option<&'static str>,
     pub self_check: Option<String>,
     /// A chat message to send shortly after start (port harness).
@@ -603,6 +639,8 @@ pub(crate) struct Browser {
     pub ip_badge: Entity<IpBadge>,
     /// Set by the network tap's threads when the capture store changed.
     traffic_changed: Arc<AtomicBool>,
+    /// When the workflows file last changed, as far as the Workflows panel has seen.
+    workflows_modified: Option<std::time::SystemTime>,
     /// Answers to what the console panel ran in the page, collected until the next pump.
     eval_results: Rc<RefCell<Vec<Result<JSValue, String>>>>,
     /// The Claude Code CLI, started with the first chat message.
@@ -684,6 +722,10 @@ pub(crate) struct Browser {
     pub composing: Option<String>,
     /// Addresses of closed tabs, newest last, for Cmd+Shift+T.
     closed_tabs: Vec<String>,
+    /// The open tabs as last written for the next start.
+    saved_session: String,
+    /// What the process holds, for the development build's overlay.
+    pub memory: crate::memory::MemoryWatch,
     /// Keeps the conversation at its newest line while a reply streams.
     pub chat_scroll: gpui::ScrollHandle,
     /// The model chip of the composer: every agent's models in one list.
@@ -714,6 +756,12 @@ pub(crate) struct Browser {
     /// when the slide started and the width it started from.
     pub chat_drawn: f32,
     pub chat_slide: Option<(Instant, f32)>,
+    /// The bottom panel's slide open or shut: when it began and the height it began at.
+    pub panel_slide: Option<(Instant, f32)>,
+    /// The height the bottom panel was last drawn at.
+    pub panel_drawn: f32,
+    /// The panel last open: it is still the one drawn while it slides shut.
+    pub panel_last: Option<&'static str>,
 }
 
 impl Browser {
@@ -774,9 +822,45 @@ impl Browser {
             held_requests.clone(),
             note,
         ));
-        let first = engine
-            .open(url.clone(), PhysicalSize::new(800, 600))
-            .expect("the page engine could not start");
+        // A development build watches its own memory; the shell draws it over the page.
+        if cfg!(debug_assertions) {
+            cx.spawn(async move |this, cx| {
+                while let Some(bytes) = crate::memory::footprint() {
+                    let recorded = this.update(cx, |this, cx| {
+                        this.memory.record(bytes);
+                        cx.notify();
+                    });
+                    if recorded.is_err() {
+                        break;
+                    }
+                    cx.background_executor().timer(Duration::from_secs(1)).await;
+                }
+            })
+            .detach();
+        }
+        // A --self-check run is a test: it must not add its pages to the user's history.
+        let stores = Stores::new(traffic.clone(), self_check.is_none(), cx);
+        let (pages, active) = start_pages(url, stores.storage.get(TABS_KEY).as_deref());
+        let mut tabs = Vec::new();
+        for (url, title) in pages {
+            let opened = engine.open(url.clone(), PhysicalSize::new(800, 600));
+            // The engine has to start; a later tab that does not open is left out.
+            let id = if tabs.is_empty() {
+                opened.expect("the page engine could not start")
+            } else {
+                let Ok(id) = opened else { continue };
+                id
+            };
+            tabs.push(Tab {
+                id,
+                title: title.into(),
+                url: url.to_string(),
+                frame: None,
+                favicon: None,
+            });
+        }
+        let active = active.min(tabs.len() - 1);
+        let url = tabs[active].url.clone();
 
         // Servo and the tap wake this task from their threads; the work happens here, on the main thread.
         cx.spawn_in(window, async move |this, cx| {
@@ -811,8 +895,6 @@ impl Browser {
             .detach();
         }
 
-        // A --self-check run is a test: it must not add its pages to the user's history.
-        let stores = Stores::new(traffic, self_check.is_none(), cx);
         let app_theme = AppThemeStore::load(stores.storage.as_ref());
         // REVER_THEME wins over the saved choice, for previews and captures.
         let theme_mode = if std::env::var("REVER_THEME").is_ok_and(|mode| !mode.is_empty()) {
@@ -820,10 +902,17 @@ impl Browser {
         } else {
             theme_from_stored(app_theme.mode())
         };
-        let views = Views::new(&stores, lang, theme_mode, tool_browser.clone(), cx);
+        let views = Views::new(
+            &stores,
+            lang,
+            theme_mode,
+            tool_browser.clone(),
+            tool_context.clone(),
+            cx,
+        );
         views
             .address
-            .update(cx, |input, cx| input.set_text(url.to_string(), cx));
+            .update(cx, |input, cx| input.set_text(url, cx));
 
         let this = cx.weak_entity();
         // The menus read language and theme on every render, so a switch shows at once.
@@ -922,14 +1011,10 @@ impl Browser {
         // The bot-check floating button is hidden in the browser, so it is not built.
         Self {
             engine,
-            tabs: vec![Tab {
-                id: first,
-                title: "".into(),
-                url: url.to_string(),
-                frame: None,
-                favicon: None,
-            }],
-            active: 0,
+            tabs,
+            active,
+            saved_session: String::new(),
+            memory: Default::default(),
             chat,
             open_panel,
             page_bounds: Rc::new(Cell::new(Bounds::default())),
@@ -939,6 +1024,7 @@ impl Browser {
             menu,
             ip_badge,
             traffic_changed,
+            workflows_modified: None,
             eval_results: Rc::default(),
             agent: None,
             agent_busy: false,
@@ -997,6 +1083,9 @@ impl Browser {
             chat_drag: None,
             chat_drawn: 0.0,
             chat_slide: None,
+            panel_slide: None,
+            panel_drawn: 0.0,
+            panel_last: None,
         }
     }
 
@@ -1012,7 +1101,7 @@ impl Browser {
             store.load_from_traffic(request_id, stored.as_ref());
             cx.notify();
         });
-        self.open_panel = Some("repeater");
+        self.set_open_panel(Some("repeater"), cx);
     }
 
     /// The tab a targeted command names by index, or the active tab when the
@@ -1028,10 +1117,19 @@ impl Browser {
         let mut frame_ready = false;
         let mut console_changed = false;
         let mut opened = false;
+        let mut tabs_changed = false;
+        // Tabs behind the active one that built a frame.
+        let mut behind = Vec::new();
         let mut closed = Vec::new();
         for event in self.engine.pump() {
             match event {
-                EngineEvent::FrameReady(tab) => frame_ready |= tab == active,
+                EngineEvent::FrameReady(tab) if tab == active => frame_ready = true,
+                EngineEvent::FrameReady(tab) => {
+                    // Once a pump however many frames it built.
+                    if !behind.contains(&tab) {
+                        behind.push(tab);
+                    }
+                }
                 EngineEvent::Closed(id) => closed.push(id),
                 EngineEvent::Opened(id) => {
                     self.tabs.push(Tab {
@@ -1056,6 +1154,7 @@ impl Browser {
                         });
                     }
                     tab.title = title.into();
+                    tabs_changed = true;
                 }
                 EngineEvent::Favicon(tab, mut icon) => {
                     let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab) else {
@@ -1069,7 +1168,7 @@ impl Browser {
                         self.views.bookmark_bar.update(cx, |_, cx| cx.notify());
                     }
                     // GPUI paints BGRA.
-                    for pixel in icon.chunks_exact_mut(4) {
+                    for pixel in icon.as_chunks_mut::<4>().0 {
                         pixel.swap(0, 2);
                     }
                     let icon = Arc::new(RenderImage::new(vec![Frame::new(icon)]));
@@ -1087,6 +1186,7 @@ impl Browser {
                         continue;
                     };
                     tab.url = url.clone();
+                    tabs_changed = true;
                     let entry = NewHistoryEntry {
                         tab_id: history_tab_id(tab.id),
                         url,
@@ -1114,6 +1214,12 @@ impl Browser {
         }
         if frame_ready {
             self.capture(window);
+        }
+        for tab in behind {
+            self.engine.settle(tab);
+        }
+        if tabs_changed {
+            self.save_session();
         }
         // The debugger tools connect to Servo's debugging server once it is up.
         if self.debug_endpoint.lock().unwrap().is_none() {
@@ -1154,6 +1260,18 @@ impl Browser {
                 .update(cx, |panel, cx| panel.refresh(cx));
             self.views.apimap.update(cx, |panel, cx| panel.refresh(cx));
         }
+        // The agent's macro tools write the workflows file from the MCP server's
+        // thread: the panel reads it again when the file has changed.
+        let modified = std::fs::metadata(panels::workflows_file())
+            .and_then(|file| file.modified())
+            .ok();
+        if modified != self.workflows_modified {
+            self.workflows_modified = modified;
+            self.views.workflows_store.update(cx, |store, cx| {
+                store.reload();
+                cx.notify();
+            });
+        }
         self.pump_agent();
         self.pump_scan(cx);
         if self.close_scan_tabs {
@@ -1180,7 +1298,7 @@ impl Browser {
             self.last_rgba = Some(image.clone());
         }
         // GPUI paints BGRA.
-        for pixel in image.chunks_exact_mut(4) {
+        for pixel in image.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
         }
         let frame = Arc::new(RenderImage::new(vec![Frame::new(image)]));
@@ -1255,7 +1373,33 @@ impl Browser {
             .update(cx, |input, cx| input.set_text(url, cx));
         self.fit_page(window, cx);
         self.capture(window);
+        self.save_session();
         cx.notify();
+    }
+
+    /// Remember the open tabs for the next start. Written only when they changed.
+    fn save_session(&mut self) {
+        let tabs: Vec<SessionTab> = self
+            .tabs
+            .iter()
+            .map(|tab| SessionTab {
+                id: tab.id.0.to_string(),
+                url: tab.url.clone(),
+                title: tab.title.to_string(),
+                web_contents_id: None,
+                initial_url: String::new(),
+                proxy: None,
+                partition: None,
+                profile_id: None,
+            })
+            .collect();
+        let saved = serialize_tabs(&tabs, &self.active_id().0.to_string());
+        if saved != self.saved_session {
+            if let Err(error) = self.stores.storage.set(TABS_KEY, &saved) {
+                eprintln!("rever: the open tabs were not saved: {error}");
+            }
+            self.saved_session = saved;
+        }
     }
 
     pub fn close_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -1312,11 +1456,17 @@ impl Browser {
     }
 
     pub fn toggle_panel(&mut self, panel: &'static str, cx: &mut Context<Self>) {
-        self.open_panel = if self.open_panel == Some(panel) {
-            None
-        } else {
-            Some(panel)
-        };
+        let next = (self.open_panel != Some(panel)).then_some(panel);
+        self.set_open_panel(next, cx);
+    }
+
+    /// Open, switch or close the bottom panel. Opening and closing slide; switching
+    /// from one panel to another does not.
+    pub fn set_open_panel(&mut self, panel: Option<&'static str>, cx: &mut Context<Self>) {
+        if self.open_panel.is_some() != panel.is_some() {
+            self.panel_slide = Some((Instant::now(), self.panel_drawn));
+        }
+        self.open_panel = panel;
         cx.notify();
     }
 
@@ -1379,7 +1529,14 @@ impl Browser {
         let address = self.views.address.read(cx).text().to_owned();
         let draft = self.views.composer.read(cx).text().to_owned();
         self.views =
-            Views::new(&self.stores, self.lang, self.theme_mode, self.storage_browser.clone(), cx);
+            Views::new(
+                &self.stores,
+                self.lang,
+                self.theme_mode,
+                self.storage_browser.clone(),
+                self.tool_context.clone(),
+                cx,
+            );
         self.views
             .address
             .update(cx, |input, cx| input.set_text(address, cx));
@@ -2353,9 +2510,62 @@ fn menu_props(browser: &WeakEntity<Browser>, cx: &App) -> AppMenuProps {
     }
 }
 
+fn answer_dialog(dialog: SimpleDialog, accept: bool, text: Option<&str>) {
+    match dialog {
+        SimpleDialog::Prompt(mut prompt) if accept => {
+            if let Some(text) = text {
+                prompt.set_current_value(text);
+            }
+            prompt.confirm();
+        }
+        dialog if accept => dialog.confirm(),
+        dialog => dialog.dismiss(),
+    }
+}
+
+/// Where the page is drawn inside the area the interface gave it: all of it, or
+/// in mobile mode a phone-wide column in the middle.
+///
+/// shortcut: mobile mode keeps the window's height and pixel density, where the
+/// TypeScript emulated 390x844 at 3x; add those when a site needs the exact device.
+pub fn page_area(bounds: Bounds<Pixels>, mobile: bool) -> Bounds<Pixels> {
+    if !mobile {
+        return bounds;
+    }
+    let width = bounds.size.width.min(gpui::px(crate::engine::MOBILE_WIDTH));
+    let mut area = bounds;
+    area.origin.x += (bounds.size.width - width) / 2.0;
+    area.size.width = width;
+    area
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 시작할_때는_주소_인자가_먼저고_없으면_지난번_탭을_다시_연다() {
+        let saved = r#"{"tabs":[{"url":"https://a.test/","title":"A"},{"url":"not a url"},{"url":"https://c.test/x","title":"C"}],"activeIndex":2}"#;
+        let urls = |pages: &[(Url, String)]| -> Vec<String> {
+            pages.iter().map(|(url, _)| url.to_string()).collect()
+        };
+        // 지난번 탭: 읽을 수 없는 주소는 빼고, 보던 탭을 그대로 고른다.
+        let (pages, active) = start_pages(None, Some(saved));
+        assert_eq!(urls(&pages), ["https://a.test/", "https://c.test/x"]);
+        assert_eq!((active, pages[1].1.as_str()), (1, "C"));
+        // 주소 인자가 있으면 그것만 연다.
+        let asked = Url::parse("https://asked.test/").unwrap();
+        let (pages, active) = start_pages(Some(asked), Some(saved));
+        assert_eq!((urls(&pages), active), (vec!["https://asked.test/".to_owned()], 0));
+        // 저장된 것이 없거나 쓸 수 없으면 홈 페이지다.
+        for nothing in [None, Some("{}"), Some(r#"{"tabs":[{"url":"??"}]}"#)] {
+            let (pages, active) = start_pages(None, nothing);
+            assert_eq!((urls(&pages), active), (vec![DEFAULT_URL.to_owned()], 0));
+        }
+        // 보던 탭 번호가 범위를 넘으면 마지막 탭이다.
+        let far = r#"{"tabs":[{"url":"https://a.test/"},{"url":"https://b.test/"}],"activeIndex":9}"#;
+        assert_eq!(start_pages(None, Some(far)).1, 1);
+    }
 
     #[test]
     fn 웹소켓_이벤트는_연결을_항목으로_프레임을_붙여_기록한다() {
@@ -2569,33 +2779,4 @@ mod tests {
     fn 히스토리의_탭_아이디는_t와_번호다() {
         assert_eq!(history_tab_id(TabId(3)), "t3");
     }
-}
-
-fn answer_dialog(dialog: SimpleDialog, accept: bool, text: Option<&str>) {
-    match dialog {
-        SimpleDialog::Prompt(mut prompt) if accept => {
-            if let Some(text) = text {
-                prompt.set_current_value(text);
-            }
-            prompt.confirm();
-        }
-        dialog if accept => dialog.confirm(),
-        dialog => dialog.dismiss(),
-    }
-}
-
-/// Where the page is drawn inside the area the interface gave it: all of it, or
-/// in mobile mode a phone-wide column in the middle.
-///
-/// shortcut: mobile mode keeps the window's height and pixel density, where the
-/// TypeScript emulated 390x844 at 3x; add those when a site needs the exact device.
-pub fn page_area(bounds: Bounds<Pixels>, mobile: bool) -> Bounds<Pixels> {
-    if !mobile {
-        return bounds;
-    }
-    let width = bounds.size.width.min(gpui::px(crate::engine::MOBILE_WIDTH));
-    let mut area = bounds;
-    area.origin.x += (bounds.size.width - width) / 2.0;
-    area.size.width = width;
-    area
 }

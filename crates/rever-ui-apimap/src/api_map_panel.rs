@@ -289,7 +289,7 @@ impl EndpointMap {
         let mut endpoints = self.buckets.clone();
         // The component sorts by count alone and its sort is stable, so equally busy
         // endpoints stay in first-seen order and a node does not jump as traffic arrives.
-        endpoints.sort_by(|a, b| b.count.cmp(&a.count));
+        endpoints.sort_by_key(|endpoint| std::cmp::Reverse(endpoint.count));
         endpoints
     }
 }
@@ -376,7 +376,7 @@ pub fn domains(endpoints: &[ApiEndpoint]) -> Vec<(String, usize)> {
         }
     }
     // Stable, as Array#sort is: ties keep first-seen order.
-    counts.sort_by(|a, b| b.1.cmp(&a.1));
+    counts.sort_by_key(|count| std::cmp::Reverse(count.1));
     counts
 }
 
@@ -420,7 +420,7 @@ pub fn hosts<'a>(endpoints: &'a [ApiEndpoint], domain: &str) -> Vec<HostGroup<'a
     for group in &mut groups {
         group.hits = group.eps.iter().map(|endpoint| endpoint.count).sum();
     }
-    groups.sort_by(|a, b| b.eps.len().cmp(&a.eps.len()));
+    groups.sort_by_key(|group| std::cmp::Reverse(group.eps.len()));
     groups
 }
 

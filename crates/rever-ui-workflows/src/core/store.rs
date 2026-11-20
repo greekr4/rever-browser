@@ -32,6 +32,11 @@ impl WorkflowsStore {
         }
     }
 
+    /// Read the list again: something else (the agent's macro tools) wrote the storage.
+    pub fn reload(&mut self) {
+        self.workflows = load(self.storage.as_ref());
+    }
+
     /// Newest first.
     pub fn workflows(&self) -> &[Workflow] {
         &self.workflows
@@ -113,6 +118,18 @@ mod tests {
 
     fn ids(store: &WorkflowsStore) -> Vec<&str> {
         store.workflows().iter().map(|w| w.id.as_str()).collect()
+    }
+
+    #[test]
+    fn 다시_읽으면_저장소에_다른_쪽이_쓴_목록으로_바뀐다() {
+        let (storage, mut store) = store();
+        store.upsert_at(workflow("a", "A"), 10).unwrap();
+        // 에이전트의 매크로 도구가 같은 저장소에 쓴 것처럼.
+        let (_, mut other) = (0, WorkflowsStore::new(storage.clone()));
+        other.upsert_at(workflow("b", "B"), 20).unwrap();
+        assert_eq!(ids(&store), ["a"]);
+        store.reload();
+        assert_eq!(ids(&store), ["b", "a"]);
     }
 
     #[test]

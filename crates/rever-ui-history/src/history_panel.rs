@@ -69,7 +69,7 @@ pub fn filter_entries<'a>(entries: &'a [HistoryEntry], filter: &str) -> Vec<&'a 
     let query = js_trim(filter).to_lowercase();
     let mut sorted: Vec<&HistoryEntry> = entries.iter().collect();
     // Stable, as Array#sort is: visits in the same millisecond keep their order.
-    sorted.sort_by(|a, b| b.visited_at.cmp(&a.visited_at));
+    sorted.sort_by_key(|entry| std::cmp::Reverse(entry.visited_at));
     if !query.is_empty() {
         sorted.retain(|entry| {
             entry.url.to_lowercase().contains(&query) || entry.title.to_lowercase().contains(&query)

@@ -97,7 +97,7 @@ const INITIAL_URL: &str = "https://github.com/greekr4/rever-browser";
 // tabs are left out — their proxy config lives only in memory, so restoring the
 // URL without it would load the page directly (wrong). Isolated-session
 // partitions for named profiles are stable across restarts and kept.
-const STORE_KEY: &str = "rev:tabs";
+pub const STORE_KEY: &str = "rev:tabs";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

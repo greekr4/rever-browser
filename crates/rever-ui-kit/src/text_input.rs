@@ -681,6 +681,28 @@ fn marked_selection(
     }
 }
 
+/// Editing keys for every [`TextInput`]. Scoped to the field's key context, so they do
+/// not take keys away from the page.
+pub fn bind_keys(cx: &mut App) {
+    let context = Some("TextInput");
+    cx.bind_keys([
+        KeyBinding::new("backspace", Backspace, context),
+        KeyBinding::new("delete", Delete, context),
+        KeyBinding::new("left", Left, context),
+        KeyBinding::new("right", Right, context),
+        KeyBinding::new("shift-left", SelectLeft, context),
+        KeyBinding::new("shift-right", SelectRight, context),
+        KeyBinding::new("cmd-a", SelectAll, context),
+        KeyBinding::new("cmd-v", Paste, context),
+        KeyBinding::new("cmd-c", Copy, context),
+        KeyBinding::new("cmd-x", Cut, context),
+        KeyBinding::new("home", Home, context),
+        KeyBinding::new("end", End, context),
+        KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, context),
+        KeyBinding::new("enter", Submit, context),
+    ]);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -704,26 +726,4 @@ mod tests {
         assert_eq!(clamp_range("한글", 1..4), 0..3);
         assert_eq!(clamp_range("abc", 1..2), 1..2);
     }
-}
-
-/// Editing keys for every [`TextInput`]. Scoped to the field's key context, so they do
-/// not take keys away from the page.
-pub fn bind_keys(cx: &mut App) {
-    let context = Some("TextInput");
-    cx.bind_keys([
-        KeyBinding::new("backspace", Backspace, context),
-        KeyBinding::new("delete", Delete, context),
-        KeyBinding::new("left", Left, context),
-        KeyBinding::new("right", Right, context),
-        KeyBinding::new("shift-left", SelectLeft, context),
-        KeyBinding::new("shift-right", SelectRight, context),
-        KeyBinding::new("cmd-a", SelectAll, context),
-        KeyBinding::new("cmd-v", Paste, context),
-        KeyBinding::new("cmd-c", Copy, context),
-        KeyBinding::new("cmd-x", Cut, context),
-        KeyBinding::new("home", Home, context),
-        KeyBinding::new("end", End, context),
-        KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, context),
-        KeyBinding::new("enter", Submit, context),
-    ]);
 }

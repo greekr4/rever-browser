@@ -146,7 +146,6 @@ impl Browser {
             )
             .on_action(cx.listener(|_, _: &Minimize, window, _| window.minimize_window()))
             .on_action(cx.listener(|_, _: &Hide, _, cx| cx.hide()))
-            .on_action(cx.listener(|_, _: &Quit, _, cx| cx.quit()))
     }
 }
 

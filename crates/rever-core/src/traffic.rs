@@ -333,7 +333,7 @@ impl TrafficStore {
             Source::All => {
                 let mut all = live();
                 all.extend(import());
-                all.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+                all.sort_by_key(|entry| std::cmp::Reverse(entry.started_at));
                 all.truncate(limit);
                 all
             }
@@ -574,13 +574,12 @@ fn scan<'a>(
         if filter.tab_id.is_some() && entry.tab_id != filter.tab_id {
             continue;
         }
-        if let Some(needle) = &needle {
-            if !entry.method.to_lowercase().contains(needle)
+        if let Some(needle) = &needle
+            && !entry.method.to_lowercase().contains(needle)
                 && !entry.resource_type.to_lowercase().contains(needle)
             {
                 continue;
             }
-        }
         if filter.since.is_some_and(|since| entry.started_at < since) {
             continue;
         }

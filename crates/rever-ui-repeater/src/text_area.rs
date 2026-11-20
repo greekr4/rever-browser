@@ -715,6 +715,7 @@ impl Element for TextElement {
 
         let line_ranges = line_ranges(&input.content);
         let wraps: Vec<Vec<usize>> = lines.iter().map(wrap_offsets).collect();
+        #[expect(clippy::single_range_in_vec_init, reason = "one row that covers nothing, not the numbers of a range")]
         let rows = if is_placeholder {
             vec![0..0]
         } else {
@@ -1241,6 +1242,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::reversed_empty_ranges, reason = "a reversed range is the input under test")]
     fn 조합_중인_범위는_글을_앞_안_뒤로_나눈다() {
         assert_eq!(marked_split(10, Some(&(6..8))), [6, 2, 2]);
         assert_eq!(marked_split(10, None), [10, 0, 0]);
@@ -1252,6 +1254,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::reversed_empty_ranges, reason = "a reversed range is the input under test")]
     fn 조합_중인_한글을_지워도_선택_범위가_글자_밖으로_나가지_않는다() {
         assert_eq!(marked_selection(0, "", Some(0..0)), 0..0);
         assert_eq!(marked_selection(0, "하", Some(1..1)), 3..3);

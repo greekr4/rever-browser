@@ -18,7 +18,7 @@ fn fmt_count(n: usize) -> String {
     let digits = n.to_string();
     let mut out = String::new();
     for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
             out.push(',');
         }
         out.push(digit);
@@ -135,8 +135,7 @@ impl Browser {
                             .cursor_pointer()
                             .hover(move |style| style.bg(hover))
                             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                this.open_panel = None;
-                                cx.notify();
+                                this.set_open_panel(None, cx);
                             }))
                             .child("✕"),
                     ),

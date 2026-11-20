@@ -34,7 +34,7 @@ rever-cli-spec = { path = "../rever-cli-spec" }
 rever-cookie-import = { path = "../rever-cookie-import" }
 # Only `time`: the promise-poll in bridge.rs sleeps between page reads on the
 # MCP server's tokio runtime (no new dependency — tokio is already in the tree).
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "rt"] }
 gpui = { workspace = true }
 rever-ui-kit = { path = "../rever-ui-kit" }
 rever-ui-state = { path = "../rever-ui-state" }
@@ -74,6 +74,8 @@ serde_json = { version = "1", features = ["preserve_order"] }
 # Setting the Dock icon when run without an .app bundle (already in the tree through GPUI).
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
+# Reading the process's memory for the development overlay (already in the tree).
+libc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }

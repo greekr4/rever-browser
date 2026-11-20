@@ -350,14 +350,15 @@ mod view_tests {
 
     /// A menu of an enabled item, a disabled one and a separated one; the counter
     /// holds how often each was chosen.
-    fn menu(
-        cx: &mut TestAppContext,
-    ) -> (
+    /// The menu, how often each item was chosen, the presses outside it, the window.
+    type Staged<'a> = (
         Entity<AppMenu>,
         Rc<[Cell<usize>; 3]>,
         Rc<Cell<usize>>,
-        &mut VisualTestContext,
-    ) {
+        &'a mut VisualTestContext,
+    );
+
+    fn menu(cx: &mut TestAppContext) -> Staged<'_> {
         let chosen: Rc<[Cell<usize>; 3]> = Rc::default();
         let (menu, presses, cx) = stage(cx, {
             let chosen = chosen.clone();

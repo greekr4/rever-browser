@@ -91,7 +91,7 @@ fn decode_hex(s: &str) -> String {
     let nibble = |b: u8| (b as char).to_digit(16).unwrap_or(0) as u8;
     let bytes: Vec<u8> = s
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>().0.iter()
         .map(|pair| pair.iter().fold(0, |byte, b| (byte << 4) | nibble(*b)))
         .collect();
     String::from_utf8_lossy(&bytes).into_owned()

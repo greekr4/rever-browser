@@ -204,10 +204,13 @@ fn random() -> u64 {
         .finish()
 }
 
+/// Reads the active tab, on every render.
+type ActiveTab = Box<dyn Fn(&App) -> Option<Tab>>;
+
 pub struct ProxyButton {
     host: Rc<dyn SetupHost>,
     /// The active tab, read on every render, as the `tab` prop is.
-    tab: Box<dyn Fn(&App) -> Option<Tab>>,
+    tab: ActiveTab,
     /// Called after a proxy change is applied so the caller can reload the tab (the
     /// proxy applies to new requests; a reload makes it take full effect for the
     /// visible page).

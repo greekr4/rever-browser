@@ -87,7 +87,7 @@ pub fn encode_field(field: &ProtoField) -> Result<Vec<u8>, String> {
                     value as u64
                 }
             };
-            let mut out = encode_varint((field.number << 3) | 0);
+            let mut out = encode_varint(field.number << 3);
             out.extend(encode_varint(number));
             Ok(out)
         }
@@ -271,13 +271,12 @@ fn percent_decode(text: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(&text[i + 1..i + 3], 16) {
+        if bytes[i] == b'%' && i + 2 < bytes.len()
+            && let Ok(byte) = u8::from_str_radix(&text[i + 1..i + 3], 16) {
                 out.push(byte);
                 i += 3;
                 continue;
             }
-        }
         out.push(bytes[i]);
         i += 1;
     }

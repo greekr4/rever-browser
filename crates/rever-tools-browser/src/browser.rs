@@ -1533,7 +1533,7 @@ mod tests {
             key: "a".to_owned(),
             modifiers: 2,
         };
-        assert_eq!(browser.inputs(), [chord.clone()]);
+        assert_eq!(browser.inputs(), std::slice::from_ref(&chord));
         assert!(
             call(&BrowserPressKey, &ctx, json!({ "key": "a" }))
                 .await

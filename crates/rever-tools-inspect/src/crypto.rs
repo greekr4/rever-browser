@@ -428,12 +428,11 @@ impl JsonToString<'_> {
                         if self.is(b',') {
                             self.at += 1;
                             let key = self.key("Expected double-quoted property name in JSON")?;
-                            if key == units("toString") {
-                                if let Some(Container::Object { to_string }) = self.stack.last_mut()
+                            if key == units("toString")
+                                && let Some(Container::Object { to_string }) = self.stack.last_mut()
                                 {
                                     *to_string = true;
                                 }
-                            }
                             continue 'value;
                         }
                         if !self.is(b'}') {

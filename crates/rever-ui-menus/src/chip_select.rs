@@ -56,10 +56,13 @@ pub fn current_label(options: &[ChipOption], value: &str) -> SharedString {
 
 const GROUP: &str = "chip-select";
 
+/// Called with the id of the option the user picked.
+type OnChange = Rc<dyn Fn(&str, &mut Window, &mut App)>;
+
 pub struct ChipSelect {
     /// Read on every render, as re-rendered props are.
     props: Box<dyn Fn(&App) -> ChipSelectProps>,
-    on_change: Rc<dyn Fn(&str, &mut Window, &mut App)>,
+    on_change: OnChange,
     look: LookFn,
     open: bool,
     escape: Option<Subscription>,
@@ -303,16 +306,15 @@ mod view_tests {
     use super::*;
     use crate::ui::testing::{center, elsewhere, look, stage};
 
-    /// A select over two options; the list holds every value `on_change` was given.
-    fn select(
-        disabled: bool,
-        cx: &mut TestAppContext,
-    ) -> (
+    /// A select over two options, every value `on_change` was given, the presses outside it, the window.
+    type Staged<'a> = (
         Entity<ChipSelect>,
         Rc<RefCell<Vec<String>>>,
         Rc<std::cell::Cell<usize>>,
-        &mut VisualTestContext,
-    ) {
+        &'a mut VisualTestContext,
+    );
+
+    fn select(disabled: bool, cx: &mut TestAppContext) -> Staged<'_> {
         let changes: Rc<RefCell<Vec<String>>> = Rc::default();
         let (select, presses, cx) = stage(cx, {
             let changes = changes.clone();

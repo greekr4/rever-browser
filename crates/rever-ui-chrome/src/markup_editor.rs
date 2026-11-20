@@ -546,7 +546,7 @@ impl MarkupEditor {
         }
         let mut canvas = self.canvas();
         // GPUI wants BGRA.
-        for pixel in canvas.chunks_exact_mut(4) {
+        for pixel in canvas.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
         }
         let frame = Arc::new(RenderImage::new(vec![Frame::new(canvas)]));
@@ -1281,7 +1281,7 @@ mod view_tests {
     }
 
     /// An editor on `url` in a 1000×800 window.
-    fn open<'a>(url: String, cx: &'a mut TestAppContext) -> (Fixture, &'a mut VisualTestContext) {
+    fn open(url: String, cx: &mut TestAppContext) -> (Fixture, &mut VisualTestContext) {
         let events = Rc::new(RefCell::new(Vec::new()));
         let presses = Rc::new(Cell::new(0));
         let (stage, cx) = cx.add_window_view({

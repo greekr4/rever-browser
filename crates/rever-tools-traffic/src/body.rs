@@ -597,11 +597,11 @@ mod tests {
             encoding("GET", true),
             ("br, gzip, deflate".to_owned(), false)
         );
-        assert_eq!(encoding("PUT", false).1, true);
-        assert_eq!(encoding("PATCH", false).1, true);
+        assert!(encoding("PUT", false).1);
+        assert!(encoding("PATCH", false).1);
         // fetch() does not upper-case "patch", and sends no length for it.
-        assert_eq!(encoding("patch", false).1, false);
-        assert_eq!(encoding("DELETE", false).1, false);
+        assert!(!encoding("patch", false).1);
+        assert!(!encoding("DELETE", false).1);
     }
 
     #[test]

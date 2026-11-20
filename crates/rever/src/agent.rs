@@ -15,13 +15,17 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
 use rever_agent::claude_cli_protocol::{
-    MCP_SERVER_NAME, TranslateState, TurnOutcome, claude_cli_args, error_response,
+    MCP_SERVER_NAME, TranslateState, TurnOutcome, claude_cli_args, deny_response, error_response,
     permission_response, to_permission_request, translate, turn_outcome, user_message,
 };
 use rever_tool_profile::risky_tools::is_risky_tool_request;
 use serde_json::{Value, json};
 
 const SESSION_ID: &str = "rever";
+
+/// What the model is told about a tool request refused without asking — see the module
+/// comment. Without the reason it tells the user "you declined".
+const NOT_ALLOWED: &str = "Rever Browser refused this tool on its own; the user was not asked. This chat runs only the app's own MCP tools that need no approval.";
 
 /// True while a user-confirmed Red Team scan runs: the app's own risky MCP
 /// tools (probes, mutated replays) auto-approve for its worker turns. The
@@ -257,13 +261,13 @@ impl AgentSession {
                     let id = message["request_id"].as_str().unwrap_or_default();
                     let request = &message["request"];
                     let reply = if request["subtype"] == "can_use_tool" {
-                        // An answer that is not "allow" is a rejection.
-                        let answer = if auto_allowed(request) {
-                            json!({ "outcome": { "outcome": "selected", "optionId": "allow" } })
+                        if auto_allowed(request) {
+                            let allow =
+                                json!({ "outcome": { "outcome": "selected", "optionId": "allow" } });
+                            permission_response(id, &allow, request.get("input"))
                         } else {
-                            Value::Null
-                        };
-                        permission_response(id, &answer, request.get("input"))
+                            deny_response(id, NOT_ALLOWED)
+                        }
                     } else {
                         error_response(id, "unsupported control request")
                     };

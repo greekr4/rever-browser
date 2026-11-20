@@ -20,12 +20,13 @@ mod debug;
 mod engine;
 mod intercept;
 mod mcp_client;
+mod memory;
 mod panels;
 mod scan;
 mod shell;
 mod storage_host;
 
-use app::{Browser, DEFAULT_URL, Launch, PANEL_GROUPS};
+use app::{Browser, Launch, PANEL_GROUPS};
 use gpui::{
     App, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, prelude::*, px,
     size,
@@ -35,7 +36,8 @@ use rever_ui_kit::text_input;
 use url::Url;
 
 fn main() {
-    let mut url = DEFAULT_URL.to_owned();
+    // No URL: the app opens what the last run left open.
+    let mut url = None;
     let (mut self_check, mut open_panel, mut say) = (None, None, None);
     for arg in std::env::args().skip(1) {
         if let Some(dir) = arg.strip_prefix("--self-check=") {
@@ -50,10 +52,12 @@ fn main() {
                 .copied()
                 .find(|panel| *panel == name);
         } else {
-            url = arg;
+            url = Some(arg);
         }
     }
-    let url = Url::parse(&normalize_address(&url)).expect("the URL argument is not a valid URL");
+    let url = url.map(|url| {
+        Url::parse(&normalize_address(&url)).expect("the URL argument is not a valid URL")
+    });
     let launch = Launch {
         url,
         open_panel,
@@ -66,6 +70,15 @@ fn main() {
         .run(move |cx: &mut App| {
             text_input::bind_keys(cx);
             shell::shortcuts::bind_keys(cx);
+            // There is one window: closing it (the red button) ends the app, and Cmd+Q
+            // ends it wherever the focus is, even when nothing has it.
+            cx.on_window_closed(|cx| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
+            cx.on_action(|_: &shell::shortcuts::Quit, cx| cx.quit());
             #[cfg(target_os = "macos")]
             set_dock_icon();
             let bounds = Bounds::centered(None, size(px(1440.0), px(900.0)), cx);

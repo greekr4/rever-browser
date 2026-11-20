@@ -216,7 +216,7 @@ fn tie_to_even(value: f64, shortest: &str) -> Option<String> {
     let even = lower
         .bytes()
         .last()
-        .is_some_and(|digit| (digit - b'0') % 2 == 0);
+        .is_some_and(|digit| (digit - b'0').is_multiple_of(2));
     // The lower candidate must still read back as the same double.
     let reads_back = format!("{lower}e{}", exponent - (count as i32 - 1))
         .parse::<f64>()
@@ -1011,12 +1011,12 @@ mod tests {
     fn 두_후보의_정확히_가운데인_수는_끝자리가_짝수인_쪽으로_적는다() {
         // Each value is exactly …5 one digit past its shortest form. Rust's own
         // formatting rounds all of them up.
-        assert_eq!(js_number(14278465619.9765625), "14278465619.976562");
-        assert_eq!(js_number(8853955072.0078125), "8853955072.007812");
-        assert_eq!(js_number(-9914647680.0390625), "-9914647680.039062");
+        assert_eq!(js_number(14_278_465_619.976_563), "14278465619.976562");
+        assert_eq!(js_number(8_853_955_072.007_813), "8853955072.007812");
+        assert_eq!(js_number(-9_914_647_680.039_063), "-9914647680.039062");
         // Up is the even side here.
-        assert_eq!(js_number(8853955072.0234375), "8853955072.023438");
-        assert_eq!(js_number(8608789888.0546875), "8608789888.054688");
+        assert_eq!(js_number(8_853_955_072.023_438), "8853955072.023438");
+        assert_eq!(js_number(8_608_789_888.054_688), "8608789888.054688");
         // Short exact values are not ties: all their digits are needed.
         assert_eq!(js_number(0.0078125), "0.0078125");
         assert_eq!(js_number(2.5), "2.5");
@@ -1264,7 +1264,7 @@ mod tests {
         assert_eq!(view.raw.as_ref(), "a\nb");
     }
 
-    fn pieces<'a>(text: &'a str, limit: usize) -> Vec<&'a str> {
+    fn pieces(text: &str, limit: usize) -> Vec<&str> {
         raw_pieces(text, limit)
             .into_iter()
             .map(|range| &text[range])

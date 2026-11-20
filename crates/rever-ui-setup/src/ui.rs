@@ -186,7 +186,7 @@ pub(crate) fn group_thousands(n: u64) -> String {
     let digits = n.to_string();
     let mut out = String::with_capacity(digits.len() + digits.len() / 3);
     for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
             out.push(',');
         }
         out.push(digit);
@@ -351,6 +351,7 @@ pub(crate) fn select_box(
 ///
 /// Not `deferred`: the popover and the modals it opens in are deferred themselves, and
 /// GPUI does not nest deferred draws. The caller adds it after everything it must cover.
+#[expect(clippy::too_many_arguments, reason = "one call draws one select: the arguments are its props")]
 pub(crate) fn select_list<V: 'static>(
     id: &'static str,
     options: &[SharedString],

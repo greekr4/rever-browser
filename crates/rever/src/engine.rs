@@ -330,6 +330,17 @@ impl Engine {
         std::mem::take(&mut *self.controls.borrow_mut())
     }
 
+    /// Let a tab that is not on screen take in the frames it has built. WebRender
+    /// hands every built frame to the tab's renderer, which takes them in only when it
+    /// paints: a tab that was never painted kept each frame it ever built (128KB and
+    /// more apiece), and a page animating in the background grew without end.
+    pub fn settle(&self, id: TabId) {
+        if let Some(page) = self.page(id) {
+            page.webview.paint();
+            page.context.present();
+        }
+    }
+
     pub fn frame(&self, id: TabId) -> Option<RgbaImage> {
         let page = self.page(id)?;
         page.webview.paint();
@@ -497,15 +508,15 @@ fn favicon_rgba(image: &servo::Image) -> Option<RgbaImage> {
     let rgba: Vec<u8> = match image.format {
         PixelFormat::RGBA8 => data.to_vec(),
         PixelFormat::BGRA8 => data
-            .chunks_exact(4)
+            .as_chunks::<4>().0.iter()
             .flat_map(|p| [p[2], p[1], p[0], p[3]])
             .collect(),
         PixelFormat::RGB8 => data
-            .chunks_exact(3)
+            .as_chunks::<3>().0.iter()
             .flat_map(|p| [p[0], p[1], p[2], 255])
             .collect(),
         PixelFormat::KA8 => data
-            .chunks_exact(2)
+            .as_chunks::<2>().0.iter()
             .flat_map(|p| [p[0], p[0], p[0], p[1]])
             .collect(),
         PixelFormat::K8 => data.iter().flat_map(|k| [*k, *k, *k, 255]).collect(),
