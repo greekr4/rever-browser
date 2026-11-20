@@ -69,6 +69,15 @@ fn main() {
         .run(move |cx: &mut App| {
             text_input::bind_keys(cx);
             shell::shortcuts::bind_keys(cx);
+            // There is one window: closing it (the red button) ends the app, and Cmd+Q
+            // ends it wherever the focus is, even when nothing has it.
+            cx.on_window_closed(|cx| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
+            cx.on_action(|_: &shell::shortcuts::Quit, cx| cx.quit());
             #[cfg(target_os = "macos")]
             set_dock_icon();
             let bounds = Bounds::centered(None, size(px(1440.0), px(900.0)), cx);
