@@ -562,6 +562,9 @@ impl Browser {
             self_check,
             say,
         } = launch;
+        let favicons = data_dir().join("favicons");
+        let _ = std::fs::create_dir_all(&favicons);
+        rever_ui_history::history_panel::set_favicon_dir(favicons);
         let lang = Lang::detect();
         let (wake, mut woken) = futures::channel::mpsc::unbounded::<()>();
         let agent_wake = wake.clone();
@@ -806,6 +809,13 @@ impl Browser {
                     let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab) else {
                         continue;
                     };
+                    // Kept on disk too: the bookmark bar and the history show it from there.
+                    let file = rever_ui_history::history_panel::favicon_host(&tab.url)
+                        .and_then(|host| rever_ui_history::history_panel::favicon_file(&host));
+                    if let Some(file) = file {
+                        let _ = icon.save(file);
+                        self.views.bookmark_bar.update(cx, |_, cx| cx.notify());
+                    }
                     // GPUI paints BGRA.
                     for pixel in icon.chunks_exact_mut(4) {
                         pixel.swap(0, 2);
