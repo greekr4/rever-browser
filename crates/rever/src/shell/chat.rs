@@ -19,9 +19,19 @@ pub(crate) const CHAT_MIN_WIDTH: f32 = 320.0;
 /// What the page keeps beside the chat panel, when the window has it to give.
 const PAGE_MIN_WIDTH: f32 = 360.0;
 
+/// How long the panel takes to slide shut or open.
+pub(super) const CHAT_SLIDE: Duration = Duration::from_millis(220);
+
 /// Dragged from the panel's left edge to resize it.
 struct ChatDrag;
 
+/// The panel's width `progress` (0..1) of the way from `from` to `to`: fast at first,
+/// settling at the end.
+pub(super) fn slide_width(from: f32, to: f32, progress: f32) -> f32 {
+    let t = progress.clamp(0.0, 1.0);
+    let eased = 1.0 - (1.0 - t).powi(3);
+    from + (to - from) * eased
+}
 
 /// How wide the chat panel is drawn in a window `window` wide: nothing when folded,
 /// the whole window when expanded, else the user's width, cut back so the page keeps
@@ -258,13 +268,6 @@ impl Browser {
                             })),
                         ),
                     )
-                    .child(
-                        div().pb(px(2.0)).child(
-                            icon_button("chat-collapse", "panel-right", 28.0, theme).on_click(
-                                cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_chat(cx)),
-                            ),
-                        ),
-                    ),
             )
             .child(
                 div()
@@ -452,6 +455,17 @@ mod tests {
         // 좁은 창: 최소 너비를 지키되 창을 넘지는 않는다.
         assert_eq!(chat_panel_width(500.0, 420.0, false, false), 320.0);
         assert_eq!(chat_panel_width(280.0, 420.0, false, false), 280.0);
+    }
+
+    #[test]
+    fn 미끄러지는_너비는_처음에_빠르고_끝에서_멈춘다() {
+        assert_eq!(slide_width(420.0, 0.0, 0.0), 420.0);
+        assert_eq!(slide_width(420.0, 0.0, 1.0), 0.0);
+        // 절반 시간에 이미 절반을 넘게 갔다.
+        assert!(slide_width(420.0, 0.0, 0.5) < 210.0);
+        assert!(slide_width(0.0, 420.0, 0.5) > 210.0);
+        // 범위를 벗어난 진행도는 양 끝으로 본다.
+        assert_eq!(slide_width(0.0, 420.0, 7.0), 420.0);
     }
 
     #[test]

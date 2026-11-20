@@ -19,7 +19,7 @@ use gpui::{
 };
 use rever_ui_kit::theme::Theme;
 
-use self::chat::chat_panel_width;
+use self::chat::{CHAT_SLIDE, chat_panel_width, slide_width};
 pub(crate) use self::chat::{CHAT_MIN_WIDTH, CHAT_WIDTH};
 use crate::app::Browser;
 
@@ -45,6 +45,8 @@ impl AssetSource for Assets {
                 "none",
                 "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M15 3v18\"/>".to_owned(),
             ),
+            "icons/chevron-right.svg" => ("none", "<path d=\"m9 18 6-6-6-6\"/>".to_owned()),
+            "icons/chevron-left.svg" => ("none", "<path d=\"m15 18-6-6 6-6\"/>".to_owned()),
             "icons/expand.svg" => ("none", "<path d=\"M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7\"/>".to_owned()),
             "icons/shrink.svg" => ("none", "<path d=\"M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7\"/>".to_owned()),
             // Three quarters of a circle: turned, it is the chat's "working" spinner.
@@ -110,12 +112,32 @@ impl Render for Browser {
             .child(self.chip_bar(&theme, cx))
             .child(self.views.drawer.clone());
         // The chat panel takes what the user gave it, as far as the window allows.
-        let chat_width = chat_panel_width(
-            window.viewport_size().width.into(),
+        let window_width: f32 = window.viewport_size().width.into();
+        let target = chat_panel_width(
+            window_width,
             self.chat_width,
             self.chat_collapsed,
             self.chat_expanded,
         );
+        // Folding, opening and expanding slide to the new width instead of jumping.
+        let (chat_width, sliding_from) = match self.chat_slide {
+            Some((started, from)) if started.elapsed() < CHAT_SLIDE => {
+                window.request_animation_frame();
+                let progress = started.elapsed().as_secs_f32() / CHAT_SLIDE.as_secs_f32();
+                (slide_width(from, target, progress), Some(from))
+            }
+            _ => {
+                self.chat_slide = None;
+                (target, None)
+            }
+        };
+        self.chat_drawn = chat_width;
+        // While it slides shut or open the panel keeps its open width and is clipped, so
+        // its text does not rewrap at every frame; it moves like a drawer.
+        let panel_width = match sliding_from {
+            Some(from) if from == 0.0 || target == 0.0 => from.max(target),
+            _ => chat_width,
+        };
         // The two columns are placed by their edges, not as items of a flex row: a row
         // first measures each item at its narrowest, and GPUI keeps a text cut to an
         // ellipsis at that width (the history rows came out as "…").
@@ -134,7 +156,39 @@ impl Render for Browser {
             .top_0()
             .bottom_0()
             .right_0()
-            .child(self.chat_panel(&theme, chat_width, cx));
+            .w(px(chat_width))
+            .overflow_hidden()
+            .child(self.chat_panel(&theme, panel_width, cx));
+        // The handle on the border between the page and the chat: folds the chat away,
+        // and stays at the window's edge to bring it back.
+        let folded = self.chat_collapsed;
+        let handle = div()
+            .id("chat-fold")
+            .absolute()
+            .top(gpui::relative(0.5))
+            .mt(px(-28.0))
+            .right(px((chat_width - 9.0).max(0.0)))
+            .w(px(18.0))
+            .h(px(56.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(9.0))
+            .border_1()
+            .border_color(theme.border_2)
+            .bg(theme.chrome_toolbar)
+            .shadow_md()
+            .cursor_pointer()
+            .occlude()
+            .hover(|style| style.bg(theme.chrome_hover))
+            .on_click(cx.listener(|this, _: &gpui::ClickEvent, _, cx| this.toggle_chat(cx)))
+            .child(icon(
+                if folded { "chevron-left" } else { "chevron-right" },
+                12.0,
+                theme.text_2,
+            ));
+        // A chat that covers the page has no border to put the handle on.
+        let covers_page = chat_width >= window_width;
         let root = div()
             .size_full()
             .flex()
@@ -151,8 +205,9 @@ impl Render for Browser {
                     .relative()
                     // A chat that covers the page leaves the page column out; a folded
                     // chat leaves itself out.
-                    .when(!self.chat_expanded || self.chat_collapsed, |area| area.child(left))
+                    .when(!covers_page, |area| area.child(left))
                     .when(chat_width > 0.0, |area| area.child(chat))
+                    .when(!covers_page, |area| area.child(handle))
                     .children(self.redteam_dialog(&theme, cx)),
             );
         self.shortcut_handlers(root, cx)

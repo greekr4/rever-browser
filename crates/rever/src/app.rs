@@ -710,6 +710,10 @@ pub(crate) struct Browser {
     pub chat_width: f32,
     /// While the panel's left edge is dragged: (pointer x at start, width at start).
     pub chat_drag: Option<(f32, f32)>,
+    /// The width the panel was last drawn at, and while it slides to a new one:
+    /// when the slide started and the width it started from.
+    pub chat_drawn: f32,
+    pub chat_slide: Option<(Instant, f32)>,
 }
 
 impl Browser {
@@ -991,6 +995,8 @@ impl Browser {
             chat_expanded: false,
             chat_width: crate::shell::CHAT_WIDTH,
             chat_drag: None,
+            chat_drawn: 0.0,
+            chat_slide: None,
         }
     }
 
@@ -1919,6 +1925,7 @@ impl Browser {
     pub fn toggle_chat(&mut self, cx: &mut Context<Self>) {
         self.chat_collapsed = !self.chat_collapsed;
         self.chat_expanded = false;
+        self.chat_slide = Some((Instant::now(), self.chat_drawn));
         let storage = self.stores.storage.as_ref();
         if let Err(error) = self.chat_collapsed_store.set_collapsed(storage, self.chat_collapsed) {
             eprintln!("rever: the chat panel's state was not saved: {error}");
@@ -1929,6 +1936,7 @@ impl Browser {
     /// Let the chat panel cover the page, or give the page its room back.
     pub fn toggle_chat_expanded(&mut self, cx: &mut Context<Self>) {
         self.chat_expanded = !self.chat_expanded;
+        self.chat_slide = Some((Instant::now(), self.chat_drawn));
         if std::mem::take(&mut self.chat_collapsed) {
             let _ = self.chat_collapsed_store.set_collapsed(self.stores.storage.as_ref(), false);
         }
