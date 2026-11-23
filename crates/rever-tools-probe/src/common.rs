@@ -33,9 +33,7 @@ pub fn encode_uri_component(s: &str) -> String {
 
 /// Distinctive factors for the arithmetic payloads — a product of two of these
 /// is never a value (like 49) a page might print on its own.
-pub const PRIMES: [u32; 12] = [
-    101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157,
-];
+pub const PRIMES: [u32; 12] = [101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157];
 
 /// A process-wide entropy source good enough for nonce / prime selection (not
 /// cryptographic): the clock mixed with a monotonically advancing counter, so
@@ -101,9 +99,10 @@ pub fn apply_payload(base: &RequestSpec, payload: &str, form_body: bool) -> Requ
             .iter()
             .map(|(name, value)| (name.clone(), value.replace('§', payload)))
             .collect(),
-        body: base.body.as_deref().map(|body| {
-            body.replace('§', if form_body { &encoded } else { payload })
-        }),
+        body: base
+            .body
+            .as_deref()
+            .map(|body| body.replace('§', if form_body { &encoded } else { payload })),
     }
 }
 
@@ -118,7 +117,10 @@ pub fn url_slot_to_marker(url: &str, param: &str) -> String {
             })
             .into_owned();
     }
-    format!("{url}{}{encoded}=§", if url.contains('?') { "&" } else { "?" })
+    format!(
+        "{url}{}{encoded}=§",
+        if url.contains('?') { "&" } else { "?" }
+    )
 }
 
 /// Rewrite one form field of a URL-encoded body to the `§` marker (append if
@@ -222,14 +224,26 @@ mod tests {
             url_slot_to_marker("http://x/?format=%Y-%m-%d&b=2", "format"),
             "http://x/?format=§&b=2"
         );
-        assert_eq!(url_slot_to_marker("http://x/?a=1&fmt=1", "fmt"), "http://x/?a=1&fmt=§");
+        assert_eq!(
+            url_slot_to_marker("http://x/?a=1&fmt=1", "fmt"),
+            "http://x/?a=1&fmt=§"
+        );
     }
 
     #[test]
     fn url_slot은_없으면_추가하고_정규식_특수문자를_이스케이프한다() {
-        assert_eq!(url_slot_to_marker("http://x/", "format"), "http://x/?format=§");
-        assert_eq!(url_slot_to_marker("http://x/?a=1", "format"), "http://x/?a=1&format=§");
-        assert_eq!(url_slot_to_marker("http://x/?f.mt=1", "f.mt"), "http://x/?f.mt=§");
+        assert_eq!(
+            url_slot_to_marker("http://x/", "format"),
+            "http://x/?format=§"
+        );
+        assert_eq!(
+            url_slot_to_marker("http://x/?a=1", "format"),
+            "http://x/?a=1&format=§"
+        );
+        assert_eq!(
+            url_slot_to_marker("http://x/?f.mt=1", "f.mt"),
+            "http://x/?f.mt=§"
+        );
     }
 
     #[test]
@@ -250,8 +264,14 @@ mod tests {
             form_slot_to_marker("username=&password=", "username"),
             "username=§&password=reverprobe"
         );
-        assert_eq!(form_slot_to_marker("a=&b=&c=1", "c"), "a=reverprobe&b=reverprobe&c=§");
-        assert_eq!(form_slot_to_marker("user=admin&pass=", "user"), "user=§&pass=reverprobe");
+        assert_eq!(
+            form_slot_to_marker("a=&b=&c=1", "c"),
+            "a=reverprobe&b=reverprobe&c=§"
+        );
+        assert_eq!(
+            form_slot_to_marker("user=admin&pass=", "user"),
+            "user=§&pass=reverprobe"
+        );
     }
 
     #[test]
@@ -268,18 +288,29 @@ mod tests {
             inject_kv("password=x", "username", "username[$ne]=zz"),
             "password=x&username[$ne]=zz"
         );
-        assert_eq!(inject_kv("user=a&username=b", "user", "user[$ne]=zz"), "user[$ne]=zz&username=b");
+        assert_eq!(
+            inject_kv("user=a&username=b", "user", "user[$ne]=zz"),
+            "user[$ne]=zz&username=b"
+        );
     }
 
     #[test]
     fn inject_json은_대상_키를_연산자_객체나_스칼라로_세팅한다() {
-        let out = inject_json("{\"username\":\"a\",\"password\":\"b\"}", "username", json!({"$ne":"zz"})).unwrap();
+        let out = inject_json(
+            "{\"username\":\"a\",\"password\":\"b\"}",
+            "username",
+            json!({"$ne":"zz"}),
+        )
+        .unwrap();
         assert_eq!(
             serde_json::from_str::<Value>(&out).unwrap(),
             json!({"username":{"$ne":"zz"},"password":"b"})
         );
         let out = inject_json("{\"username\":\"a\"}", "username", json!("zz'\"//")).unwrap();
-        assert_eq!(serde_json::from_str::<Value>(&out).unwrap(), json!({"username":"zz'\"//"}));
+        assert_eq!(
+            serde_json::from_str::<Value>(&out).unwrap(),
+            json!({"username":"zz'\"//"})
+        );
     }
 
     #[test]
@@ -287,7 +318,9 @@ mod tests {
         let base = RequestSpec {
             url: "http://x/?q=§".to_owned(),
             method: "POST".to_owned(),
-            headers: [("X-H".to_owned(), "§".to_owned())].into_iter().collect::<Headers>(),
+            headers: [("X-H".to_owned(), "§".to_owned())]
+                .into_iter()
+                .collect::<Headers>(),
             body: Some("f=§".to_owned()),
         };
         let out = apply_payload(&base, "a b", true);

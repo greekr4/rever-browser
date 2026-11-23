@@ -96,7 +96,8 @@ impl McpClient {
     fn call(&mut self, method: &str, params: Value) -> Result<Value, String> {
         let id = self.next_id;
         self.next_id += 1;
-        let body = self.post(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))?;
+        let body =
+            self.post(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))?;
         answer(&body, id)
     }
 
@@ -117,7 +118,10 @@ impl McpClient {
 
     /// Run a tool: its text, and whether the tool reported an error.
     pub fn call_tool(&mut self, name: &str, arguments: &Value) -> Result<(String, bool), String> {
-        let result = self.call("tools/call", json!({ "name": name, "arguments": arguments }))?;
+        let result = self.call(
+            "tools/call",
+            json!({ "name": name, "arguments": arguments }),
+        )?;
         Ok(tool_text(&result))
     }
 }

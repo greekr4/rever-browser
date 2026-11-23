@@ -49,9 +49,18 @@ pub struct PathWriteDecision {
 /// Both seen → stored but not moved. Plain not seen → no readback hook.
 pub fn path_write_decision(plain_seen: bool, trav_seen: bool) -> PathWriteDecision {
     match (plain_seen, trav_seen) {
-        (true, false) => PathWriteDecision { confirmed: true, kind: "traversal" },
-        (true, true) => PathWriteDecision { confirmed: false, kind: "stored-no-traversal" },
-        _ => PathWriteDecision { confirmed: false, kind: "inconclusive" },
+        (true, false) => PathWriteDecision {
+            confirmed: true,
+            kind: "traversal",
+        },
+        (true, true) => PathWriteDecision {
+            confirmed: false,
+            kind: "stored-no-traversal",
+        },
+        _ => PathWriteDecision {
+            confirmed: false,
+            kind: "inconclusive",
+        },
     }
 }
 
@@ -97,7 +106,8 @@ pub fn place_markers(
         parsed.set_query(Some(&serialized));
         parsed.to_string()
     };
-    let rewrite_body = |b: &str| -> String { fill(&ordered_keys(form_urlencoded::parse(b.as_bytes()))) };
+    let rewrite_body =
+        |b: &str| -> String { fill(&ordered_keys(form_urlencoded::parse(b.as_bytes()))) };
 
     let url_has_param = Url::parse(url)
         .map(|u| u.query_pairs().any(|(k, _)| k == param))
@@ -169,8 +179,13 @@ impl Tool for PathWriteProbe {
             };
 
             // 1) plain filename + marker1 content
-            let (w1_url, w1_body) =
-                place_markers(&base.url, base.body.as_deref(), &param, &plan.fname1, &plan.marker1);
+            let (w1_url, w1_body) = place_markers(
+                &base.url,
+                base.body.as_deref(),
+                &param,
+                &plan.fname1,
+                &plan.marker1,
+            );
             send(
                 &RequestSpec {
                     url: w1_url,
@@ -184,8 +199,13 @@ impl Tool for PathWriteProbe {
             let plain_seen = fetch_readback().await.contains(&plan.marker1);
 
             // 2) traversal filename + marker2 content
-            let (w2_url, w2_body) =
-                place_markers(&base.url, base.body.as_deref(), &param, &plan.fname2, &plan.marker2);
+            let (w2_url, w2_body) = place_markers(
+                &base.url,
+                base.body.as_deref(),
+                &param,
+                &plan.fname2,
+                &plan.marker2,
+            );
             send(
                 &RequestSpec {
                     url: w2_url,
@@ -200,9 +220,15 @@ impl Tool for PathWriteProbe {
 
             let decision = path_write_decision(plain_seen, trav_seen);
             let note = match decision.kind {
-                "traversal" => "Arbitrary file write via path traversal CONFIRMED: the plain-name marker rendered on readback but the `../` marker did not, so the filename param escapes the intended directory. Writing a source/template file (e.g. .templ/.html/.php) = RCE. Record high/critical.",
-                "stored-no-traversal" => "Content is stored and displayed, but `../` did not change where it landed (sanitised or single dir) — stored content injection, not traversal.",
-                _ => "Could not see the marker on the readback page — wrong readback URL, or the value is not displayed. Pass readback=<url that shows stored content> and retry.",
+                "traversal" => {
+                    "Arbitrary file write via path traversal CONFIRMED: the plain-name marker rendered on readback but the `../` marker did not, so the filename param escapes the intended directory. Writing a source/template file (e.g. .templ/.html/.php) = RCE. Record high/critical."
+                }
+                "stored-no-traversal" => {
+                    "Content is stored and displayed, but `../` did not change where it landed (sanitised or single dir) — stored content injection, not traversal."
+                }
+                _ => {
+                    "Could not see the marker on the readback page — wrong readback URL, or the value is not displayed. Pass readback=<url that shows stored content> and retry."
+                }
             };
             ok(pretty(&json!({
                 "arbitraryWrite": decision.confirmed,

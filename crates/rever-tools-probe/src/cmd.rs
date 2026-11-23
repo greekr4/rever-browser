@@ -115,8 +115,14 @@ impl Tool for CmdProbe {
             }
             let request_id = text(&args, "requestId").unwrap_or_default().to_owned();
             let param = text(&args, "param");
-            let a = args["a"].as_u64().map(|n| n as u32).unwrap_or_else(pick_prime);
-            let b = args["b"].as_u64().map(|n| n as u32).unwrap_or_else(pick_prime);
+            let a = args["a"]
+                .as_u64()
+                .map(|n| n as u32)
+                .unwrap_or_else(pick_prime);
+            let b = args["b"]
+                .as_u64()
+                .map(|n| n as u32)
+                .unwrap_or_else(pick_prime);
             let nonce = random_nonce();
 
             // Lock only to build the spec; the sends below must not hold it.
@@ -129,10 +135,16 @@ impl Tool for CmdProbe {
             };
 
             if let Some(param) = param {
-                if base.url.contains(&format!("{}=", encode_uri_component(param))) {
+                if base
+                    .url
+                    .contains(&format!("{}=", encode_uri_component(param)))
+                {
                     base.url = url_slot_to_marker(&base.url, param);
                 } else {
-                    base.body = Some(form_slot_to_marker(base.body.as_deref().unwrap_or(""), param));
+                    base.body = Some(form_slot_to_marker(
+                        base.body.as_deref().unwrap_or(""),
+                        param,
+                    ));
                 }
             }
             if !has_marker(&base) {
@@ -187,7 +199,14 @@ mod tests {
         let contexts: Vec<&str> = cases.iter().map(|c| c.context).collect();
         assert_eq!(
             contexts,
-            ["single-quote", "double-quote", "semicolon", "pipe", "backtick", "subshell"]
+            [
+                "single-quote",
+                "double-quote",
+                "semicolon",
+                "pipe",
+                "backtick",
+                "subshell"
+            ]
         );
         for c in &cases {
             assert_eq!(c.expected, format!("zXYZz{prod}zXYZz"));
@@ -203,7 +222,10 @@ mod tests {
         let sq = &cases[0];
         assert!(cmd_evaluated("<h1>zXYZz10403zXYZz</h1>", sq));
         assert!(!cmd_evaluated(&format!("<h1>{}</h1>", sq.payload), sq));
-        assert!(!cmd_evaluated("error: sh: 1: Syntax error: '' unmatched", sq));
+        assert!(!cmd_evaluated(
+            "error: sh: 1: Syntax error: '' unmatched",
+            sq
+        ));
     }
 
     #[test]
@@ -212,17 +234,29 @@ mod tests {
             url_slot_to_marker("http://x/?format=%Y-%m-%d&b=2", "format"),
             "http://x/?format=§&b=2"
         );
-        assert_eq!(url_slot_to_marker("http://x/?a=1&fmt=1", "fmt"), "http://x/?a=1&fmt=§");
+        assert_eq!(
+            url_slot_to_marker("http://x/?a=1&fmt=1", "fmt"),
+            "http://x/?a=1&fmt=§"
+        );
     }
 
     #[test]
     fn url_slot은_파라미터가_없으면_추가한다() {
-        assert_eq!(url_slot_to_marker("http://x/", "format"), "http://x/?format=§");
-        assert_eq!(url_slot_to_marker("http://x/?a=1", "format"), "http://x/?a=1&format=§");
+        assert_eq!(
+            url_slot_to_marker("http://x/", "format"),
+            "http://x/?format=§"
+        );
+        assert_eq!(
+            url_slot_to_marker("http://x/?a=1", "format"),
+            "http://x/?a=1&format=§"
+        );
     }
 
     #[test]
     fn url_slot은_파라미터명의_정규식_특수문자는_이스케이프된다() {
-        assert_eq!(url_slot_to_marker("http://x/?f.mt=1", "f.mt"), "http://x/?f.mt=§");
+        assert_eq!(
+            url_slot_to_marker("http://x/?f.mt=1", "f.mt"),
+            "http://x/?f.mt=§"
+        );
     }
 }

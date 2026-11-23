@@ -1,6 +1,5 @@
 //! Port of `src/renderer/src/workflows/template/TemplateEditor.tsx` — a prompt template's name and body.
 
-
 use gpui::{AnyView, App, Context, Entity, Window, div, prelude::*, px};
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::text_input::TextInput;

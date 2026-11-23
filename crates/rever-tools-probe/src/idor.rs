@@ -101,27 +101,57 @@ fn ok_2xx(status: u16) -> bool {
 /// resource anonymous could not.
 fn idor_decision(baseline: &RawReply, noauth: &RawReply, cross: &RawReply) -> (bool, String) {
     if !ok_2xx(baseline.status) {
-        return (false, format!("baseline {}: the resource isn't readable even as its owner — can't assess BOLA (bad requestId or expired owner cookie).", baseline.status));
+        return (
+            false,
+            format!(
+                "baseline {}: the resource isn't readable even as its owner — can't assess BOLA (bad requestId or expired owner cookie).",
+                baseline.status
+            ),
+        );
     }
     if ok_2xx(noauth.status) && same_resource(&baseline.body, &noauth.body) {
-        return (false, format!("no-auth replay returned the same resource ({}): it is readable with NO session at all — that's a public-exposure / broken-auth leak, not object-level auth. Record as info-disclosure.", noauth.status));
+        return (
+            false,
+            format!(
+                "no-auth replay returned the same resource ({}): it is readable with NO session at all — that's a public-exposure / broken-auth leak, not object-level auth. Record as info-disclosure.",
+                noauth.status
+            ),
+        );
     }
     if ok_2xx(cross.status) && same_resource(&baseline.body, &cross.body) {
-        return (true, format!("the alternate tenant's session read the owner's resource (HTTP {}, same body) while anonymous was denied ({}) — the server authorizes on the object id alone. BOLA/IDOR confirmed (cross-tenant data access).", cross.status, noauth.status));
+        return (
+            true,
+            format!(
+                "the alternate tenant's session read the owner's resource (HTTP {}, same body) while anonymous was denied ({}) — the server authorizes on the object id alone. BOLA/IDOR confirmed (cross-tenant data access).",
+                cross.status, noauth.status
+            ),
+        );
     }
     let suffix = if ok_2xx(cross.status) {
         " with a different body"
     } else {
         ""
     };
-    (false, format!("cross-tenant session got {}{suffix}: the resource appears scoped to its owner.", cross.status))
+    (
+        false,
+        format!(
+            "cross-tenant session got {}{suffix}: the resource appears scoped to its owner.",
+            cross.status
+        ),
+    )
 }
 
 /// Broken-auth decision: confirmed when a cookieless request returns the same
 /// protected resource AND a garbage cookie is denied.
 fn noauth_decision(baseline: &RawReply, noauth: &RawReply, bogus: &RawReply) -> (bool, String) {
     if !ok_2xx(baseline.status) {
-        return (false, format!("baseline {}: the resource isn't readable even with the owner session — can't assess (bad requestId or no owner session in the partition).", baseline.status));
+        return (
+            false,
+            format!(
+                "baseline {}: the resource isn't readable even with the owner session — can't assess (bad requestId or no owner session in the partition).",
+                baseline.status
+            ),
+        );
     }
     if !(ok_2xx(noauth.status) && same_resource(&baseline.body, &noauth.body)) {
         let suffix = if ok_2xx(noauth.status) {
@@ -129,12 +159,30 @@ fn noauth_decision(baseline: &RawReply, noauth: &RawReply, bogus: &RawReply) -> 
         } else {
             ""
         };
-        return (false, format!("no-cookie request got {}{suffix}: authentication is enforced (not broken auth).", noauth.status));
+        return (
+            false,
+            format!(
+                "no-cookie request got {}{suffix}: authentication is enforced (not broken auth).",
+                noauth.status
+            ),
+        );
     }
     if ok_2xx(bogus.status) && same_resource(&baseline.body, &bogus.body) {
-        return (false, format!("served identically with NO cookie AND a garbage cookie (HTTP {}/{}) — the endpoint ignores identity, consistent with PUBLIC-BY-DESIGN, not proven broken auth. Record as candidate (category:endpoint/info) and confirm whether it is meant to be public; a genuine broken-auth leak returns owner-specific data a wrong identity is denied.", noauth.status, bogus.status));
+        return (
+            false,
+            format!(
+                "served identically with NO cookie AND a garbage cookie (HTTP {}/{}) — the endpoint ignores identity, consistent with PUBLIC-BY-DESIGN, not proven broken auth. Record as candidate (category:endpoint/info) and confirm whether it is meant to be public; a genuine broken-auth leak returns owner-specific data a wrong identity is denied.",
+                noauth.status, bogus.status
+            ),
+        );
     }
-    (true, format!("the resource is returned with NO cookie (HTTP {}, same body as the owner) while a GARBAGE cookie is rejected ({}) — the server enforces sessions on this path but the no-cookie request bypasses it. Broken auth (API2) confirmed over a raw socket.", noauth.status, bogus.status))
+    (
+        true,
+        format!(
+            "the resource is returned with NO cookie (HTTP {}, same body as the owner) while a GARBAGE cookie is rejected ({}) — the server enforces sessions on this path but the no-cookie request bypasses it. Broken auth (API2) confirmed over a raw socket.",
+            noauth.status, bogus.status
+        ),
+    )
 }
 
 /// Rebuild the captured request over a raw socket with `cookie` (or none).
@@ -195,7 +243,10 @@ async fn base_and_url(
         }
     };
     let Ok(u) = Url::parse(&base.url) else {
-        return Err(err(format!("captured request has no valid URL: {}", base.url)));
+        return Err(err(format!(
+            "captured request has no valid URL: {}",
+            base.url
+        )));
     };
     if !is_loopback_host(&base.url) && !is_lab_host(&base.url) {
         let host = u.host_str().unwrap_or("");
@@ -261,7 +312,9 @@ impl Tool for NoauthProbe {
             let owner = match owner_cookie(ctx, &args, &base).await {
                 Some(owner) => owner,
                 None => {
-                    return err("no owner session available (capture had no Cookie and the partition has none for this origin) — pass ownerCookie.");
+                    return err(
+                        "no owner session available (capture had no Cookie and the partition has none for this origin) — pass ownerCookie.",
+                    );
                 }
             };
             let baseline = raw_replay(&base, &u, Some(&owner), "baseline");
@@ -300,7 +353,9 @@ impl Tool for RedteamAltSessionSet {
             }
             let cookie = text(&args, "cookie").unwrap_or_default();
             set_alt_session(Some(cookie));
-            ok("alternate-tenant session stored — idor_probe will use it as the cross-tenant attacker.")
+            ok(
+                "alternate-tenant session stored — idor_probe will use it as the cross-tenant attacker.",
+            )
         })
     }
 }
@@ -333,16 +388,23 @@ impl Tool for IdorProbe {
                 Ok(pair) => pair,
                 Err(refusal) => return refusal,
             };
-            let alt = match text(&args, "altCookie").map(str::to_owned).or_else(get_alt_session) {
+            let alt = match text(&args, "altCookie")
+                .map(str::to_owned)
+                .or_else(get_alt_session)
+            {
                 Some(alt) => alt,
                 None => {
-                    return err("no alternate-tenant session: register a 2nd throwaway account, read its cookie (cookie_list), then redteam_alt_session_set({ cookie }) — or pass altCookie here.");
+                    return err(
+                        "no alternate-tenant session: register a 2nd throwaway account, read its cookie (cookie_list), then redteam_alt_session_set({ cookie }) — or pass altCookie here.",
+                    );
                 }
             };
             let owner = match owner_cookie(ctx, &args, &base).await {
                 Some(owner) => owner,
                 None => {
-                    return err("no owner session for the baseline (capture had no Cookie and the partition has none for this origin) — pass ownerCookie.");
+                    return err(
+                        "no owner session for the baseline (capture had no Cookie and the partition has none for this origin) — pass ownerCookie.",
+                    );
                 }
             };
             let baseline = raw_replay(&base, &u, Some(&owner), "baseline");
@@ -452,8 +514,7 @@ mod tests {
         );
     }
 
-    const OWNER: &str =
-        "{\"id\":\"cdb11ac2-9993-4ac6-bb9d-6959df5228a9\",\"applicants\":[{\"email\":\"uoojin12@naver.com\"}]}";
+    const OWNER: &str = "{\"id\":\"cdb11ac2-9993-4ac6-bb9d-6959df5228a9\",\"applicants\":[{\"email\":\"uoojin12@naver.com\"}]}";
 
     #[test]
     fn idor_익명거부_타테넌트_동일리소스면_확정() {

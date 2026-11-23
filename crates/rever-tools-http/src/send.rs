@@ -174,7 +174,10 @@ mod tests {
     }
 
     #[tokio::test]
-    #[expect(clippy::await_holding_lock, reason = "the guard keeps tests off the process-wide scope; a test runtime has one thread, so nothing else waits on it")]
+    #[expect(
+        clippy::await_holding_lock,
+        reason = "the guard keeps tests off the process-wide scope; a test runtime has one thread, so nothing else waits on it"
+    )]
     async fn 스코프_밖_url은_전송하지_않고_거절한다() {
         let _serial = serial();
         rever_scope::scope::set_scope(&["allowed.test"]);
@@ -185,15 +188,27 @@ mod tests {
     }
 
     #[tokio::test]
-    #[expect(clippy::await_holding_lock, reason = "the guard keeps tests off the process-wide scope; a test runtime has one thread, so nothing else waits on it")]
+    #[expect(
+        clippy::await_holding_lock,
+        reason = "the guard keeps tests off the process-wide scope; a test runtime has one thread, so nothing else waits on it"
+    )]
     async fn 펜스가_활성이면_변경_요청을_보내지_않고_204로_기록한다() {
         let _serial = serial();
         rever_scope::fence::acquire_fence();
         // A non-loopback POST is a mutation the fence must hold.
-        let out = send(&spec("https://api.example.com/x", "POST"), Duration::from_secs(1)).await;
+        let out = send(
+            &spec("https://api.example.com/x", "POST"),
+            Duration::from_secs(1),
+        )
+        .await;
         rever_scope::fence::release_fence();
         assert_eq!(out.status, 204);
-        assert!(out.error.as_deref().unwrap_or("").contains("recorded, not sent"));
+        assert!(
+            out.error
+                .as_deref()
+                .unwrap_or("")
+                .contains("recorded, not sent")
+        );
         assert!(
             rever_scope::fence::get_fence_blocks()
                 .iter()

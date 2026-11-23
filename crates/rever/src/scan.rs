@@ -30,10 +30,36 @@ fn is_non_page_asset(url: &str) -> bool {
     };
     matches!(
         &bare[dot + 1..],
-        "ttf" | "otf" | "woff" | "woff2" | "eot" | "css" | "js" | "mjs" | "cjs" | "map"
-            | "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "avif" | "ico" | "bmp"
-            | "mp4" | "webm" | "mp3" | "wav" | "ogg" | "m4a" | "mov" | "pdf" | "zip"
-            | "gz" | "wasm"
+        "ttf"
+            | "otf"
+            | "woff"
+            | "woff2"
+            | "eot"
+            | "css"
+            | "js"
+            | "mjs"
+            | "cjs"
+            | "map"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "svg"
+            | "webp"
+            | "avif"
+            | "ico"
+            | "bmp"
+            | "mp4"
+            | "webm"
+            | "mp3"
+            | "wav"
+            | "ogg"
+            | "m4a"
+            | "mov"
+            | "pdf"
+            | "zip"
+            | "gz"
+            | "wasm"
     )
 }
 
@@ -134,10 +160,7 @@ fn short_tag(url: &str) -> String {
         .and_then(|url| url.path().split('/').rfind(|s| !s.is_empty()))
         .map(decode);
     let tag = segment
-        .or_else(|| {
-            parsed
-                .map(|url| url.host_str().unwrap_or_default().to_owned())
-        })
+        .or_else(|| parsed.map(|url| url.host_str().unwrap_or_default().to_owned()))
         .unwrap_or_else(|| url.split(['?', '#']).next().unwrap_or(url).to_owned());
     let mut chars: Vec<char> = tag.chars().collect();
     if chars.len() > 15 {
@@ -166,7 +189,10 @@ pub fn merge_query_endpoints(endpoints: Vec<String>, links: &[String], cap: usiz
         }
         let key = path_of(url);
         let list = by_path.entry(key.clone()).or_default();
-        if list.iter().any(|entry| entry.starts_with("GET ") && entry.contains('?')) {
+        if list
+            .iter()
+            .any(|entry| entry.starts_with("GET ") && entry.contains('?'))
+        {
             continue;
         }
         let replacement = format!("GET {url}");
@@ -295,18 +321,49 @@ const CHECKS: &[VulnCheck] = &[
 fn is_url_param(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
-        "url" | "uri" | "redirect" | "redirect_uri" | "return" | "return_url" | "next"
-            | "callback" | "dest" | "destination" | "target" | "continue" | "feed" | "image"
-            | "img" | "webhook" | "link" | "site" | "domain" | "host" | "path" | "file"
-            | "page" | "load" | "src"
+        "url"
+            | "uri"
+            | "redirect"
+            | "redirect_uri"
+            | "return"
+            | "return_url"
+            | "next"
+            | "callback"
+            | "dest"
+            | "destination"
+            | "target"
+            | "continue"
+            | "feed"
+            | "image"
+            | "img"
+            | "webhook"
+            | "link"
+            | "site"
+            | "domain"
+            | "host"
+            | "path"
+            | "file"
+            | "page"
+            | "load"
+            | "src"
     )
 }
 
 fn is_file_param(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
-        "file" | "filename" | "path" | "template" | "page" | "doc" | "document" | "include"
-            | "view" | "download" | "read" | "load"
+        "file"
+            | "filename"
+            | "path"
+            | "template"
+            | "page"
+            | "doc"
+            | "document"
+            | "include"
+            | "view"
+            | "download"
+            | "read"
+            | "load"
     )
 }
 
@@ -340,13 +397,14 @@ fn has_id_param(url: &str) -> bool {
     query_pairs(url).iter().any(|(k, v)| {
         let key = k.to_ascii_lowercase();
         let key_id = |name: &str| {
-            name.split('_')
-                .next_back()
-                .is_some_and(|last| matches!(last, "id" | "uid" | "uuid" | "user" | "account" | "order" | "pid" | "no" | "seq"))
+            name.split('_').next_back().is_some_and(|last| {
+                matches!(
+                    last,
+                    "id" | "uid" | "uuid" | "user" | "account" | "order" | "pid" | "no" | "seq"
+                )
+            })
         };
-        key_id(&key)
-            || v.chars().all(|c| c.is_ascii_digit())
-            || is_uuid(v)
+        key_id(&key) || v.chars().all(|c| c.is_ascii_digit()) || is_uuid(v)
     })
 }
 
@@ -355,7 +413,10 @@ fn has_id_param(url: &str) -> bool {
 pub fn checklist_for(method: &str, url: &str) -> String {
     let params = query_pairs(url);
     let names: Vec<&str> = params.iter().map(|(k, _)| k.as_str()).collect();
-    let body_method = matches!(method.to_ascii_uppercase().as_str(), "POST" | "PUT" | "PATCH");
+    let body_method = matches!(
+        method.to_ascii_uppercase().as_str(),
+        "POST" | "PUT" | "PATCH"
+    );
     let reflectable = !names.is_empty() || body_method;
     let path = path_of(url);
     let path_names: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
@@ -401,7 +462,10 @@ pub fn checklist_for(method: &str, url: &str) -> String {
             )
         })
         .collect();
-    format!("적용 취약점 카테고리(해당되는 것만, 각 단발):\n{}", lines.join("\n"))
+    format!(
+        "적용 취약점 카테고리(해당되는 것만, 각 단발):\n{}",
+        lines.join("\n")
+    )
 }
 
 // ── Prompts ──────────────────────────────────────────────────────────────────
@@ -453,7 +517,11 @@ pub fn discovery_prompt(target: &str, scope_host: &str, pages: u32) -> String {
 }
 
 pub fn worker_prompt(url: &str, crawl: bool, aggressive: bool) -> String {
-    let crawl_line = if crawl { "- 먼저 ui_crawl({tab:N}) 를 한 번 호출한다 — 페이지의 모든 버튼/링크를 결정적으로 눌러 숨은 API 를 드러내고 버튼→API 맵을 만든다(펜스가 변이 요청을 204 로 막아 서버는 안전). 반환된 'endpoints discovered' 가 캡처되어 이후 점검 대상에 포함된다. 그 다음 아래를 진행한다.\n" } else { "" };
+    let crawl_line = if crawl {
+        "- 먼저 ui_crawl({tab:N}) 를 한 번 호출한다 — 페이지의 모든 버튼/링크를 결정적으로 눌러 숨은 API 를 드러내고 버튼→API 맵을 만든다(펜스가 변이 요청을 204 로 막아 서버는 안전). 반환된 'endpoints discovered' 가 캡처되어 이후 점검 대상에 포함된다. 그 다음 아래를 진행한다.\n"
+    } else {
+        ""
+    };
     let rules_line = if aggressive {
         "- 오직 rever 도구만 사용한다. Terminal/Bash/셸/curl/wget 및 ToolSearch 금지(scope 를 우회한다). 다른 탭 열기/닫기/선택 금지. 이 타겟은 일회성(사용자 소유)이므로 제출·삭제·결제 컨트롤을 포함한 모든 조작이 허용된다 — 숨은 API 를 드러내는 버튼은 주저 없이 눌러라.\n"
     } else {
@@ -710,7 +778,11 @@ impl ScanRun {
             self.pool.clear();
             self.turn = None;
             self.queue.clear();
-            self.log(LineKind::Phase, "중지 요청 — 수집된 것으로 보고서를 만든다", None);
+            self.log(
+                LineKind::Phase,
+                "중지 요청 — 수집된 것으로 보고서를 만든다",
+                None,
+            );
             self.start_turn(spawn, &report_prompt(&self.target));
             self.phase = Phase::Report;
             return actions;
@@ -719,7 +791,10 @@ impl ScanRun {
         // 3. The very first pump starts the auth bootstrap.
         if self.phase == Phase::Auth && self.turn.is_none() && self.pool.is_empty() {
             self.log(LineKind::Phase, "인증 부트스트랩", None);
-            self.start_turn(spawn, &auth_prompt(&self.target, &throwaway_user(), &throwaway_pass()));
+            self.start_turn(
+                spawn,
+                &auth_prompt(&self.target, &throwaway_user(), &throwaway_pass()),
+            );
             return actions;
         }
 
@@ -731,14 +806,21 @@ impl ScanRun {
                 let authed = text.contains("AUTHED") && !text.contains("PUBLIC");
                 self.log(
                     LineKind::Phase,
-                    if authed { "인증 세션 확보됨" } else { "인증 게이트 없음 (공개 스캔)" },
+                    if authed {
+                        "인증 세션 확보됨"
+                    } else {
+                        "인증 게이트 없음 (공개 스캔)"
+                    },
                     None,
                 );
                 if authed && self.intensity == "full" {
                     // A second identity is what confirms BOLA/IDOR: anonymous is
                     // denied, but can a different tenant read the owner's object?
                     self.log(LineKind::Phase, "대체 테넌트 등록", None);
-                    self.start_turn(spawn, &alt_tenant_prompt(&self.origin(), &throwaway_user(), &throwaway_pass()));
+                    self.start_turn(
+                        spawn,
+                        &alt_tenant_prompt(&self.origin(), &throwaway_user(), &throwaway_pass()),
+                    );
                     self.phase = Phase::AltTenant;
                 } else {
                     self.start_discovery(spawn);
@@ -770,7 +852,11 @@ impl ScanRun {
                 // Deterministic scope follow: hosts the app really talked to.
                 let hosts = connected_hosts(captured_urls, &site);
                 if !hosts.is_empty() {
-                    self.log(LineKind::Phase, format!("범위 확장: {}", hosts.join(", ")), None);
+                    self.log(
+                        LineKind::Phase,
+                        format!("범위 확장: {}", hosts.join(", ")),
+                        None,
+                    );
                     self.start_turn(spawn, &scope_add_prompt(&hosts));
                     self.phase = Phase::ScopeExpand;
                 } else {
@@ -798,7 +884,11 @@ impl ScanRun {
                 let site = scope_key(&self.target).unwrap_or_default();
                 let mut endpoints = parse_endpoints(&text, &site, 30);
                 endpoints = merge_query_endpoints(endpoints, &self.links, 30);
-                self.log(LineKind::Phase, format!("활성 프로브 대상 {}개", endpoints.len()), None);
+                self.log(
+                    LineKind::Phase,
+                    format!("활성 프로브 대상 {}개", endpoints.len()),
+                    None,
+                );
                 self.queue = endpoints.into();
                 self.phase = Phase::ProbeWorkers;
                 // Hidden-path sweep, redteam only: one deterministic worker.
@@ -837,7 +927,11 @@ impl ScanRun {
                 self.report = export
                     .filter(|text| !text.trim().is_empty())
                     .unwrap_or_else(|| text.trim().to_owned());
-                self.log(LineKind::Phase, format!("완료 — 발견 {}건", self.findings), None);
+                self.log(
+                    LineKind::Phase,
+                    format!("완료 — 발견 {}건", self.findings),
+                    None,
+                );
                 self.phase = Phase::Done;
                 actions.push(ScanAction::CloseScanTabs);
             }
@@ -862,7 +956,9 @@ impl ScanRun {
         }
         self.pool = keep;
         while self.pool.len() < MAX_PARALLEL {
-            let Some(url) = self.queue.pop_front() else { break };
+            let Some(url) = self.queue.pop_front() else {
+                break;
+            };
             let (prompt, label) = if self.phase == Phase::ProbeWorkers {
                 let (method, rest) = url.split_once(' ').unwrap_or(("GET", url.as_str()));
                 let checklist = if self.intensity == "full" {
@@ -901,7 +997,10 @@ impl ScanRun {
             .map(|parsed| parsed.host_str().unwrap_or_default().to_owned())
             .unwrap_or_else(|_| self.target.clone());
         self.log(LineKind::Phase, format!("탐색 단계 — {site}"), None);
-        self.start_turn(spawn, &discovery_prompt(&self.target, &scope_host, self.pages));
+        self.start_turn(
+            spawn,
+            &discovery_prompt(&self.target, &scope_host, self.pages),
+        );
         self.phase = Phase::Discovery;
     }
 
@@ -918,7 +1017,11 @@ impl ScanRun {
             self.opened.push(url);
         }
         self.queue = self.links.clone().into();
-        self.log(LineKind::Phase, format!("탭 {}개 병렬 점검", self.queue.len()), None);
+        self.log(
+            LineKind::Phase,
+            format!("탭 {}개 병렬 점검", self.queue.len()),
+            None,
+        );
         // Workers can start before the tabs attach; their first browser_tabs
         // call just won't see them yet — they retry by listing again.
         self.phase = Phase::Workers;
@@ -998,7 +1101,10 @@ mod tests {
 
     #[test]
     fn 쿼리를_가진_발견_링크가_같은_경로의_맨_get을_대체한다() {
-        let endpoints = vec!["GET https://a.test/x".to_owned(), "POST https://a.test/y".to_owned()];
+        let endpoints = vec![
+            "GET https://a.test/x".to_owned(),
+            "POST https://a.test/y".to_owned(),
+        ];
         let links = vec!["https://a.test/x?q=1".to_owned()];
         assert_eq!(
             merge_query_endpoints(endpoints, &links, 30),
@@ -1029,8 +1135,20 @@ mod tests {
         assert!(checklist_for("GET", "https://a.test/health").contains("broken_auth"));
         assert!(!checklist_for("GET", "https://a.test/health").contains("ssti"));
         // Query param: reflection suite + crlf; id value: idor.
-        let list = checklist_for("GET", "https://a.test/i?uuid=00000000-0000-0000-0000-000000000000&q=x");
-        for marker in ["broken_auth", "idor", "xss", "ssti", "cmdi", "sqli", "nosqli", "crlf"] {
+        let list = checklist_for(
+            "GET",
+            "https://a.test/i?uuid=00000000-0000-0000-0000-000000000000&q=x",
+        );
+        for marker in [
+            "broken_auth",
+            "idor",
+            "xss",
+            "ssti",
+            "cmdi",
+            "sqli",
+            "nosqli",
+            "crlf",
+        ] {
             assert!(list.contains(marker), "{marker} missing:\n{list}");
         }
         // URL param: ssrf.
@@ -1043,7 +1161,10 @@ mod tests {
     fn 로그_태그는_마지막_경로_조각으로_짧게_준다() {
         assert_eq!(short_tag("https://a.test/api/v3/items?page=1"), "items");
         assert_eq!(short_tag("https://a.test/"), "a.test");
-        assert_eq!(short_tag("https://a.test/경로이름이열여덟글자정도는됩니다"), "경로이름이열여덟글자정도는됩니…");
+        assert_eq!(
+            short_tag("https://a.test/경로이름이열여덟글자정도는됩니다"),
+            "경로이름이열여덟글자정도는됩니…"
+        );
     }
 
     #[test]

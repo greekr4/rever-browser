@@ -867,12 +867,20 @@ tool!(
     |ctx, args| {
         let browser = crate::tab_browser(ctx, args)?;
         let expression = args.str("expression");
-        visualize(&browser, "evalHudStart", &[json!(utf16_prefix(expression, 160))]);
+        visualize(
+            &browser,
+            "evalHudStart",
+            &[json!(utf16_prefix(expression, 160))],
+        );
         let text = match eval_in_page(browser.as_ref(), expression).await? {
             Value::String(text) => text,
             other => pretty(&other),
         };
-        visualize(&browser, "evalHudDone", &[json!(preview(&text)), json!(false)]);
+        visualize(
+            &browser,
+            "evalHudDone",
+            &[json!(preview(&text)), json!(false)],
+        );
         Ok(text)
     }
 );

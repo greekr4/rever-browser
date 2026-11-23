@@ -605,8 +605,16 @@ mod tests {
                 .is_err()
         );
         // A tab filter on a ctx with no tabs can't resolve the index → error.
-        assert!(call(&ListRequests, &ctx, json!({ "tab": 0 })).await.is_err());
-        assert!(call(&ListEndpoints, &ctx, json!({ "tab": 2 })).await.is_err());
+        assert!(
+            call(&ListRequests, &ctx, json!({ "tab": 0 }))
+                .await
+                .is_err()
+        );
+        assert!(
+            call(&ListEndpoints, &ctx, json!({ "tab": 2 }))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -617,8 +625,14 @@ mod tests {
         // browser_tabs index 0 → id 10, index 1 → id 20.
         let ctx = ctx_with(Arc::new(FakeBrowser {
             tabs: vec![
-                TabInfo { id: 10, ..TabInfo::default() },
-                TabInfo { id: 20, ..TabInfo::default() },
+                TabInfo {
+                    id: 10,
+                    ..TabInfo::default()
+                },
+                TabInfo {
+                    id: 20,
+                    ..TabInfo::default()
+                },
             ],
             ..FakeBrowser::default()
         }));
@@ -632,13 +646,22 @@ mod tests {
 
         // tab:0 resolves to id 10 → only request "a".
         let rows = call_json(&ListRequests, &ctx, json!({ "tab": 0 })).await;
-        let ids: Vec<&str> = rows.as_array().unwrap().iter().map(|r| r["requestId"].as_str().unwrap()).collect();
+        let ids: Vec<&str> = rows
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["requestId"].as_str().unwrap())
+            .collect();
         assert_eq!(ids, ["a"]);
         // tab:1 → id 20 → only "b".
         let rows = call_json(&ListRequests, &ctx, json!({ "tab": 1 })).await;
         assert_eq!(rows[0]["requestId"], "b");
         // Out-of-range index errors.
-        assert!(call(&ListRequests, &ctx, json!({ "tab": 9 })).await.is_err());
+        assert!(
+            call(&ListRequests, &ctx, json!({ "tab": 9 }))
+                .await
+                .is_err()
+        );
     }
 
     fn endpoints_ctx(page_url: Option<&str>) -> ToolContext {

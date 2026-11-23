@@ -30,10 +30,22 @@ struct NosqliCase {
 /// `buildNosqliCases`: the operator true/false pair plus one syntax breaker.
 fn build_nosqli_cases(nonce: &str) -> Vec<NosqliCase> {
     vec![
-        NosqliCase { context: "op-true", op: Some("ne"), value: nonce.to_owned() },
-        NosqliCase { context: "op-false", op: Some("eq"), value: nonce.to_owned() },
+        NosqliCase {
+            context: "op-true",
+            op: Some("ne"),
+            value: nonce.to_owned(),
+        },
+        NosqliCase {
+            context: "op-false",
+            op: Some("eq"),
+            value: nonce.to_owned(),
+        },
         // A breaker that upsets Mongo `$where`/JSON parsing and Cypher alike.
-        NosqliCase { context: "error", op: None, value: format!("{nonce}'\"\\)}}];//") },
+        NosqliCase {
+            context: "error",
+            op: None,
+            value: format!("{nonce}'\"\\)}}];//"),
+        },
     ]
 }
 
@@ -82,7 +94,10 @@ fn nosqli_evaluated(replies: &[NosqliReply]) -> NosqliOutcome {
     {
         contexts.push("operator".to_owned());
     }
-    NosqliOutcome { nosqli: !contexts.is_empty(), contexts }
+    NosqliOutcome {
+        nosqli: !contexts.is_empty(),
+        contexts,
+    }
 }
 
 /// Case-insensitive `content-type` header value, or `""`.
@@ -160,7 +175,9 @@ impl Tool for NosqliProbe {
                 }
             };
 
-            let in_query = base.url.contains(&format!("{}=", encode_uri_component(&param)))
+            let in_query = base
+                .url
+                .contains(&format!("{}=", encode_uri_component(&param)))
                 || base.url.contains(&format!("{param}="));
             let is_json = content_type(&base)
                 .to_ascii_lowercase()
@@ -181,10 +198,10 @@ impl Tool for NosqliProbe {
                     None => format!("{param}={}", encode_uri_component(&case.value)),
                 };
                 if in_query {
-                    let (path, qs) = sub
-                        .url
-                        .split_once('?')
-                        .map_or_else(|| (sub.url.clone(), String::new()), |(p, q)| (p.to_owned(), q.to_owned()));
+                    let (path, qs) = sub.url.split_once('?').map_or_else(
+                        || (sub.url.clone(), String::new()),
+                        |(p, q)| (p.to_owned(), q.to_owned()),
+                    );
                     sub.url = format!("{path}?{}", inject_kv(&qs, &param, &kv_replacement));
                 } else if is_json {
                     let value = match case.op {
@@ -200,8 +217,11 @@ impl Tool for NosqliProbe {
                         Err(error) => return err(error),
                     }
                 } else {
-                    sub.body =
-                        Some(inject_kv(sub.body.as_deref().unwrap_or(""), &param, &kv_replacement));
+                    sub.body = Some(inject_kv(
+                        sub.body.as_deref().unwrap_or(""),
+                        &param,
+                        &kv_replacement,
+                    ));
                 }
 
                 let out = send(&sub, SEND_TIMEOUT).await;
@@ -240,7 +260,12 @@ mod tests {
     use crate::common::{inject_json, inject_kv};
 
     fn reply(context: &'static str, nonce: &str, body: &str, status: u16) -> NosqliReply {
-        NosqliReply { context, status, body: body.to_owned(), nonce: nonce.to_owned() }
+        NosqliReply {
+            context,
+            status,
+            body: body.to_owned(),
+            nonce: nonce.to_owned(),
+        }
     }
 
     #[test]
@@ -283,13 +308,20 @@ mod tests {
 
     #[test]
     fn inject_kv는_접두사가_같은_다른_파라미터는_건드리지_않는다() {
-        assert_eq!(inject_kv("user=a&username=b", "user", "user[$ne]=zz"), "user[$ne]=zz&username=b");
+        assert_eq!(
+            inject_kv("user=a&username=b", "user", "user[$ne]=zz"),
+            "user[$ne]=zz&username=b"
+        );
     }
 
     #[test]
     fn inject_json은_대상_키를_연산자_객체로_세팅한다() {
-        let out = inject_json("{\"username\":\"a\",\"password\":\"b\"}", "username", json!({"$ne":"zz"}))
-            .unwrap();
+        let out = inject_json(
+            "{\"username\":\"a\",\"password\":\"b\"}",
+            "username",
+            json!({"$ne":"zz"}),
+        )
+        .unwrap();
         assert_eq!(
             serde_json::from_str::<Value>(&out).unwrap(),
             json!({"username":{"$ne":"zz"},"password":"b"})
@@ -299,7 +331,10 @@ mod tests {
     #[test]
     fn inject_json은_스칼라_브레이커도_세팅한다() {
         let out = inject_json("{\"username\":\"a\"}", "username", json!("zz'\"//")).unwrap();
-        assert_eq!(serde_json::from_str::<Value>(&out).unwrap(), json!({"username":"zz'\"//"}));
+        assert_eq!(
+            serde_json::from_str::<Value>(&out).unwrap(),
+            json!({"username":"zz'\"//"})
+        );
     }
 
     #[test]
@@ -317,9 +352,20 @@ mod tests {
         let out = nosqli_evaluated(&[
             reply("op-true", "zz", "same", 200),
             reply("op-false", "zz", "same", 200),
-            reply("error", "zz'\"", "500 Neo.ClientError.Statement.SyntaxError", 500),
+            reply(
+                "error",
+                "zz'\"",
+                "500 Neo.ClientError.Statement.SyntaxError",
+                500,
+            ),
         ]);
-        assert_eq!(out, NosqliOutcome { nosqli: true, contexts: vec!["error".to_owned()] });
+        assert_eq!(
+            out,
+            NosqliOutcome {
+                nosqli: true,
+                contexts: vec!["error".to_owned()]
+            }
+        );
     }
 
     #[test]
@@ -329,7 +375,13 @@ mod tests {
             reply("op-false", "zz", "Invalid user or password", 200),
             reply("error", "zz'\"", "ok", 200),
         ]);
-        assert_eq!(out, NosqliOutcome { nosqli: true, contexts: vec!["operator".to_owned()] });
+        assert_eq!(
+            out,
+            NosqliOutcome {
+                nosqli: true,
+                contexts: vec!["operator".to_owned()]
+            }
+        );
     }
 
     #[test]
@@ -349,6 +401,12 @@ mod tests {
             reply("op-false", "zz", "Invalid user or password", 200),
             reply("error", "zz'\"", "Invalid user or password", 200),
         ]);
-        assert_eq!(out, NosqliOutcome { nosqli: false, contexts: vec![] });
+        assert_eq!(
+            out,
+            NosqliOutcome {
+                nosqli: false,
+                contexts: vec![]
+            }
+        );
     }
 }

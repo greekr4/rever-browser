@@ -202,11 +202,7 @@ impl Tool for PathProbe {
                 }));
             }
             // Interesting first (stable), as the TS sort does.
-            results.sort_by(|a, b| {
-                b["interesting"]
-                    .as_bool()
-                    .cmp(&a["interesting"].as_bool())
-            });
+            results.sort_by(|a, b| b["interesting"].as_bool().cmp(&a["interesting"].as_bool()));
 
             let interesting = results
                 .iter()
@@ -287,7 +283,8 @@ impl Tool for LfiProbe {
                 }
             };
             // lfi only injects the url or body; headers are not checked.
-            if !base.url.contains('§') && !base.body.as_deref().unwrap_or_default().contains('§') {
+            if !base.url.contains('§') && !base.body.as_deref().unwrap_or_default().contains('§')
+            {
                 return err("marker § not found in request URL or body");
             }
 

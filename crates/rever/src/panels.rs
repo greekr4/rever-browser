@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use gpui::{App, Context, Entity, Task, prelude::*};
 use rever_core::traffic::TrafficStore;
 use rever_formats::console_format::EvalReply;
+use rever_ui_apimap::api_map_panel::ApiMapPanel;
 use rever_ui_console::console_panel::{ConsolePanel, Evaluate};
 use rever_ui_console::exceptions_panel::ExceptionsPanel;
 use rever_ui_history::OpenUrl;
@@ -19,24 +20,23 @@ use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::text_input::{Submitted, TextInput};
 use rever_ui_kit::theme::ThemeMode;
 use rever_ui_menus::ip_badge::{IpBadgeHost, IpResult};
-use rever_ui_state::ip_visibility::IpVisibilityStore;
-use rever_ui_apimap::api_map_panel::ApiMapPanel;
 use rever_ui_repeater::repeater_panel::{RepeaterPanel, RepeaterSender};
 use rever_ui_repeater::ws_repeater_panel::WsRepeaterPanel;
 use rever_ui_repeater::{RepeaterRequestSpec, RepeaterResponse, RepeaterStore};
+use rever_ui_state::ip_visibility::IpVisibilityStore;
 use rever_ui_state::{FileStorage, MemoryStorage, Storage};
 use rever_ui_storage::cookies_panel::CookiesPanel;
-use rever_ui_workflows::core::workflow_panel::WorkflowPanel;
+use rever_ui_traffic::detail_drawer::{DetailDrawer, DetailDrawerEvent, WIDTH_STORAGE_KEY};
+use rever_ui_traffic::store::TrafficState;
+use rever_ui_traffic::traffic_list::{TrafficList, TrafficListEvent};
+use rever_ui_websocket::{LiveSocket, SendOutcome, SendRequest, WebSocketPanel, WsHost};
 use rever_ui_workflows::core::store::WorkflowsStore;
+use rever_ui_workflows::core::workflow_panel::WorkflowPanel;
 use rever_ui_workflows::host::{
     CliRunPayload, CliRunResult, McpToolInfo, OnProgress, PipeProgress, TrafficCall, WorkflowHost,
     WorkflowRunStep, WorkflowStepProgress,
 };
 use rever_ui_workflows::pipeline::resolve::ResolvedPipeNode;
-use rever_ui_traffic::detail_drawer::{DetailDrawer, DetailDrawerEvent, WIDTH_STORAGE_KEY};
-use rever_ui_traffic::store::TrafficState;
-use rever_ui_traffic::traffic_list::{TrafficList, TrafficListEvent};
-use rever_ui_websocket::{LiveSocket, SendOutcome, SendRequest, WebSocketPanel, WsHost};
 use serde_json::json;
 use servo::JSValue;
 
@@ -200,7 +200,9 @@ impl Views {
         })
         .detach();
         let exceptions = cx.new(|cx| ExceptionsPanel::new(store.clone(), lang, theme_mode, cx));
-        let page_sockets = Arc::new(PageSockets { browser: browser.clone() });
+        let page_sockets = Arc::new(PageSockets {
+            browser: browser.clone(),
+        });
         let websocket =
             cx.new(|cx| WebSocketPanel::new(store, page_sockets.clone(), lang, theme_mode, cx));
 
@@ -217,10 +219,14 @@ impl Views {
         .detach();
 
         let storage = cx.new(|cx| {
-            CookiesPanel::new(Rc::new(StorageBridge::new(browser.clone())), lang, theme_mode, cx)
+            CookiesPanel::new(
+                Rc::new(StorageBridge::new(browser.clone())),
+                lang,
+                theme_mode,
+                cx,
+            )
         });
-        let apimap =
-            cx.new(|cx| ApiMapPanel::new(stores.traffic.clone(), lang, theme_mode, cx));
+        let apimap = cx.new(|cx| ApiMapPanel::new(stores.traffic.clone(), lang, theme_mode, cx));
         let repeater_store = cx.new(|_| RepeaterStore::new());
         let repeater = {
             let sender = Arc::new(RepeaterBridge {
@@ -432,7 +438,11 @@ impl WorkflowHost for WorkflowTools {
         _: &mut App,
     ) -> Task<Result<rever_cli_spec::cli_spec::CliData, String>> {
         use rever_tools_automation::cli_exec::compile_captured;
-        Task::ready(compile_captured(&self.context, &request_ids, &Default::default()))
+        Task::ready(compile_captured(
+            &self.context,
+            &request_ids,
+            &Default::default(),
+        ))
     }
 
     fn run_cli(&self, payload: CliRunPayload, cx: &mut App) -> Task<Result<CliRunResult, String>> {
@@ -546,17 +556,20 @@ impl WsHost for PageSockets {
         );
         let answer = futures::executor::block_on(self.browser.evaluate(&expression));
         match answer {
-            Ok(serde_json::Value::String(word)) if word == "ok" => {
-                SendOutcome { ok: true, ..SendOutcome::default() }
-            }
+            Ok(serde_json::Value::String(word)) if word == "ok" => SendOutcome {
+                ok: true,
+                ..SendOutcome::default()
+            },
             Ok(serde_json::Value::String(word)) if word == "reopened" => SendOutcome {
                 ok: true,
                 reconnected: true,
                 ..SendOutcome::default()
             },
-            Ok(serde_json::Value::String(word)) => {
-                SendOutcome { ok: false, error: Some(word), ..SendOutcome::default() }
-            }
+            Ok(serde_json::Value::String(word)) => SendOutcome {
+                ok: false,
+                error: Some(word),
+                ..SendOutcome::default()
+            },
             Ok(other) => SendOutcome {
                 ok: false,
                 error: Some(other.to_string()),
@@ -673,7 +686,10 @@ mod tests {
     struct SocketsBrowser(serde_json::Value);
 
     impl rever_tools_api::tool::Browser for SocketsBrowser {
-        fn evaluate<'a>(&'a self, _: &'a str) -> rever_tools_api::tool::BoxFuture<'a, Result<serde_json::Value, String>> {
+        fn evaluate<'a>(
+            &'a self,
+            _: &'a str,
+        ) -> rever_tools_api::tool::BoxFuture<'a, Result<serde_json::Value, String>> {
             let answer = self.0.clone();
             Box::pin(async move { Ok(answer) })
         }
@@ -683,24 +699,56 @@ mod tests {
     fn 페이지_소켓_호스트는_래퍼_목록을_파싱하고_전송_답을_매핑한다() {
         let host = PageSockets {
             browser: Arc::new(SocketsBrowser(serde_json::Value::String(
-                r#"[{"id":0,"url":"ws://a.test/ws","readyState":1,"openedAt":1,"protocols":null}]"#.into(),
+                r#"[{"id":0,"url":"ws://a.test/ws","readyState":1,"openedAt":1,"protocols":null}]"#
+                    .into(),
             ))),
         };
         let sockets = host.sockets().unwrap();
-        assert_eq!((sockets[0].url.as_str(), sockets[0].ready_state, sockets[0].frame.as_str()), ("ws://a.test/ws", 1, "page"));
+        assert_eq!(
+            (
+                sockets[0].url.as_str(),
+                sockets[0].ready_state,
+                sockets[0].frame.as_str()
+            ),
+            ("ws://a.test/ws", 1, "page")
+        );
 
         let ok = PageSockets {
             browser: Arc::new(SocketsBrowser(serde_json::Value::String("ok".into()))),
         };
-        assert!(ok.send(SendRequest { url: "ws://a.test/ws".into(), payload: "p".into(), as_binary: false, reconnect: false }).ok);
+        assert!(
+            ok.send(SendRequest {
+                url: "ws://a.test/ws".into(),
+                payload: "p".into(),
+                as_binary: false,
+                reconnect: false
+            })
+            .ok
+        );
         let reopened = PageSockets {
             browser: Arc::new(SocketsBrowser(serde_json::Value::String("reopened".into()))),
         };
-        assert!(reopened.send(SendRequest { url: "ws://a.test/ws".into(), payload: "p".into(), as_binary: false, reconnect: true }).reconnected);
+        assert!(
+            reopened
+                .send(SendRequest {
+                    url: "ws://a.test/ws".into(),
+                    payload: "p".into(),
+                    as_binary: false,
+                    reconnect: true
+                })
+                .reconnected
+        );
         let failed = PageSockets {
-            browser: Arc::new(SocketsBrowser(serde_json::Value::String("not-open:3".into()))),
+            browser: Arc::new(SocketsBrowser(serde_json::Value::String(
+                "not-open:3".into(),
+            ))),
         };
-        let outcome = failed.send(SendRequest { url: "ws://a.test/ws".into(), payload: "p".into(), as_binary: false, reconnect: false });
+        let outcome = failed.send(SendRequest {
+            url: "ws://a.test/ws".into(),
+            payload: "p".into(),
+            as_binary: false,
+            reconnect: false,
+        });
         assert!(!outcome.ok && outcome.error.as_deref() == Some("not-open:3"));
     }
 

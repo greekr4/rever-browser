@@ -8,18 +8,17 @@ use std::ops::Range;
 
 use gpui::{
     AnyElement, Bounds, ClickEvent, Context, Corners, CursorStyle, ElementInputHandler,
-    EntityInputHandler,
-    KeyDownEvent, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, Point, ScrollDelta, ScrollWheelEvent, UTF16Selection, Window, canvas, div, prelude::*,
-    px,
+    EntityInputHandler, KeyDownEvent, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta, ScrollWheelEvent, UTF16Selection,
+    Window, canvas, div, prelude::*, px,
 };
 use rever_core::input::w3c_key_name;
 use rever_ui_kit::theme::Theme;
 use servo::{
     Code, CompositionEvent, CompositionState, ContextMenuItem, Cursor, ImeEvent, InputEvent, Key,
-    KeyState,
-    KeyboardEvent, Location, Modifiers, MouseButtonAction, MouseButtonEvent, SelectElementOption,
-    SelectElementOptionOrOptgroup, WebViewPoint, WheelDelta, WheelEvent, WheelMode,
+    KeyState, KeyboardEvent, Location, Modifiers, MouseButtonAction, MouseButtonEvent,
+    SelectElementOption, SelectElementOptionOrOptgroup, WebViewPoint, WheelDelta, WheelEvent,
+    WheelMode,
 };
 
 use crate::app::{Browser, page_area};
@@ -103,13 +102,17 @@ impl Browser {
                 .child(self.lang.t(label))
                 .child(megabytes(bytes))
         };
-        let graph = div()
-            .h(px(22.0))
-            .flex()
-            .items_end()
-            .children(self.memory.bars().into_iter().map(|share| {
-                div().w(px(1.0)).h(px((share * 22.0).max(1.0))).bg(theme.accent)
-            }));
+        let graph =
+            div()
+                .h(px(22.0))
+                .flex()
+                .items_end()
+                .children(self.memory.bars().into_iter().map(|share| {
+                    div()
+                        .w(px(1.0))
+                        .h(px((share * 22.0).max(1.0)))
+                        .bg(theme.accent)
+                }));
         Some(
             div()
                 .absolute()
@@ -154,9 +157,9 @@ impl Browser {
                 .text_color(fg)
                 .cursor_pointer()
                 .child(label)
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    this.submit_color(accept, cx)
-                }))
+                .on_click(
+                    cx.listener(move |this, _: &ClickEvent, _, cx| this.submit_color(accept, cx)),
+                )
         };
         let modal = div()
             .occlude()
@@ -224,11 +227,10 @@ impl Browser {
                             .text_color(if enabled { text } else { dim })
                             .child(label.clone())
                             .when(enabled, |row| {
-                                row.hover(move |style| style.bg(hover)).on_click(cx.listener(
-                                    move |this, _: &ClickEvent, _, cx| {
+                                row.hover(move |style| style.bg(hover))
+                                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                                         this.choose_context(Some(action), cx)
-                                    },
-                                ))
+                                    }))
                             })
                             .into_any_element(),
                     );
@@ -276,9 +278,9 @@ impl Browser {
                 .text_color(fg)
                 .cursor_pointer()
                 .child(label)
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    this.confirm_prompt(accept, cx)
-                }))
+                .on_click(
+                    cx.listener(move |this, _: &ClickEvent, _, cx| this.confirm_prompt(accept, cx)),
+                )
         };
         let modal = div()
             .occlude()
@@ -653,7 +655,10 @@ mod tests {
         assert_eq!(cursor_style(Cursor::Pointer), CursorStyle::PointingHand);
         assert_eq!(cursor_style(Cursor::Text), CursorStyle::IBeam);
         assert_eq!(cursor_style(Cursor::Default), CursorStyle::Arrow);
-        assert_eq!(cursor_style(Cursor::NotAllowed), CursorStyle::OperationNotAllowed);
+        assert_eq!(
+            cursor_style(Cursor::NotAllowed),
+            CursorStyle::OperationNotAllowed
+        );
         // macOS에 모양이 없는 커서는 화살표로 둔다.
         assert_eq!(cursor_style(Cursor::Wait), CursorStyle::Arrow);
     }

@@ -292,9 +292,11 @@ pub fn send_by_url_expression(
 ) -> String {
     // asBinary: base64 → bytes. Text goes as a JSON string literal.
     let payload = if as_binary {
-        format!("(()=>{{const raw=atob({});const b=new Uint8Array(raw.length);\
+        format!(
+            "(()=>{{const raw=atob({});const b=new Uint8Array(raw.length);\
 for(let i=0;i<raw.length;i++)b[i]=raw.charCodeAt(i);return b}})()",
-            Value::from(payload))
+            Value::from(payload)
+        )
     } else {
         Value::from(payload).to_string()
     };
@@ -326,9 +328,9 @@ async fn ws_send_by_url(
     let expression = send_by_url_expression(url, payload, as_binary, reconnect);
     match ctx.browser.evaluate(&expression).await? {
         Value::String(answer) if answer == "ok" => Ok(ok("sent on the page socket".to_owned())),
-        Value::String(answer) if answer == "reopened" => {
-            Ok(ok("socket closed — reopened it from the page and sent on the new connection".to_owned()))
-        }
+        Value::String(answer) if answer == "reopened" => Ok(ok(
+            "socket closed — reopened it from the page and sent on the new connection".to_owned(),
+        )),
         Value::String(answer) if answer == "no-such-capture" => Err(
             "no wrapped socket at this url — call ws_capture_enable first (sockets opened after \
              that are addressable by url), or pass reconnect: true to open a new one"
@@ -607,7 +609,9 @@ mod tests {
         .await
         .unwrap();
         assert!(sent.contains("sent on the page socket"));
-        let expression = browser.calls()[0].trim_start_matches("evaluate:").to_owned();
+        let expression = browser.calls()[0]
+            .trim_start_matches("evaluate:")
+            .to_owned();
         assert!(expression.contains(r#""ws://a.test/ws""#), "{expression}");
         assert!(expression.contains(r#""hi""#), "{expression}");
 

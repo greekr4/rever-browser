@@ -208,10 +208,23 @@ mod tests {
 
     #[test]
     fn 금지_헤더를_판별한다() {
-        for h in ["Host", "cookie2", "User-Agent", "Sec-Fetch-Mode", "Proxy-Authorization", "accept-encoding"] {
+        for h in [
+            "Host",
+            "cookie2",
+            "User-Agent",
+            "Sec-Fetch-Mode",
+            "Proxy-Authorization",
+            "accept-encoding",
+        ] {
             assert!(forbidden_fetch_header(h), "{h} should be forbidden");
         }
-        for h in ["Accept", "Authorization", "Cookie", "Content-Type", "X-Custom"] {
+        for h in [
+            "Accept",
+            "Authorization",
+            "Cookie",
+            "Content-Type",
+            "X-Custom",
+        ] {
             assert!(!forbidden_fetch_header(h), "{h} should be allowed");
         }
     }
@@ -221,13 +234,24 @@ mod tests {
         let expr = build_eval_expression(&spec(
             "GET",
             None,
-            &[("Authorization", "Bearer t"), ("Host", "evil"), ("User-Agent", "x")],
+            &[
+                ("Authorization", "Bearer t"),
+                ("Host", "evil"),
+                ("User-Agent", "x"),
+            ],
         ));
         assert!(expr.contains("\"Authorization\":\"Bearer t\""));
         assert!(!expr.contains("evil"));
         assert!(!expr.contains("\"User-Agent\""));
         // All placeholders resolved (JS vars like __revAc legitimately remain).
-        for ph in ["__TIMEOUT__", "__METHOD__", "__HEADERS__", "__BODYLINE__", "__URL__", "__MAXBYTES__"] {
+        for ph in [
+            "__TIMEOUT__",
+            "__METHOD__",
+            "__HEADERS__",
+            "__BODYLINE__",
+            "__URL__",
+            "__MAXBYTES__",
+        ] {
             assert!(!expr.contains(ph), "{ph} not resolved");
         }
     }

@@ -841,9 +841,10 @@ fn loose_bold(spans: Vec<Span>) -> Vec<Span> {
         let mut plain = String::new();
         while let Some(open) = rest.find("**") {
             let inner = &rest[open + 2..];
-            let close = inner.match_indices("**").map(|(at, _)| at).find(|&at| {
-                at > 0 && !inner[..at].ends_with(char::is_whitespace)
-            });
+            let close = inner
+                .match_indices("**")
+                .map(|(at, _)| at)
+                .find(|&at| at > 0 && !inner[..at].ends_with(char::is_whitespace));
             match close {
                 Some(close) if !inner.starts_with(char::is_whitespace) => {
                     plain.push_str(&rest[..open]);

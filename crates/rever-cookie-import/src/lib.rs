@@ -162,9 +162,10 @@ fn decode_hex(hex: &str) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len() / 2);
     let mut i = 0;
     while i + 1 < bytes.len() {
-        if let (Some(hi), Some(lo)) =
-            ((bytes[i] as char).to_digit(16), (bytes[i + 1] as char).to_digit(16))
-        {
+        if let (Some(hi), Some(lo)) = (
+            (bytes[i] as char).to_digit(16),
+            (bytes[i + 1] as char).to_digit(16),
+        ) {
             out.push((hi * 16 + lo) as u8);
         }
         i += 2;
@@ -213,8 +214,7 @@ mod tests {
 
     /// Encrypt with Chrome's scheme and prepend `prefix`, as the browser stores it.
     fn seal(plaintext: &[u8], key: &[u8; 16], prefix: &[u8]) -> Vec<u8> {
-        let ct = Encryptor::new(key.into(), &IV.into())
-            .encrypt_padded_vec_mut::<Pkcs7>(plaintext);
+        let ct = Encryptor::new(key.into(), &IV.into()).encrypt_padded_vec_mut::<Pkcs7>(plaintext);
         [prefix, &ct].concat()
     }
 
@@ -222,7 +222,10 @@ mod tests {
     fn v10_암호문을_왕복_복호화한다() {
         let key = derive_key(b"s3cr3t-keychain-pw");
         let blob = seal(b"session=abc123; theme=dark", &key, b"v10");
-        assert_eq!(decrypt_value(&blob, &key).unwrap(), "session=abc123; theme=dark");
+        assert_eq!(
+            decrypt_value(&blob, &key).unwrap(),
+            "session=abc123; theme=dark"
+        );
         // v11 prefix decrypts the same way.
         let blob = seal(b"x=1", &key, b"v11");
         assert_eq!(decrypt_value(&blob, &key).unwrap(), "x=1");
@@ -234,7 +237,10 @@ mod tests {
         let blob = seal(b"secret=42", &key, b"v10");
         // A wrong key fails PKCS7 unpadding or yields garbage — never the plaintext.
         let wrong = derive_key(b"wrong");
-        assert_ne!(decrypt_value(&blob, &wrong).ok().as_deref(), Some("secret=42"));
+        assert_ne!(
+            decrypt_value(&blob, &wrong).ok().as_deref(),
+            Some("secret=42")
+        );
     }
 
     #[test]
@@ -262,7 +268,10 @@ mod tests {
 
     #[test]
     fn hex를_바이트로_디코드한다() {
-        assert_eq!(decode_hex("76313061ff00"), vec![0x76, 0x31, 0x30, 0x61, 0xff, 0x00]);
+        assert_eq!(
+            decode_hex("76313061ff00"),
+            vec![0x76, 0x31, 0x30, 0x61, 0xff, 0x00]
+        );
         assert_eq!(decode_hex(""), Vec::<u8>::new());
     }
 }

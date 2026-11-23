@@ -101,16 +101,21 @@ impl AiAgents for WorkflowAgents {
         cwd: &'a str,
     ) -> BoxFuture<'a, Result<String, String>> {
         Box::pin(async move {
-            let id = agent_by_id(&agent.id).ok_or_else(|| format!("unknown agent: {}", agent.id))?;
+            let id =
+                agent_by_id(&agent.id).ok_or_else(|| format!("unknown agent: {}", agent.id))?;
             let woken = Arc::new(Notify::new());
             let wake = {
                 let woken = woken.clone();
                 move || woken.notify_one()
             };
-            let mcp = self.mcp.as_ref().map(|(url, auth)| (url.as_str(), auth.as_str()));
+            let mcp = self
+                .mcp
+                .as_ref()
+                .map(|(url, auth)| (url.as_str(), auth.as_str()));
             let agent = spawn_agent(id, None, Path::new(cwd), mcp, self.profile.clone(), wake)?;
             let key = format!("workflow-{}", self.next.fetch_add(1, Ordering::Relaxed));
-            self.sessions().insert(key.clone(), Session { agent, woken });
+            self.sessions()
+                .insert(key.clone(), Session { agent, woken });
             Ok(key)
         })
     }
@@ -180,7 +185,9 @@ mod tests {
         let (mut session, _) = session(events);
         let mut pieces = Vec::new();
         let mut on_update = |update: &Value| {
-            let text = update["update"]["content"]["text"].as_str().unwrap_or_default();
+            let text = update["update"]["content"]["text"]
+                .as_str()
+                .unwrap_or_default();
             pieces.push(text.to_owned());
         };
         let outcome = run_prompt(&mut session, "질문", &mut on_update).await;
@@ -194,7 +201,10 @@ mod tests {
             AgentEvent::Text("녕".into()),
             AgentEvent::Done,
         ];
-        assert_eq!(prompt(events).await, (Ok(()), vec!["안".to_owned(), "녕".to_owned()]));
+        assert_eq!(
+            prompt(events).await,
+            (Ok(()), vec!["안".to_owned(), "녕".to_owned()])
+        );
     }
 
     #[tokio::test]
@@ -206,7 +216,9 @@ mod tests {
     #[tokio::test]
     async fn 프롬프트는_에이전트에게_그대로_보낸다() {
         let (mut session, sent) = session(vec![AgentEvent::Done]);
-        run_prompt(&mut session, "요약해 줘", &mut |_| {}).await.unwrap();
+        run_prompt(&mut session, "요약해 줘", &mut |_| {})
+            .await
+            .unwrap();
         assert_eq!(*sent.lock().unwrap(), ["요약해 줘"]);
     }
 
@@ -222,14 +234,20 @@ mod tests {
         };
         let events = vec![AgentEvent::Permission(ask), AgentEvent::Done];
         prompt(events).await.0.unwrap();
-        assert_eq!(*answered.lock().unwrap(), Some(RequestPermissionOutcome::Cancelled));
+        assert_eq!(
+            *answered.lock().unwrap(),
+            Some(RequestPermissionOutcome::Cancelled)
+        );
     }
 
     #[test]
     fn 답_조각은_실행기가_읽는_세션_알림_모양이다() {
         let update = &answer_chunk("x")["update"];
         assert_eq!(
-            (update["sessionUpdate"].as_str(), update["content"]["type"].as_str()),
+            (
+                update["sessionUpdate"].as_str(),
+                update["content"]["type"].as_str()
+            ),
             (Some("agent_message_chunk"), Some("text"))
         );
     }

@@ -14,7 +14,11 @@ pub enum Lang {
 /// Strings the Rust app added: the Electron dictionaries (`locales.rs`) never had them.
 const PORT_STRINGS: &[(&str, &str, &str)] = &[
     ("chat.tools.ran", "Ran {n} tools", "도구 {n}개 실행함"),
-    ("chat.tools.running", "Running {n} tools", "도구 {n}개 실행 중"),
+    (
+        "chat.tools.running",
+        "Running {n} tools",
+        "도구 {n}개 실행 중",
+    ),
     ("chat.working", "Working…", "작업 중…"),
     ("dev.memory", "Memory", "메모리"),
     ("dev.memory.peak", "Peak", "최고"),

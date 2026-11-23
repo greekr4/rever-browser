@@ -27,7 +27,11 @@ impl Browser {
         }
     }
 
-    pub(super) fn redteam_dialog(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(super) fn redteam_dialog(
+        &self,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
         if !self.redteam_open {
             return None;
         }
@@ -36,33 +40,38 @@ impl Browser {
         let hover = theme.chrome_hover;
 
         // One intensity button: a risk dot + label, highlighted when selected.
-        let intensity_btn = |level: &'static str, label_key: &'static str, color: u32, cx: &mut Context<Self>| {
-            let selected = self.redteam_intensity == level;
-            let dot: Hsla = if level == "redteam" {
-                theme.status_error.into()
-            } else {
-                rgb(color).into()
+        let intensity_btn =
+            |level: &'static str, label_key: &'static str, color: u32, cx: &mut Context<Self>| {
+                let selected = self.redteam_intensity == level;
+                let dot: Hsla = if level == "redteam" {
+                    theme.status_error.into()
+                } else {
+                    rgb(color).into()
+                };
+                div()
+                    .id(level)
+                    .px(px(8.0))
+                    .py(px(3.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(5.0))
+                    .rounded(px(5.0))
+                    .border_1()
+                    .border_color(if selected {
+                        theme.accent
+                    } else {
+                        theme.border_2
+                    })
+                    .text_color(if selected { theme.text } else { theme.text_dim })
+                    .when(selected, |b| b.bg(theme.surface_3))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(hover))
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        this.set_redteam_intensity(level, cx)
+                    }))
+                    .child(div().w(px(7.0)).h(px(7.0)).rounded(px(7.0)).bg(dot))
+                    .child(lang.t(label_key))
             };
-            div()
-                .id(level)
-                .px(px(8.0))
-                .py(px(3.0))
-                .flex()
-                .items_center()
-                .gap(px(5.0))
-                .rounded(px(5.0))
-                .border_1()
-                .border_color(if selected { theme.accent } else { theme.border_2 })
-                .text_color(if selected { theme.text } else { theme.text_dim })
-                .when(selected, |b| b.bg(theme.surface_3))
-                .cursor_pointer()
-                .hover(move |s| s.bg(hover))
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    this.set_redteam_intensity(level, cx)
-                }))
-                .child(div().w(px(7.0)).h(px(7.0)).rounded(px(7.0)).bg(dot))
-                .child(lang.t(label_key))
-        };
 
         let (risk_color, risk_key) = self.risk(self.redteam_intensity, theme);
 
@@ -110,23 +119,50 @@ impl Browser {
             .flex()
             .items_center()
             .gap(px(8.0))
-            .child(div().text_color(theme.text_dim).child(lang.t("scan.panel.target")))
+            .child(
+                div()
+                    .text_color(theme.text_dim)
+                    .child(lang.t("scan.panel.target")),
+            )
             .child(div().flex_1().child(self.views.redteam_target.clone()));
 
         let intensity_row = div()
             .flex()
             .items_center()
             .gap(px(8.0))
-            .child(div().text_color(theme.text_dim).child(lang.t("scan.panel.intensity")))
-            .child(intensity_btn("readonly", "scan.panel.intensity.readonly", 0x5f_d0_7a, cx))
-            .child(intensity_btn("probe", "scan.panel.intensity.probe", 0xe0_a3_3e, cx))
-            .child(intensity_btn("redteam", "scan.panel.intensity.redteam", 0, cx));
+            .child(
+                div()
+                    .text_color(theme.text_dim)
+                    .child(lang.t("scan.panel.intensity")),
+            )
+            .child(intensity_btn(
+                "readonly",
+                "scan.panel.intensity.readonly",
+                0x5f_d0_7a,
+                cx,
+            ))
+            .child(intensity_btn(
+                "probe",
+                "scan.panel.intensity.probe",
+                0xe0_a3_3e,
+                cx,
+            ))
+            .child(intensity_btn(
+                "redteam",
+                "scan.panel.intensity.redteam",
+                0,
+                cx,
+            ));
 
         let risk_row = div()
             .flex()
             .items_center()
             .gap(px(6.0))
-            .child(div().text_color(theme.text_dim).child(lang.t("scan.panel.risk")))
+            .child(
+                div()
+                    .text_color(theme.text_dim)
+                    .child(lang.t("scan.panel.risk")),
+            )
             .child(div().w(px(8.0)).h(px(8.0)).rounded(px(8.0)).bg(risk_color))
             .child(
                 div()
@@ -135,7 +171,11 @@ impl Browser {
                     .child(lang.t(risk_key)),
             )
             .child(div().flex_1())
-            .child(div().text_color(theme.text_dim).child(format!("{} {}", self.redteam_pages, lang.t("scan.panel.pages"))));
+            .child(div().text_color(theme.text_dim).child(format!(
+                "{} {}",
+                self.redteam_pages,
+                lang.t("scan.panel.pages")
+            )));
 
         let running = self.redteam_running;
         let start = if running {
@@ -148,7 +188,7 @@ impl Browser {
                 .text_color(theme.bg)
                 .font_weight(FontWeight::SEMIBOLD)
                 .cursor_pointer()
-.on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.stop_redteam(cx)))
+                .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.stop_redteam(cx)))
                 .child(format!("■ {}", lang.t("scan.panel.stop")))
                 .into_any_element()
         } else {
@@ -189,19 +229,16 @@ impl Browser {
                         .flex()
                         .items_start()
                         .gap(px(6.0))
-                        .when_some(
-                            (!tag.is_empty()).then_some(tag),
-                            |row, tag| {
-                                row.child(
-                                    div()
-                                        .flex_none()
-                                        .max_w(px(110.0))
-                                        .truncate()
-                                        .text_color(theme.text_dim)
-                                        .child(tag),
-                                )
-                            },
-                        )
+                        .when_some((!tag.is_empty()).then_some(tag), |row, tag| {
+                            row.child(
+                                div()
+                                    .flex_none()
+                                    .max_w(px(110.0))
+                                    .truncate()
+                                    .text_color(theme.text_dim)
+                                    .child(tag),
+                            )
+                        })
                         .child(
                             div()
                                 .flex_1()
@@ -267,20 +304,24 @@ impl Browser {
             .shadow_lg()
             .text_size(px(12.0))
             .text_color(theme.text)
-            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<RedteamDrag>, _, cx| {
-                this.on_redteam_drag(
-                    f32::from(event.event.position.x),
-                    f32::from(event.event.position.y),
-                    cx,
-                )
-            }))
-            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<RedteamResize>, _, cx| {
-                this.on_redteam_resize(
-                    f32::from(event.event.position.x),
-                    f32::from(event.event.position.y),
-                    cx,
-                )
-            }))
+            .on_drag_move(
+                cx.listener(|this, event: &DragMoveEvent<RedteamDrag>, _, cx| {
+                    this.on_redteam_drag(
+                        f32::from(event.event.position.x),
+                        f32::from(event.event.position.y),
+                        cx,
+                    )
+                }),
+            )
+            .on_drag_move(
+                cx.listener(|this, event: &DragMoveEvent<RedteamResize>, _, cx| {
+                    this.on_redteam_resize(
+                        f32::from(event.event.position.x),
+                        f32::from(event.event.position.y),
+                        cx,
+                    )
+                }),
+            )
             .child(header)
             .child(
                 div()
