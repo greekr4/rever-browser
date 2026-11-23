@@ -9,6 +9,7 @@
 
 use std::collections::VecDeque;
 
+use rever_chat_core::acp_permission::{RequestPermissionOutcome, RequestPermissionResponse};
 use rever_scope::fence::is_loopback_host;
 use rever_scope::scope::scope_key;
 use serde_json::Value;
@@ -670,6 +671,10 @@ impl ScanRun {
                         turn.outcome.export = Some(output);
                     }
                 }
+                // A worker has nobody to ask: what its own rules do not allow is refused.
+                AgentEvent::Permission(ask) => (ask.answer)(RequestPermissionResponse {
+                    outcome: RequestPermissionOutcome::Cancelled,
+                }),
                 AgentEvent::Done => turn.done = true,
                 AgentEvent::Failed(error) => {
                     turn.failed = Some(error);

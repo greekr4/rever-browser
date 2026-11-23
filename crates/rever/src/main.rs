@@ -22,9 +22,11 @@ mod intercept;
 mod mcp_client;
 mod memory;
 mod panels;
+mod permissions;
 mod scan;
 mod shell;
 mod storage_host;
+mod workflow_agents;
 
 use app::{Browser, Launch, PANEL_GROUPS};
 use gpui::{

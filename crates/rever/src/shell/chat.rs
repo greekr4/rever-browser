@@ -70,6 +70,12 @@ impl Browser {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let lang = self.lang;
+        // The chip names what happens now: tools run on their own, or each one asks.
+        let approve_key = if self.permissions.borrow().acp_auto_approve() {
+            "chat.perm.auto"
+        } else {
+            "chat.perm.manual"
+        };
         let has_text = !self.views.composer.read(cx).text().is_empty();
         let at_end = shows_end(
             self.chat_scroll.offset().y.into(),
@@ -415,7 +421,17 @@ impl Browser {
                                         .flex()
                                         .items_center()
                                         .gap(px(14.0))
-                                        .child(footer_chip("shield", lang.t("chat.perm.auto")))
+                                        .child(
+                                            div()
+                                                .id("auto-approve")
+                                                .cursor_pointer()
+                                                .child(footer_chip("shield", lang.t(approve_key)))
+                                                .on_click(cx.listener(
+                                                    |this, _: &ClickEvent, _, cx| {
+                                                        this.toggle_auto_approve(cx)
+                                                    },
+                                                )),
+                                        )
                                         .child(footer_chip("wrench", "Recon")),
                                 )
                                 .child(self.model_picker.clone())

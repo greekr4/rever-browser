@@ -412,16 +412,6 @@ pub fn permission_response(request_id: &str, answer: &Value, input: Option<&Valu
     }))
 }
 
-/// A refusal the app makes on its own. The model repeats `message` to the user, so
-/// it must not read as the user's decision.
-pub fn deny_response(request_id: &str, message: &str) -> String {
-    let response = json!({ "behavior": "deny", "message": message });
-    line(&json!({
-        "type": "control_response",
-        "response": { "subtype": "success", "request_id": request_id, "response": response }
-    }))
-}
-
 pub fn error_response(request_id: &str, error: &str) -> String {
     line(&json!({
         "type": "control_response",
@@ -745,11 +735,6 @@ mod tests {
             Some(&json!({})),
         ));
         assert_eq!(cancelled["response"]["response"]["behavior"], "deny");
-        let refused = parse(deny_response("r4", "not allowed here"));
-        assert_eq!(
-            refused["response"]["response"],
-            json!({ "behavior": "deny", "message": "not allowed here" })
-        );
     }
 
     // ── modelState ──
