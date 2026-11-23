@@ -45,6 +45,8 @@ pub struct TextArea {
     placeholder: SharedString,
     /// An `<input>` instead of a `<textarea>`: no line breaks, no wrapping.
     single_line: bool,
+    /// A message box: Enter sends, and Shift+Enter breaks the line.
+    enter_submits: bool,
     selected_range: Range<usize>,
     selection_reversed: bool,
     marked_range: Option<Range<usize>>,
@@ -76,6 +78,7 @@ impl TextArea {
             unedited: None,
             placeholder: placeholder.into(),
             single_line: false,
+            enter_submits: false,
             selected_range: 0..0,
             selection_reversed: false,
             marked_range: None,
@@ -99,6 +102,22 @@ impl TextArea {
             single_line: true,
             ..Self::new(placeholder, cx)
         }
+    }
+
+    /// A message box: several lines, but Enter sends what was typed (it emits the kit's
+    /// `Submitted`) and Shift+Enter breaks the line. Its parent gives it a height,
+    /// usually from [`TextArea::content_height`].
+    pub fn message(placeholder: impl Into<SharedString>, cx: &mut Context<Self>) -> Self {
+        Self {
+            enter_submits: true,
+            ..Self::new(placeholder, cx)
+        }
+    }
+
+    /// How high the text was when it was last painted, wrapped lines included: what a
+    /// parent that grows with the text sizes the field by. Zero before the first paint.
+    pub fn content_height(&self) -> Pixels {
+        self.content_height
     }
 
     /// The value as the component's state holds it, not what the field displays.
@@ -154,6 +173,10 @@ impl TextArea {
     fn newline(&mut self, _: &kit::Submit, window: &mut Window, cx: &mut Context<Self>) {
         // An Enter that arrives mid-composition is the IME's; in an input it does nothing.
         if self.marked_range.is_some() || self.single_line {
+            return;
+        }
+        if self.enter_submits {
+            cx.emit(Submitted(self.text().to_owned()));
             return;
         }
         self.replace_text_in_range(None, "\n", window, cx);
@@ -224,8 +247,9 @@ impl TextArea {
             // with Shift or Alt alone a textarea breaks the line as bare Enter does.
             if modifiers.platform || modifiers.control {
                 cx.emit(Submitted(self.text().to_owned()));
-            } else {
-                self.newline(&kit::Submit, window, cx);
+            } else if self.marked_range.is_none() {
+                // Not `newline`: in a message box that one sends.
+                self.replace_text_in_range(None, "\n", window, cx);
             }
             cx.stop_propagation();
             return;
@@ -876,7 +900,11 @@ impl Element for TextElement {
 
         let rows = std::mem::take(&mut prepaint.rows);
         let (content_height, is_placeholder) = (prepaint.content_height, prepaint.is_placeholder);
-        self.input.update(cx, |input, _cx| {
+        self.input.update(cx, |input, cx| {
+            // A parent that sizes the field by its text has to lay out again.
+            if input.content_height != content_height {
+                cx.notify();
+            }
             // The placeholder's lines are not the text's: nothing to hit-test against.
             input.last_lines = if is_placeholder { Vec::new() } else { lines };
             input.last_rows = rows;
@@ -1321,6 +1349,18 @@ mod tests {
         (area, cx)
     }
 
+    /// A message box, as the chat's composer is.
+    fn open_message(cx: &mut TestAppContext) -> (Entity<TextArea>, &mut VisualTestContext) {
+        cx.update(kit::bind_keys);
+        let (host, cx) = cx.add_window_view(|window, cx| {
+            let area = cx.new(|cx| TextArea::message("placeholder", cx));
+            area.read(cx).focus(window);
+            Host(area)
+        });
+        let area = host.read_with(cx, |host, _| host.0.clone());
+        (area, cx)
+    }
+
     fn text(area: &Entity<TextArea>, cx: &mut VisualTestContext) -> String {
         area.read_with(cx, |area, _| area.text().to_owned())
     }
@@ -1371,6 +1411,40 @@ mod tests {
         assert_eq!(text(&area, cx), "ab\ncd\nef");
         assert!(submitted.borrow().is_empty());
         assert_eq!(area.read_with(cx, |area, _| area.last_lines.len()), 3);
+    }
+
+    #[gpui::test]
+    fn 메시지_칸의_enter는_줄을_바꾸지_않고_보낸다(cx: &mut TestAppContext) {
+        let (area, cx) = open_message(cx);
+        let submitted = submissions(&area, cx);
+        cx.simulate_input("안녕");
+        cx.simulate_keystrokes("enter");
+        assert_eq!(*submitted.borrow(), ["안녕"]);
+        assert_eq!(text(&area, cx), "안녕");
+    }
+
+    #[gpui::test]
+    fn 메시지_칸의_shift_enter는_보내지_않고_줄을_바꾼다(cx: &mut TestAppContext) {
+        let (area, cx) = open_message(cx);
+        let submitted = submissions(&area, cx);
+        cx.simulate_input("첫 줄");
+        cx.simulate_keystrokes("shift-enter");
+        cx.simulate_input("둘째 줄");
+        assert_eq!(text(&area, cx), "첫 줄\n둘째 줄");
+        assert!(submitted.borrow().is_empty());
+    }
+
+    #[gpui::test]
+    fn 줄이_늘면_글의_높이도_늘어난다(cx: &mut TestAppContext) {
+        let (area, cx) = open_message(cx);
+        cx.simulate_input("한 줄");
+        cx.run_until_parked();
+        let one = area.read_with(cx, |area, _| area.content_height());
+        cx.simulate_keystrokes("shift-enter");
+        cx.simulate_input("두 줄");
+        cx.run_until_parked();
+        let two = area.read_with(cx, |area, _| area.content_height());
+        assert_eq!(two, one * 2.0);
     }
 
     #[gpui::test]

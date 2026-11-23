@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, ClickEvent, Context, DragMoveEvent, MouseButton,
-    MouseDownEvent, Transformation, div, percentage, prelude::*, px, svg,
+    Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context, DragMoveEvent,
+    MouseButton, MouseDownEvent, Transformation, div, percentage, prelude::*, px, svg,
 };
 use rever_ui_kit::theme::Theme;
 use rever_ui_markdown::markdown;
@@ -77,11 +77,33 @@ impl Browser {
             "chat.perm.manual"
         };
         let has_text = !self.views.composer.read(cx).text().is_empty();
+        let composer_height =
+            f32::from(self.views.composer.read(cx).content_height()).clamp(22.0, 176.0);
+        let busy = self.agent_busy;
         let at_end = shows_end(
             self.chat_scroll.offset().y.into(),
             self.chat_scroll.max_offset().height.into(),
         );
         let this = cx.weak_entity();
+        // Shown while the pointer is over its message: puts the message's text on the
+        // clipboard, as it was written (the Markdown source of a reply).
+        let hover = theme.chrome_hover;
+        let copy_button = |index: usize, text: &str| {
+            let text = text.to_owned();
+            div()
+                .id(("chat-copy", index))
+                .flex_none()
+                .p(px(4.0))
+                .rounded(px(6.0))
+                .cursor_pointer()
+                .invisible()
+                .group_hover("chat-line", |button| button.visible())
+                .hover(move |button| button.bg(hover))
+                .on_click(move |_, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+                })
+                .child(icon("copy", 13.0, theme.text_dim))
+        };
         let footer_chip = |name: &'static str, label: &'static str| {
             div()
                 .flex()
@@ -153,8 +175,12 @@ impl Browser {
                 // `.chat-user-bubble`
                 rows.push(
                     div()
+                        .group("chat-line")
                         .flex()
                         .justify_end()
+                        .items_end()
+                        .gap(px(4.0))
+                        .child(copy_button(index, &line.text))
                         .child(
                             div()
                                 .max_w(px(width - 80.0))
@@ -180,15 +206,25 @@ impl Browser {
                 // Parsed again on every render, so a streaming reply grows in place.
                 let this = this.clone();
                 rows.push(
-                    markdown(&line.text, theme)
-                        .id(("chat-message", index))
-                        .lang(lang)
-                        .on_link(move |href, window, cx| {
-                            let Some(url) = link_target(href) else {
-                                return;
-                            };
-                            let _ = this.update(cx, |this, cx| this.open_tab(url, window, cx));
-                        })
+                    div()
+                        .group("chat-line")
+                        .flex()
+                        .flex_col()
+                        .items_start()
+                        .gap(px(2.0))
+                        .child(
+                            markdown(&line.text, theme)
+                                .id(("chat-message", index))
+                                .lang(lang)
+                                .on_link(move |href, window, cx| {
+                                    let Some(url) = link_target(href) else {
+                                        return;
+                                    };
+                                    let _ =
+                                        this.update(cx, |this, cx| this.open_tab(url, window, cx));
+                                }),
+                        )
+                        .child(copy_button(index, &line.text))
                         .into_any_element(),
                 );
             }
@@ -413,7 +449,16 @@ impl Browser {
                         .border_1()
                         .border_color(theme.border_2)
                         .bg(theme.chrome_toolbar)
-                        .child(div().text_size(px(14.0)).child(self.views.composer.clone()))
+                        .child(
+                            // As high as what was typed, from one line up to eight;
+                            // beyond that the text scrolls inside the box.
+                            div()
+                                .h(px(composer_height))
+                                .flex()
+                                .flex_col()
+                                .text_size(px(14.0))
+                                .child(self.views.composer.clone()),
+                        )
                         .child(
                             div()
                                 .flex()
@@ -443,20 +488,41 @@ impl Browser {
                                 )
                                 .child(self.model_picker.clone())
                                 .child(
-                                    // `.composer-send`
+                                    // `.composer-send`: sends what was typed, and
+                                    // while the agent works it stops the turn instead.
                                     div()
+                                        .id("composer-send")
                                         .size(px(32.0))
                                         .flex()
                                         .flex_none()
                                         .items_center()
                                         .justify_center()
                                         .rounded_full()
-                                        .bg(if has_text {
+                                        .bg(if has_text || busy {
                                             theme.accent
                                         } else {
                                             theme.border_2
                                         })
-                                        .child(icon("send", 16.0, theme.chrome_toolbar)),
+                                        .cursor_pointer()
+                                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                                            if this.agent_busy {
+                                                return this.stop_chat(cx);
+                                            }
+                                            let text =
+                                                this.views.composer.read(cx).text().to_owned();
+                                            this.send_chat(&text, cx);
+                                        }))
+                                        .child(if busy {
+                                            // A square: stop.
+                                            div()
+                                                .size(px(11.0))
+                                                .rounded(px(2.0))
+                                                .bg(theme.chrome_toolbar)
+                                                .into_any_element()
+                                        } else {
+                                            icon("send", 16.0, theme.chrome_toolbar)
+                                                .into_any_element()
+                                        }),
                                 ),
                         ),
                 ),
