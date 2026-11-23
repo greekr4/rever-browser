@@ -436,6 +436,7 @@ pub static STRINGS: &[(&str, &str, &str)] = &[
         "Select a connection",
         "연결을 선택하세요",
     ),
+    ("panel.spaces", "Spaces", "스페이스"),
     ("panel.storage", "Storage", "스토리지"),
     ("panel.traffic", "Traffic", "트래픽"),
     ("panel.websocket", "WebSocket", "웹소켓"),

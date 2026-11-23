@@ -171,7 +171,7 @@ fn short_tag(url: &str) -> String {
 }
 
 /// A tile label: `host + path` (the TS grid's `loc`), rooted paths kept.
-fn short_loc(url: &str) -> String {
+pub(crate) fn short_loc(url: &str) -> String {
     match url::Url::parse(url) {
         Ok(parsed) => {
             let path = parsed.path();

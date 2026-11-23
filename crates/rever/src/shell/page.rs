@@ -106,24 +106,46 @@ impl Browser {
     /// The scan's spaces (ego-Lite style): one chip per opened tab — its worker's
     /// status and findings — over the page. A click makes that space the page.
     fn scan_space_bar(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !self.redteam_running {
+        // A running scan's spaces lead; with the scan off, the user's own tabs
+        // become the spaces when the space view is on.
+        let scanning =
+            self.redteam_running && self.scan.as_ref().is_some_and(|scan| !scan.tabs.is_empty());
+        if !scanning && !self.space_view {
             return None;
         }
-        let scan = self.scan.as_ref()?;
-        if scan.tabs.is_empty() {
-            return None;
+        // (url, loc, status dot when a worker owns the space, dim, findings)
+        let mut spaces: Vec<(String, String, Option<gpui::Rgba>, bool, u32)> = Vec::new();
+        if scanning {
+            for tile in &self.scan.as_ref().expect("checked").tabs {
+                let (dot, dim) = match tile.status {
+                    crate::scan::TabStatus::Opening => (theme.text_dim, true),
+                    crate::scan::TabStatus::Inspecting => (theme.accent, false),
+                    crate::scan::TabStatus::Done => (rgb(0x5f_d0_7a), false),
+                    crate::scan::TabStatus::Failed => (theme.status_error, false),
+                };
+                spaces.push((
+                    tile.url.clone(),
+                    tile.loc.clone(),
+                    Some(dot),
+                    dim,
+                    tile.findings,
+                ));
+            }
+        } else {
+            for tab in &self.tabs {
+                spaces.push((
+                    tab.url.clone(),
+                    crate::scan::short_loc(&tab.url),
+                    None,
+                    false,
+                    0,
+                ));
+            }
         }
         let active_url = self.tabs[self.active].url.clone();
         let mut chips = Vec::new();
-        for (index, tile) in scan.tabs.iter().enumerate() {
-            let url = tile.url.clone();
-            let (dot, dim) = match tile.status {
-                crate::scan::TabStatus::Opening => (theme.text_dim, true),
-                crate::scan::TabStatus::Inspecting => (theme.accent, false),
-                crate::scan::TabStatus::Done => (rgb(0x5f_d0_7a), false),
-                crate::scan::TabStatus::Failed => (theme.status_error, false),
-            };
-            let selected = active_url == tile.url;
+        for (index, (url, loc, dot, dim, findings)) in spaces.into_iter().enumerate() {
+            let selected = active_url == url;
             chips.push(
                 div()
                     .id(("scan-space", index))
@@ -149,21 +171,23 @@ impl Browser {
                             this.select_tab(index, window, cx);
                         }
                     }))
-                    .child(
-                        div()
-                            .flex_none()
-                            .w(px(7.0))
-                            .h(px(7.0))
-                            .rounded(px(7.0))
-                            .bg(dot),
-                    )
-                    .child(div().child(tile.loc.clone()))
-                    .when(tile.findings > 0, |chip| {
+                    .when_some(dot, |chip, dot| {
+                        chip.child(
+                            div()
+                                .flex_none()
+                                .w(px(7.0))
+                                .h(px(7.0))
+                                .rounded(px(7.0))
+                                .bg(dot),
+                        )
+                    })
+                    .child(div().child(loc))
+                    .when(findings > 0, |chip| {
                         chip.child(
                             div()
                                 .flex_none()
                                 .text_color(rgb(0xe0_a3_3e))
-                                .child(format!("✓{}", tile.findings)),
+                                .child(format!("✓{findings}")),
                         )
                     })
                     .into_any_element(),
