@@ -256,12 +256,24 @@ impl Engine {
 
     /// Open a tab. Sizes are device pixels.
     pub fn open(&mut self, url: Url, size: PhysicalSize<u32>) -> Result<TabId, String> {
+        let id = self.reserve();
+        self.open_as(id, url, size)?;
+        Ok(id)
+    }
+
+    /// An id for a tab whose page is opened later with [`Engine::open_as`].
+    pub fn reserve(&self) -> TabId {
+        let id = TabId(self.next_id.get());
+        self.next_id.set(id.0 + 1);
+        id
+    }
+
+    /// Open the page of the tab `id`: one that was reserved, or closed to sleep.
+    pub fn open_as(&mut self, id: TabId, url: Url, size: PhysicalSize<u32>) -> Result<(), String> {
         let context = Rc::new(
             SoftwareRenderingContext::new(size)
                 .map_err(|error| format!("could not create a rendering surface: {error:?}"))?,
         );
-        let id = TabId(self.next_id.get());
-        self.next_id.set(id.0 + 1);
         let scripts = Rc::new(UserContentManager::new(&self.servo));
         // `window.__reverAi`: the tools call it to show what the agent does on the page.
         // Windows the page opens share this manager, so they get it too.
@@ -289,7 +301,7 @@ impl Engine {
             context,
             scripts,
         });
-        Ok(id)
+        Ok(())
     }
 
     pub fn close(&mut self, id: TabId) {
