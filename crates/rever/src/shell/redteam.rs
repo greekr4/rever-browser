@@ -328,18 +328,18 @@ impl Browser {
                     .child(
                         action_btn("redteam-save", lang.t("scan.panel.save")).on_click(
                             cx.listener(move |this, _: &ClickEvent, _, _| {
-                                if let Some(scan) = this.scan.as_ref() {
-                                    if let Ok(path) = crate::shell::report::save_report_markdown(
+                                if let Some(scan) = this.scan.as_ref()
+                                    && let Ok(path) = crate::shell::report::save_report_markdown(
                                         scan.target(),
                                         &scan.report,
-                                    ) {
-                                        #[cfg(target_os = "macos")]
-                                        std::process::Command::new("open")
-                                            .arg("-R")
-                                            .arg(&path)
-                                            .spawn()
-                                            .ok();
-                                    }
+                                    )
+                                {
+                                    #[cfg(target_os = "macos")]
+                                    std::process::Command::new("open")
+                                        .arg("-R")
+                                        .arg(&path)
+                                        .spawn()
+                                        .ok();
                                 }
                             }),
                         ),

@@ -2276,7 +2276,7 @@ impl Browser {
         let target = scan.target().to_owned();
         let findings = scan.findings;
         let report = scan.report.clone();
-        if let Some(handle) = self.redteam_report_win.clone() {
+        if let Some(handle) = self.redteam_report_win {
             let refreshed = handle.update(cx, |view, window, cx| {
                 view.set(&target, findings, &report);
                 window.activate_window();
@@ -2392,9 +2392,7 @@ impl Browser {
             // Deferred: opening mid-pump left the platform window half-drawn
             // (black, off-screen); opening on a later turn works.
             let browser = cx.entity();
-            cx.defer(move |cx| {
-                let _ = browser.update(cx, |this, cx| this.open_report_window(cx));
-            });
+            cx.defer(move |cx| browser.update(cx, |this, cx| this.open_report_window(cx)));
         }
         cx.notify();
     }
