@@ -2302,14 +2302,17 @@ impl Browser {
         if self.redteam_running {
             self.redteam_log_scroll.scroll_to_bottom();
         }
+        // A finished scan lands its report in the report window — after the
+        // scan is back in place (open_report_window reads self.scan).
+        let finished_with_report =
+            was_running && !scan.running() && !scan.report.is_empty();
         if !scan.running() {
             crate::agent::REDTEAM_SCAN.store(false, Ordering::Relaxed);
-            // A finished scan lands its report in the report window.
-            if was_running && !scan.report.is_empty() {
-                self.open_report_window(cx);
-            }
         }
         self.scan = Some(scan);
+        if finished_with_report {
+            self.open_report_window(cx);
+        }
         cx.notify();
     }
 

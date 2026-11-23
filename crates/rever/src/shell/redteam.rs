@@ -289,6 +289,80 @@ impl Browser {
                 .into_any_element()
         };
 
+        // ── One tile per opened tab (ego-Lite spaces): live worker status, and a
+        // click focuses that tab so the user can watch the agent work there.
+        let tiles: Option<AnyElement> =
+            scan.filter(|scan| !scan.tabs.is_empty())
+                .map(|scan| {
+                    let mut children = Vec::new();
+                    for (index, tile) in scan.tabs.iter().enumerate() {
+                        let url = tile.url.clone();
+                        let (dot, dim) = match tile.status {
+                            crate::scan::TabStatus::Opening => (theme.text_dim, true),
+                            crate::scan::TabStatus::Inspecting => (theme.accent, false),
+                            crate::scan::TabStatus::Done => (rgb(0x5f_d0_7a), false),
+                            crate::scan::TabStatus::Failed => (theme.status_error, false),
+                        };
+                        children.push(
+                            div()
+                                .id(("redteam-tile", index))
+                                .flex()
+                                .items_center()
+                                .gap(px(6.0))
+                                .px(px(8.0))
+                                .py(px(4.0))
+                                .rounded(px(6.0))
+                                .border_1()
+                                .border_color(theme.border_2)
+                                .max_w(px(190.0))
+                                .cursor_pointer()
+                                .hover(move |s| s.bg(hover))
+                                .on_click(cx.listener(
+                                    move |this, _: &ClickEvent, window, cx| {
+                                        if let Some(index) =
+                                            this.tabs.iter().position(|tab| tab.url == url)
+                                        {
+                                            this.select_tab(index, window, cx);
+                                        }
+                                    },
+                                ))
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .w(px(7.0))
+                                        .h(px(7.0))
+                                        .rounded(px(7.0))
+                                        .bg(dot),
+                                )
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_color(if dim {
+                                            theme.text_dim
+                                        } else {
+                                            theme.text
+                                        })
+                                        .child(tile.loc.clone()),
+                                )
+                                .when(tile.findings > 0, |t| {
+                                    t.child(
+                                        div()
+                                            .flex_none()
+                                            .text_color(rgb(0xe0_a3_3e))
+                                            .child(format!("✓{}", tile.findings)),
+                                    )
+                                })
+                                .into_any_element(),
+                        );
+                    }
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap(px(6.0))
+                        .children(children)
+                        .into_any_element()
+                });
+
         // ── The finished report: open it in its own window, or hand it over ───
         let actions: Option<AnyElement> = if !running {
             scan.map(|scan| {
@@ -521,6 +595,7 @@ impl Browser {
                     .overflow_y_scroll()
                     .p(px(12.0))
                     .child(top)
+                    .children(tiles)
                     .children(actions)
                     .children(log_section),
             )
