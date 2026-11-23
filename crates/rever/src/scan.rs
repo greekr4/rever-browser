@@ -618,8 +618,6 @@ pub enum TabStatus {
 #[derive(Clone, Debug)]
 pub struct ScanTab {
     pub url: String,
-    /// `host + path` — the tile's label.
-    pub loc: String,
     pub status: TabStatus,
     pub findings: u32,
 }
@@ -1131,7 +1129,6 @@ impl ScanRun {
             actions.push(ScanAction::OpenTab(url.clone()));
             self.opened.push(url.clone());
             self.tabs.push(ScanTab {
-                loc: short_loc(&url),
                 url,
                 status: TabStatus::Opening,
                 findings: 0,
@@ -1311,13 +1308,11 @@ mod tests {
         scan.tabs = vec![
             ScanTab {
                 url: "http://a.test/items".into(),
-                loc: "a.test/items".into(),
                 status: TabStatus::Opening,
                 findings: 0,
             },
             ScanTab {
                 url: "http://a.test/about".into(),
-                loc: "a.test/about".into(),
                 status: TabStatus::Inspecting,
                 findings: 0,
             },
