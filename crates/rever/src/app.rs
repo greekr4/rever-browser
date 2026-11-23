@@ -1441,8 +1441,11 @@ impl Browser {
         if index >= self.tabs.len() {
             return;
         }
-        // The tab being left is idle from now on.
-        self.tabs[self.active].used = Instant::now();
+        // The tab being left is idle from now on. When it was just closed there is
+        // none: `active` still names its place, which may be past the end.
+        if let Some(left) = self.tabs.get_mut(self.active) {
+            left.used = Instant::now();
+        }
         self.active = index;
         self.wake_tab(index);
         let url = self.tabs[index].url.clone();
