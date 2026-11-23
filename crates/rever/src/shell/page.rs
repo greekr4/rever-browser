@@ -9,8 +9,8 @@ use std::ops::Range;
 use gpui::{
     AnyElement, Bounds, ClickEvent, Context, Corners, CursorStyle, ElementInputHandler,
     EntityInputHandler, KeyDownEvent, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, ObjectFit, Pixels, Point, ScrollDelta, ScrollWheelEvent,
-    UTF16Selection, Window, canvas, div, img, prelude::*, px, relative, rgb,
+    MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta, ScrollWheelEvent, UTF16Selection,
+    Window, canvas, div, prelude::*, px, rgb,
 };
 use rever_core::input::w3c_key_name;
 use rever_ui_kit::theme::Theme;
@@ -25,11 +25,6 @@ use crate::app::{Browser, page_area};
 
 impl Browser {
     pub(super) fn page(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        // While a scan runs, the page area becomes its live workspace: one cell
-        // per opened tab (ego-Lite spaces), each showing that worker's page.
-        if self.redteam_running && self.scan.as_ref().is_some_and(|scan| !scan.tabs.is_empty()) {
-            return self.scan_grid(theme, cx);
-        }
         let frame = self.tabs[self.active].frame.clone();
         let bounds_cell = self.page_bounds.clone();
         let this = cx.entity();
@@ -89,7 +84,8 @@ impl Browser {
                 this.on_key(KeyState::Up, &event.keystroke)
             }))
             .child(painted);
-        // The button pins itself to the bottom-left of this box.
+        // The button pins itself to the bottom-left of this box. While a scan
+        // runs, its spaces lead: the bar of them sits over the page.
         div()
             .flex_1()
             .min_h_0()
@@ -97,6 +93,7 @@ impl Browser {
             .relative()
             .flex()
             .flex_col()
+            .children(self.scan_space_bar(theme, cx))
             .child(page)
             .children(self.select_list(theme, cx))
             .children(self.context_menu_list(theme, cx))
@@ -106,19 +103,18 @@ impl Browser {
             .into_any_element()
     }
 
-    /// The scan's live workspace (ego-Lite spaces): one cell per opened tab, the
-    /// worker's page painted large with its status on top. A click focuses that
-    /// tab in the strip; while the scan runs, the cells stay the view.
-    fn scan_grid(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        let scan = self.scan.as_ref().expect("the caller checked for a scan");
+    /// The scan's spaces (ego-Lite style): one chip per opened tab — its worker's
+    /// status and findings — over the page. A click makes that space the page.
+    fn scan_space_bar(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.redteam_running {
+            return None;
+        }
+        let scan = self.scan.as_ref()?;
+        if scan.tabs.is_empty() {
+            return None;
+        }
         let active_url = self.tabs[self.active].url.clone();
-        let columns = match scan.tabs.len() {
-            0 | 1 => 1.0,
-            2..=4 => 2.0,
-            _ => 3.0,
-        };
-        let rows = (scan.tabs.len() as f32 / columns).ceil();
-        let mut cells = Vec::new();
+        let mut chips = Vec::new();
         for (index, tile) in scan.tabs.iter().enumerate() {
             let url = tile.url.clone();
             let (dot, dim) = match tile.status {
@@ -127,40 +123,27 @@ impl Browser {
                 crate::scan::TabStatus::Done => (rgb(0x5f_d0_7a), false),
                 crate::scan::TabStatus::Failed => (theme.status_error, false),
             };
-            let frame = self
-                .tabs
-                .iter()
-                .find(|tab| tab.url == tile.url)
-                .and_then(|tab| tab.frame.clone());
             let selected = active_url == tile.url;
-            let preview: AnyElement = match frame {
-                Some(frame) => img(frame)
-                    .size_full()
-                    .object_fit(ObjectFit::Cover)
-                    .into_any_element(),
-                None => div()
-                    .flex_1()
-                    .min_h_0()
-                    .min_w_0()
+            chips.push(
+                div()
+                    .id(("scan-space", index))
                     .flex()
                     .items_center()
-                    .justify_center()
-                    .text_color(theme.text_dim)
-                    .child(tile.loc.clone())
-                    .into_any_element(),
-            };
-            cells.push(
-                div()
-                    .id(("scan-cell", index))
-                    .w(relative(1.0 / columns))
-                    .h(relative(1.0 / rows))
-                    .flex()
-                    .flex_col()
-                    .min_w_0()
-                    .overflow_hidden()
+                    .gap(px(6.0))
+                    .px(px(10.0))
+                    .py(px(4.0))
+                    .rounded(px(14.0))
                     .border_1()
-                    .border_color(if selected { theme.accent } else { theme.border })
+                    .border_color(if selected {
+                        theme.accent
+                    } else {
+                        theme.border_2
+                    })
+                    .when(selected, |chip| chip.bg(theme.surface_3))
+                    .text_size(px(12.0))
+                    .text_color(if dim { theme.text_dim } else { theme.text })
                     .cursor_pointer()
+                    .hover(move |style| style.bg(theme.chrome_hover))
                     .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                         if let Some(index) = this.tabs.iter().position(|tab| tab.url == url) {
                             this.select_tab(index, window, cx);
@@ -168,54 +151,40 @@ impl Browser {
                     }))
                     .child(
                         div()
-                            .flex()
                             .flex_none()
-                            .items_center()
-                            .gap(px(6.0))
-                            .px(px(8.0))
-                            .py(px(4.0))
-                            .bg(theme.bg_bar)
-                            .border_b_1()
-                            .border_color(theme.border)
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .w(px(7.0))
-                                    .h(px(7.0))
-                                    .rounded(px(7.0))
-                                    .bg(dot),
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .truncate()
-                                    .text_color(if dim { theme.text_dim } else { theme.text })
-                                    .child(tile.loc.clone()),
-                            )
-                            .when(tile.findings > 0, |cell| {
-                                cell.child(
-                                    div()
-                                        .flex_none()
-                                        .text_color(rgb(0xe0_a3_3e))
-                                        .child(format!("✓{}", tile.findings)),
-                                )
-                            }),
+                            .w(px(7.0))
+                            .h(px(7.0))
+                            .rounded(px(7.0))
+                            .bg(dot),
                     )
-                    .child(preview)
+                    .child(div().child(tile.loc.clone()))
+                    .when(tile.findings > 0, |chip| {
+                        chip.child(
+                            div()
+                                .flex_none()
+                                .text_color(rgb(0xe0_a3_3e))
+                                .child(format!("✓{}", tile.findings)),
+                        )
+                    })
                     .into_any_element(),
             );
         }
-        div()
-            .id("scan-grid")
-            .flex_1()
-            .min_h_0()
-            .w_full()
-            .flex()
-            .flex_wrap()
-            .bg(theme.viewport_bg)
-            .children(cells)
-            .into_any_element()
+        Some(
+            div()
+                .id("scan-spaces")
+                .flex()
+                .flex_none()
+                .flex_wrap()
+                .items_center()
+                .gap(px(6.0))
+                .px(px(8.0))
+                .py(px(6.0))
+                .bg(theme.bg_bar)
+                .border_b_1()
+                .border_color(theme.border)
+                .children(chips)
+                .into_any_element(),
+        )
     }
 
     /// The development build's memory readout, in the page's bottom-left corner. It

@@ -785,8 +785,6 @@ pub(crate) struct Browser {
     pub redteam_model: Option<(String, String)>,
     /// The scan dialog's model chip.
     pub scan_model_picker: Entity<ModelPicker>,
-    /// When the live tab-grid previews were last captured.
-    pub scan_grid_at: Instant,
     /// The running (or just-finished) scan orchestrator, when there is one.
     pub scan: Option<crate::scan::ScanRun>,
     /// URLs of the tabs the scan opened; closed when it finishes.
@@ -1255,7 +1253,6 @@ impl Browser {
             model_picker,
             scan_model_picker,
             redteam_model: None,
-            scan_grid_at: Instant::now(),
             model_store,
             chat_agent,
             chat_model,
@@ -1502,15 +1499,6 @@ impl Browser {
                 cx.notify();
             });
         }
-        // The scan's live tab grid: refresh the previews at most ~1/s while
-        // workers run (every frame would paint every background page).
-        if self.redteam_running
-            && self.scan.as_ref().is_some_and(|scan| !scan.tabs.is_empty())
-            && self.scan_grid_at.elapsed() > Duration::from_millis(800)
-        {
-            self.scan_grid_at = Instant::now();
-            self.capture_scan_tabs(window);
-        }
         self.pump_agent(cx);
         self.pump_scan(cx);
         if self.close_scan_tabs {
@@ -1543,31 +1531,6 @@ impl Browser {
         let frame = Arc::new(RenderImage::new(vec![Frame::new(image)]));
         if let Some(old) = self.tabs[self.active].frame.replace(frame) {
             let _ = window.drop_image(old);
-        }
-    }
-
-    /// Refresh the live previews of the scan's tab grid, one paint per open tab
-    /// (a tab with no page yet — asleep or still attaching — keeps its old one).
-    fn capture_scan_tabs(&mut self, window: &mut Window) {
-        let Some(scan) = self.scan.as_ref() else {
-            return;
-        };
-        let urls: Vec<String> = scan.tabs.iter().map(|tile| tile.url.clone()).collect();
-        for url in urls {
-            let Some(index) = self.tabs.iter().position(|tab| tab.url == url) else {
-                continue;
-            };
-            let id = self.tabs[index].id;
-            let Some(mut image) = self.engine.frame(id) else {
-                continue;
-            };
-            for pixel in image.as_chunks_mut::<4>().0 {
-                pixel.swap(0, 2);
-            }
-            let frame = Arc::new(RenderImage::new(vec![Frame::new(image)]));
-            if let Some(old) = self.tabs[index].frame.replace(frame) {
-                let _ = window.drop_image(old);
-            }
         }
     }
 
