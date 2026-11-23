@@ -14,10 +14,11 @@ use std::sync::{Arc, Mutex};
 use rever_agent::acp_models::model_state_from_session;
 use rever_agent::agent_env::agent_env;
 use rever_agent::claude_cli::ClaudeCliFinder;
-use rever_tool_profile::risky_tools::fallback_option;
+use rever_chat_core::acp_permission::RequestPermissionResponse;
+use rever_tool_profile::risky_tools::{choose_allow_option, is_risky_tool_request};
 use serde_json::{Value, json};
 
-use crate::agent::{AgentEvent, ChatAgent};
+use crate::agent::{AgentEvent, ChatAgent, Outbox, PermissionAsk};
 
 /// The version of the protocol this client speaks.
 const PROTOCOL_VERSION: u64 = 1;
@@ -49,6 +50,8 @@ struct AcpState {
     model: Option<String>,
     model_config_id: Option<String>,
     tool_names: HashMap<String, String>,
+    /// Where the answer to a permission the user decides is written.
+    outbox: Outbox,
 }
 
 fn request(id: u64, method: &str, params: Value) -> Value {
@@ -56,8 +59,9 @@ fn request(id: u64, method: &str, params: Value) -> Value {
 }
 
 impl AcpState {
-    fn new(cwd: &Path, mcp: Option<(&str, &str)>, model: Option<&str>) -> Self {
+    fn new(cwd: &Path, mcp: Option<(&str, &str)>, model: Option<&str>, outbox: Outbox) -> Self {
         Self {
+            outbox,
             cwd: cwd.to_string_lossy().into_owned(),
             mcp: mcp.map(|(url, auth)| (url.to_owned(), auth.to_owned())),
             session_id: None,
@@ -126,12 +130,26 @@ impl AcpState {
         let (mut out, mut events) = (Vec::new(), Vec::new());
         let id = message.get("id").filter(|id| !id.is_null());
         match (message["method"].as_str(), id) {
-            // The agent asks before a tool runs. Risky tools are refused: nothing here
-            // shows the user what would run.
+            // The agent asks before a tool runs. A risky one is put to the user; the
+            // rest are allowed here.
             (Some("session/request_permission"), Some(id)) => {
-                let option = fallback_option(&message["params"]);
-                let outcome = json!({ "outcome": "selected", "optionId": option });
-                out.push(json!({ "jsonrpc": "2.0", "id": id, "result": { "outcome": outcome } }));
+                let params = &message["params"];
+                let reply = |id: &Value, outcome: Value| {
+                    json!({ "jsonrpc": "2.0", "id": id, "result": { "outcome": outcome } })
+                };
+                if is_risky_tool_request(params) {
+                    let (outbox, id) = (self.outbox.clone(), id.clone());
+                    events.push(AgentEvent::Permission(PermissionAsk {
+                        request: params.clone(),
+                        answer: Box::new(move |answer: RequestPermissionResponse| {
+                            let outcome = serde_json::to_value(answer.outcome).unwrap_or_default();
+                            outbox.push(format!("{}\n", reply(&id, outcome)));
+                        }),
+                    }));
+                } else {
+                    let option = choose_allow_option(params);
+                    out.push(reply(id, json!({ "outcome": "selected", "optionId": option })));
+                }
             }
             // Anything else it asks of the client (files, terminals) is not offered.
             (Some(method), Some(id)) => {
@@ -255,6 +273,8 @@ impl AcpSession {
         };
         let inbox = Arc::new(Mutex::new(Vec::new()));
         let stderr_text = Arc::new(Mutex::new(String::new()));
+        let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(wake);
+        let outbox = Outbox::new(wake.clone());
         {
             // Drained so a chatty agent cannot block on a full pipe; kept for the exit message.
             let stderr_text = stderr_text.clone();
@@ -280,7 +300,7 @@ impl AcpSession {
                 wake();
             });
         }
-        let state = AcpState::new(cwd, mcp, model);
+        let state = AcpState::new(cwd, mcp, model, outbox);
         let mut session = Self { child, stdin, inbox, state };
         let hello = session.state.initialize();
         session.write(&[hello]).map_err(|error| format!("{command} is not accepting input: {error}"))?;
@@ -306,6 +326,11 @@ impl ChatAgent for AcpSession {
     }
 
     fn drain(&mut self) -> Vec<AgentEvent> {
+        // Answers the user gave since the last call.
+        for line in self.state.outbox.take() {
+            let _ = self.stdin.write_all(line.as_bytes());
+        }
+        let _ = self.stdin.flush();
         let messages = std::mem::take(&mut *self.inbox.lock().unwrap());
         let mut events = Vec::new();
         for message in messages {
@@ -345,7 +370,8 @@ mod tests {
     use super::*;
 
     fn state() -> AcpState {
-        AcpState::new(Path::new("/tmp/w"), Some(("http://127.0.0.1:9/mcp", "Bearer t")), None)
+        let mcp = Some(("http://127.0.0.1:9/mcp", "Bearer t"));
+        AcpState::new(Path::new("/tmp/w"), mcp, None, Outbox::new(Arc::new(|| {})))
     }
 
     fn methods(messages: &[Value]) -> Vec<&str> {
@@ -426,6 +452,43 @@ mod tests {
         let other = json!({ "jsonrpc": "2.0", "id": 8, "method": "fs/read_text_file", "params": {} });
         let (out, _) = state.handle(&other);
         assert_eq!(out[0]["error"]["code"], -32601);
+    }
+
+    /// The agent asking to run a tool the rules call risky.
+    fn risky_ask() -> Value {
+        json!({ "jsonrpc": "2.0", "id": 7, "method": "session/request_permission", "params": {
+            "toolCall": { "toolCallId": "c1", "title": "mcp__rever-traffic__intruder_run" },
+            "options": [
+                { "optionId": "allow", "kind": "allow_once" },
+                { "optionId": "reject", "kind": "reject_once" },
+            ],
+        } })
+    }
+
+    #[test]
+    fn 위험한_도구의_권한_요청은_바로_답하지_않고_사용자에게_넘긴다() {
+        let (out, events) = state().handle(&risky_ask());
+        assert!(out.is_empty(), "answered at once: {out:?}");
+        assert!(matches!(events.as_slice(), [AgentEvent::Permission(_)]));
+    }
+
+    #[test]
+    fn 사용자의_답은_요청의_id를_달고_에이전트에게_돌아간다() {
+        let mut state = state();
+        let (_, mut events) = state.handle(&risky_ask());
+        let Some(AgentEvent::Permission(ask)) = events.pop() else {
+            panic!("no permission event");
+        };
+        let rejected = rever_chat_core::acp_permission::RequestPermissionOutcome::Selected {
+            option_id: "reject".to_owned(),
+        };
+        (ask.answer)(RequestPermissionResponse { outcome: rejected });
+        let lines = state.outbox.take();
+        let reply: Value = serde_json::from_str(&lines[0]).unwrap();
+        assert_eq!(
+            (reply["id"].as_u64(), reply["result"]["outcome"]["optionId"].as_str()),
+            (Some(7), Some("reject"))
+        );
     }
 
     #[test]

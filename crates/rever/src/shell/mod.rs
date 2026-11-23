@@ -240,7 +240,9 @@ impl Render for Browser {
                     .when(chat_width > 0.0, |area| area.child(chat))
                     .when(!covers_page, |area| area.child(handle))
                     .children(self.redteam_dialog(&theme, cx)),
-            );
+            )
+            // Over everything: the agent's question whether a tool may run.
+            .child(self.permission_prompt.clone());
         self.shortcut_handlers(root, cx)
     }
 }

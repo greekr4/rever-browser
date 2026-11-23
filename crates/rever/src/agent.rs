@@ -12,20 +12,72 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use rever_agent::claude_cli_protocol::{
-    MCP_SERVER_NAME, TranslateState, TurnOutcome, claude_cli_args, deny_response, error_response,
+    MCP_SERVER_NAME, TranslateState, TurnOutcome, claude_cli_args, error_response,
     permission_response, to_permission_request, translate, turn_outcome, user_message,
 };
+use rever_chat_core::acp_permission::RequestPermissionResponse;
 use rever_tool_profile::risky_tools::is_risky_tool_request;
 use serde_json::{Value, json};
 
-const SESSION_ID: &str = "rever";
+pub(crate) const SESSION_ID: &str = "rever";
 
-/// What the model is told about a tool request refused without asking — see the module
-/// comment. Without the reason it tells the user "you declined".
-const NOT_ALLOWED: &str = "Rever Browser refused this tool on its own; the user was not asked. This chat runs only the app's own MCP tools that need no approval.";
+/// The agent asking before a tool runs. Whoever takes the event answers it: the chat
+/// puts it to the user, a scan refuses it.
+pub struct PermissionAsk {
+    /// The ACP `RequestPermissionRequest`.
+    pub request: Value,
+    /// Hands the answer back to the agent.
+    pub answer: Box<dyn FnOnce(RequestPermissionResponse) + Send>,
+}
+
+impl std::fmt::Debug for PermissionAsk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PermissionAsk")
+            .field("request", &self.request)
+            .finish_non_exhaustive()
+    }
+}
+
+// Two asks are the same when they ask the same thing; where the answer goes is not
+// something to compare.
+impl PartialEq for PermissionAsk {
+    fn eq(&self, other: &Self) -> bool {
+        self.request == other.request
+    }
+}
+
+/// Lines for an agent's stdin that are ready only after its `drain` returned: the
+/// answer to a permission the user took a while to give. The next `drain` writes them.
+#[derive(Clone)]
+pub(crate) struct Outbox {
+    lines: Arc<Mutex<Vec<String>>>,
+    wake: Arc<dyn Fn() + Send + Sync>,
+}
+
+impl Outbox {
+    pub(crate) fn new(wake: Arc<dyn Fn() + Send + Sync>) -> Self {
+        Self {
+            lines: Arc::default(),
+            wake,
+        }
+    }
+
+    /// Queue `line` and wake the app, which drains the session.
+    pub(crate) fn push(&self, line: String) {
+        self.lines
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(line);
+        (self.wake)();
+    }
+
+    pub(crate) fn take(&self) -> Vec<String> {
+        std::mem::take(&mut *self.lines.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+}
 
 /// True while a user-confirmed Red Team scan runs: the app's own risky MCP
 /// tools (probes, mutated replays) auto-approve for its worker turns. The
@@ -47,6 +99,8 @@ pub enum AgentEvent {
     Done,
     /// The turn or the CLI itself failed; the session is no longer usable.
     Failed(String),
+    /// The agent waits for a yes or no before it runs a tool.
+    Permission(PermissionAsk),
 }
 
 /// The tool events one ACP update carries: `tool_call` names the call,
@@ -79,7 +133,8 @@ fn tool_events(update: &Value, names: &mut std::collections::HashMap<String, Str
 /// A chat session with one agent, whichever way it is reached: the Claude Code CLI,
 /// an ACP binary, or a provider's API. The app pumps [`ChatAgent::drain`] whenever the
 /// session woke it.
-pub trait ChatAgent {
+// `Send`: a workflow drives its agent from the executor's thread.
+pub trait ChatAgent: Send {
     /// Hand the agent the user's message; its answer arrives through `drain`.
     fn send(&mut self, text: &str) -> Result<(), String>;
     /// Everything that happened since the last call.
@@ -110,6 +165,7 @@ pub struct AgentSession {
     state: TranslateState,
     /// toolCallId → tool name, so a `tool_call_update` can be attributed.
     tool_names: std::collections::HashMap<String, String>,
+    outbox: Outbox,
 }
 
 /// The CLI's arguments. `mcp` is the app's MCP server as (url, Authorization header);
@@ -203,6 +259,8 @@ impl AgentSession {
         };
         let inbox = Arc::new(Mutex::new(Vec::new()));
         let stderr_text = Arc::new(Mutex::new(String::new()));
+        let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(wake);
+        let outbox = Outbox::new(wake.clone());
         {
             // Drained so a chatty CLI cannot block on a full pipe; kept for the exit message.
             let stderr_text = stderr_text.clone();
@@ -237,6 +295,7 @@ impl AgentSession {
             inbox,
             state: TranslateState::default(),
             tool_names: std::collections::HashMap::new(),
+            outbox,
         })
     }
 
@@ -253,6 +312,11 @@ impl AgentSession {
 
     /// Handle everything the CLI has said since the last call.
     pub fn drain(&mut self) -> Vec<AgentEvent> {
+        // Answers the user gave since the last call.
+        for line in self.outbox.take() {
+            let _ = self.stdin.write_all(line.as_bytes());
+        }
+        let _ = self.stdin.flush();
         let messages = std::mem::take(&mut *self.inbox.lock().unwrap());
         let mut events = Vec::new();
         for message in messages {
@@ -260,16 +324,24 @@ impl AgentSession {
                 Some("control_request") => {
                     let id = message["request_id"].as_str().unwrap_or_default();
                     let request = &message["request"];
-                    let reply = if request["subtype"] == "can_use_tool" {
-                        if auto_allowed(request) {
-                            let allow =
-                                json!({ "outcome": { "outcome": "selected", "optionId": "allow" } });
-                            permission_response(id, &allow, request.get("input"))
-                        } else {
-                            deny_response(id, NOT_ALLOWED)
-                        }
-                    } else {
+                    let reply = if request["subtype"] != "can_use_tool" {
                         error_response(id, "unsupported control request")
+                    } else if auto_allowed(request) {
+                        let allow =
+                            json!({ "outcome": { "outcome": "selected", "optionId": "allow" } });
+                        permission_response(id, &allow, request.get("input"))
+                    } else {
+                        // Someone has to say yes: the answer comes through the outbox.
+                        let (outbox, id) = (self.outbox.clone(), id.to_owned());
+                        let input = request.get("input").cloned();
+                        events.push(AgentEvent::Permission(PermissionAsk {
+                            request: to_permission_request(SESSION_ID, request),
+                            answer: Box::new(move |answer| {
+                                let answer = serde_json::to_value(answer).unwrap_or_default();
+                                outbox.push(permission_response(&id, &answer, input.as_ref()));
+                            }),
+                        }));
+                        continue;
                     };
                     let _ = self
                         .stdin

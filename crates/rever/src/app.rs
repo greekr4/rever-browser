@@ -48,7 +48,16 @@ use rever_ui_menus::ui::{Look, LookFn, fill};
 use rever_ui_state::app_theme::{self, AppThemeStore};
 use rever_ui_state::chat_collapsed::ChatCollapsedStore;
 use rever_ui_state::chat_history::{ChatHistory, new_conversation_id};
+use rever_chat_core::acp_permission::{
+    ACP_PERMISSION_TIMEOUT_MS, ApproveOptions, PermissionStore,
+};
+use rever_chat_core::red_team_mode::RedTeamMode;
+use rever_ui_chat::permission_prompt::{
+    PermissionPrompt, PermissionPromptEvent, PermissionPromptProps,
+};
 use rever_ui_state::constants::AcpAgentId;
+
+use crate::permissions::ChatRules;
 use rever_ui_state::tabs::{
     STORE_KEY as TABS_KEY, Tab as SessionTab, parse_saved_tabs, serialize_tabs,
 };
@@ -183,6 +192,14 @@ fn start_mcp(
     let server = rever_mcp::start(registry, context)
         .inspect_err(|error| eprintln!("[mcp] {error}"))
         .ok();
+    // A workflow's AI step runs one of the chat's agents, with the app's tools.
+    let endpoint = server
+        .as_ref()
+        .map(|server| (server.url.clone(), server.auth_header.clone()));
+    let profile = server.as_ref().map(|server| server.tool_profile().clone());
+    context_for_app
+        .state::<rever_tools_automation::workflow_executor::AiAgentsSlot>()
+        .set(Arc::new(crate::workflow_agents::WorkflowAgents::new(endpoint, profile)));
     (server, intercept, downloads, context_for_app)
 }
 
@@ -585,6 +602,8 @@ fn apply_agent_event(chat: &mut Vec<ChatLine>, event: &AgentEvent) {
             }
         }
         AgentEvent::Done | AgentEvent::Failed(_) => finish_tools(chat),
+        // Shown as a prompt over the window, not as a line of the conversation.
+        AgentEvent::Permission(_) => {}
     }
 }
 
@@ -764,6 +783,9 @@ pub(crate) struct Browser {
     saved_session: String,
     /// What the process holds, for the development build's overlay.
     pub memory: crate::memory::MemoryWatch,
+    /// The agent's tool calls that wait for the user's yes or no.
+    pub permissions: Rc<RefCell<PermissionStore<ChatRules>>>,
+    pub permission_prompt: Entity<PermissionPrompt>,
     /// Keeps the conversation at its newest line while a reply streams.
     pub chat_scroll: gpui::ScrollHandle,
     /// The model chip of the composer: every agent's models in one list.
@@ -972,6 +994,26 @@ impl Browser {
                 .unwrap_or(Look { theme_mode, lang })
             })
         };
+        // shortcut: the approvals are not written to the audit log yet; connect
+        // `ApprovalAuditStore` when the log's panel is ported.
+        let permissions = Rc::new(RefCell::new(PermissionStore::new(ChatRules, |_| {})));
+        let permission_prompt = cx.new(|cx| {
+            let permissions = permissions.clone();
+            let props = move |_: &App| {
+                let store = permissions.borrow();
+                PermissionPromptProps {
+                    current: store
+                        .current_permission()
+                        .map(|waiting| (waiting.id(), waiting.request().clone())),
+                    queue_len: store.permission_queue().len(),
+                }
+            };
+            PermissionPrompt::new(props, look.clone(), cx)
+        });
+        cx.subscribe(&permission_prompt, |this, _, event: &PermissionPromptEvent, cx| {
+            this.answer_permission(event, cx)
+        })
+        .detach();
         let menu = cx.new(|_| {
             let this = this.clone();
             AppMenu::new(move |cx| menu_props(&this, cx), look.clone())
@@ -1061,6 +1103,8 @@ impl Browser {
             active,
             saved_session: String::new(),
             memory: Default::default(),
+            permissions,
+            permission_prompt,
             chat,
             open_panel,
             page_bounds: Rc::new(Cell::new(Bounds::default())),
@@ -1335,6 +1379,8 @@ impl Browser {
                 .update(cx, |panel, cx| panel.refresh(cx));
         }
         if self.traffic_changed.swap(false, Ordering::Relaxed) {
+            // The CLI editor lists the captured requests.
+            self.views.workflows.update(cx, |_, cx| cx.notify());
             self.views.traffic.update(cx, |panel, cx| panel.refresh(cx));
             self.views
                 .websocket
@@ -1353,7 +1399,7 @@ impl Browser {
                 cx.notify();
             });
         }
-        self.pump_agent();
+        self.pump_agent(cx);
         self.pump_scan(cx);
         if self.close_scan_tabs {
             self.close_scan_tabs = false;
@@ -1521,7 +1567,7 @@ impl Browser {
         let kept = same_agent
             && self.agent.as_mut().is_none_or(|agent| agent.set_model(model_id).is_ok());
         if !kept {
-            self.agent = None;
+            self.forget_agent();
         }
         cx.notify();
     }
@@ -1668,7 +1714,7 @@ impl Browser {
             None => with_earlier(earlier, text),
         };
         if let Err(error) = self.start_turn(&prompt) {
-            self.agent = None;
+            self.forget_agent();
             self.turn_failed(&error);
         }
         self.save_conversation();
@@ -2116,7 +2162,7 @@ impl Browser {
             return;
         }
         self.chat.clear();
-        self.agent = None;
+        self.forget_agent();
         self.conversation_id = fresh_conversation_id();
         cx.notify();
     }
@@ -2132,7 +2178,7 @@ impl Browser {
         };
         self.chat = messages_to_lines(&saved.messages);
         self.conversation_id = saved.id.clone();
-        self.agent = None;
+        self.forget_agent();
         self.chat_scroll.scroll_to_bottom();
         cx.notify();
     }
@@ -2424,7 +2470,45 @@ impl Browser {
     }
 
     /// Apply what the agent said since the last pump.
-    fn pump_agent(&mut self) {
+    /// The user's answer to the tool call the prompt shows.
+    fn answer_permission(&mut self, event: &PermissionPromptEvent, cx: &mut Context<Self>) {
+        let grant = |grant_session: &bool| ApproveOptions {
+            grant_session: *grant_session,
+        };
+        let mut store = self.permissions.borrow_mut();
+        match event {
+            PermissionPromptEvent::Respond {
+                option_id,
+                grant_session,
+            } => store.respond_to_permission(option_id, grant(grant_session)),
+            PermissionPromptEvent::Approve { grant_session } => {
+                store.approve_current_permission(grant(grant_session))
+            }
+            PermissionPromptEvent::Reject => store.reject_current_permission(),
+        }
+        drop(store);
+        self.permission_prompt.update(cx, |_, cx| cx.notify());
+    }
+
+    /// The composer's chip: with auto-approve off, every tool call asks.
+    pub fn toggle_auto_approve(&mut self, cx: &mut Context<Self>) {
+        let mut store = self.permissions.borrow_mut();
+        let on = !store.acp_auto_approve();
+        store.set_acp_auto_approve(on);
+        drop(store);
+        cx.notify();
+    }
+
+    /// End the agent's session; what it still waited to be allowed is refused.
+    fn forget_agent(&mut self) {
+        self.agent = None;
+        let mut store = self.permissions.borrow_mut();
+        while store.current_permission().is_some() {
+            store.reject_current_permission();
+        }
+    }
+
+    fn pump_agent(&mut self, cx: &mut Context<Self>) {
         let Some(agent) = self.agent.as_mut() else {
             return;
         };
@@ -2445,6 +2529,26 @@ impl Browser {
             }
             match event {
                 AgentEvent::Text(_) | AgentEvent::ToolCall(..) | AgentEvent::ToolResult(..) => {}
+                AgentEvent::Permission(ask) => {
+                    let waiting = self.permissions.borrow_mut().request_permission_from_user(
+                        ask.request,
+                        &RedTeamMode::new(),
+                        ask.answer,
+                    );
+                    self.permission_prompt.update(cx, |_, cx| cx.notify());
+                    // Unanswered for a minute, it is refused: the agent is not left hanging.
+                    if let Some(id) = waiting {
+                        cx.spawn(async move |this, cx| {
+                            let wait = Duration::from_millis(ACP_PERMISSION_TIMEOUT_MS);
+                            cx.background_executor().timer(wait).await;
+                            let _ = this.update(cx, |this, cx| {
+                                this.permissions.borrow_mut().expire(id);
+                                this.permission_prompt.update(cx, |_, cx| cx.notify());
+                            });
+                        })
+                        .detach();
+                    }
+                }
                 AgentEvent::Done => {
                     self.agent_busy = false;
                     turn_ended = true;
@@ -2456,7 +2560,7 @@ impl Browser {
                         turn_ended = true;
                     }
                     self.agent_busy = false;
-                    self.agent = None;
+                    self.forget_agent();
                     break;
                 }
             }

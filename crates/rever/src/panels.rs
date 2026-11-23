@@ -307,8 +307,29 @@ fn recast<T: serde::Serialize, U: serde::de::DeserializeOwned>(value: &T) -> Res
         .map_err(|error| error.to_string())
 }
 
-/// The workflows panel's host: a macro runs through the tools the agent calls.
-/// Pipelines and the CLI compiler are not connected yet and answer "not yet".
+/// Run `work` on a thread with a tokio runtime of its own, and hand back its result.
+/// The executor waits on tokio timers, and its tools are answered by this window's
+/// thread, which must stay free meanwhile.
+fn on_executor_thread<T: Send + 'static>(
+    work: impl FnOnce(&tokio::runtime::Runtime) -> T + Send + 'static,
+) -> futures::channel::oneshot::Receiver<Result<T, String>> {
+    let (done, finished) = futures::channel::oneshot::channel();
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build();
+        let result = runtime
+            .map(|runtime| work(&runtime))
+            .map_err(|error| error.to_string());
+        let _ = done.send(result);
+    });
+    finished
+}
+
+const RUN_STOPPED: &str = "the run stopped";
+
+/// The workflows panel's host: macros, pipelines and CLI commands run through the
+/// tools and the executor the agent's `run_macro` and `cli_run` use.
 struct WorkflowTools {
     context: Arc<rever_tools_api::tool::ToolContext>,
 }
@@ -348,20 +369,16 @@ impl WorkflowHost for WorkflowTools {
         };
         let context = self.context.clone();
         let (progress, mut seen) = futures::channel::mpsc::unbounded::<StepProgress>();
-        let (done, finished) = futures::channel::oneshot::channel();
-        // The executor waits on tokio timers, and its tools are answered by this
-        // window's thread, which must stay free: it gets a thread and a runtime.
-        std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
-                .build();
-            let result = runtime.map_err(|error| error.to_string()).map(|runtime| {
-                let mut report = |step| {
-                    let _ = progress.unbounded_send(step);
-                };
-                runtime.block_on(run_workflow(&context, &steps, &mut report, &RunOptions::default()))
-            });
-            let _ = done.send(result);
+        let finished = on_executor_thread(move |runtime| {
+            let mut report = |step| {
+                let _ = progress.unbounded_send(step);
+            };
+            // An AI step's agent starts where the chat's does.
+            let cwd = crate::app::data_dir().join("agent-scratch");
+            let options = RunOptions {
+                cwd: Some(cwd.to_string_lossy().into_owned()),
+            };
+            runtime.block_on(run_workflow(&context, &steps, &mut report, &options))
         });
         cx.spawn(async move |cx| {
             while let Some(step) = seen.next().await {
@@ -369,33 +386,96 @@ impl WorkflowHost for WorkflowTools {
                     let _ = cx.update(|cx| on_progress(step, cx));
                 }
             }
-            let steps = finished.await.map_err(|_| "the run stopped".to_owned())??;
+            let steps = finished.await.map_err(|_| RUN_STOPPED.to_owned())??;
             steps.iter().map(recast).collect()
         })
     }
+
     fn run_pipeline(
         &self,
-        _: Vec<ResolvedPipeNode>,
-        _: OnProgress<PipeProgress>,
-        _: &mut App,
+        nodes: Vec<ResolvedPipeNode>,
+        on_progress: OnProgress<PipeProgress>,
+        cx: &mut App,
     ) -> Task<Result<bool, String>> {
-        Task::ready(Err(NOT_YET.to_owned()))
+        use futures::StreamExt;
+        use rever_tools_automation::workflow_executor as executor;
+        let nodes: Vec<executor::ResolvedPipeNode> = match recast(&nodes) {
+            Ok(nodes) => nodes,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let context = self.context.clone();
+        let (progress, mut seen) = futures::channel::mpsc::unbounded::<executor::PipeProgress>();
+        let finished = on_executor_thread(move |runtime| {
+            let mut report = |node| {
+                let _ = progress.unbounded_send(node);
+            };
+            runtime.block_on(executor::run_pipeline(&context, &nodes, &mut report));
+        });
+        cx.spawn(async move |cx| {
+            while let Some(node) = seen.next().await {
+                if let Ok(node) = recast(&node) {
+                    let _ = cx.update(|cx| on_progress(node, cx));
+                }
+            }
+            finished.await.map_err(|_| RUN_STOPPED.to_owned())??;
+            Ok(true)
+        })
     }
+
     fn cancel(&self, _: &mut App) {
         rever_tools_automation::workflow_executor::cancel_workflow(&self.context);
     }
+
     fn compile_cli(
         &self,
-        _: Vec<String>,
+        request_ids: Vec<String>,
         _: &mut App,
     ) -> Task<Result<rever_cli_spec::cli_spec::CliData, String>> {
-        Task::ready(Err(NOT_YET.to_owned()))
+        use rever_tools_automation::cli_exec::compile_captured;
+        Task::ready(compile_captured(&self.context, &request_ids, &Default::default()))
     }
-    fn run_cli(&self, _: CliRunPayload, _: &mut App) -> Task<Result<CliRunResult, String>> {
-        Task::ready(Err(NOT_YET.to_owned()))
+
+    fn run_cli(&self, payload: CliRunPayload, cx: &mut App) -> Task<Result<CliRunResult, String>> {
+        use rever_tools_automation::cli_exec::{CliRun, execute_cli};
+        let context = self.context.clone();
+        let finished = on_executor_thread(move |runtime| {
+            let run = CliRun {
+                base_url: &payload.base_url,
+                writes: payload.writes,
+                command: &payload.command,
+                inputs: &payload.inputs,
+            };
+            runtime.block_on(execute_cli(&context, run))
+        });
+        cx.spawn(async move |_| {
+            let result = finished.await.map_err(|_| RUN_STOPPED.to_owned())??;
+            recast(&result)
+        })
     }
+
     fn traffic(&self, _: &App) -> Vec<TrafficCall> {
-        Vec::new()
+        use rever_core::traffic::{ListFilter, MAX_ENTRIES};
+        let store = self
+            .context
+            .traffic
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let filter = ListFilter {
+            limit: Some(MAX_ENTRIES),
+            ..ListFilter::default()
+        };
+        // The store lists newest first; the editor wants capture order.
+        store
+            .list(&filter)
+            .into_iter()
+            .rev()
+            .map(|row| TrafficCall {
+                request_id: row.request_id.clone(),
+                method: row.method.clone(),
+                url: row.url.clone(),
+                resource_type: row.resource_type.clone(),
+            })
+            .collect()
     }
 }
 

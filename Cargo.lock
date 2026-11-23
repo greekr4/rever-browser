@@ -7479,6 +7479,7 @@ dependencies = [
  "regex",
  "reqwest",
  "rever-agent",
+ "rever-chat-core",
  "rever-cli-spec",
  "rever-cookie-import",
  "rever-core",
