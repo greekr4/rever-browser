@@ -1,0 +1,34 @@
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/matching.rs b/matching.rs
+--- a/matching.rs	2006-07-24 10:21:28
++++ b/matching.rs	2026-11-23 12:42:10
+@@ -705,6 +705,7 @@
+         pseudo_element: Option<PseudoElement>,
+     ) -> bool {
+         use crate::animation::{AnimationSetKey, AnimationState};
++        use crate::properties::longhands::animation_fill_mode::computed_value::single_value::T as AnimationFillMode;
+ 
+         // We need to call this before accessing the `ElementAnimationSet` from the
+         // map because this call will do a RwLock::read().
+@@ -768,9 +769,19 @@
+             .transitions
+             .retain(|transition| transition.state != AnimationState::Finished);
+ 
+-        animation_set
+-            .animations
+-            .retain(|animation| animation.state != AnimationState::Finished);
++        // rever: an animation that has ended and fills forwards still decides the
++        // element's style, so it stays in the set. Its declarations are collected from
++        // the set each time the style is cascaded again (a transition starting on the
++        // element is enough); dropped, the element fell back to the style it had
++        // before the animation. An element faded in with `opacity: 0` and
++        // `animation: fade-in forwards` turned invisible that way.
++        animation_set.animations.retain(|animation| {
++            animation.state != AnimationState::Finished ||
++                matches!(
++                    animation.fill_mode,
++                    AnimationFillMode::Forwards | AnimationFillMode::Both
++                )
++        });
+ 
+         // If the ElementAnimationSet is empty, and don't store it in order to
+         // save memory and to avoid extra processing later.
