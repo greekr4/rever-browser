@@ -21,6 +21,7 @@ use rever_ui_kit::text_input::{Submitted, TextInput};
 use rever_ui_kit::theme::ThemeMode;
 use rever_ui_menus::ip_badge::{IpBadgeHost, IpResult};
 use rever_ui_repeater::repeater_panel::{RepeaterPanel, RepeaterSender};
+use rever_ui_repeater::text_area::TextArea;
 use rever_ui_repeater::ws_repeater_panel::WsRepeaterPanel;
 use rever_ui_repeater::{RepeaterRequestSpec, RepeaterResponse, RepeaterStore};
 use rever_ui_state::ip_visibility::IpVisibilityStore;
@@ -119,7 +120,7 @@ impl Stores {
 /// The views that take language and theme when they are made.
 pub(crate) struct Views {
     pub address: Entity<TextInput>,
-    pub composer: Entity<TextInput>,
+    pub composer: Entity<TextArea>,
     /// The target-URL field of the Red Team dialog.
     pub redteam_target: Entity<TextInput>,
     pub traffic: Entity<TrafficList>,
@@ -153,7 +154,8 @@ impl Views {
             this.navigate(&event.0, cx)
         })
         .detach();
-        let composer = cx.new(|cx| TextInput::new(lang.t("chat.placeholder"), cx));
+        // Several lines: Enter sends, Shift+Enter breaks the line.
+        let composer = cx.new(|cx| TextArea::message(lang.t("chat.placeholder"), cx));
         cx.subscribe(&composer, |this, _, event: &Submitted, cx| {
             this.send_chat(&event.0, cx)
         })

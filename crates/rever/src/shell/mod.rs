@@ -57,6 +57,13 @@ impl AssetSource for Assets {
                 "<path d=\"M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7\"/>".to_owned(),
             ),
             // Three quarters of a circle: turned, it is the chat's "working" spinner.
+            // Two sheets, one behind the other: copy a message.
+            "icons/copy.svg" => (
+                "none",
+                "<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\"/>\
+                 <path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/>"
+                    .to_owned(),
+            ),
             "icons/loader.svg" => (
                 "none",
                 "<path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/>".to_owned(),
@@ -198,7 +205,9 @@ impl Render for Browser {
             .bottom_0()
             .right_0()
             .w(px(chat_width))
-            .overflow_hidden()
+            // Clipped only while it slides: the handle that resizes the panel reaches
+            // over its left edge, and clipped it was too thin to take hold of.
+            .when(sliding_from.is_some(), |chat| chat.overflow_hidden())
             .child(self.chat_panel(&theme, panel_width, cx));
         // The handle on the border between the page and the chat: folds the chat away,
         // and stays at the window's edge to bring it back.

@@ -219,15 +219,13 @@ pub(crate) fn link_target(href: &str) -> Option<Url> {
 }
 
 /// The composer's text after another panel hands it a draft: `prev ? prev + '\n' + text : text`
-/// in ChatPanel.tsx. The composer is a single-line field, so line breaks become spaces,
-/// as they do when text is pasted into it.
+/// in ChatPanel.tsx.
 fn draft_text(previous: &str, draft: &str) -> String {
-    let joined = if previous.is_empty() {
+    if previous.is_empty() {
         draft.to_owned()
     } else {
         format!("{previous}\n{draft}")
-    };
-    joined.replace('\n', " ")
+    }
 }
 
 /// Servo names the console levels after its enum ("warn"); the store holds the names
@@ -2581,6 +2579,20 @@ impl Browser {
         self.permission_prompt.update(cx, |_, cx| cx.notify());
     }
 
+    /// Stop the turn in progress. The agent's session ends with it; the next message
+    /// starts a new one, which is handed the conversation so far.
+    pub fn stop_chat(&mut self, cx: &mut Context<Self>) {
+        if !self.agent_busy {
+            return;
+        }
+        self.forget_agent();
+        self.agent_busy = false;
+        // Closes the tool rows still shown as running.
+        apply_agent_event(&mut self.chat, &AgentEvent::Done);
+        self.save_conversation();
+        cx.notify();
+    }
+
     /// The composer's chip: with auto-approve off, every tool call asks.
     pub fn toggle_auto_approve(&mut self, cx: &mut Context<Self>) {
         let mut store = self.permissions.borrow_mut();
@@ -2963,12 +2975,16 @@ mod tests {
     }
 
     #[test]
-    fn 초안은_입력란_뒤에_붙고_줄바꿈은_공백이_된다() {
+    fn 빈_입력란에는_초안이_줄바꿈까지_그대로_들어간다() {
         assert_eq!(
             draft_text("", "Analyze this:\n\nQuestion: "),
-            "Analyze this:  Question: "
+            "Analyze this:\n\nQuestion: "
         );
-        assert_eq!(draft_text("already typed", "more"), "already typed more");
+    }
+
+    #[test]
+    fn 쓰던_글이_있으면_초안은_다음_줄에_붙는다() {
+        assert_eq!(draft_text("already typed", "more"), "already typed\nmore");
     }
 
     #[test]

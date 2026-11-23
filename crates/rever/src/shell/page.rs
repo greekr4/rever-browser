@@ -64,12 +64,23 @@ impl Browser {
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                // An input method (Korean, Japanese, Chinese) builds its text from the
+                // keys: a key that types is left unhandled, so it reaches the input
+                // method, and what that composes comes back through the input handler.
+                // Taken here, the page got the layout's Latin letter instead.
+                if types_text(&event.keystroke) && input_method_active() {
+                    return;
+                }
                 this.on_key(KeyState::Down, &event.keystroke);
                 // Handled: otherwise the system types the same character again
                 // through the input handler.
                 cx.stop_propagation();
             }))
             .on_key_up(cx.listener(|this, event: &KeyUpEvent, _, _| {
+                // The input handler sent the page both halves of what was typed.
+                if types_text(&event.keystroke) && input_method_active() {
+                    return;
+                }
                 this.on_key(KeyState::Up, &event.keystroke)
             }))
             .child(painted);
@@ -609,6 +620,51 @@ impl Browser {
     }
 }
 
+/// Whether `source`, the id of the keyboard's input source, is an input method that
+/// composes text (Korean, Japanese, Chinese) and not a layout typing one character a key.
+fn composes_text(source: &str) -> bool {
+    // macOS names a plain layout `com.apple.keylayout.…`; anything else composes.
+    !source.starts_with("com.apple.keylayout.")
+}
+
+/// Whether the keyboard is on an input method right now.
+#[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)] // objc 0.2's macros test a cfg newer compilers do not know.
+fn input_method_active() -> bool {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+    // SAFETY: plain AppKit calls on the main thread; every returned pointer is checked
+    // before use, and the string is read before the next message is sent.
+    unsafe {
+        let context: *mut Object = msg_send![class!(NSTextInputContext), currentInputContext];
+        if context.is_null() {
+            return false;
+        }
+        let source: *mut Object = msg_send![context, selectedKeyboardInputSource];
+        if source.is_null() {
+            return false;
+        }
+        let name: *const std::os::raw::c_char = msg_send![source, UTF8String];
+        !name.is_null() && composes_text(&std::ffi::CStr::from_ptr(name).to_string_lossy())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn input_method_active() -> bool {
+    false
+}
+
+/// Whether `keystroke` types a character, as opposed to a shortcut or a key such as
+/// Enter that the page handles itself.
+fn types_text(keystroke: &Keystroke) -> bool {
+    let shortcut = keystroke.modifiers.platform || keystroke.modifiers.control;
+    let prints = keystroke
+        .key_char
+        .as_deref()
+        .is_some_and(|text| !text.is_empty() && !text.chars().any(char::is_control));
+    prints && !shortcut
+}
+
 /// The system cursor for the one a page asks for. The ones macOS has no shape for
 /// (help, wait, zoom, ...) stay the arrow.
 fn cursor_style(cursor: Cursor) -> CursorStyle {
@@ -649,6 +705,53 @@ fn utf16_len(text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn keystroke(source: &str) -> Keystroke {
+        Keystroke::parse(source).unwrap()
+    }
+
+    /// A key press as the platform reports it: the key and the character it types.
+    fn typed(key: &str, character: &str) -> Keystroke {
+        Keystroke {
+            key_char: Some(character.to_owned()),
+            ..keystroke(key)
+        }
+    }
+
+    #[test]
+    fn 한글_입력기는_글자를_조합하는_입력_소스다() {
+        assert!(composes_text("com.apple.inputmethod.Korean.2SetKorean"));
+    }
+
+    #[test]
+    fn 영문_자판은_글자를_조합하지_않는다() {
+        assert!(!composes_text("com.apple.keylayout.ABC"));
+    }
+
+    #[test]
+    fn 글자를_치는_키는_입력기에_맡길_키다() {
+        assert!(types_text(&typed("r", "r")));
+    }
+
+    #[test]
+    fn 띄어쓰기도_입력기에_맡긴다() {
+        assert!(types_text(&typed("space", " ")));
+    }
+
+    #[test]
+    fn 단축키는_입력기에_맡기지_않는다() {
+        assert!(!types_text(&typed("cmd-r", "r")));
+    }
+
+    #[test]
+    fn 엔터는_입력기에_맡기지_않고_페이지가_받는다() {
+        assert!(!types_text(&typed("enter", "\n")));
+    }
+
+    #[test]
+    fn 글자가_없는_방향키는_입력기에_맡길_키가_아니다() {
+        assert!(!types_text(&keystroke("left")));
+    }
 
     #[test]
     fn 페이지가_요청한_커서는_시스템_커서로_바뀐다() {

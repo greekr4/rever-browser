@@ -7,7 +7,7 @@
 
 pub mod repeater;
 pub mod repeater_panel;
-mod text_area;
+pub mod text_area;
 mod ui;
 pub mod ws_repeater_panel;
 
