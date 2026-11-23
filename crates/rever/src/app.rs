@@ -1572,6 +1572,10 @@ impl Browser {
         if self.scan_spaces_due && !self.spaces_open {
             self.scan_spaces_due = false;
             self.toggle_spaces(window, cx);
+            // A notify from this async context does not by itself schedule a
+            // frame: without this, the opened grid never paints. request_
+            // animation_frame would panic here (it is paint-phase only).
+            window.refresh();
         }
         self.pump_agent(cx);
         self.pump_scan(cx);
@@ -2451,8 +2455,10 @@ impl Browser {
             eprintln!("[scan] dropped {cleared} old finding(s) for this site");
         }
         crate::agent::REDTEAM_SCAN.store(true, Ordering::Relaxed);
-        // The scan's worker spaces open in the grid view as they arrive.
+        // The scan's worker spaces open in the grid view as they arrive; the
+        // wake brings the pump, which opens it where a window is at hand.
         self.scan_spaces_due = true;
+        let _ = self.wake.unbounded_send(());
         self.scan_tabs.clear();
         self.scan = Some(crate::scan::ScanRun::new(
             &target,
