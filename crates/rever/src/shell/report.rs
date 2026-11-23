@@ -37,7 +37,13 @@ pub struct ReportWindow {
 }
 
 impl ReportWindow {
-    pub fn new(target: &str, findings: u32, report: &str, lang: Lang, theme_mode: ThemeMode) -> Self {
+    pub fn new(
+        target: &str,
+        findings: u32,
+        report: &str,
+        lang: Lang,
+        theme_mode: ThemeMode,
+    ) -> Self {
         Self {
             target: target.to_owned(),
             report: report.to_owned(),
@@ -109,15 +115,15 @@ impl Render for ReportWindow {
                     .child(format!("{findings} {}", lang.t("scan.panel.findings"))),
             )
             .child(
-                btn("report-copy", lang.t("scan.panel.copy")).on_click(
-                    cx.listener(|this, _: &gpui::ClickEvent, _, cx| {
+                btn("report-copy", lang.t("scan.panel.copy")).on_click(cx.listener(
+                    |this, _: &gpui::ClickEvent, _, cx| {
                         cx.write_to_clipboard(ClipboardItem::new_string(this.report.clone()));
-                    }),
-                ),
+                    },
+                )),
             )
             .child(
-                btn("report-save", lang.t("scan.panel.save")).on_click(
-                    cx.listener(|this, _: &gpui::ClickEvent, _, _| {
+                btn("report-save", lang.t("scan.panel.save")).on_click(cx.listener(
+                    |this, _: &gpui::ClickEvent, _, _| {
                         if let Ok(path) = save_report_markdown(&this.target, &this.report) {
                             #[cfg(target_os = "macos")]
                             std::process::Command::new("open")
@@ -126,8 +132,8 @@ impl Render for ReportWindow {
                                 .spawn()
                                 .ok();
                         }
-                    }),
-                ),
+                    },
+                )),
             );
 
         div()

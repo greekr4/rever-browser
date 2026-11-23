@@ -6,7 +6,7 @@
 
 use gpui::{
     AnyElement, ClickEvent, Context, DragMoveEvent, FontWeight, Hsla, MouseButton, MouseDownEvent,
-    ObjectFit, div, img, prelude::*, px, relative, rgb,
+    div, prelude::*, px, relative, rgb,
 };
 use rever_ui_kit::theme::Theme;
 
@@ -175,11 +175,7 @@ impl Browser {
                     format!("{pages_seen}/{}", self.redteam_pages),
                 ))
                 .child(stat(lang.t("scan.panel.findings"), findings.to_string()))
-                .child(
-                    div()
-                        .text_color(theme.text_dim)
-                        .child(mmss(elapsed)),
-                )
+                .child(div().text_color(theme.text_dim).child(mmss(elapsed)))
                 .child(div().flex_1())
                 .child(
                     div()
@@ -193,9 +189,7 @@ impl Browser {
                         .font_weight(FontWeight::SEMIBOLD)
                         .cursor_pointer()
                         .hover(move |s| s.bg(hover))
-                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                            this.stop_redteam(cx)
-                        }))
+                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.stop_redteam(cx)))
                         .child(format!("■ {}", lang.t("scan.panel.stop"))),
                 )
                 .into_any_element()
@@ -227,9 +221,7 @@ impl Browser {
                         .font_weight(FontWeight::SEMIBOLD)
                         .cursor_pointer()
                         .hover(move |s| s.opacity(0.9))
-                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                            this.start_redteam(cx)
-                        }))
+                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.start_redteam(cx)))
                         .child(format!("▶ {}", lang.t("scan.panel.start"))),
                 );
 
@@ -290,117 +282,6 @@ impl Browser {
                 .child(risk_row)
                 .into_any_element()
         };
-
-        // ── One tile per opened tab (ego-Lite spaces): the page's live preview,
-        // the worker's status dot, and a click focuses that tab to watch it work.
-        let tiles: Option<AnyElement> =
-            scan.filter(|scan| !scan.tabs.is_empty())
-                .map(|scan| {
-                    let mut children = Vec::new();
-                    for (index, tile) in scan.tabs.iter().enumerate() {
-                        let url = tile.url.clone();
-                        let (dot, dim) = match tile.status {
-                            crate::scan::TabStatus::Opening => (theme.text_dim, true),
-                            crate::scan::TabStatus::Inspecting => (theme.accent, false),
-                            crate::scan::TabStatus::Done => (rgb(0x5f_d0_7a), false),
-                            crate::scan::TabStatus::Failed => (theme.status_error, false),
-                        };
-                        // The tab's latest captured page, painted by capture_scan_tabs.
-                        let frame = self
-                            .tabs
-                            .iter()
-                            .find(|tab| tab.url == tile.url)
-                            .and_then(|tab| tab.frame.clone());
-                        let preview: AnyElement = match frame {
-                            Some(frame) => img(frame)
-                                .size_full()
-                                .object_fit(ObjectFit::Cover)
-                                .into_any_element(),
-                            None => div()
-                                .flex_1()
-                                .min_h_0()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .text_color(theme.text_dim)
-                                .child("…")
-                                .into_any_element(),
-                        };
-                        children.push(
-                            div()
-                                .id(("redteam-tile", index))
-                                .w(px(176.0))
-                                .h(px(144.0))
-                                .flex()
-                                .flex_col()
-                                .rounded(px(6.0))
-                                .border_1()
-                                .border_color(theme.border_2)
-                                .overflow_hidden()
-                                .cursor_pointer()
-                                .hover(move |s| s.border_color(theme.accent))
-                                .on_click(cx.listener(
-                                    move |this, _: &ClickEvent, window, cx| {
-                                        if let Some(index) =
-                                            this.tabs.iter().position(|tab| tab.url == url)
-                                        {
-                                            this.select_tab(index, window, cx);
-                                        }
-                                    },
-                                ))
-                                .child(
-                                    div()
-                                        .flex()
-                                        .flex_none()
-                                        .items_center()
-                                        .gap(px(5.0))
-                                        .px(px(6.0))
-                                        .py(px(4.0))
-                                        .bg(theme.bg_bar)
-                                        .border_b_1()
-                                        .border_color(theme.border)
-                                        .child(
-                                            div()
-                                                .flex_none()
-                                                .w(px(7.0))
-                                                .h(px(7.0))
-                                                .rounded(px(7.0))
-                                                .bg(dot),
-                                        )
-                                        .child(
-                                            div()
-                                                .flex_1()
-                                                .min_w_0()
-                                                .truncate()
-                                                .text_size(px(11.0))
-                                                .text_color(if dim {
-                                                    theme.text_dim
-                                                } else {
-                                                    theme.text
-                                                })
-                                                .child(tile.loc.clone()),
-                                        )
-                                        .when(tile.findings > 0, |t| {
-                                            t.child(
-                                                div()
-                                                    .flex_none()
-                                                    .text_size(px(11.0))
-                                                    .text_color(rgb(0xe0_a3_3e))
-                                                    .child(format!("✓{}", tile.findings)),
-                                            )
-                                        }),
-                                )
-                                .child(preview)
-                                .into_any_element(),
-                        );
-                    }
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .gap(px(6.0))
-                        .children(children)
-                        .into_any_element()
-                });
 
         // ── The finished report: open it in its own window, or hand it over ───
         let actions: Option<AnyElement> = if !running {
@@ -634,7 +515,6 @@ impl Browser {
                     .overflow_y_scroll()
                     .p(px(12.0))
                     .child(top)
-                    .children(tiles)
                     .children(actions)
                     .children(log_section),
             )

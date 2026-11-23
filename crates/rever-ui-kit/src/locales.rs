@@ -728,11 +728,7 @@ pub static STRINGS: &[(&str, &str, &str)] = &[
         "_— scan stopped (partial results)_",
         "_— 스캔 중지됨 (부분 결과)_",
     ),
-    (
-        "scan.report.title",
-        "Red Team Report",
-        "레드팀 보고서",
-    ),
+    ("scan.report.title", "Red Team Report", "레드팀 보고서"),
     ("scan.risk.caution", "Caution", "Caution"),
     ("scan.risk.danger", "Danger", "Danger"),
     ("scan.risk.safe", "Safe", "Safe"),

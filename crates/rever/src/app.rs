@@ -14,8 +14,8 @@ use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::channel::oneshot;
 use gpui::{
     App, AppContext, Bounds, ClipboardItem, Context, Entity, FocusHandle, Focusable,
-    PathPromptOptions, Pixels, PromptLevel, RenderImage, SharedString, TitlebarOptions,
-    WeakEntity, Window, WindowBounds, WindowOptions, px, size,
+    PathPromptOptions, Pixels, PromptLevel, RenderImage, SharedString, TitlebarOptions, WeakEntity,
+    Window, WindowBounds, WindowOptions, px, size,
 };
 use image::{Frame, RgbaImage};
 use net::tap::NetworkTapEvent;
@@ -1137,23 +1137,31 @@ impl Browser {
             let host = Rc::new(PickerHost {
                 models: model_store.clone(),
             });
-            ModelPicker::new(move |cx| scan_picker_props(&this, cx), host, look.clone(), cx)
+            ModelPicker::new(
+                move |cx| scan_picker_props(&this, cx),
+                host,
+                look.clone(),
+                cx,
+            )
         });
-        cx.subscribe(&scan_model_picker, |this, _, event: &ModelPickerEvent, cx| {
-            if let ModelPickerEvent::Selected {
-                agent_id,
-                model_id,
-                name,
-                ..
-            } = event
-            {
-                // Scan workers are Claude CLI sessions; other agents' models do not apply.
-                if *agent_id == AcpAgentId::ClaudeCode {
-                    this.redteam_model = Some((model_id.to_owned(), name.to_owned()));
-                    cx.notify();
+        cx.subscribe(
+            &scan_model_picker,
+            |this, _, event: &ModelPickerEvent, cx| {
+                if let ModelPickerEvent::Selected {
+                    agent_id,
+                    model_id,
+                    name,
+                    ..
+                } = event
+                {
+                    // Scan workers are Claude CLI sessions; other agents' models do not apply.
+                    if *agent_id == AcpAgentId::ClaudeCode {
+                        this.redteam_model = Some((model_id.to_owned(), name.to_owned()));
+                        cx.notify();
+                    }
                 }
-            }
-        })
+            },
+        )
         .detach();
         // The CLIs themselves know their models; asked once per start, off the main thread.
         if self_check.is_none() {
@@ -2294,7 +2302,9 @@ impl Browser {
                 },
                 |_, cx| {
                     cx.new(|_| {
-                        crate::shell::report::ReportWindow::new(&target, findings, &report, lang, mode)
+                        crate::shell::report::ReportWindow::new(
+                            &target, findings, &report, lang, mode,
+                        )
                     })
                 },
             )
@@ -2373,8 +2383,7 @@ impl Browser {
         }
         // A finished scan lands its report in the report window — after the
         // scan is back in place (open_report_window reads self.scan).
-        let finished_with_report =
-            was_running && !scan.running() && !scan.report.is_empty();
+        let finished_with_report = was_running && !scan.running() && !scan.report.is_empty();
         if !scan.running() {
             crate::agent::REDTEAM_SCAN.store(false, Ordering::Relaxed);
         }
