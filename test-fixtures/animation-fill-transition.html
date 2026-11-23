@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>an animation's forwards fill against a transition</title>
+<style>
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .box { width: 120px; height: 60px; margin: 12px; background: #36c; opacity: 0;
+         animation: fadeIn 0.3s forwards; }
+</style>
+<!-- Every box must stay visible (opacity 1): the animation ends at 1 and keeps it.
+     #plain  is left alone.
+     #all    gets `transition: all` and a new width after the animation has ended.
+     #width  gets `transition: width` and a new width. -->
+<div id="plain" class="box"></div>
+<div id="all" class="box"></div>
+<div id="width" class="box"></div>
+<script>
+  setTimeout(() => {
+    const all = document.getElementById('all');
+    all.style.transition = 'all 0.25s';
+    all.style.width = '200px';
+    const width = document.getElementById('width');
+    width.style.transition = 'width 0.25s';
+    width.style.width = '200px';
+  }, 700);
+</script>

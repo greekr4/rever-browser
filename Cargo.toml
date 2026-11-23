@@ -17,6 +17,8 @@ servo-net = { path = "vendor/servo-net" }
 servo-pixels = { path = "vendor/servo-pixels" }
 # `aspect-ratio` on boxes that are not images: Servo 0.8 ignores it there.
 servo-layout = { path = "vendor/servo-layout" }
+# An animation that ended with `forwards` keeps its last frame: Servo 0.8 lost it.
+stylo = { path = "vendor/stylo" }
 # The debugging server must not panic on a stack frame of evaluated code.
 servo-devtools = { path = "vendor/servo-devtools" }
 # One freetype-sys version for both GPUI and Servo.
