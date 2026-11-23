@@ -7,6 +7,7 @@ mod chip_bar;
 mod page;
 mod redteam;
 pub(crate) mod shortcuts;
+mod spaces;
 mod tab_strip;
 
 pub(crate) use tab_strip::STRIP_HEIGHT;
@@ -64,6 +65,15 @@ impl AssetSource for Assets {
                  <path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/>"
                     .to_owned(),
             ),
+            // Four squares: the grid view of the spaces.
+            "icons/grid.svg" => (
+                "none",
+                "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/>\
+                 <rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/>\
+                 <rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/>\
+                 <rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/>"
+                    .to_owned(),
+            ),
             "icons/loader.svg" => (
                 "none",
                 "<path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/>".to_owned(),
@@ -115,6 +125,16 @@ fn icon_button(
 impl Render for Browser {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::resolve(self.theme_mode, window.appearance());
+        // The grid view of the spaces takes the whole window, as its own screen.
+        if self.spaces_open {
+            let root = div()
+                .size_full()
+                .text_color(theme.text)
+                .text_size(px(13.0))
+                .font_family(".SystemUIFont")
+                .child(self.spaces_overview(&theme, window, cx));
+            return self.shortcut_handlers(root, cx);
+        }
         // Opening and closing the bottom panel slides to the new height, as the chat does.
         let panel_target = if self.open_panel.is_some() {
             self.panel_height

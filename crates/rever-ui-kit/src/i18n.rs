@@ -11,6 +11,7 @@ pub enum Lang {
     Ko,
 }
 
+// Kept in key order: `Lang::t` finds a key by binary search.
 /// Strings the Rust app added: the Electron dictionaries (`locales.rs`) never had them.
 const PORT_STRINGS: &[(&str, &str, &str)] = &[
     ("chat.tools.ran", "Ran {n} tools", "도구 {n}개 실행함"),
@@ -27,6 +28,8 @@ const PORT_STRINGS: &[(&str, &str, &str)] = &[
         "This panel is not available in the Rust app yet.",
         "이 패널은 아직 Rust 앱으로 옮겨지지 않았습니다.",
     ),
+    ("spaces.count", "{n} Spaces", "스페이스 {n}개"),
+    ("spaces.tabs", "{n} tabs", "탭 {n}개"),
 ];
 
 impl Lang {
@@ -70,6 +73,20 @@ impl Lang {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 앱이_더한_문자열_표는_키_순서로_놓여_있다() {
+        // 이진 탐색으로 찾으므로 순서가 어긋난 키는 번역 없이 키 그대로 나온다.
+        let keys: Vec<&str> = PORT_STRINGS.iter().map(|(key, _, _)| *key).collect();
+        let mut sorted = keys.clone();
+        sorted.sort_unstable();
+        assert_eq!(keys, sorted);
+    }
+
+    #[test]
+    fn 스페이스의_탭_수_문구는_한국어로_나온다() {
+        assert_eq!(Lang::Ko.t("spaces.tabs"), "탭 {n}개");
+    }
 
     #[test]
     fn 언어에_맞는_문구를_주고_없는_키는_키를_돌려준다() {
