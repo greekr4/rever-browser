@@ -30,6 +30,8 @@ jobs:
       - name: Apply crate patches
         run: ./scripts/apply-rust-patches.sh
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       # Caches are about 2GB against a 10GB repo limit. Only main saves, so branch
       # caches never evict the one every PR restores from.
       - uses: Swatinem/rust-cache@v2
@@ -38,7 +40,8 @@ jobs:
           # cache from another dav1d version fails at link time.
           key: dav1d-${{ steps.libs.outputs.dav1d }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Every target, the app's binary included: it type-checks what the tests do not build.
+      - name: Lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Workspace tests
         run: cargo test --workspace
-      - name: The app builds
-        run: cargo build -p rever
