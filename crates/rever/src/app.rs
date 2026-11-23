@@ -413,6 +413,25 @@ fn record_ws(store: &Mutex<TrafficStore>, event: NetworkTapEvent) {
     store.lock().unwrap().append_ws_frame(&id, frame);
 }
 
+/// A tab nobody showed or drove for this long is put to sleep, as Chrome's Memory
+/// Saver does: its page is closed and opens again from its address when the tab is used.
+const TAB_SLEEP_AFTER: Duration = Duration::from_secs(10 * 60);
+
+/// Whether a tab left alone for `idle` goes to sleep.
+/// Whether a tab left alone for `idle` goes to sleep. The shown tab never does, and
+/// none does while the agent or a scan works: they drive tabs behind the shown one.
+fn sleeps(shown: bool, asleep: bool, idle: Duration, working: bool, after: Duration) -> bool {
+    !shown && !asleep && !working && idle >= after
+}
+
+/// `REVER_TAB_SLEEP_SECS` overrides the wait, to watch tabs fall asleep in a test.
+fn tab_sleep_after() -> Duration {
+    std::env::var("REVER_TAB_SLEEP_SECS")
+        .ok()
+        .and_then(|seconds| seconds.parse().ok())
+        .map_or(TAB_SLEEP_AFTER, Duration::from_secs)
+}
+
 pub(crate) struct Tab {
     pub id: TabId,
     pub title: SharedString,
@@ -421,6 +440,25 @@ pub(crate) struct Tab {
     pub frame: Option<Arc<RenderImage>>,
     /// The page's icon, in the same layout.
     pub favicon: Option<Arc<RenderImage>>,
+    /// When the tab was last shown or driven by a tool.
+    pub used: Instant,
+    /// Asleep: the tab has no page in the engine until it is used again.
+    pub asleep: bool,
+}
+
+impl Tab {
+    /// A tab whose page is loading: nothing painted yet.
+    fn new(id: TabId, url: String, title: SharedString) -> Self {
+        Self {
+            id,
+            title,
+            url,
+            frame: None,
+            favicon: None,
+            used: Instant::now(),
+            asleep: false,
+        }
+    }
 }
 
 pub(crate) struct ChatLine {
@@ -822,6 +860,19 @@ impl Browser {
             held_requests.clone(),
             note,
         ));
+        // Tabs left alone go to sleep; looked at twice within the wait, so none
+        // oversleeps it by much.
+        cx.spawn_in(window, async move |this, cx| {
+            loop {
+                let pause = (tab_sleep_after() / 2).min(Duration::from_secs(30));
+                cx.background_executor().timer(pause).await;
+                let looked = this.update_in(cx, |this, window, cx| this.sleep_idle_tabs(window, cx));
+                if looked.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         // A development build watches its own memory; the shell draws it over the page.
         if cfg!(debug_assertions) {
             cx.spawn(async move |this, cx| {
@@ -841,25 +892,20 @@ impl Browser {
         // A --self-check run is a test: it must not add its pages to the user's history.
         let stores = Stores::new(traffic.clone(), self_check.is_none(), cx);
         let (pages, active) = start_pages(url, stores.storage.get(TABS_KEY).as_deref());
+        // Only the shown tab loads; the others stay asleep until they are used, so a
+        // long list of tabs costs one page at start.
         let mut tabs = Vec::new();
-        for (url, title) in pages {
-            let opened = engine.open(url.clone(), PhysicalSize::new(800, 600));
-            // The engine has to start; a later tab that does not open is left out.
-            let id = if tabs.is_empty() {
-                opened.expect("the page engine could not start")
+        for (index, (url, title)) in pages.into_iter().enumerate() {
+            let mut tab = Tab::new(engine.reserve(), url.to_string(), title.into());
+            if index == active {
+                engine
+                    .open_as(tab.id, url, PhysicalSize::new(800, 600))
+                    .expect("the page engine could not start");
             } else {
-                let Ok(id) = opened else { continue };
-                id
-            };
-            tabs.push(Tab {
-                id,
-                title: title.into(),
-                url: url.to_string(),
-                frame: None,
-                favicon: None,
-            });
+                tab.asleep = true;
+            }
+            tabs.push(tab);
         }
-        let active = active.min(tabs.len() - 1);
         let url = tabs[active].url.clone();
 
         // Servo and the tap wake this task from their threads; the work happens here, on the main thread.
@@ -1106,10 +1152,51 @@ impl Browser {
 
     /// The tab a targeted command names by index, or the active tab when the
     /// index is absent or out of range.
-    fn resolve_tab(&self, target: Option<usize>) -> TabId {
-        target
-            .and_then(|index| self.tabs.get(index))
-            .map_or_else(|| self.active_id(), |tab| tab.id)
+    /// A tab a tool reaches behind the shown one is woken and counts as used.
+    fn resolve_tab(&mut self, target: Option<usize>) -> TabId {
+        let index = target
+            .filter(|index| *index < self.tabs.len())
+            .unwrap_or(self.active);
+        self.wake_tab(index);
+        self.tabs[index].id
+    }
+
+    /// Open a sleeping tab's page again, and count the tab as used now.
+    fn wake_tab(&mut self, index: usize) {
+        let size = self
+            .engine
+            .size(self.active_id())
+            .unwrap_or(PhysicalSize::new(800, 600));
+        let tab = &mut self.tabs[index];
+        tab.used = Instant::now();
+        if !tab.asleep {
+            return;
+        }
+        // An address that does not open leaves the tab asleep, to try again next time.
+        if let Ok(url) = Url::parse(&tab.url)
+            && self.engine.open_as(tab.id, url, size).is_ok()
+        {
+            tab.asleep = false;
+        }
+    }
+
+    /// Close the pages of the tabs nobody used for a while; the tabs stay in the strip.
+    fn sleep_idle_tabs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let working = self.agent_busy || self.scan.is_some();
+        let after = tab_sleep_after();
+        let active = self.active;
+        for (index, tab) in self.tabs.iter_mut().enumerate() {
+            if !sleeps(index == active, tab.asleep, tab.used.elapsed(), working, after) {
+                continue;
+            }
+            self.engine.close(tab.id);
+            tab.asleep = true;
+            // Its last picture goes too: a page's worth of pixels per tab.
+            if let Some(frame) = tab.frame.take() {
+                let _ = window.drop_image(frame);
+            }
+            cx.notify();
+        }
     }
 
     fn pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1132,13 +1219,7 @@ impl Browser {
                 }
                 EngineEvent::Closed(id) => closed.push(id),
                 EngineEvent::Opened(id) => {
-                    self.tabs.push(Tab {
-                        id,
-                        title: "".into(),
-                        url: String::new(),
-                        frame: None,
-                        favicon: None,
-                    });
+                    self.tabs.push(Tab::new(id, String::new(), "".into()));
                     opened = true;
                 }
                 EngineEvent::Title(tab, title) => {
@@ -1352,13 +1433,7 @@ impl Browser {
         let Ok(id) = self.engine.open(url, size) else {
             return;
         };
-        self.tabs.push(Tab {
-            id,
-            title: "".into(),
-            url: address,
-            frame: None,
-            favicon: None,
-        });
+        self.tabs.push(Tab::new(id, address, "".into()));
         self.select_tab(self.tabs.len() - 1, window, cx);
     }
 
@@ -1366,7 +1441,13 @@ impl Browser {
         if index >= self.tabs.len() {
             return;
         }
+        // The tab being left is idle from now on. When it was just closed there is
+        // none: `active` still names its place, which may be past the end.
+        if let Some(left) = self.tabs.get_mut(self.active) {
+            left.used = Instant::now();
+        }
         self.active = index;
+        self.wake_tab(index);
         let url = self.tabs[index].url.clone();
         self.views
             .address
@@ -2264,13 +2345,7 @@ impl Browser {
                             let address = url.to_string();
                             let id = self.engine.open(url, size)?;
                             // Not selected: the agent reads it by index while it loads.
-                            self.tabs.push(Tab {
-                                id,
-                                title: "".into(),
-                                url: address,
-                                frame: None,
-                                favicon: None,
-                            });
+                            self.tabs.push(Tab::new(id, address, "".into()));
                             Ok(self.tabs.len() - 1)
                         });
                     let _ = answer.send(opened);
@@ -2542,6 +2617,34 @@ pub fn page_area(bounds: Bounds<Pixels>, mobile: bool) -> Bounds<Pixels> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const LONG: Duration = Duration::from_secs(3600);
+
+    #[test]
+    fn 오래_쓰지_않은_뒤_탭은_잠든다() {
+        assert!(sleeps(false, false, LONG, false, TAB_SLEEP_AFTER));
+    }
+
+    #[test]
+    fn 보고_있는_탭은_오래_두어도_잠들지_않는다() {
+        assert!(!sleeps(true, false, LONG, false, TAB_SLEEP_AFTER));
+    }
+
+    #[test]
+    fn 방금_쓴_탭은_잠들지_않는다() {
+        let idle = TAB_SLEEP_AFTER - Duration::from_secs(1);
+        assert!(!sleeps(false, false, idle, false, TAB_SLEEP_AFTER));
+    }
+
+    #[test]
+    fn 에이전트나_스캔이_일하는_동안에는_아무_탭도_잠들지_않는다() {
+        assert!(!sleeps(false, false, LONG, true, TAB_SLEEP_AFTER));
+    }
+
+    #[test]
+    fn 이미_잠든_탭은_다시_재우지_않는다() {
+        assert!(!sleeps(false, true, LONG, false, TAB_SLEEP_AFTER));
+    }
 
     #[test]
     fn 시작할_때는_주소_인자가_먼저고_없으면_지난번_탭을_다시_연다() {

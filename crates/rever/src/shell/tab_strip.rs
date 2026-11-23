@@ -47,6 +47,8 @@ impl Browser {
                 };
                 div()
                     .id(("tab", index))
+                    // A sleeping tab is drawn faint: its page loads again when it is picked.
+                    .when(tab.asleep, |tab| tab.opacity(0.55))
                     .h(px(34.0))
                     .min_w(px(120.0))
                     .max_w(px(240.0))
