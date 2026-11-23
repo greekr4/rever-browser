@@ -575,6 +575,8 @@ pub const PROBE_PROMPT: &str = "Red Team 단일 엔드포인트 활성 프로브
 pub struct ScanLine {
     pub kind: LineKind,
     pub text: String,
+    /// Seconds into the scan when the line was pushed, shown as `MM:SS`.
+    pub at: u32,
     /// The tab (or worker) the line came from, shown as `[N]`.
     pub tab: Option<String>,
 }
@@ -669,11 +671,23 @@ pub struct ScanRun {
     pub findings: u32,
     pub report: String,
     pub log: Vec<ScanLine>,
+    started: std::time::Instant,
     stop: bool,
 }
 
 /// How the orchestrator spawns sessions: (prompt, label) → a live session.
 pub type Spawner<'a> = dyn FnMut(&str) -> Result<AgentSession, String> + 'a;
+
+/// The dialog (and MCP `scan:launch`) speak the UI vocabulary
+/// "readonly" | "probe" | "redteam"; the orchestrator's full-power level is
+/// "full". One mapping so the Red Team button can never arrive neutered.
+pub fn orchestrator_intensity(level: &str) -> &'static str {
+    match level {
+        "probe" => "probe",
+        "redteam" | "full" => "full",
+        _ => "readonly",
+    }
+}
 
 impl ScanRun {
     pub fn new(target: &str, pages: u32, intensity: &str) -> Self {
@@ -692,12 +706,28 @@ impl ScanRun {
             findings: 0,
             report: String::new(),
             log: Vec::new(),
+            started: std::time::Instant::now(),
             stop: false,
         }
     }
 
     pub fn running(&self) -> bool {
         !matches!(self.phase, Phase::Done | Phase::Failed(_))
+    }
+
+    /// Seconds since the scan started (the dialog's live clock).
+    pub fn elapsed_secs(&self) -> u32 {
+        self.started.elapsed().as_secs() as u32
+    }
+
+    /// What was typed into the dialog's target field when the scan began.
+    pub fn target(&self) -> &str {
+        &self.target
+    }
+
+    /// Pages the discovery phase opened tabs for so far.
+    pub fn pages_seen(&self) -> u32 {
+        self.opened.len() as u32
     }
 
     pub fn stop(&mut self) {
@@ -708,6 +738,7 @@ impl ScanRun {
         self.log.push(ScanLine {
             kind,
             text: text.into(),
+            at: self.elapsed_secs(),
             tab,
         });
         if self.log.len() > LOG_CAP {
@@ -1172,5 +1203,14 @@ mod tests {
         assert!(level_line("probe", true).contains("payload_probe/path_probe/crlf_test 금지"));
         assert!(level_line("full", true).contains("적응 재시도"));
         assert!(level_line("full", false).contains("변형 요청 최대 1개"));
+    }
+
+    #[test]
+    fn 대화상자의_redteam은_오케스트레이터의_full로_매핑된다() {
+        assert_eq!(orchestrator_intensity("redteam"), "full");
+        assert_eq!(orchestrator_intensity("full"), "full");
+        assert_eq!(orchestrator_intensity("probe"), "probe");
+        assert_eq!(orchestrator_intensity("readonly"), "readonly");
+        assert_eq!(orchestrator_intensity("nonsense"), "readonly");
     }
 }

@@ -6,6 +6,7 @@ mod chat;
 mod chip_bar;
 mod page;
 mod redteam;
+pub(crate) mod report;
 pub(crate) mod shortcuts;
 mod tab_strip;
 

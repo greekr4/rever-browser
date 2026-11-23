@@ -123,6 +123,8 @@ pub(crate) struct Views {
     pub composer: Entity<TextArea>,
     /// The target-URL field of the Red Team dialog.
     pub redteam_target: Entity<TextInput>,
+    /// The page-budget field of the Red Team dialog.
+    pub redteam_pages: Entity<TextInput>,
     pub traffic: Entity<TrafficList>,
     pub drawer: Entity<DetailDrawer>,
     pub console: Entity<ConsolePanel>,
@@ -165,6 +167,7 @@ impl Views {
             this.start_redteam(cx)
         })
         .detach();
+        let redteam_pages = cx.new(|cx| TextInput::new("8", cx));
 
         let (store, state) = (stores.traffic.clone(), stores.traffic_state.clone());
         let traffic =
@@ -256,6 +259,7 @@ impl Views {
             address,
             composer,
             redteam_target,
+            redteam_pages,
             traffic,
             drawer,
             console,

@@ -14,7 +14,8 @@ use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::channel::oneshot;
 use gpui::{
     App, AppContext, Bounds, ClipboardItem, Context, Entity, FocusHandle, Focusable,
-    PathPromptOptions, Pixels, PromptLevel, RenderImage, SharedString, WeakEntity, Window,
+    PathPromptOptions, Pixels, PromptLevel, RenderImage, SharedString, TitlebarOptions,
+    WeakEntity, Window, WindowBounds, WindowOptions, px, size,
 };
 use image::{Frame, RgbaImage};
 use net::tap::NetworkTapEvent;
@@ -99,7 +100,7 @@ pub(crate) fn panel_title_key(panel: &str) -> &'static str {
     }
 }
 
-fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -774,6 +775,12 @@ pub(crate) struct Browser {
     pub redteam_drag: Option<(f32, f32)>,
     /// A scan turn is streaming into the dialog (not the chat panel).
     pub redteam_running: bool,
+    /// The activity log section of the dialog is expanded.
+    pub redteam_log_open: bool,
+    /// The activity log's scroll position, kept at the newest line while running.
+    pub redteam_log_scroll: gpui::ScrollHandle,
+    /// The scan report's own window, when one is open.
+    pub redteam_report_win: Option<gpui::WindowHandle<crate::shell::report::ReportWindow>>,
     /// The running (or just-finished) scan orchestrator, when there is one.
     pub scan: Option<crate::scan::ScanRun>,
     /// URLs of the tabs the scan opened; closed when it finishes.
@@ -1189,6 +1196,9 @@ impl Browser {
             redteam_pos: (0.0, 0.0),
             redteam_drag: None,
             redteam_running: false,
+            redteam_log_open: true,
+            redteam_log_scroll: gpui::ScrollHandle::new(),
+            redteam_report_win: None,
             scan: None,
             scan_tabs: Vec::new(),
             redteam_w: 560.0,
@@ -2043,10 +2053,11 @@ impl Browser {
             .get("intensity")
             .and_then(serde_json::Value::as_str)
             .unwrap_or("readonly");
-        // "redteam" is the TypeScript name of what the dialog calls "full".
+        // Keep the dialog's vocabulary ("redteam"); start maps it to the
+        // orchestrator's "full".
         let intensity = match intensity {
             "probe" => "probe",
-            "full" | "redteam" => "full",
+            "full" | "redteam" => "redteam",
             _ => "readonly",
         };
         let autostart = payload
@@ -2062,6 +2073,9 @@ impl Browser {
         self.views
             .redteam_target
             .update(cx, |input, cx| input.set_text(url, cx));
+        self.views
+            .redteam_pages
+            .update(cx, |input, cx| input.set_text(pages.to_string(), cx));
         self.redteam_intensity = intensity;
         self.redteam_pages = pages;
         self.redteam_open = true;
@@ -2127,6 +2141,16 @@ impl Browser {
         if target.is_empty() || self.agent_busy || self.redteam_running {
             return;
         }
+        let pages = self
+            .views
+            .redteam_pages
+            .read(cx)
+            .text()
+            .trim()
+            .parse()
+            .unwrap_or(self.redteam_pages)
+            .clamp(1, 200);
+        self.redteam_pages = pages;
         // Fresh-scan guarantee: findings persist per site, which cannot tell two
         // apps on the same origin apart — drop this site's old findings first.
         // (The TS also cleared the target host's cookies; the Rust auth bootstrap
@@ -2140,11 +2164,75 @@ impl Browser {
         self.scan_tabs.clear();
         self.scan = Some(crate::scan::ScanRun::new(
             &target,
-            self.redteam_pages,
-            self.redteam_intensity,
+            pages,
+            // "redteam" is the dialog's name for the orchestrator's "full".
+            crate::scan::orchestrator_intensity(self.redteam_intensity),
         ));
         self.redteam_running = true;
+        self.redteam_log_open = true;
+        // A 1s tick so the stats row's elapsed clock moves between scan events.
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+                let running = this.update(cx, |this, cx| {
+                    let running = this.redteam_running;
+                    cx.notify();
+                    running
+                });
+                if running.is_err() || !running.unwrap_or(false) {
+                    break;
+                }
+            }
+        })
+        .detach();
         self.pump_scan(cx);
+        cx.notify();
+    }
+
+    /// Show the finished scan's report in its own window, refreshing (and
+    /// focusing) the window when one is already open.
+    pub fn open_report_window(&mut self, cx: &mut Context<Self>) {
+        let Some(scan) = self.scan.as_ref() else {
+            return;
+        };
+        if scan.report.is_empty() {
+            return;
+        }
+        let target = scan.target().to_owned();
+        let findings = scan.findings;
+        let report = scan.report.clone();
+        if let Some(handle) = self.redteam_report_win.clone() {
+            let refreshed = handle.update(cx, |view, window, cx| {
+                view.set(&target, findings, &report);
+                window.activate_window();
+                cx.notify();
+            });
+            if refreshed.is_ok() {
+                return;
+            }
+        }
+        let lang = self.lang;
+        let mode = self.theme_mode;
+        let bounds = Bounds::centered(None, size(px(760.0), px(880.0)), cx);
+        let window = cx
+            .open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some(lang.t("scan.report.title").into()),
+                        appears_transparent: false,
+                        traffic_light_position: None,
+                    }),
+                    ..Default::default()
+                },
+                |_, cx| {
+                    cx.new(|_| {
+                        crate::shell::report::ReportWindow::new(&target, findings, &report, lang, mode)
+                    })
+                },
+            )
+            .expect("could not open the report window");
+        self.redteam_report_win = Some(window);
         cx.notify();
     }
 
@@ -2208,9 +2296,18 @@ impl Browser {
                 crate::scan::ScanAction::CloseScanTabs => self.close_scan_tabs = true,
             }
         }
+        let was_running = self.redteam_running;
         self.redteam_running = scan.running();
+        // Follow the activity log's newest line while the scan streams.
+        if self.redteam_running {
+            self.redteam_log_scroll.scroll_to_bottom();
+        }
         if !scan.running() {
             crate::agent::REDTEAM_SCAN.store(false, Ordering::Relaxed);
+            // A finished scan lands its report in the report window.
+            if was_running && !scan.report.is_empty() {
+                self.open_report_window(cx);
+            }
         }
         self.scan = Some(scan);
         cx.notify();
