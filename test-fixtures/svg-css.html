@@ -8,6 +8,9 @@
   .dim { fill: rgb(0 0 0 / 0.35); }
   .current { fill: currentColor; }
   .red-stroke { stroke: #e33; stroke-width: 4px; }
+  .hot:hover circle { fill: #e33; }
+  a.icon { color: #fff; }
+  a.icon:hover { color: #e33; }
 </style>
 <!-- Expected, left to right:
      1. a see-through dark disc with a white cross (class fill with alpha, currentColor stroke)
@@ -18,3 +21,12 @@
 <span class="white"><svg viewBox="0 0 36 36" class="current"><circle cx="18" cy="18" r="16"></circle></svg></span>
 <svg viewBox="0 0 36 36" class="red-stroke"><circle cx="18" cy="18" r="14" fill="none"></circle></svg>
 <svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" class="dim" style="fill: #36c"></circle></svg>
+<!-- Second row. Under the pointer the first two turn red:
+     5. a white disc whose own rule changes on hover (.hot:hover circle)
+     6. a white disc that follows its link's hover color through currentColor
+     7. a white square drawn by <use> from a symbol kept in another, hidden <svg> -->
+<br>
+<span class="white hot" id="hot"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" class="current"></circle></svg></span>
+<a class="icon" id="link" href="#"><svg viewBox="0 0 36 36" class="current"><circle cx="18" cy="18" r="16"></circle></svg></a>
+<svg style="display:none"><symbol id="square" viewBox="0 0 36 36"><rect x="4" y="4" width="28" height="28"></rect></symbol></svg>
+<span class="white"><svg viewBox="0 0 36 36" class="current"><use href="#square"></use></svg></span>

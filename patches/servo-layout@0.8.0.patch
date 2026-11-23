@@ -1,6 +1,101 @@
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/context.rs b/context.rs
+--- a/context.rs	2006-07-24 10:21:28
++++ b/context.rs	2026-11-23 10:07:21
+@@ -140,8 +140,19 @@
+ 
+     /// The current animation timeline value used to properly initialize animating images.
+     pub animation_timeline_value: f64,
++
++    /// rever: what each inline `<svg>` draws from; see [`ImageResolver::svg_image`].
++    pub svg_sources: Arc<Mutex<HashMap<Uuid, SvgSources>>>,
+ }
+ 
++/// rever: the urls of one inline `<svg>`: the one its picture on screen came from, and
++/// the one being loaded to replace it.
++#[derive(Default)]
++pub(crate) struct SvgSources {
++    drawn: Option<ServoUrl>,
++    pending: Option<ServoUrl>,
++}
++
+ impl Drop for ImageResolver {
+     fn drop(&mut self) {
+         if !std::thread::panicking() {
+@@ -249,6 +260,71 @@
+                     .write()
+                     .insert(url, error.clone());
+                 error
++            },
++        }
++    }
++
++    /// rever: the picture of the inline `<svg>` `svg_id`, which should now draw from
++    /// `wanted`. The page's paint is part of that url (replaced.rs), so it changes with
++    /// a hover, and the new picture takes a moment to load.
++    ///
++    /// - Until it has loaded, the picture drawn so far is returned: the icon does not
++    ///   blink away between its two colors.
++    /// - One load at a time: a transition asks for a new color at every frame, and
++    ///   each asked-for url would stay in the caches.
++    /// - The url a picture is replaced from is dropped from the caches. The image
++    ///   cache keeps one drawing per `<svg>` and has dropped that one's already; left
++    ///   in, going back to the earlier paint would find an image that draws nothing.
++    pub(crate) fn svg_image(
++        &self,
++        svg_id: Uuid,
++        wanted: ServoUrl,
++        node: OpaqueNode,
++    ) -> Option<CachedImage> {
++        let resolve = |url: &ServoUrl| {
++            self.get_cached_image_for_url(
++                node,
++                url.clone(),
++                LayoutImageDestination::BoxTreeConstruction,
++                InternalRequest::Yes,
++            )
++            .ok()
++        };
++        let forget = |url: &ServoUrl| {
++            self.resolved_images_cache.write().remove(url);
++            self.image_cache
++                .evict_completed_image(url, &self.origin, &None);
++        };
++
++        let mut sources = self.svg_sources.lock();
++        let state = sources.entry(svg_id).or_default();
++        if let Some(pending) = state.pending.take_if(|pending| *pending != wanted) {
++            if state.drawn.as_ref() == Some(&wanted) {
++                // Back to the paint on screen before the other one arrived.
++                forget(&pending);
++            } else if resolve(&pending).is_some() {
++                if let Some(previous) = state.drawn.replace(pending) {
++                    forget(&previous);
++                }
++            } else {
++                // Still loading: wait for it before asking for `wanted`.
++                state.pending = Some(pending);
++                return state.drawn.as_ref().and_then(resolve);
++            }
++        }
++        match resolve(&wanted) {
++            Some(image) => {
++                state.pending = None;
++                if let Some(previous) = state.drawn.replace(wanted.clone()) &&
++                    previous != wanted
++                {
++                    forget(&previous);
++                }
++                Some(image)
++            },
++            None => {
++                state.pending = Some(wanted);
++                state.drawn.as_ref().and_then(resolve)
+             },
+         }
+     }
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/formatting_contexts.rs b/formatting_contexts.rs
 --- a/formatting_contexts.rs	2006-07-24 10:21:28
-+++ b/formatting_contexts.rs	2026-11-20 16:06:43
++++ b/formatting_contexts.rs	2026-11-23 10:07:21
 @@ -27,7 +27,9 @@
      self, ComputeInlineContentSizes, ContentSizes, InlineContentSizesResult, LazySize,
      SizeConstraint,
@@ -96,9 +191,38 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
      }
  
      pub(crate) fn attached_to_tree(&self, layout_box: WeakLayoutBox) {
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/layout_impl.rs b/layout_impl.rs
+--- a/layout_impl.rs	2006-07-24 10:21:28
++++ b/layout_impl.rs	2026-11-23 10:07:21
+@@ -208,6 +208,9 @@
+     // image data, or an error if the image cache failed to load/decode the image.
+     resolved_images_cache: Arc<RwLock<HashMap<ServoUrl, CachedImageOrError>>>,
+ 
++    /// rever: what each inline `<svg>` of this document draws from.
++    svg_sources: Arc<Mutex<HashMap<uuid::Uuid, crate::context::SvgSources>>>,
++
+     /// The executors for paint worklets.
+     registered_painters: RegisteredPaintersImpl,
+ 
+@@ -911,6 +914,7 @@
+             paint_api: config.paint_api,
+             stylist: Stylist::new(device, QuirksMode::NoQuirks),
+             resolved_images_cache: Default::default(),
++            svg_sources: Default::default(),
+             debug: opts::get().debug.clone(),
+             previously_highlighted_dom_node: Cell::new(None),
+             paint_timing_handler: Default::default(),
+@@ -1122,6 +1126,7 @@
+             origin: reflow_request.origin.clone(),
+             image_cache: self.image_cache.clone(),
+             resolved_images_cache: self.resolved_images_cache.clone(),
++            svg_sources: self.svg_sources.clone(),
+             pending_images: Mutex::default(),
+             pending_rasterization_images: Mutex::default(),
+             pending_svg_elements_for_serialization: Mutex::default(),
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/replaced.rs b/replaced.rs
 --- a/replaced.rs	2006-07-24 10:21:28
-+++ b/replaced.rs	2026-11-20 16:06:43
++++ b/replaced.rs	2026-11-23 10:07:21
 @@ -19,6 +19,8 @@
  use servo_base::id::{BrowsingContextId, PipelineId};
  use servo_url::ServoUrl;
@@ -116,7 +240,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
  use style::values::computed::{Content, Context, ToComputedValue};
  use style::values::generics::counters::{GenericContentItem, GenericContentItems};
  use url::Url;
-@@ -50,6 +53,181 @@
+@@ -50,6 +53,188 @@
  use crate::style_ext::{AspectRatio, Clamp, ComputedValuesExt, LayoutStyle};
  use crate::{ConstraintSpace, ContainingBlock, SharedStyle};
  
@@ -125,7 +249,11 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
 +/// was ignored, so icons were invisible on dark backgrounds or drawn solid black.
 +/// The paint the cascade gave each element is written into the markup as a `style`
 +/// attribute, which is where the rasterizer can read it.
-+fn svg_with_page_styles(source: ServoUrl, styles: &[String]) -> ServoUrl {
++///
++/// `owner` (the element's id) is written in as a comment, so that no two `<svg>`s share a
++/// url: the image cache keeps one drawing per `<svg>`, and when one of two that share
++/// changes its paint, the other loses its drawing.
++fn svg_with_page_styles(source: ServoUrl, styles: &[String], owner: &str) -> ServoUrl {
 +    let decoded = DataUrl::process(source.as_str())
 +        .ok()
 +        .and_then(|data| data.decode_to_vec().ok())
@@ -133,7 +261,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
 +    let Some(markup) = decoded else {
 +        return source;
 +    };
-+    let styled = svg_markup_with_styles(&markup, styles);
++    let styled = format!("{}<!--{owner}-->", svg_markup_with_styles(&markup, styles));
 +    // Percent-encoded rather than base64: nothing here needs a new dependency for it.
 +    let mut url = String::from("data:image/svg+xml,");
 +    for byte in styled.bytes() {
@@ -188,11 +316,14 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
 +    tags
 +}
 +
-+/// The markup with `styles[n]` added to its n-th element. When the elements do not line
-+/// up with the styles (a `<use>` was expanded into copies), only the root is styled.
++/// The markup with `styles[n]` added to its n-th element. The markup may hold more
++/// elements than there are styles: what a `<use>` refers to elsewhere in the page is
++/// copied in after the `<svg>`'s own elements, and takes its paint from the root by
++/// inheritance. With fewer elements than styles the two do not line up, and only the
++/// root is styled.
 +fn svg_markup_with_styles(markup: &str, styles: &[String]) -> String {
 +    let tags = svg_start_tags(markup);
-+    let styled = if tags.len() == styles.len() { tags.len() } else { 1 };
++    let styled = if tags.len() >= styles.len() { styles.len() } else { 1 };
 +    let mut out = String::with_capacity(markup.len() + 64 * styled);
 +    let mut copied = 0;
 +    for (&(name_end, style), declarations) in tags.iter().zip(styles).take(styled) {
@@ -298,7 +429,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
  #[derive(Debug, MallocSizeOf)]
  pub(crate) struct ReplacedContents {
      base_fragment_info: BaseFragmentInfo,
-@@ -309,6 +487,14 @@
+@@ -309,16 +494,18 @@
              Some(svg_source_result) => svg_source_result.ok(),
          };
  
@@ -307,13 +438,24 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
 +            let initial = context.style_context.stylist.device().default_computed_values();
 +            let mut styles = vec![svg_paint_declarations(&parent_style, initial, true)];
 +            svg_descendant_styles(node, &parent_style, context, &mut styles);
-+            svg_with_page_styles(source, &styles)
++            svg_with_page_styles(source, &styles, &svg_data.svg_id.to_string())
 +        });
 +
          let cached_image = svg_source.and_then(|svg_source| {
              context
                  .image_resolver
-@@ -844,4 +1030,48 @@
+-                .get_cached_image_for_url(
+-                    node.opaque(),
+-                    svg_source,
+-                    LayoutImageDestination::BoxTreeConstruction,
+-                    InternalRequest::Yes,
+-                )
+-                .ok()
++                .svg_image(svg_data.svg_id, svg_source, node.opaque())
+         });
+ 
+         let vector_image = cached_image.map(|image| match image {
+@@ -844,4 +1031,57 @@
      }
  
      Url::parse(string).ok()
@@ -347,12 +489,21 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
 +    }
 +
 +    #[test]
-+    fn 요소_수가_맞지_않으면_루트에만_넣는다() {
-+        // A `<use>` was expanded: three start tags, two styles.
-+        let markup = "<svg><g><path/></g></svg>";
++    fn use가_끌어온_요소는_스타일_없이_뒤에_남는다() {
++        // 페이지의 다른 곳에서 복사해 온 `<symbol>`이 `<svg>`의 요소들 뒤에 붙는다.
++        let markup = r##"<svg><use href="#dot"/><symbol id="dot"><circle/></symbol></svg>"##;
 +        assert_eq!(
-+            svg_markup_with_styles(markup, &styles(&["color:red", "fill:red"])),
-+            "<svg style=\"color:red\"><g><path/></g></svg>"
++            svg_markup_with_styles(markup, &styles(&["color:red", "fill:blue"])),
++            r##"<svg style="color:red"><use style="fill:blue" href="#dot"/><symbol id="dot"><circle/></symbol></svg>"##
++        );
++    }
++
++    #[test]
++    fn 요소가_스타일보다_적으면_루트에만_넣는다() {
++        let markup = "<svg><g/></svg>";
++        assert_eq!(
++            svg_markup_with_styles(markup, &styles(&["color:red", "fill:red", "fill:blue"])),
++            "<svg style=\"color:red\"><g/></svg>"
 +        );
 +    }
 +
@@ -364,7 +515,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
  }
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/style_ext.rs b/style_ext.rs
 --- a/style_ext.rs	2006-07-24 10:21:28
-+++ b/style_ext.rs	2026-11-20 16:06:43
++++ b/style_ext.rs	2026-11-23 10:07:21
 @@ -759,6 +759,15 @@
              return true;
          }
@@ -381,3 +532,67 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
          // TODO: We need to handle CSS Contain here.
          false
      }
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/traversal.rs b/traversal.rs
+--- a/traversal.rs	2006-07-24 10:21:28
++++ b/traversal.rs	2026-11-23 10:07:21
+@@ -90,6 +90,21 @@
+     damage_from_environment: LayoutDamage,
+     layout_roots: &mut Vec<LayoutRoot<'dom>>,
+ ) -> LayoutDamage {
++    // rever: an inline `<svg>` is painted from its serialized markup, with the page's
++    // paint written into it when its box is built (replaced.rs). Its elements have no
++    // boxes, and a change to `fill` or `stroke` raises no damage, so a restyle inside
++    // one (a hover color) changed nothing on screen. When the restyle starts inside an
++    // `<svg>`, the traversal starts at that `<svg>` instead and rebuilds its box.
++    let dirty_root = match enclosing_svg(dirty_root) {
++        Some(svg) => {
++            if let Some(element) = svg.as_element() {
++                element.element_data_mut().damage = RestyleDamage::reconstruct();
++            }
++            svg
++        },
++        None => dirty_root,
++    };
++
+     // First process damage below the dirty root, returning the damage that
+     // should be propagated upward into the clean part of the tree.
+     let layout_damage = compute_damage_and_rebuild_box_tree_below_dirty_root(
+@@ -125,7 +140,20 @@
+     layout_damage
+ }
+ 
++/// rever: the `<svg>` element `node` lies inside, if it lies inside one.
+ #[expect(unsafe_code)]
++fn enclosing_svg<'dom>(node: ServoLayoutNode<'dom>) -> Option<ServoLayoutNode<'dom>> {
++    let mut parent = unsafe { node.dangerous_flat_tree_parent() };
++    while let Some(ancestor) = parent {
++        if ancestor.as_svg().is_some() {
++            return Some(ancestor);
++        }
++        parent = unsafe { ancestor.dangerous_flat_tree_parent() };
++    }
++    None
++}
++
++#[expect(unsafe_code)]
+ #[servo_tracing::instrument(skip_all)]
+ pub(crate) fn compute_damage_and_rebuild_box_tree_above_dirty_root<'dom>(
+     layout_context: &LayoutContext,
+@@ -203,6 +231,17 @@
+         node.unset_all_boxes();
+         return element_damage | damage_from_parent;
+     }
++
++    // rever: see `compute_damage_and_rebuild_box_tree`. A restyle that reaches into an
++    // `<svg>` from above (the link around an icon changing its `color`), or that
++    // touches the `<svg>` itself, rebuilds its box as well.
++    let element_damage = if node.as_svg().is_some() &&
++        (has_dirty_descendants || !element_damage.is_empty())
++    {
++        element_damage | LayoutDamage::BoxDamage
++    } else {
++        element_damage
++    };
+ 
+     let mut damage_set = ElementDamageSet {
+         node,
