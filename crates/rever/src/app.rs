@@ -20,6 +20,8 @@ use image::{Frame, RgbaImage};
 use net::tap::NetworkTapEvent;
 use rever_agent::claude_cli::ClaudeCliFinder;
 use rever_agent::model_catalog::ModelCatalog;
+use rever_chat_core::acp_permission::{ACP_PERMISSION_TIMEOUT_MS, ApproveOptions, PermissionStore};
+use rever_chat_core::red_team_mode::RedTeamMode;
 use rever_core::address::normalize_address;
 use rever_core::paths::user_data_dir;
 use rever_core::traffic::{
@@ -38,6 +40,9 @@ use rever_ui_chat::chat_history_menu::{
 };
 use rever_ui_chat::model_catalog::ModelCatalogStore;
 use rever_ui_chat::model_picker::{ModelPicker, ModelPickerEvent, ModelPickerProps};
+use rever_ui_chat::permission_prompt::{
+    PermissionPrompt, PermissionPromptEvent, PermissionPromptProps,
+};
 use rever_ui_history::history::NewHistoryEntry;
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::text_input::{Submitted, TextInput};
@@ -48,13 +53,6 @@ use rever_ui_menus::ui::{Look, LookFn, fill};
 use rever_ui_state::app_theme::{self, AppThemeStore};
 use rever_ui_state::chat_collapsed::ChatCollapsedStore;
 use rever_ui_state::chat_history::{ChatHistory, new_conversation_id};
-use rever_chat_core::acp_permission::{
-    ACP_PERMISSION_TIMEOUT_MS, ApproveOptions, PermissionStore,
-};
-use rever_chat_core::red_team_mode::RedTeamMode;
-use rever_ui_chat::permission_prompt::{
-    PermissionPrompt, PermissionPromptEvent, PermissionPromptProps,
-};
 use rever_ui_state::constants::AcpAgentId;
 
 use crate::permissions::ChatRules;
@@ -63,14 +61,14 @@ use rever_ui_state::tabs::{
 };
 use serde_json::{Value, json};
 use servo::{
-    ColorPicker, ContextMenu, ContextMenuAction, EmbedderControl, JSValue, RgbColor,
-    SelectElement, SimpleDialog,
+    ColorPicker, ContextMenu, ContextMenuAction, EmbedderControl, JSValue, RgbColor, SelectElement,
+    SimpleDialog,
 };
 use url::Url;
 
 use crate::agent::{AgentEvent, ChatAgent};
-use crate::chat_agents::{self, PickerHost};
 use crate::bridge;
+use crate::chat_agents::{self, PickerHost};
 use crate::engine::{Engine, EngineEvent, TabId};
 use crate::panels::{self, IpHost, Stores, Views};
 
@@ -163,25 +161,27 @@ fn start_mcp(
     // "no renderer window". The command answers on the main thread.
     {
         let (commands, wake) = browser.channels();
-        context.state::<RendererBridge>().subscribe(move |op, payload| {
-            let (answer, answered) = oneshot::channel();
-            let sent = commands
-                .unbounded_send(crate::bridge::Command::InterfaceAsk(
-                    op.to_owned(),
-                    payload,
-                    answer,
-                ))
-                .is_ok();
-            let _ = wake.unbounded_send(());
-            Box::pin(async move {
-                if !sent {
-                    return Err("the browser window is closed".to_owned());
-                }
-                answered
-                    .await
-                    .unwrap_or_else(|_| Err("the browser window is closed".to_owned()))
-            })
-        });
+        context
+            .state::<RendererBridge>()
+            .subscribe(move |op, payload| {
+                let (answer, answered) = oneshot::channel();
+                let sent = commands
+                    .unbounded_send(crate::bridge::Command::InterfaceAsk(
+                        op.to_owned(),
+                        payload,
+                        answer,
+                    ))
+                    .is_ok();
+                let _ = wake.unbounded_send(());
+                Box::pin(async move {
+                    if !sent {
+                        return Err("the browser window is closed".to_owned());
+                    }
+                    answered
+                        .await
+                        .unwrap_or_else(|_| Err("the browser window is closed".to_owned()))
+                })
+            });
     }
     // Macros and workflow steps call the other tools by name through the registry;
     // without it saving or running one failed with "not connected to workflows yet".
@@ -199,7 +199,9 @@ fn start_mcp(
     let profile = server.as_ref().map(|server| server.tool_profile().clone());
     context_for_app
         .state::<rever_tools_automation::workflow_executor::AiAgentsSlot>()
-        .set(Arc::new(crate::workflow_agents::WorkflowAgents::new(endpoint, profile)));
+        .set(Arc::new(crate::workflow_agents::WorkflowAgents::new(
+            endpoint, profile,
+        )));
     (server, intercept, downloads, context_for_app)
 }
 
@@ -392,7 +394,11 @@ fn record(store: &Mutex<TrafficStore>, downloads: &DownloadState, event: Network
 /// append to that entry so get_ws_frames can read them back.
 fn record_ws(store: &Mutex<TrafficStore>, event: NetworkTapEvent) {
     let (id, frame) = match event {
-        NetworkTapEvent::WebSocketOpened { id, url, webview_id } => {
+        NetworkTapEvent::WebSocketOpened {
+            id,
+            url,
+            webview_id,
+        } => {
             // Same scheme rewrite as the handshake Request: ws/wss, not http(s).
             let mut url = url;
             let scheme = match url.scheme() {
@@ -413,10 +419,19 @@ fn record_ws(store: &Mutex<TrafficStore>, event: NetworkTapEvent) {
             store.lock().unwrap().upsert(patch, now_ms());
             return;
         }
-        NetworkTapEvent::WebSocketFrame { id, outgoing, binary, payload } => (
+        NetworkTapEvent::WebSocketFrame {
+            id,
+            outgoing,
+            binary,
+            payload,
+        } => (
             id,
             WsFrame {
-                direction: if outgoing { WsDirection::Sent } else { WsDirection::Received },
+                direction: if outgoing {
+                    WsDirection::Sent
+                } else {
+                    WsDirection::Received
+                },
                 // 1 = text, 2 = binary, the WebSocket opcodes CDP reports.
                 opcode: if binary { 2 } else { 1 },
                 payload_data: String::from_utf8_lossy(&payload).into_owned(),
@@ -519,7 +534,11 @@ fn messages_to_lines(messages: &[Value]) -> Vec<ChatLine> {
         .filter_map(|message| {
             let part = message["parts"].get(0)?;
             let tool = part["type"] == "dynamic-tool";
-            let text = if tool { &part["toolName"] } else { &part["text"] };
+            let text = if tool {
+                &part["toolName"]
+            } else {
+                &part["text"]
+            };
             Some(ChatLine {
                 from_user: message["role"] == "user",
                 text: text.as_str()?.to_owned(),
@@ -538,7 +557,10 @@ const EARLIER_LIMIT: usize = 8_000;
 /// conversation or a change of agent would otherwise answer as if nothing was said.
 fn with_earlier(earlier: &[ChatLine], text: &str) -> String {
     let mut transcript = String::new();
-    for line in earlier.iter().filter(|line| line.tool.is_none() && !line.failed) {
+    for line in earlier
+        .iter()
+        .filter(|line| line.tool.is_none() && !line.failed)
+    {
         if line.text.is_empty() {
             continue;
         }
@@ -630,7 +652,11 @@ fn start_pages(asked: Option<Url>, saved: Option<&str>) -> (Vec<(Url, String)>, 
             pages.push((url, tab.title.unwrap_or_default()));
         }
     }
-    if pages.is_empty() { home(None) } else { (pages, active) }
+    if pages.is_empty() {
+        home(None)
+    } else {
+        (pages, active)
+    }
 }
 
 /// What the command line asked for.
@@ -843,15 +869,19 @@ impl Browser {
         let tool_browser = Arc::new(bridge::AppBrowser::new(tool_tx, wake.clone()));
         let traffic = Arc::new(Mutex::new(TrafficStore::default()));
         let debug_endpoint = crate::debug::Endpoint::default();
-        let (mcp, intercept, downloads, tool_context) =
-            start_mcp(traffic.clone(), tool_browser.clone(), debug_endpoint.clone());
+        let (mcp, intercept, downloads, tool_context) = start_mcp(
+            traffic.clone(),
+            tool_browser.clone(),
+            debug_endpoint.clone(),
+        );
         let traffic_changed = Arc::new(AtomicBool::new(false));
         {
             let (store, wake, changed) = (traffic.clone(), wake.clone(), traffic_changed.clone());
             let downloads = downloads.clone();
             net::tap::set_network_tap(move |event| {
                 match &event {
-                    NetworkTapEvent::WebSocketOpened { .. } | NetworkTapEvent::WebSocketFrame { .. } => {
+                    NetworkTapEvent::WebSocketOpened { .. }
+                    | NetworkTapEvent::WebSocketFrame { .. } => {
                         record_ws(&store, event);
                     }
                     NetworkTapEvent::Request { .. } | NetworkTapEvent::Response { .. } => {
@@ -888,7 +918,8 @@ impl Browser {
             loop {
                 let pause = (tab_sleep_after() / 2).min(Duration::from_secs(30));
                 cx.background_executor().timer(pause).await;
-                let looked = this.update_in(cx, |this, window, cx| this.sleep_idle_tabs(window, cx));
+                let looked =
+                    this.update_in(cx, |this, window, cx| this.sleep_idle_tabs(window, cx));
                 if looked.is_err() {
                     break;
                 }
@@ -1010,9 +1041,10 @@ impl Browser {
             };
             PermissionPrompt::new(props, look.clone(), cx)
         });
-        cx.subscribe(&permission_prompt, |this, _, event: &PermissionPromptEvent, cx| {
-            this.answer_permission(event, cx)
-        })
+        cx.subscribe(
+            &permission_prompt,
+            |this, _, event: &PermissionPromptEvent, cx| this.answer_permission(event, cx),
+        )
         .detach();
         let menu = cx.new(|_| {
             let this = this.clone();
@@ -1055,22 +1087,35 @@ impl Browser {
             .get(MODEL_STORAGE_KEY)
             .filter(|id| !id.is_empty())
             .map(|id| {
-                let name = stores.storage.get(MODEL_NAME_STORAGE_KEY).unwrap_or_else(|| id.clone());
+                let name = stores
+                    .storage
+                    .get(MODEL_NAME_STORAGE_KEY)
+                    .unwrap_or_else(|| id.clone());
                 (id, name)
             });
         // The lists on disk first, so the picker is full at once.
         let catalog = ModelCatalog::new(&data_dir());
         let model_store = Rc::new(RefCell::new(ModelCatalogStore::new()));
         for agent in LIVE_MODEL_AGENTS {
-            model_store.borrow_mut().put(agent, catalog.cached(agent).as_ref());
+            model_store
+                .borrow_mut()
+                .put(agent, catalog.cached(agent).as_ref());
         }
         let model_picker = cx.new(|cx| {
             let this = this.clone();
-            let host = Rc::new(PickerHost { models: model_store.clone() });
+            let host = Rc::new(PickerHost {
+                models: model_store.clone(),
+            });
             ModelPicker::new(move |cx| picker_props(&this, cx), host, look.clone(), cx)
         });
         cx.subscribe(&model_picker, |this, _, event: &ModelPickerEvent, cx| {
-            if let ModelPickerEvent::Selected { agent_id, model_id, name, .. } = event {
+            if let ModelPickerEvent::Selected {
+                agent_id,
+                model_id,
+                name,
+                ..
+            } = event
+            {
                 this.choose_model(*agent_id, model_id, name, cx);
             }
         })
@@ -1083,7 +1128,10 @@ impl Browser {
                     .spawn(async move {
                         let (cli, version) = (ClaudeCliFinder::new(), env!("CARGO_PKG_VERSION"));
                         LIVE_MODEL_AGENTS.map(|agent| {
-                            (agent, catalog.refresh(agent, &cli, version, || now_ms() as i64))
+                            (
+                                agent,
+                                catalog.refresh(agent, &cli, version, || now_ms() as i64),
+                            )
                         })
                     })
                     .await;
@@ -1230,7 +1278,13 @@ impl Browser {
         let after = tab_sleep_after();
         let active = self.active;
         for (index, tab) in self.tabs.iter_mut().enumerate() {
-            if !sleeps(index == active, tab.asleep, tab.used.elapsed(), working, after) {
+            if !sleeps(
+                index == active,
+                tab.asleep,
+                tab.used.elapsed(),
+                working,
+                after,
+            ) {
                 continue;
             }
             self.engine.close(tab.id);
@@ -1553,7 +1607,13 @@ impl Browser {
     /// The picker's choice: remembered, and used from the next message on. A model of
     /// the same agent goes to the running session, which keeps the conversation;
     /// another agent starts its own session, which has not seen it.
-    fn choose_model(&mut self, agent: AcpAgentId, model_id: &str, name: &str, cx: &mut Context<Self>) {
+    fn choose_model(
+        &mut self,
+        agent: AcpAgentId,
+        model_id: &str,
+        name: &str,
+        cx: &mut Context<Self>,
+    ) {
         let same_agent = self.chat_agent == agent;
         self.chat_agent = agent;
         self.chat_model = Some((model_id.to_owned(), name.to_owned()));
@@ -1568,7 +1628,10 @@ impl Browser {
         }
         // A session that cannot take the model is replaced at the next turn.
         let kept = same_agent
-            && self.agent.as_mut().is_none_or(|agent| agent.set_model(model_id).is_ok());
+            && self
+                .agent
+                .as_mut()
+                .is_none_or(|agent| agent.set_model(model_id).is_ok());
         if !kept {
             self.forget_agent();
         }
@@ -1655,15 +1718,14 @@ impl Browser {
     fn rebuild_views(&mut self, cx: &mut Context<Self>) {
         let address = self.views.address.read(cx).text().to_owned();
         let draft = self.views.composer.read(cx).text().to_owned();
-        self.views =
-            Views::new(
-                &self.stores,
-                self.lang,
-                self.theme_mode,
-                self.storage_browser.clone(),
-                self.tool_context.clone(),
-                cx,
-            );
+        self.views = Views::new(
+            &self.stores,
+            self.lang,
+            self.theme_mode,
+            self.storage_browser.clone(),
+            self.tool_context.clone(),
+            cx,
+        );
         self.views
             .address
             .update(cx, |input, cx| input.set_text(address, cx));
@@ -1765,8 +1827,14 @@ impl Browser {
             let wake = move || {
                 let _ = wake.unbounded_send(());
             };
-            self.agent =
-                Some(chat_agents::spawn_agent(self.chat_agent, model, &scratch, mcp, profile, wake)?);
+            self.agent = Some(chat_agents::spawn_agent(
+                self.chat_agent,
+                model,
+                &scratch,
+                mcp,
+                profile,
+                wake,
+            )?);
         }
         let agent = self.agent.as_mut().ok_or("no agent session")?;
         agent.send(text)?;
@@ -1904,8 +1972,10 @@ impl Browser {
                 }));
                 let input = cx.new(|cx| TextInput::new("#rrggbb", cx));
                 input.update(cx, |input, cx| input.set_text(hex, cx));
-                cx.subscribe(&input, |this, _, _: &Submitted, cx| this.submit_color(true, cx))
-                    .detach();
+                cx.subscribe(&input, |this, _, _: &Submitted, cx| {
+                    this.submit_color(true, cx)
+                })
+                .detach();
                 self.color_picker = Some(ColorOverlay { picker, input });
                 cx.notify();
             }
@@ -1921,7 +1991,12 @@ impl Browser {
         };
         let text = overlay.input.read(cx).text().to_owned();
         answer_dialog(overlay.dialog, accept, accept.then_some(text.as_str()));
-        if let Some(record) = self.dialog_log.iter_mut().rev().find(|r| r.ts == overlay.ts) {
+        if let Some(record) = self
+            .dialog_log
+            .iter_mut()
+            .rev()
+            .find(|r| r.ts == overlay.ts)
+        {
             record.answer = Some(DialogAnswer {
                 by: "user".to_owned(),
                 accept,
@@ -2058,7 +2133,8 @@ impl Browser {
         // apps on the same origin apart — drop this site's old findings first.
         // (The TS also cleared the target host's cookies; the Rust auth bootstrap
         // registers a throwaway account anyway, so v1 leaves cookies alone.)
-        let cleared = rever_tools_redteam::findings::clear_findings_for_site(&self.tool_context, &target);
+        let cleared =
+            rever_tools_redteam::findings::clear_findings_for_site(&self.tool_context, &target);
         if cleared > 0 {
             eprintln!("[scan] dropped {cleared} old finding(s) for this site");
         }
@@ -2097,7 +2173,9 @@ impl Browser {
         let mut spawn = move |prompt: &str| {
             let _ = prompt;
             let wake = wake.clone();
-            let mcp = mcp.as_ref().map(|(url, auth)| (url.as_str(), auth.as_str()));
+            let mcp = mcp
+                .as_ref()
+                .map(|(url, auth)| (url.as_str(), auth.as_str()));
             crate::agent::AgentSession::spawn(&scratch, mcp, None, move || {
                 let _ = wake.unbounded_send(());
             })
@@ -2176,7 +2254,12 @@ impl Browser {
         if self.agent_busy {
             return;
         }
-        let Some(saved) = self.chat_history.conversations().iter().find(|c| c.id == id) else {
+        let Some(saved) = self
+            .chat_history
+            .conversations()
+            .iter()
+            .find(|c| c.id == id)
+        else {
             return;
         };
         self.chat = messages_to_lines(&saved.messages);
@@ -2211,7 +2294,10 @@ impl Browser {
         self.chat_expanded = false;
         self.chat_slide = Some((Instant::now(), self.chat_drawn));
         let storage = self.stores.storage.as_ref();
-        if let Err(error) = self.chat_collapsed_store.set_collapsed(storage, self.chat_collapsed) {
+        if let Err(error) = self
+            .chat_collapsed_store
+            .set_collapsed(storage, self.chat_collapsed)
+        {
             eprintln!("rever: the chat panel's state was not saved: {error}");
         }
         cx.notify();
@@ -2222,7 +2308,9 @@ impl Browser {
         self.chat_expanded = !self.chat_expanded;
         self.chat_slide = Some((Instant::now(), self.chat_drawn));
         if std::mem::take(&mut self.chat_collapsed) {
-            let _ = self.chat_collapsed_store.set_collapsed(self.stores.storage.as_ref(), false);
+            let _ = self
+                .chat_collapsed_store
+                .set_collapsed(self.stores.storage.as_ref(), false);
         }
         cx.notify();
     }
@@ -2623,7 +2711,12 @@ fn fresh_conversation_id() -> String {
 fn history_props(browser: &WeakEntity<Browser>, cx: &App) -> ChatHistoryMenuProps {
     browser
         .read_with(cx, |this, _| ChatHistoryMenuProps {
-            conversations: this.chat_history.conversations().iter().map(HistoryRow::from).collect(),
+            conversations: this
+                .chat_history
+                .conversations()
+                .iter()
+                .map(HistoryRow::from)
+                .collect(),
             current_id: Some(this.conversation_id.clone()),
             // A conversation is not swapped out under a running turn.
             disabled: this.agent_busy,
@@ -2763,14 +2856,18 @@ mod tests {
         // 주소 인자가 있으면 그것만 연다.
         let asked = Url::parse("https://asked.test/").unwrap();
         let (pages, active) = start_pages(Some(asked), Some(saved));
-        assert_eq!((urls(&pages), active), (vec!["https://asked.test/".to_owned()], 0));
+        assert_eq!(
+            (urls(&pages), active),
+            (vec!["https://asked.test/".to_owned()], 0)
+        );
         // 저장된 것이 없거나 쓸 수 없으면 홈 페이지다.
         for nothing in [None, Some("{}"), Some(r#"{"tabs":[{"url":"??"}]}"#)] {
             let (pages, active) = start_pages(None, nothing);
             assert_eq!((urls(&pages), active), (vec![DEFAULT_URL.to_owned()], 0));
         }
         // 보던 탭 번호가 범위를 넘으면 마지막 탭이다.
-        let far = r#"{"tabs":[{"url":"https://a.test/"},{"url":"https://b.test/"}],"activeIndex":9}"#;
+        let far =
+            r#"{"tabs":[{"url":"https://a.test/"},{"url":"https://b.test/"}],"activeIndex":9}"#;
         assert_eq!(start_pages(None, Some(far)).1, 1);
     }
 
@@ -2819,10 +2916,17 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(frames.len(), 2);
         assert_eq!(
-            (frames[0].direction, frames[0].opcode, frames[0].payload_data.as_str()),
+            (
+                frames[0].direction,
+                frames[0].opcode,
+                frames[0].payload_data.as_str()
+            ),
             (WsDirection::Sent, 1, "hello")
         );
-        assert_eq!((frames[1].direction, frames[1].opcode), (WsDirection::Received, 2));
+        assert_eq!(
+            (frames[1].direction, frames[1].opcode),
+            (WsDirection::Received, 2)
+        );
     }
 
     #[test]
@@ -2887,11 +2991,17 @@ mod tests {
         apply_agent_event(&mut chat, &AgentEvent::Text("합니다".into()));
         apply_agent_event(&mut chat, &call("mcp__rever-traffic__list_requests"));
         apply_agent_event(&mut chat, &AgentEvent::Text("결과".into()));
-        let lines: Vec<(&str, Option<bool>)> =
-            chat.iter().map(|line| (line.text.as_str(), line.tool)).collect();
+        let lines: Vec<(&str, Option<bool>)> = chat
+            .iter()
+            .map(|line| (line.text.as_str(), line.tool))
+            .collect();
         assert_eq!(
             lines,
-            [("확인합니다", None), ("list_requests", Some(false)), ("결과", None)]
+            [
+                ("확인합니다", None),
+                ("list_requests", Some(false)),
+                ("결과", None)
+            ]
         );
         // 결과가 오면 그 도구만 끝난 것으로 바뀐다.
         apply_agent_event(&mut chat, &call("browser_click"));
@@ -2966,7 +3076,10 @@ mod tests {
         assert!(prompt.ends_with("내 이름이 뭐지?"));
 
         // 긴 대화는 최근 부분만 들어간다.
-        let long = [line(true, &"가".repeat(20_000), None), line(false, "마지막 답", None)];
+        let long = [
+            line(true, &"가".repeat(20_000), None),
+            line(false, "마지막 답", None),
+        ];
         let prompt = with_earlier(&long, "질문");
         assert!(prompt.chars().count() < EARLIER_LIMIT + 200);
         assert!(prompt.contains("마지막 답"));
@@ -2977,7 +3090,10 @@ mod tests {
         // 내용 높이가 화면보다 600 크다: 맨 아래의 offset은 -600.
         assert!(shows_end(-600.0, 600.0));
         assert!(shows_end(-570.0, 600.0));
-        assert!(!shows_end(-300.0, 600.0), "위로 올려 읽는 중이면 따라가지 않는다");
+        assert!(
+            !shows_end(-300.0, 600.0),
+            "위로 올려 읽는 중이면 따라가지 않는다"
+        );
         // 스크롤할 것이 없는 짧은 대화는 늘 끝이다.
         assert!(shows_end(0.0, 0.0));
     }

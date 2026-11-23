@@ -26,11 +26,17 @@ const CODEX_ACP: &str = "codex-acp";
 
 /// The agent with this id, as the picker and the storage name it.
 pub fn agent_by_id(id: &str) -> Option<AcpAgentId> {
-    ACP_AGENTS.iter().map(|agent| agent.id).find(|agent| agent.as_str() == id)
+    ACP_AGENTS
+        .iter()
+        .map(|agent| agent.id)
+        .find(|agent| agent.as_str() == id)
 }
 
 fn codex_acp_path() -> Option<String> {
-    let probe = AgentProbe { command: CODEX_ACP.to_owned(), fallback_bins: None };
+    let probe = AgentProbe {
+        command: CODEX_ACP.to_owned(),
+        fallback_bins: None,
+    };
     detect_agents(&[probe]).into_iter().next()?.resolved_path
 }
 
@@ -40,7 +46,10 @@ fn grok_key() -> Option<String> {
     let refresh = |request: &rever_agent::grok_login::GrokRefreshRequest| {
         let response = reqwest::blocking::Client::new()
             .post(&request.url)
-            .header("Content-Type", rever_agent::grok_login::GrokRefreshRequest::CONTENT_TYPE)
+            .header(
+                "Content-Type",
+                rever_agent::grok_login::GrokRefreshRequest::CONTENT_TYPE,
+            )
             .body(request.body.clone())
             .send()
             .ok()?;
@@ -68,14 +77,18 @@ pub fn spawn_agent(
         }
         AcpAgentId::Codex => {
             let command = codex_acp_path().unwrap_or_else(|| CODEX_ACP.to_owned());
-            return Ok(Box::new(AcpSession::spawn(&command, cwd, mcp, model, wake)?));
+            return Ok(Box::new(AcpSession::spawn(
+                &command, cwd, mcp, model, wake,
+            )?));
         }
         AcpAgentId::Anthropic => (ApiConfig::ANTHROPIC, || api_key(ApiProvider::Anthropic)),
         AcpAgentId::Openai => (ApiConfig::OPENAI, || api_key(ApiProvider::Openai)),
         AcpAgentId::Glm => (ApiConfig::GLM, || api_key(ApiProvider::Glm)),
         AcpAgentId::Grok => (ApiConfig::GROK, grok_key),
     };
-    Ok(Box::new(ApiSession::new(config, model, key, mcp, profile, wake)))
+    Ok(Box::new(ApiSession::new(
+        config, model, key, mcp, profile, wake,
+    )))
 }
 
 /// What stands between this machine and an agent. A missing piece is found by looking
@@ -145,7 +158,12 @@ impl ModelPickerHost for PickerHost {
         cx.background_executor().spawn(async { probe() })
     }
 
-    fn set_api_key(&self, provider: KeyProvider, key: String, cx: &mut App) -> Task<Result<bool, String>> {
+    fn set_api_key(
+        &self,
+        provider: KeyProvider,
+        key: String,
+        cx: &mut App,
+    ) -> Task<Result<bool, String>> {
         let provider = match provider {
             KeyProvider::Anthropic => ApiProvider::Anthropic,
             KeyProvider::Openai => ApiProvider::Openai,

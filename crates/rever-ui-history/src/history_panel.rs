@@ -237,10 +237,10 @@ pub(crate) fn favicon(url: &str, placeholder: Rgba) -> AnyElement {
             None => img(favicon_url(&host)),
         }
         .size(px(16.0))
-            .flex_none()
-            .rounded(px(2.0))
-            .with_fallback(move || square().into_any_element())
-            .into_any_element(),
+        .flex_none()
+        .rounded(px(2.0))
+        .with_fallback(move || square().into_any_element())
+        .into_any_element(),
     }
 }
 

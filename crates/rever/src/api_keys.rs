@@ -42,13 +42,24 @@ impl ApiProvider {
 /// The provider's key: the saved one first, then the environment variable.
 pub fn api_key(provider: ApiProvider) -> Option<String> {
     let saved = Command::new("security")
-        .args(["find-generic-password", "-s", SERVICE, "-a", provider.account(), "-w"])
+        .args([
+            "find-generic-password",
+            "-s",
+            SERVICE,
+            "-a",
+            provider.account(),
+            "-w",
+        ])
         .output()
         .ok()
         .filter(|out| out.status.success())
         .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned());
     saved
-        .or_else(|| std::env::var(provider.env_var()).ok().map(|key| key.trim().to_owned()))
+        .or_else(|| {
+            std::env::var(provider.env_var())
+                .ok()
+                .map(|key| key.trim().to_owned())
+        })
         .filter(|key| !key.is_empty())
 }
 
@@ -57,7 +68,9 @@ pub fn api_key(provider: ApiProvider) -> Option<String> {
 /// input is split like a shell's, so a key with a space, a quote or a backslash is
 /// refused instead of being saved as something else.
 fn save_command(provider: ApiProvider, key: &str) -> Option<String> {
-    let plain = key.chars().all(|c| c.is_ascii_graphic() && !matches!(c, '"' | '\'' | '\\'));
+    let plain = key
+        .chars()
+        .all(|c| c.is_ascii_graphic() && !matches!(c, '"' | '\'' | '\\'));
     (plain && !key.is_empty()).then(|| {
         let account = provider.account();
         format!("add-generic-password -U -s \"{SERVICE}\" -a {account} -w {key}\n")
@@ -70,7 +83,13 @@ pub fn set_api_key(provider: ApiProvider, key: &str) -> Result<(), String> {
     if key.is_empty() {
         // Deleting a key that is not there fails, which is the wanted end state.
         let _ = Command::new("security")
-            .args(["delete-generic-password", "-s", SERVICE, "-a", provider.account()])
+            .args([
+                "delete-generic-password",
+                "-s",
+                SERVICE,
+                "-a",
+                provider.account(),
+            ])
             .output();
         return Ok(());
     }
@@ -83,9 +102,13 @@ pub fn set_api_key(provider: ApiProvider, key: &str) -> Result<(), String> {
         .spawn()
         .map_err(|error| format!("could not run `security`: {error}"))?;
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(line.as_bytes()).map_err(|error| error.to_string())?;
+        stdin
+            .write_all(line.as_bytes())
+            .map_err(|error| error.to_string())?;
     }
-    let out = child.wait_with_output().map_err(|error| error.to_string())?;
+    let out = child
+        .wait_with_output()
+        .map_err(|error| error.to_string())?;
     // `security -i` reports a failed command on stderr and still exits 0.
     let complaint = String::from_utf8_lossy(&out.stderr).trim().to_owned();
     if out.status.success() && complaint.is_empty() {
@@ -103,7 +126,9 @@ mod tests {
     fn 키는_키체인_도구의_입력으로_넘길_한_줄이_된다() {
         assert_eq!(
             save_command(ApiProvider::Openai, "sk-proj_Ab-12").as_deref(),
-            Some("add-generic-password -U -s \"rever-browser API key\" -a openai -w sk-proj_Ab-12\n")
+            Some(
+                "add-generic-password -U -s \"rever-browser API key\" -a openai -w sk-proj_Ab-12\n"
+            )
         );
     }
 
@@ -126,9 +151,16 @@ mod keychain {
             return;
         }
         // GLM is used only because no real key is saved under it here.
-        assert_eq!(api_key(ApiProvider::Glm), None, "a real GLM key is saved: not touching it");
+        assert_eq!(
+            api_key(ApiProvider::Glm),
+            None,
+            "a real GLM key is saved: not touching it"
+        );
         set_api_key(ApiProvider::Glm, "  sk-test_Round-trip.1  ").unwrap();
-        assert_eq!(api_key(ApiProvider::Glm).as_deref(), Some("sk-test_Round-trip.1"));
+        assert_eq!(
+            api_key(ApiProvider::Glm).as_deref(),
+            Some("sk-test_Round-trip.1")
+        );
         // Saving again replaces the item instead of failing on a duplicate.
         set_api_key(ApiProvider::Glm, "sk-second").unwrap();
         assert_eq!(api_key(ApiProvider::Glm).as_deref(), Some("sk-second"));

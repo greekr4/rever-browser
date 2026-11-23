@@ -84,8 +84,7 @@ impl Outbox {
 /// capture-not-send fence stays the safety net — off loopback it still answers
 /// mutations with a synthetic 204. Chat turns cannot run concurrently with a
 /// scan, so the global cannot leak into an ordinary turn.
-pub static REDTEAM_SCAN: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+pub static REDTEAM_SCAN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[derive(Debug, PartialEq)]
 pub enum AgentEvent {
@@ -106,7 +105,10 @@ pub enum AgentEvent {
 /// The tool events one ACP update carries: `tool_call` names the call,
 /// `tool_call_update` carries its input (in_progress) or output (completed).
 /// `names` maps call ids to names across the stream.
-fn tool_events(update: &Value, names: &mut std::collections::HashMap<String, String>) -> Vec<AgentEvent> {
+fn tool_events(
+    update: &Value,
+    names: &mut std::collections::HashMap<String, String>,
+) -> Vec<AgentEvent> {
     let id = update["toolCallId"].as_str().unwrap_or_default().to_owned();
     match update["sessionUpdate"].as_str() {
         Some("tool_call") => {
@@ -197,11 +199,7 @@ fn auto_allowed(request: &Value) -> bool {
 
 /// `REVER_CLAUDE_CLI` wins; otherwise `claude` on PATH, then the usual install
 /// folders (an app started from the Finder has a minimal PATH).
-fn spawn_cli(
-    cwd: &Path,
-    mcp: Option<(&str, &str)>,
-    model: Option<&str>,
-) -> Result<Child, String> {
+fn spawn_cli(cwd: &Path, mcp: Option<(&str, &str)>, model: Option<&str>) -> Result<Child, String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let candidates = match std::env::var("REVER_CLAUDE_CLI") {
         Ok(path) if !path.is_empty() => vec![path],
@@ -450,7 +448,10 @@ mod tests {
         });
         assert_eq!(
             tool_events(&input, &mut names),
-            vec![AgentEvent::ToolCall("finding_add".into(), json!({ "title": "XSS in q" }))]
+            vec![AgentEvent::ToolCall(
+                "finding_add".into(),
+                json!({ "title": "XSS in q" })
+            )]
         );
 
         let output = json!({
@@ -459,7 +460,10 @@ mod tests {
         });
         assert_eq!(
             tool_events(&output, &mut names),
-            vec![AgentEvent::ToolResult("finding_add".into(), "added #7".to_owned())]
+            vec![AgentEvent::ToolResult(
+                "finding_add".into(),
+                "added #7".to_owned()
+            )]
         );
     }
 

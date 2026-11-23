@@ -190,10 +190,16 @@ impl Tool for SqliProbe {
             };
 
             if let Some(param) = &param {
-                if base.url.contains(&format!("{}=", encode_uri_component(param))) {
+                if base
+                    .url
+                    .contains(&format!("{}=", encode_uri_component(param)))
+                {
                     base.url = url_slot_to_marker(&base.url, param);
                 } else {
-                    base.body = Some(form_slot_to_marker(base.body.as_deref().unwrap_or(""), param));
+                    base.body = Some(form_slot_to_marker(
+                        base.body.as_deref().unwrap_or(""),
+                        param,
+                    ));
                 }
             }
             if !has_marker(&base) {
@@ -261,7 +267,10 @@ mod tests {
             vec!["error", "bool-true", "bool-false"]
         );
         assert_eq!(cases[0].payload, "zXYZz'");
-        assert_eq!(cases[1].payload, format!("zXYZz' OR 101*103={}-- -", 101 * 103));
+        assert_eq!(
+            cases[1].payload,
+            format!("zXYZz' OR 101*103={}-- -", 101 * 103)
+        );
         assert_eq!(
             cases[2].payload,
             format!("zXYZz' OR 101*103={}-- -", 101 * 103 + 1)

@@ -498,7 +498,10 @@ mod tests {
     #[test]
     fn 중첩_하위_에이전트_task_도구를_차단한다() {
         let args = claude_cli_args("u", "a", None);
-        assert!(args.join(" ").contains("--disallowed-tools Task,Agent,Workflow"));
+        assert!(
+            args.join(" ")
+                .contains("--disallowed-tools Task,Agent,Workflow")
+        );
     }
 
     // ── translate ──

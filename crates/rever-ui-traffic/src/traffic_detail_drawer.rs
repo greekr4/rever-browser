@@ -681,11 +681,7 @@ mod tests {
     fn open(
         patch: Option<RequestPatch>,
         cx: &mut TestAppContext,
-    ) -> (
-        Entity<TrafficDetailDrawer>,
-        Events,
-        &mut VisualTestContext,
-    ) {
+    ) -> (Entity<TrafficDetailDrawer>, Events, &mut VisualTestContext) {
         let mut store = TrafficStore::default();
         if let Some(patch) = patch {
             store.upsert(patch, 1_000);

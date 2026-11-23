@@ -576,10 +576,10 @@ fn scan<'a>(
         }
         if let Some(needle) = &needle
             && !entry.method.to_lowercase().contains(needle)
-                && !entry.resource_type.to_lowercase().contains(needle)
-            {
-                continue;
-            }
+            && !entry.resource_type.to_lowercase().contains(needle)
+        {
+            continue;
+        }
         if filter.since.is_some_and(|since| entry.started_at < since) {
             continue;
         }

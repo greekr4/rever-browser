@@ -478,7 +478,10 @@ impl PipelineEditor {
     }
 
     /// A `<select>` of this editor: `key` names it, `pick` gets the chosen value.
-    #[expect(clippy::too_many_arguments, reason = "one call draws one select: the arguments are its props")]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one call draws one select: the arguments are its props"
+    )]
     fn select(
         &self,
         key: String,

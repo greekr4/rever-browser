@@ -19,8 +19,8 @@ use gpui::{
 };
 use rever_ui_kit::theme::Theme;
 
-use self::chat::{CHAT_SLIDE, chat_panel_width, slide_width};
 pub(crate) use self::chat::{CHAT_MIN_WIDTH, CHAT_WIDTH};
+use self::chat::{CHAT_SLIDE, chat_panel_width, slide_width};
 use crate::app::Browser;
 
 /// The bookmark star of App.tsx's address bar.
@@ -43,14 +43,24 @@ impl AssetSource for Assets {
             // The chat panel's controls: fold it away, let it cover the page, bring it back.
             "icons/panel-right.svg" => (
                 "none",
-                "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M15 3v18\"/>".to_owned(),
+                "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M15 3v18\"/>"
+                    .to_owned(),
             ),
             "icons/chevron-right.svg" => ("none", "<path d=\"m9 18 6-6-6-6\"/>".to_owned()),
             "icons/chevron-left.svg" => ("none", "<path d=\"m15 18-6-6 6-6\"/>".to_owned()),
-            "icons/expand.svg" => ("none", "<path d=\"M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7\"/>".to_owned()),
-            "icons/shrink.svg" => ("none", "<path d=\"M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7\"/>".to_owned()),
+            "icons/expand.svg" => (
+                "none",
+                "<path d=\"M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7\"/>".to_owned(),
+            ),
+            "icons/shrink.svg" => (
+                "none",
+                "<path d=\"M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7\"/>".to_owned(),
+            ),
             // Three quarters of a circle: turned, it is the chat's "working" spinner.
-            "icons/loader.svg" => ("none", "<path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/>".to_owned()),
+            "icons/loader.svg" => (
+                "none",
+                "<path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/>".to_owned(),
+            ),
             _ => return rever_ui_kit::icons::Assets.load(path),
         };
         let svg = format!(
@@ -214,7 +224,11 @@ impl Render for Browser {
             .hover(|style| style.bg(theme.chrome_hover))
             .on_click(cx.listener(|this, _: &gpui::ClickEvent, _, cx| this.toggle_chat(cx)))
             .child(icon(
-                if folded { "chevron-left" } else { "chevron-right" },
+                if folded {
+                    "chevron-left"
+                } else {
+                    "chevron-right"
+                },
                 12.0,
                 theme.text_2,
             ));

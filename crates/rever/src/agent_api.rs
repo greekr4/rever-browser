@@ -106,7 +106,11 @@ fn parse_input(json: &str) -> Result<Value, String> {
 fn chat_tools(tools: &[Value], allowed: &HashSet<String>) -> Vec<Value> {
     let mapped: Vec<Value> = tools
         .iter()
-        .filter(|tool| tool["name"].as_str().is_some_and(|name| allowed.contains(name)))
+        .filter(|tool| {
+            tool["name"]
+                .as_str()
+                .is_some_and(|name| allowed.contains(name))
+        })
         .map(|tool| {
             json!({ "type": "function", "function": {
                 "name": tool["name"],
@@ -115,7 +119,10 @@ fn chat_tools(tools: &[Value], allowed: &HashSet<String>) -> Vec<Value> {
             } })
         })
         .collect();
-    cap_tools_for_openai(mapped, |tool| tool["function"]["name"].as_str().unwrap_or_default()).tools
+    cap_tools_for_openai(mapped, |tool| {
+        tool["function"]["name"].as_str().unwrap_or_default()
+    })
+    .tools
 }
 
 fn chat_request(model: &str, messages: &[Value], tools: Vec<Value>) -> Value {
@@ -145,14 +152,22 @@ impl ChatReply {
         }
         let delta = &choice["delta"];
         for call in delta["tool_calls"].as_array().into_iter().flatten() {
-            let entry = self.calls.entry(call["index"].as_u64().unwrap_or(0)).or_default();
+            let entry = self
+                .calls
+                .entry(call["index"].as_u64().unwrap_or(0))
+                .or_default();
             if let Some(id) = call["id"].as_str().filter(|id| !id.is_empty()) {
                 entry.0 = id.to_owned();
             }
-            if let Some(name) = call["function"]["name"].as_str().filter(|name| !name.is_empty()) {
+            if let Some(name) = call["function"]["name"]
+                .as_str()
+                .filter(|name| !name.is_empty())
+            {
                 entry.1 = name.to_owned();
             }
-            entry.2.push_str(call["function"]["arguments"].as_str().unwrap_or_default());
+            entry
+                .2
+                .push_str(call["function"]["arguments"].as_str().unwrap_or_default());
         }
         let text = delta["content"].as_str().filter(|text| !text.is_empty())?;
         self.text.push_str(text);
@@ -163,7 +178,10 @@ impl ChatReply {
     /// tools means the turn is over.
     fn finish(self) -> (Value, Vec<ToolCall>) {
         if self.finish_reason.as_deref() != Some("tool_calls") || self.calls.is_empty() {
-            return (json!({ "role": "assistant", "content": self.text }), Vec::new());
+            return (
+                json!({ "role": "assistant", "content": self.text }),
+                Vec::new(),
+            );
         }
         let wire: Vec<Value> = self
             .calls
@@ -173,12 +191,20 @@ impl ChatReply {
                 json!({ "id": id, "type": "function", "function": { "name": name, "arguments": arguments } })
             })
             .collect();
-        let content = if self.text.is_empty() { Value::Null } else { json!(self.text) };
+        let content = if self.text.is_empty() {
+            Value::Null
+        } else {
+            json!(self.text)
+        };
         let message = json!({ "role": "assistant", "content": content, "tool_calls": wire });
         let calls = self
             .calls
             .into_values()
-            .map(|(id, name, arguments)| ToolCall { id, name, input: parse_input(&arguments) })
+            .map(|(id, name, arguments)| ToolCall {
+                id,
+                name,
+                input: parse_input(&arguments),
+            })
             .collect();
         (message, calls)
     }
@@ -190,14 +216,24 @@ impl ChatReply {
 
 /// The models whose requests can name a fallback for a declined request.
 fn takes_fallbacks(model: &str) -> bool {
-    ["claude-fable-5-2", "claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]
-        .contains(&model)
+    [
+        "claude-fable-5-2",
+        "claude-fable-5-1",
+        "claude-opus-5-5",
+        "claude-opus-5",
+        "claude-sonnet-5-5",
+    ]
+    .contains(&model)
 }
 
 fn anthropic_tools(tools: &[Value], allowed: &HashSet<String>) -> Vec<Value> {
     tools
         .iter()
-        .filter(|tool| tool["name"].as_str().is_some_and(|name| allowed.contains(name)))
+        .filter(|tool| {
+            tool["name"]
+                .as_str()
+                .is_some_and(|name| allowed.contains(name))
+        })
         .map(|tool| {
             json!({
                 "name": tool["name"],
@@ -269,9 +305,11 @@ impl AnthropicReply {
                         append(block, "text", text);
                         return Ok((!text.is_empty()).then(|| text.to_owned()));
                     }
-                    Some("thinking_delta") => {
-                        append(block, "thinking", delta["thinking"].as_str().unwrap_or_default())
-                    }
+                    Some("thinking_delta") => append(
+                        block,
+                        "thinking",
+                        delta["thinking"].as_str().unwrap_or_default(),
+                    ),
                     Some("signature_delta") => block["signature"] = delta["signature"].clone(),
                     Some("input_json_delta") => self
                         .inputs
@@ -290,7 +328,9 @@ impl AnthropicReply {
                 }
             }
             Some("error") => {
-                let message = event["error"]["message"].as_str().unwrap_or("the stream failed");
+                let message = event["error"]["message"]
+                    .as_str()
+                    .unwrap_or("the stream failed");
                 return Err(message.to_owned());
             }
             _ => {}
@@ -429,7 +469,14 @@ impl Shared {
     }
 
     /// One request: the assistant message it produced and the tools it asked for.
-    fn round(&self, key: &str, model: &str, messages: &[Value], tools: &[Value], allowed: &HashSet<String>) -> Result<(Value, Vec<ToolCall>), String> {
+    fn round(
+        &self,
+        key: &str,
+        model: &str,
+        messages: &[Value],
+        tools: &[Value],
+        allowed: &HashSet<String>,
+    ) -> Result<(Value, Vec<ToolCall>), String> {
         match self.config.wire {
             Wire::ChatCompletions => {
                 let body = chat_request(model, messages, chat_tools(tools, allowed));
@@ -461,21 +508,29 @@ impl Shared {
         let key = (self.api_key)().ok_or(self.config.missing_key)?;
         let mut conversation = self.conversation.lock().unwrap();
         if conversation.mcp.is_none()
-            && let Some((url, auth)) = &self.mcp {
-                let mut client = McpClient::connect(url, auth)?;
-                let tools = client.list_tools()?;
-                conversation.mcp = Some((client, tools));
-            }
-        conversation.messages.push(json!({ "role": "user", "content": text }));
+            && let Some((url, auth)) = &self.mcp
+        {
+            let mut client = McpClient::connect(url, auth)?;
+            let tools = client.list_tools()?;
+            conversation.mcp = Some((client, tools));
+        }
+        conversation
+            .messages
+            .push(json!({ "role": "user", "content": text }));
         loop {
             let model = self.model.lock().unwrap().clone();
-            let tools = conversation.mcp.as_ref().map(|(_, tools)| tools.clone()).unwrap_or_default();
+            let tools = conversation
+                .mcp
+                .as_ref()
+                .map(|(_, tools)| tools.clone())
+                .unwrap_or_default();
             // Without a profile (no MCP server) there are no tools to gate.
             let allowed = match &self.profile {
                 Some(profile) => begin_direct_turn(profile.get(), &conversation.dispatched),
                 None => HashSet::new(),
             };
-            let (message, calls) = self.round(&key, &model, &conversation.messages, &tools, &allowed)?;
+            let (message, calls) =
+                self.round(&key, &model, &conversation.messages, &tools, &allowed)?;
             conversation.messages.push(message);
             if calls.is_empty() {
                 return Ok(());
@@ -493,7 +548,9 @@ impl Shared {
             match self.config.wire {
                 Wire::ChatCompletions => {
                     for (id, output, _) in results {
-                        conversation.messages.push(json!({ "role": "tool", "tool_call_id": id, "content": output }));
+                        conversation
+                            .messages
+                            .push(json!({ "role": "tool", "tool_call_id": id, "content": output }));
                     }
                 }
                 Wire::Anthropic => {
@@ -503,7 +560,9 @@ impl Shared {
                             json!({ "type": "tool_result", "tool_use_id": id, "content": output, "is_error": failed })
                         })
                         .collect();
-                    conversation.messages.push(json!({ "role": "user", "content": blocks }));
+                    conversation
+                        .messages
+                        .push(json!({ "role": "user", "content": blocks }));
                 }
             }
         }
@@ -511,7 +570,12 @@ impl Shared {
 
     /// The tool's output and whether it failed. A refused or broken call is a failed
     /// result the model reads, not an error of the turn.
-    fn run_tool(&self, conversation: &mut Conversation, call: &ToolCall, allowed: &HashSet<String>) -> (String, bool) {
+    fn run_tool(
+        &self,
+        conversation: &mut Conversation,
+        call: &ToolCall,
+        allowed: &HashSet<String>,
+    ) -> (String, bool) {
         let input = match &call.input {
             Ok(input) => input,
             Err(error) => return (error.clone(), true),
@@ -520,7 +584,9 @@ impl Shared {
             return (refusal, true);
         }
         match conversation.mcp.as_mut() {
-            Some((client, _)) => client.call_tool(&call.name, input).unwrap_or_else(|error| (error, true)),
+            Some((client, _)) => client
+                .call_tool(&call.name, input)
+                .unwrap_or_else(|error| (error, true)),
             None => ("no tool server".to_owned(), true),
         }
     }
@@ -634,14 +700,20 @@ mod tests {
         assert!(body.get("thinking").is_none());
         // 거절 대체 모델을 받는 모델에만 fallbacks를 넣는다.
         assert!(body.get("fallbacks").is_none());
-        assert_eq!(anthropic_request("claude-opus-5-5", &[], Vec::new())["fallbacks"], "default");
+        assert_eq!(
+            anthropic_request("claude-opus-5-5", &[], Vec::new())["fallbacks"],
+            "default"
+        );
     }
 
     #[test]
     fn 채팅_컴플리션_조각을_모아_글과_도구_호출을_만든다() {
         let mut reply = ChatReply::default();
         let chunk = |delta: Value, finish: Value| json!({ "choices": [{ "delta": delta, "finish_reason": finish }] });
-        assert_eq!(reply.feed(&chunk(json!({ "content": "확인" }), Value::Null)), Some("확인".into()));
+        assert_eq!(
+            reply.feed(&chunk(json!({ "content": "확인" }), Value::Null)),
+            Some("확인".into())
+        );
         // 도구 호출은 조각마다 인자 JSON이 이어 붙는다.
         reply.feed(&chunk(
             json!({ "tool_calls": [{ "index": 0, "id": "c1", "function": { "name": "list_requests", "arguments": "{\"li" } }] }),
@@ -655,17 +727,26 @@ mod tests {
         assert_eq!(reply.feed(&json!({ "choices": [], "usage": {} })), None);
         let (message, calls) = reply.finish();
         assert_eq!(message["content"], "확인");
-        assert_eq!(message["tool_calls"][0]["function"]["arguments"], "{\"limit\":5}");
+        assert_eq!(
+            message["tool_calls"][0]["function"]["arguments"],
+            "{\"limit\":5}"
+        );
         assert_eq!(
             calls,
-            [ToolCall { id: "c1".into(), name: "list_requests".into(), input: Ok(json!({ "limit": 5 })) }]
+            [ToolCall {
+                id: "c1".into(),
+                name: "list_requests".into(),
+                input: Ok(json!({ "limit": 5 }))
+            }]
         );
     }
 
     #[test]
     fn 도구를_부르지_않은_답은_턴의_끝이다() {
         let mut reply = ChatReply::default();
-        reply.feed(&json!({ "choices": [{ "delta": { "content": "끝" }, "finish_reason": "stop" }] }));
+        reply.feed(
+            &json!({ "choices": [{ "delta": { "content": "끝" }, "finish_reason": "stop" }] }),
+        );
         let (message, calls) = reply.finish();
         assert_eq!(message, json!({ "role": "assistant", "content": "끝" }));
         assert!(calls.is_empty());
@@ -684,7 +765,10 @@ mod tests {
             json!({ "type": "content_block_delta", "index": 2, "delta": { "type": "input_json_delta", "partial_json": ":5}" } }),
             json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" } }),
         ];
-        let shown: Vec<String> = events.iter().filter_map(|event| reply.feed(event).unwrap()).collect();
+        let shown: Vec<String> = events
+            .iter()
+            .filter_map(|event| reply.feed(event).unwrap())
+            .collect();
         assert_eq!(shown, ["확인"]);
         let (message, calls) = reply.finish().unwrap();
         // 생각 블록은 서명과 함께 그대로, 도구 블록은 파싱된 입력으로 남는다.
@@ -693,7 +777,11 @@ mod tests {
         assert_eq!(message["content"][2]["input"], json!({ "limit": 5 }));
         assert_eq!(
             calls,
-            [ToolCall { id: "t1".into(), name: "list_requests".into(), input: Ok(json!({ "limit": 5 })) }]
+            [ToolCall {
+                id: "t1".into(),
+                name: "list_requests".into(),
+                input: Ok(json!({ "limit": 5 }))
+            }]
         );
     }
 
@@ -703,10 +791,14 @@ mod tests {
         refused
             .feed(&json!({ "type": "message_delta", "delta": { "stop_reason": "refusal", "stop_details": { "category": "cyber" } } }))
             .unwrap();
-        assert_eq!(refused.finish().unwrap_err(), "the model declined this request (cyber)");
+        assert_eq!(
+            refused.finish().unwrap_err(),
+            "the model declined this request (cyber)"
+        );
 
         let mut cut = AnthropicReply::default();
-        cut.feed(&json!({ "type": "message_delta", "delta": { "stop_reason": "max_tokens" } })).unwrap();
+        cut.feed(&json!({ "type": "message_delta", "delta": { "stop_reason": "max_tokens" } }))
+            .unwrap();
         assert!(cut.finish().is_err());
 
         let mut failed = AnthropicReply::default();
@@ -717,7 +809,11 @@ mod tests {
     #[test]
     fn 깨진_도구_입력은_빈_객체로_되돌리고_오류로_표시한다() {
         assert_eq!(parse_input(""), Ok(json!({})));
-        assert!(parse_input("{\"a\":").unwrap_err().starts_with("INVALID_JSON"));
+        assert!(
+            parse_input("{\"a\":")
+                .unwrap_err()
+                .starts_with("INVALID_JSON")
+        );
         assert!(parse_input("[1]").unwrap_err().starts_with("INVALID_JSON"));
 
         let mut reply = AnthropicReply::default();

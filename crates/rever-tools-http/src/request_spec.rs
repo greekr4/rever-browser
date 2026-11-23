@@ -165,11 +165,14 @@ pub fn restore_marker(spec: RequestSpec) -> RequestSpec {
 /// as the `repeater_send` / `burst_send` tools accept it.
 pub fn parse_mods(value: &Value) -> Option<Mods> {
     let object = value.as_object()?;
-    let set_headers = object.get("setHeaders").and_then(Value::as_object).map(|map| {
-        map.iter()
-            .filter_map(|(name, value)| Some((name.clone(), value.as_str()?.to_owned())))
-            .collect::<Headers>()
-    });
+    let set_headers = object
+        .get("setHeaders")
+        .and_then(Value::as_object)
+        .map(|map| {
+            map.iter()
+                .filter_map(|(name, value)| Some((name.clone(), value.as_str()?.to_owned())))
+                .collect::<Headers>()
+        });
     let remove_headers = object
         .get("removeHeaders")
         .and_then(Value::as_array)
@@ -186,7 +189,10 @@ pub fn parse_mods(value: &Value) -> Option<Mods> {
     };
     Some(Mods {
         url: object.get("url").and_then(Value::as_str).map(str::to_owned),
-        method: object.get("method").and_then(Value::as_str).map(str::to_owned),
+        method: object
+            .get("method")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
         set_headers,
         remove_headers,
         body,
@@ -255,8 +261,14 @@ mod tests {
         let spec = build_request_spec(&store, Some("r1"), None).unwrap();
         assert_eq!(spec.method, "POST");
         // Session-carrying headers kept; client-owned ones dropped.
-        assert_eq!(spec.headers.get("Cookie").map(String::as_str), Some("sid=abc"));
-        assert_eq!(spec.headers.get("User-Agent").map(String::as_str), Some("firefox"));
+        assert_eq!(
+            spec.headers.get("Cookie").map(String::as_str),
+            Some("sid=abc")
+        );
+        assert_eq!(
+            spec.headers.get("User-Agent").map(String::as_str),
+            Some("firefox")
+        );
         assert!(!spec.headers.contains_key("Host"));
         assert!(!spec.headers.contains_key("Content-Length"));
         assert_eq!(spec.body.as_deref(), Some("{\"a\":1}"));
@@ -320,7 +332,10 @@ mod tests {
         };
         let restored = restore_marker(spec);
         assert_eq!(restored.url, "https://x.test/a?q=§");
-        assert_eq!(restored.headers.get("X-Mark").map(String::as_str), Some("§"));
+        assert_eq!(
+            restored.headers.get("X-Mark").map(String::as_str),
+            Some("§")
+        );
         assert_eq!(restored.body.as_deref(), Some("b=§"));
     }
 }

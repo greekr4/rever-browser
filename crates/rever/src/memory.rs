@@ -61,8 +61,11 @@ pub fn footprint() -> Option<u64> {
     // SAFETY: the buffer is the struct the V2 flavor fills, and it is read only when
     // the call reports success.
     unsafe {
-        let filled =
-            libc::proc_pid_rusage(libc::getpid(), libc::RUSAGE_INFO_V2, usage.as_mut_ptr().cast());
+        let filled = libc::proc_pid_rusage(
+            libc::getpid(),
+            libc::RUSAGE_INFO_V2,
+            usage.as_mut_ptr().cast(),
+        );
         (filled == 0).then(|| usage.assume_init().ri_phys_footprint)
     }
 }

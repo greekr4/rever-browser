@@ -49,7 +49,9 @@ pub fn encode_payload(buf: &[u8], encoding: &str) -> String {
     match encoding {
         "hex" => buf.iter().map(|b| format!("{b:02x}")).collect(),
         "latin1" => buf.iter().map(|&b| char::from(b)).collect(),
-        "url" => crate::common::encode_uri_component(&buf.iter().map(|&b| char::from(b)).collect::<String>()),
+        "url" => crate::common::encode_uri_component(
+            &buf.iter().map(|&b| char::from(b)).collect::<String>(),
+        ),
         // "base64" and any other value: base64.
         _ => base64::engine::general_purpose::STANDARD.encode(buf),
     }
@@ -124,7 +126,10 @@ mod tests {
     fn _255바이트_초과_명령은_binstring_t_4바이트_le_으로_전환() {
         let long = "a".repeat(300);
         let buf = build_pickle_payload(&long, "os\nsystem");
-        let i = buf.iter().position(|&b| b == 0x54).expect("'T' opcode present"); // 'T'
+        let i = buf
+            .iter()
+            .position(|&b| b == 0x54)
+            .expect("'T' opcode present"); // 'T'
         assert!(i > 0);
         let len = u32::from_le_bytes(buf[i + 1..i + 5].try_into().unwrap());
         assert_eq!(len, 300);

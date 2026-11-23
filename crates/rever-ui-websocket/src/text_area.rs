@@ -954,7 +954,10 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::reversed_empty_ranges, reason = "a reversed range is the input under test")]
+    #[expect(
+        clippy::reversed_empty_ranges,
+        reason = "a reversed range is the input under test"
+    )]
     fn 조합_중인_범위는_줄마다_앞_안_뒤로_나뉜다() {
         // 줄 4..10, 조합 범위 6..8.
         assert_eq!(marked_split(&(4..10), Some(&(6..8))), [2, 2, 2]);
@@ -969,7 +972,10 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::reversed_empty_ranges, reason = "a reversed range is the input under test")]
+    #[expect(
+        clippy::reversed_empty_ranges,
+        reason = "a reversed range is the input under test"
+    )]
     fn 조합_중인_한글을_지워도_선택_범위가_글자_밖으로_나가지_않는다() {
         assert_eq!(marked_selection(0, "", Some(0..0)), 0..0);
         assert_eq!(marked_selection(0, "하", Some(1..1)), 3..3);

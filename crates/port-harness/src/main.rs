@@ -70,7 +70,9 @@ fn main() {
                 .collect()
         })
         .unwrap_or_default();
-    crates.retain(|name| name.starts_with("rever") && crates_dir.join(name).join("Cargo.toml").is_file());
+    crates.retain(|name| {
+        name.starts_with("rever") && crates_dir.join(name).join("Cargo.toml").is_file()
+    });
     crates.sort();
     let rust_files: Vec<PathBuf> = crates
         .iter()
@@ -134,7 +136,9 @@ fn main() {
         .unwrap_or(0);
 
     if ts.is_empty() {
-        println!("== Inventory (TypeScript/Electron app) ==\n  (removed — the Rust port is the app; history and main keep the original)");
+        println!(
+            "== Inventory (TypeScript/Electron app) ==\n  (removed — the Rust port is the app; history and main keep the original)"
+        );
     } else {
         println!("== Inventory (TypeScript/Electron app) ==");
     }

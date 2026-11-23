@@ -74,7 +74,10 @@ impl StorageHost for StorageBridge {
                 .or_else(|| params.url.as_deref().and_then(host))
                 .ok_or("a cookie needs a domain or url")?;
             let path = params.path.clone().unwrap_or_else(|| "/".to_owned());
-            let url = params.url.clone().unwrap_or_else(|| cookie_url(&domain, &path));
+            let url = params
+                .url
+                .clone()
+                .unwrap_or_else(|| cookie_url(&domain, &path));
             let cookie = Cookie {
                 name: params.name,
                 value: params.value,
@@ -95,9 +98,7 @@ impl StorageHost for StorageBridge {
         cx.background_spawn(async move {
             let url = match (&params.url, &params.domain) {
                 (Some(url), _) => url.clone(),
-                (None, Some(domain)) => {
-                    cookie_url(domain, params.path.as_deref().unwrap_or("/"))
-                }
+                (None, Some(domain)) => cookie_url(domain, params.path.as_deref().unwrap_or("/")),
                 (None, None) => return Err("a cookie delete needs a url or domain".to_owned()),
             };
             browser.delete_cookie(&url, &params.name).await?;
@@ -157,11 +158,18 @@ impl StorageHost for StorageBridge {
         Task::ready(Ok(browsers))
     }
 
-    fn browser_import(&self, options: BrowserImportOptions, cx: &mut App) -> Call<BrowserImportResult> {
+    fn browser_import(
+        &self,
+        options: BrowserImportOptions,
+        cx: &mut App,
+    ) -> Call<BrowserImportResult> {
         let browser = self.browser.clone();
         cx.background_spawn(async move {
             if options.browser != "chrome" {
-                return Err(format!("only Chrome import is supported yet, not \"{}\"", options.browser));
+                return Err(format!(
+                    "only Chrome import is supported yet, not \"{}\"",
+                    options.browser
+                ));
             }
             let summary = rever_cookie_import::import_chrome_macos(
                 options.profile.as_deref(),

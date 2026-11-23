@@ -192,7 +192,11 @@ impl Tool for BurstSend {
             let Some(request_id) = args["requestId"].as_str() else {
                 return err("requestId is required");
             };
-            let Some(n) = args["n"].as_u64().map(|n| n.min(200) as usize).filter(|n| *n > 0) else {
+            let Some(n) = args["n"]
+                .as_u64()
+                .map(|n| n.min(200) as usize)
+                .filter(|n| *n > 0)
+            else {
                 return err("n must be a positive integer");
             };
             let par = args["parallelism"]
@@ -215,18 +219,26 @@ impl Tool for BurstSend {
 
             let started = Instant::now();
             // Fire n sends with at most `par` in flight at once.
-            let mut outcomes: Vec<(usize, u64, u16, usize, u64, Option<String>)> = stream::iter(0..n)
-                .map(|i| {
-                    let spec = spec.clone();
-                    async move {
-                        let offset = started.elapsed().as_millis() as u64;
-                        let out = send(&spec, SEND_TIMEOUT).await;
-                        (i, offset, out.status, out.body.len(), out.elapsed_ms, out.error)
-                    }
-                })
-                .buffer_unordered(par)
-                .collect()
-                .await;
+            let mut outcomes: Vec<(usize, u64, u16, usize, u64, Option<String>)> =
+                stream::iter(0..n)
+                    .map(|i| {
+                        let spec = spec.clone();
+                        async move {
+                            let offset = started.elapsed().as_millis() as u64;
+                            let out = send(&spec, SEND_TIMEOUT).await;
+                            (
+                                i,
+                                offset,
+                                out.status,
+                                out.body.len(),
+                                out.elapsed_ms,
+                                out.error,
+                            )
+                        }
+                    })
+                    .buffer_unordered(par)
+                    .collect()
+                    .await;
             let wall_clock = started.elapsed().as_millis() as u64;
             outcomes.sort_by_key(|o| o.0);
 
@@ -308,9 +320,15 @@ mod tests {
     #[test]
     fn contains_marker는_url_헤더_바디를_본다() {
         assert!(contains_marker(&spec("http://x/?q=§§", &[], None), "§§"));
-        assert!(contains_marker(&spec("http://x/", &[("H", "§§")], None), "§§"));
+        assert!(contains_marker(
+            &spec("http://x/", &[("H", "§§")], None),
+            "§§"
+        ));
         assert!(contains_marker(&spec("http://x/", &[], Some("§§")), "§§"));
-        assert!(!contains_marker(&spec("http://x/", &[("H", "v")], Some("b")), "§§"));
+        assert!(!contains_marker(
+            &spec("http://x/", &[("H", "v")], Some("b")),
+            "§§"
+        ));
     }
 
     #[test]

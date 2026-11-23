@@ -137,7 +137,10 @@ impl Tool for SstiProbe {
 
             if let Some(param) = &param {
                 // ssti marks ONLY the body.
-                base.body = Some(form_slot_to_marker(base.body.as_deref().unwrap_or(""), param));
+                base.body = Some(form_slot_to_marker(
+                    base.body.as_deref().unwrap_or(""),
+                    param,
+                ));
             }
             if !has_marker(&base) {
                 return err(
@@ -226,7 +229,10 @@ mod tests {
         // 엔진이 평가한 경우: nonce + 10403 + nonce 가 응답에 나타난다
         assert!(ssti_evaluated("<h2>zABCz10403zABCz</h2>", generic));
         // 평가 안 된 경우: 페이로드가 리터럴로 반사(계산 안 됨)
-        assert!(!ssti_evaluated(&format!("<h2>{}</h2>", generic.payload), generic));
+        assert!(!ssti_evaluated(
+            &format!("<h2>{}</h2>", generic.payload),
+            generic
+        ));
         // 무관한 본문
         assert!(!ssti_evaluated("<h2>Example text</h2>", generic));
     }
@@ -271,6 +277,9 @@ mod tests {
             form_slot_to_marker("a=&b=&c=1", "c"),
             "a=reverprobe&b=reverprobe&c=§"
         );
-        assert_eq!(form_slot_to_marker("user=admin&pass=", "user"), "user=§&pass=reverprobe");
+        assert_eq!(
+            form_slot_to_marker("user=admin&pass=", "user"),
+            "user=§&pass=reverprobe"
+        );
     }
 }

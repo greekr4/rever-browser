@@ -145,7 +145,12 @@ impl Tool for PayloadProbe {
 
             let list = strings(&args, "payloads")
                 .filter(|list| !list.is_empty())
-                .unwrap_or_else(|| DEFAULT_XSS_PAYLOADS.iter().map(|p| (*p).to_owned()).collect());
+                .unwrap_or_else(|| {
+                    DEFAULT_XSS_PAYLOADS
+                        .iter()
+                        .map(|p| (*p).to_owned())
+                        .collect()
+                });
             // zod's `.max(500)`: don't fan out past the cap.
             let list: Vec<String> = list.into_iter().take(500).collect();
 
@@ -169,7 +174,9 @@ impl Tool for PayloadProbe {
                 }));
             }
 
-            ok(pretty(&json!({ "count": reflections.len(), "reflections": reflections })))
+            ok(pretty(
+                &json!({ "count": reflections.len(), "reflections": reflections }),
+            ))
         })
     }
 }
@@ -182,20 +189,32 @@ mod tests {
     fn 기본_페이로드_세트는_payload_probe_ts와_같다() {
         assert_eq!(DEFAULT_XSS_PAYLOADS.len(), 7);
         assert_eq!(DEFAULT_XSS_PAYLOADS[0], "<script>alert(1)</script>");
-        assert_eq!(DEFAULT_XSS_PAYLOADS[6], "<a href=\"javascript:alert(1)\">x</a>");
+        assert_eq!(
+            DEFAULT_XSS_PAYLOADS[6],
+            "<a href=\"javascript:alert(1)\">x</a>"
+        );
     }
 
     #[test]
     fn detect_context는_script_안의_반사를_찾는다() {
-        assert_eq!(detect_context("<script>var x=PAYLOAD</script>", "PAYLOAD"), "script");
+        assert_eq!(
+            detect_context("<script>var x=PAYLOAD</script>", "PAYLOAD"),
+            "script"
+        );
         // case-insensitive
         assert_eq!(detect_context("<SCRIPT>PAYLOAD", "PAYLOAD"), "script");
     }
 
     #[test]
     fn detect_context는_속성값_안의_반사를_찾는다() {
-        assert_eq!(detect_context("<input value=\"PAYLOAD\">", "PAYLOAD"), "attribute");
-        assert_eq!(detect_context("<input value='PAYLOAD'>", "PAYLOAD"), "attribute");
+        assert_eq!(
+            detect_context("<input value=\"PAYLOAD\">", "PAYLOAD"),
+            "attribute"
+        );
+        assert_eq!(
+            detect_context("<input value='PAYLOAD'>", "PAYLOAD"),
+            "attribute"
+        );
     }
 
     #[test]

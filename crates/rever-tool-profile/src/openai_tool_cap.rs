@@ -107,7 +107,6 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-
     use super::*;
     use crate::tool_profile::{ToolProfile, advertised_names, is_advertised};
 

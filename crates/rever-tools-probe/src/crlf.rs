@@ -111,7 +111,9 @@ impl Tool for CrlfTest {
                 }));
             }
 
-            ok(pretty(&json!({ "vulnerable": vulnerable, "results": results })))
+            ok(pretty(
+                &json!({ "vulnerable": vulnerable, "results": results }),
+            ))
         })
     }
 }
@@ -138,7 +140,11 @@ mod tests {
         assert!(has_marker(&spec("https://x.test/a?q=§", &[], None)));
         assert!(has_marker(&spec("https://x.test/a", &[("X-H", "§")], None)));
         assert!(has_marker(&spec("https://x.test/a", &[], Some("b=§"))));
-        assert!(!has_marker(&spec("https://x.test/a", &[("X-H", "v")], Some("b=1"))));
+        assert!(!has_marker(&spec(
+            "https://x.test/a",
+            &[("X-H", "v")],
+            Some("b=1")
+        )));
     }
 
     #[test]
@@ -146,7 +152,10 @@ mod tests {
         let base = spec("https://x.test/a?q=§", &[("X-H", "pre§post")], Some("b=§"));
         let out = substitute(&base, "\r\nX-Injected: 1");
         assert_eq!(out.url, "https://x.test/a?q=\r\nX-Injected: 1");
-        assert_eq!(out.headers.get("X-H").map(String::as_str), Some("pre\r\nX-Injected: 1post"));
+        assert_eq!(
+            out.headers.get("X-H").map(String::as_str),
+            Some("pre\r\nX-Injected: 1post")
+        );
         assert_eq!(out.body.as_deref(), Some("b=\r\nX-Injected: 1"));
         // A field without a marker is untouched.
         assert_eq!(out.method, "GET");

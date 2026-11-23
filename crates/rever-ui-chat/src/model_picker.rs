@@ -13,8 +13,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::{
-    App, ClipboardItem, Context, Corner, Entity, EventEmitter, Focusable, FontWeight, MouseDownEvent, Rgba,
-    Task, Window, anchored, deferred, div, point, prelude::*, px, rgba, svg,
+    App, ClipboardItem, Context, Corner, Entity, EventEmitter, Focusable, FontWeight,
+    MouseDownEvent, Rgba, Task, Window, anchored, deferred, div, point, prelude::*, px, rgba, svg,
 };
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::text_input::{Submitted, TextInput};

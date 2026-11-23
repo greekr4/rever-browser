@@ -543,17 +543,18 @@ mod tests {
     fn source_tool_names() -> BTreeSet<String> {
         // The TypeScript app is gone; this is the frozen registerTool name
         // set of its final state (snapshot taken from history, 177 names).
-        let order: Vec<String> = serde_json::from_str(
-            &fs::read_to_string(snapshot("ts-tool-order.json")).unwrap(),
-        )
-        .unwrap();
+        let order: Vec<String> =
+            serde_json::from_str(&fs::read_to_string(snapshot("ts-tool-order.json")).unwrap())
+                .unwrap();
         order.into_iter().collect()
     }
 
     /// A file under the crate's snapshot/ — the TypeScript originals the port
     /// was checked against, kept verbatim after the app's removal.
     fn snapshot(name: &str) -> std::path::PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("snapshot").join(name)
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("snapshot")
+            .join(name)
     }
 
     #[test]
@@ -860,7 +861,10 @@ mod tests {
     #[test]
     fn tool_profile_set_설명은_다섯_줄이고_타입스크립트_원문과_같다() {
         let source = fs::read_to_string(snapshot("tool-profile-set-description.txt")).unwrap();
-        assert_eq!(TOOL_PROFILE_SET_DESCRIPTION, source.trim_end_matches(['\n', '\r']));
+        assert_eq!(
+            TOOL_PROFILE_SET_DESCRIPTION,
+            source.trim_end_matches(['\n', '\r'])
+        );
         assert_eq!(TOOL_PROFILE_SET_DESCRIPTION.lines().count(), 5);
     }
 

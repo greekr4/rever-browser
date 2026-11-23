@@ -408,7 +408,10 @@ mod tests {
 
     /// Run a future that never waits on anything, without an async runtime.
     fn now<T>(mut future: BoxFuture<'_, T>) -> T {
-        match future.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
+        match future
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+        {
             Poll::Ready(value) => value,
             Poll::Pending => panic!("the future waited on something"),
         }

@@ -73,9 +73,11 @@ impl Browser {
             .bg(theme.bg)
             .border_t_1()
             .border_color(theme.border_2)
-            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<PanelDrag>, _, cx| {
-                this.on_panel_drag(f32::from(event.event.position.y), cx)
-            }))
+            .on_drag_move(
+                cx.listener(|this, event: &DragMoveEvent<PanelDrag>, _, cx| {
+                    this.on_panel_drag(f32::from(event.event.position.y), cx)
+                }),
+            )
             // A drag handle over the top edge resizes the panel up/down.
             .child(
                 div()
@@ -90,7 +92,8 @@ impl Browser {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, event: &MouseDownEvent, _, _| {
-                            this.panel_drag = Some((f32::from(event.position.y), this.panel_height));
+                            this.panel_drag =
+                                Some((f32::from(event.position.y), this.panel_height));
                         }),
                     )
                     .on_drag(PanelDrag, |_, _, _, cx| cx.new(|_| gpui::Empty)),

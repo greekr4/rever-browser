@@ -184,9 +184,21 @@ pub const MODEL_CATALOG: &[CatalogModel] = &[
     model(AcpAgentId::Codex, "gpt-5", "GPT-5"),
     // Claude API — exact ids of the current generation.
     model(AcpAgentId::Anthropic, "claude-opus-5-5", "Claude Opus 5.5"),
-    model(AcpAgentId::Anthropic, "claude-sonnet-5-5", "Claude Sonnet 5.5"),
-    model(AcpAgentId::Anthropic, "claude-haiku-5-5", "Claude Haiku 5.5"),
-    model(AcpAgentId::Anthropic, "claude-fable-5-2", "Claude Fable 5.2"),
+    model(
+        AcpAgentId::Anthropic,
+        "claude-sonnet-5-5",
+        "Claude Sonnet 5.5",
+    ),
+    model(
+        AcpAgentId::Anthropic,
+        "claude-haiku-5-5",
+        "Claude Haiku 5.5",
+    ),
+    model(
+        AcpAgentId::Anthropic,
+        "claude-fable-5-2",
+        "Claude Fable 5.2",
+    ),
     // OpenAI API — exact ids (mirror of OPENAI_MODELS in the main process).
     model(AcpAgentId::Openai, "gpt-4o", "GPT-4o"),
     model(AcpAgentId::Openai, "gpt-4o-mini", "GPT-4o mini"),

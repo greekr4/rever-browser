@@ -95,14 +95,19 @@ impl AcpState {
                 })
             })
             .collect();
-        request(NEW_SESSION, "session/new", json!({ "cwd": self.cwd, "mcpServers": servers }))
+        request(
+            NEW_SESSION,
+            "session/new",
+            json!({ "cwd": self.cwd, "mcpServers": servers }),
+        )
     }
 
     fn prompt(&mut self, session_id: &str, text: &str) -> Value {
         let id = self.next_id;
         self.next_id += 1;
         self.prompt_id = Some(id);
-        let params = json!({ "sessionId": session_id, "prompt": [{ "type": "text", "text": text }] });
+        let params =
+            json!({ "sessionId": session_id, "prompt": [{ "type": "text", "text": text }] });
         request(id, "session/prompt", params)
     }
 
@@ -134,9 +139,7 @@ impl AcpState {
             // rest are allowed here.
             (Some("session/request_permission"), Some(id)) => {
                 let params = &message["params"];
-                let reply = |id: &Value, outcome: Value| {
-                    json!({ "jsonrpc": "2.0", "id": id, "result": { "outcome": outcome } })
-                };
+                let reply = |id: &Value, outcome: Value| json!({ "jsonrpc": "2.0", "id": id, "result": { "outcome": outcome } });
                 if is_risky_tool_request(params) {
                     let (outbox, id) = (self.outbox.clone(), id.clone());
                     events.push(AgentEvent::Permission(PermissionAsk {
@@ -148,12 +151,16 @@ impl AcpState {
                     }));
                 } else {
                     let option = choose_allow_option(params);
-                    out.push(reply(id, json!({ "outcome": "selected", "optionId": option })));
+                    out.push(reply(
+                        id,
+                        json!({ "outcome": "selected", "optionId": option }),
+                    ));
                 }
             }
             // Anything else it asks of the client (files, terminals) is not offered.
             (Some(method), Some(id)) => {
-                let error = json!({ "code": -32601, "message": format!("{method} is not supported") });
+                let error =
+                    json!({ "code": -32601, "message": format!("{method} is not supported") });
                 out.push(json!({ "jsonrpc": "2.0", "id": id, "error": error }));
             }
             (Some("session/update"), None) => {
@@ -173,7 +180,8 @@ impl AcpState {
                         events.push(AgentEvent::ToolCall(name, update["rawInput"].clone()));
                     }
                     Some("tool_call_update") => {
-                        let finished = matches!(update["status"].as_str(), Some("completed" | "failed"));
+                        let finished =
+                            matches!(update["status"].as_str(), Some("completed" | "failed"));
                         if let Some(name) = self.tool_names.get(call_id).filter(|_| finished) {
                             let output = match &update["rawOutput"] {
                                 Value::String(text) => text.clone(),
@@ -196,9 +204,14 @@ impl AcpState {
     fn answer(&mut self, message: &Value, out: &mut Vec<Value>, events: &mut Vec<AgentEvent>) {
         let id = message["id"].as_u64();
         let failure = message.get("error").map(|error| {
-            let text = error["message"].as_str().unwrap_or("the agent reported an error");
+            let text = error["message"]
+                .as_str()
+                .unwrap_or("the agent reported an error");
             // codex-acp puts the cause (not signed in, no access to the model) in `data`.
-            match error["data"].as_str().or_else(|| error["data"]["message"].as_str()) {
+            match error["data"]
+                .as_str()
+                .or_else(|| error["data"]["message"].as_str())
+            {
                 // codex-acp often repeats the cause in both fields.
                 Some(detail) if !text.contains(detail) => format!("{text}: {detail}"),
                 _ => text.to_owned(),
@@ -220,7 +233,10 @@ impl AcpState {
                 return;
             };
             // Any other mode can refuse the app's tools without asking.
-            if result["modes"]["currentModeId"].as_str().is_some_and(|mode| mode != "default") {
+            if result["modes"]["currentModeId"]
+                .as_str()
+                .is_some_and(|mode| mode != "default")
+            {
                 let id = self.next_id;
                 self.next_id += 1;
                 let params = json!({ "sessionId": session_id, "modeId": "default" });
@@ -228,7 +244,11 @@ impl AcpState {
             }
             let models = model_state_from_session(result);
             self.model_config_id = models.model_config_id;
-            if let Some(model) = self.model.clone().filter(|model| models.current_model_id.as_ref() != Some(model)) {
+            if let Some(model) = self
+                .model
+                .clone()
+                .filter(|model| models.current_model_id.as_ref() != Some(model))
+            {
                 out.push(self.set_model(&session_id, &model));
             }
             if let Some(text) = self.waiting_prompt.take() {
@@ -301,9 +321,16 @@ impl AcpSession {
             });
         }
         let state = AcpState::new(cwd, mcp, model, outbox);
-        let mut session = Self { child, stdin, inbox, state };
+        let mut session = Self {
+            child,
+            stdin,
+            inbox,
+            state,
+        };
         let hello = session.state.initialize();
-        session.write(&[hello]).map_err(|error| format!("{command} is not accepting input: {error}"))?;
+        session
+            .write(&[hello])
+            .map_err(|error| format!("{command} is not accepting input: {error}"))?;
         Ok(session)
     }
 
@@ -341,7 +368,9 @@ impl ChatAgent for AcpSession {
             }
             let (out, mut new_events) = self.state.handle(&message);
             if self.write(&out).is_err() {
-                new_events.push(AgentEvent::Failed("the agent is not accepting input".to_owned()));
+                new_events.push(AgentEvent::Failed(
+                    "the agent is not accepting input".to_owned(),
+                ));
             }
             events.append(&mut new_events);
         }
@@ -375,7 +404,10 @@ mod tests {
     }
 
     fn methods(messages: &[Value]) -> Vec<&str> {
-        messages.iter().map(|m| m["method"].as_str().unwrap_or("")).collect()
+        messages
+            .iter()
+            .map(|m| m["method"].as_str().unwrap_or(""))
+            .collect()
     }
 
     #[test]
@@ -403,32 +435,42 @@ mod tests {
         let (out, events) = state.handle(&opened);
         assert!(events.is_empty());
         // 기본 모드로 돌리고, 고른 모델로 바꾸고, 기다리던 말을 보낸다.
-        assert_eq!(methods(&out), ["session/set_mode", "session/set_model", "session/prompt"]);
+        assert_eq!(
+            methods(&out),
+            ["session/set_mode", "session/set_model", "session/prompt"]
+        );
         assert_eq!(out[2]["params"]["prompt"][0]["text"], "안녕");
         assert_eq!(state.session_id.as_deref(), Some("s1"));
 
         // 그 프롬프트의 응답이 턴의 끝이다.
-        let done = json!({ "jsonrpc": "2.0", "id": out[2]["id"], "result": { "stopReason": "end_turn" } });
+        let done =
+            json!({ "jsonrpc": "2.0", "id": out[2]["id"], "result": { "stopReason": "end_turn" } });
         assert_eq!(state.handle(&done).1, [AgentEvent::Done]);
     }
 
     #[test]
     fn 글_조각과_도구_호출을_대화_이벤트로_바꾼다() {
         let mut state = state();
-        let update = |update: Value| {
-            json!({ "jsonrpc": "2.0", "method": "session/update", "params": { "sessionId": "s1", "update": update } })
-        };
-        let text = update(json!({ "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": "확인" } }));
+        let update = |update: Value| json!({ "jsonrpc": "2.0", "method": "session/update", "params": { "sessionId": "s1", "update": update } });
+        let text = update(
+            json!({ "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": "확인" } }),
+        );
         assert_eq!(state.handle(&text).1, [AgentEvent::Text("확인".into())]);
-        let call = update(json!({ "sessionUpdate": "tool_call", "toolCallId": "c1", "title": "list_requests" }));
+        let call = update(
+            json!({ "sessionUpdate": "tool_call", "toolCallId": "c1", "title": "list_requests" }),
+        );
         assert_eq!(
             state.handle(&call).1,
             [AgentEvent::ToolCall("list_requests".into(), Value::Null)]
         );
         // 진행 중 알림은 지나가고, 끝난 알림만 결과가 된다.
-        let running = update(json!({ "sessionUpdate": "tool_call_update", "toolCallId": "c1", "status": "in_progress" }));
+        let running = update(
+            json!({ "sessionUpdate": "tool_call_update", "toolCallId": "c1", "status": "in_progress" }),
+        );
         assert!(state.handle(&running).1.is_empty());
-        let finished = update(json!({ "sessionUpdate": "tool_call_update", "toolCallId": "c1", "status": "completed", "rawOutput": "3" }));
+        let finished = update(
+            json!({ "sessionUpdate": "tool_call_update", "toolCallId": "c1", "status": "completed", "rawOutput": "3" }),
+        );
         assert_eq!(
             state.handle(&finished).1,
             [AgentEvent::ToolResult("list_requests".into(), "3".into())]
@@ -449,7 +491,8 @@ mod tests {
         assert_eq!(out[0]["id"], 7);
         assert_eq!(out[0]["result"]["outcome"]["optionId"], "allow");
 
-        let other = json!({ "jsonrpc": "2.0", "id": 8, "method": "fs/read_text_file", "params": {} });
+        let other =
+            json!({ "jsonrpc": "2.0", "id": 8, "method": "fs/read_text_file", "params": {} });
         let (out, _) = state.handle(&other);
         assert_eq!(out[0]["error"]["code"], -32601);
     }
@@ -486,7 +529,10 @@ mod tests {
         let lines = state.outbox.take();
         let reply: Value = serde_json::from_str(&lines[0]).unwrap();
         assert_eq!(
-            (reply["id"].as_u64(), reply["result"]["outcome"]["optionId"].as_str()),
+            (
+                reply["id"].as_u64(),
+                reply["result"]["outcome"]["optionId"].as_str()
+            ),
             (Some(7), Some("reject"))
         );
     }
@@ -509,7 +555,9 @@ mod tests {
         } });
         assert_eq!(
             state.handle(&repeated).1,
-            [AgentEvent::Failed("Authentication required: sign in again".into())]
+            [AgentEvent::Failed(
+                "Authentication required: sign in again".into()
+            )]
         );
     }
 }

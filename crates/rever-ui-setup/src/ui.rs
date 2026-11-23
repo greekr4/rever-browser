@@ -351,7 +351,10 @@ pub(crate) fn select_box(
 ///
 /// Not `deferred`: the popover and the modals it opens in are deferred themselves, and
 /// GPUI does not nest deferred draws. The caller adds it after everything it must cover.
-#[expect(clippy::too_many_arguments, reason = "one call draws one select: the arguments are its props")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one call draws one select: the arguments are its props"
+)]
 pub(crate) fn select_list<V: 'static>(
     id: &'static str,
     options: &[SharedString],

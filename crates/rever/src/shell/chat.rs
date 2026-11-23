@@ -265,15 +265,19 @@ impl Browser {
                         div().pb(px(2.0)).child(
                             icon_button(
                                 "chat-expand",
-                                if self.chat_expanded { "shrink" } else { "expand" },
+                                if self.chat_expanded {
+                                    "shrink"
+                                } else {
+                                    "expand"
+                                },
                                 28.0,
                                 theme,
                             )
-                            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                                this.toggle_chat_expanded(cx)
-                            })),
+                            .on_click(cx.listener(
+                                |this, _: &ClickEvent, _, cx| this.toggle_chat_expanded(cx),
+                            )),
                         ),
-                    )
+                    ),
             )
             .child(
                 div()
@@ -345,54 +349,57 @@ impl Browser {
                         )
                     })
                     .child(
-                div()
-                    .id("chat-log")
-                    .track_scroll(&self.chat_scroll)
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .p(px(16.0))
-                    .flex()
-                    .flex_col()
-                    .gap(px(12.0))
-                    .text_size(px(14.0))
-                    .when(self.chat.is_empty(), |log| {
-                        log.child(div().text_color(theme.text_dim).child(CHAT_EMPTY))
-                    })
-                    .children(rows)
-                    // A spinner while the agent works, so a silent stretch reads as work.
-                    .when(self.agent_busy, |log| {
-                        let seconds = self.turn_started.map_or(0, |at| at.elapsed().as_secs());
-                        log.child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(8.0))
-                                .text_size(px(13.0))
-                                .text_color(theme.text_dim)
-                                .child(
-                                    svg()
-                                        .path("icons/loader.svg")
-                                        .size(px(14.0))
-                                        .flex_none()
+                        div()
+                            .id("chat-log")
+                            .track_scroll(&self.chat_scroll)
+                            .flex_1()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .p(px(16.0))
+                            .flex()
+                            .flex_col()
+                            .gap(px(12.0))
+                            .text_size(px(14.0))
+                            .when(self.chat.is_empty(), |log| {
+                                log.child(div().text_color(theme.text_dim).child(CHAT_EMPTY))
+                            })
+                            .children(rows)
+                            // A spinner while the agent works, so a silent stretch reads as work.
+                            .when(self.agent_busy, |log| {
+                                let seconds =
+                                    self.turn_started.map_or(0, |at| at.elapsed().as_secs());
+                                log.child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(8.0))
+                                        .text_size(px(13.0))
                                         .text_color(theme.text_dim)
-                                        .with_animation(
-                                            "chat-working",
-                                            Animation::new(Duration::from_secs(1)).repeat(),
-                                            |spinner, progress| {
-                                                spinner.with_transformation(Transformation::rotate(
-                                                    percentage(progress),
-                                                ))
-                                            },
-                                        ),
+                                        .child(
+                                            svg()
+                                                .path("icons/loader.svg")
+                                                .size(px(14.0))
+                                                .flex_none()
+                                                .text_color(theme.text_dim)
+                                                .with_animation(
+                                                    "chat-working",
+                                                    Animation::new(Duration::from_secs(1)).repeat(),
+                                                    |spinner, progress| {
+                                                        spinner.with_transformation(
+                                                            Transformation::rotate(percentage(
+                                                                progress,
+                                                            )),
+                                                        )
+                                                    },
+                                                ),
+                                        )
+                                        .child(format!(
+                                            "{} {}",
+                                            lang.t("chat.working"),
+                                            elapsed_label(seconds)
+                                        )),
                                 )
-                                .child(format!(
-                                    "{} {}",
-                                    lang.t("chat.working"),
-                                    elapsed_label(seconds)
-                                )),
-                        )
-                    }),
+                            }),
                     ),
             )
             .child(
