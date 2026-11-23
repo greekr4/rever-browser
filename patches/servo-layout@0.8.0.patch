@@ -1,6 +1,6 @@
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/context.rs b/context.rs
 --- a/context.rs	2006-07-24 10:21:28
-+++ b/context.rs	2026-11-23 10:07:21
++++ b/context.rs	2026-11-23 12:54:29
 @@ -140,8 +140,19 @@
  
      /// The current animation timeline value used to properly initialize animating images.
@@ -95,7 +95,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
      }
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/formatting_contexts.rs b/formatting_contexts.rs
 --- a/formatting_contexts.rs	2006-07-24 10:21:28
-+++ b/formatting_contexts.rs	2026-11-23 10:07:21
++++ b/formatting_contexts.rs	2026-11-23 12:54:29
 @@ -27,7 +27,9 @@
      self, ComputeInlineContentSizes, ContentSizes, InlineContentSizesResult, LazySize,
      SizeConstraint,
@@ -193,7 +193,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
      pub(crate) fn attached_to_tree(&self, layout_box: WeakLayoutBox) {
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/layout_impl.rs b/layout_impl.rs
 --- a/layout_impl.rs	2006-07-24 10:21:28
-+++ b/layout_impl.rs	2026-11-23 10:07:21
++++ b/layout_impl.rs	2026-11-23 12:54:29
 @@ -208,6 +208,9 @@
      // image data, or an error if the image cache failed to load/decode the image.
      resolved_images_cache: Arc<RwLock<HashMap<ServoUrl, CachedImageOrError>>>,
@@ -222,7 +222,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
              pending_svg_elements_for_serialization: Mutex::default(),
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/replaced.rs b/replaced.rs
 --- a/replaced.rs	2006-07-24 10:21:28
-+++ b/replaced.rs	2026-11-23 10:07:21
++++ b/replaced.rs	2026-11-23 12:54:29
 @@ -19,6 +19,8 @@
  use servo_base::id::{BrowsingContextId, PipelineId};
  use servo_url::ServoUrl;
@@ -515,7 +515,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
  }
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/style_ext.rs b/style_ext.rs
 --- a/style_ext.rs	2006-07-24 10:21:28
-+++ b/style_ext.rs	2026-11-23 10:07:21
++++ b/style_ext.rs	2026-11-23 12:54:29
 @@ -759,6 +759,15 @@
              return true;
          }
@@ -532,9 +532,39 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
          // TODO: We need to handle CSS Contain here.
          false
      }
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/stylesheets/servo.css b/stylesheets/servo.css
+--- a/stylesheets/servo.css	2006-07-24 10:21:28
++++ b/stylesheets/servo.css	2026-11-23 12:54:29
+@@ -302,12 +302,12 @@
+   display: inline-block;
+   position: relative;
+ 
++  /* rever: a default size only, as in other browsers. Upstream also set min- and
++     max- sizes, which no page rule could get past: a switch built from an invisible
++     checkbox stretched over it (`inset: 0; width: 100%; height: 100%`) took clicks
++     on its first 14 pixels alone. */
+   width: 14px;
+   height: 14px;
+-  max-width: 14px;
+-  max-height: 14px;
+-  min-width: 14px;
+-  min-height: 14px;
+ 
+   border-radius: 2px;
+ 
+@@ -344,8 +344,7 @@
+      element. These values should probably be changed once `aspect-ratio` has been supported
+      for non-replaced elements.
+   */
+-  min-height: 14px;
+-  min-width: 14px;
++  /* rever: a default size only; see the checkbox above. */
+   height: 14px;
+   width: 14px;
+ }
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/traversal.rs b/traversal.rs
 --- a/traversal.rs	2006-07-24 10:21:28
-+++ b/traversal.rs	2026-11-23 10:07:21
++++ b/traversal.rs	2026-11-23 12:54:29
 @@ -90,6 +90,21 @@
      damage_from_environment: LayoutDamage,
      layout_roots: &mut Vec<LayoutRoot<'dom>>,
