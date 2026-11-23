@@ -217,63 +217,26 @@ impl Browser {
             }
         }
         let hover = theme.chrome_hover;
-        // The space view chip: the open tabs as a bar of spaces over the page.
-        let space_view = self.space_view;
         bar.child(div().flex_1()).child(
+            // Red Team opens a scan dialog rather than a bottom panel.
             div()
+                .id("redteam")
+                .h(px(28.0))
+                .px(px(10.0))
                 .flex()
                 .flex_none()
                 .items_center()
-                .gap(px(6.0))
-                .child(
-                    div()
-                        .id("spaces")
-                        .h(px(28.0))
-                        .px(px(10.0))
-                        .flex()
-                        .items_center()
-                        .gap(px(5.0))
-                        .rounded(px(6.0))
-                        .border_1()
-                        .border_color(if space_view {
-                            theme.accent
-                        } else {
-                            theme.border_2
-                        })
-                        .when(space_view, |chip| chip.bg(theme.surface_3))
-                        .text_size(px(12.0))
-                        .text_color(if space_view {
-                            theme.accent
-                        } else {
-                            theme.text_2
-                        })
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(hover))
-                        .on_click(
-                            cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_space_view(cx)),
-                        )
-                        .child(lang.t("panel.spaces")),
-                )
-                .child(
-                    // Red Team opens a scan dialog rather than a bottom panel.
-                    div()
-                        .id("redteam")
-                        .h(px(28.0))
-                        .px(px(10.0))
-                        .flex()
-                        .items_center()
-                        .gap(px(5.0))
-                        .rounded(px(6.0))
-                        .border_1()
-                        .border_color(theme.border_2)
-                        .text_size(px(12.0))
-                        .text_color(theme.status_error)
-                        .cursor_pointer()
-                        .hover(move |style| style.bg(hover))
-                        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.open_redteam(cx)))
-                        .child(icon("redteam", 14.0, theme.status_error))
-                        .child(lang.t("panel.redteam")),
-                ),
+                .gap(px(5.0))
+                .rounded(px(6.0))
+                .border_1()
+                .border_color(theme.border_2)
+                .text_size(px(12.0))
+                .text_color(theme.status_error)
+                .cursor_pointer()
+                .hover(move |style| style.bg(hover))
+                .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.open_redteam(cx)))
+                .child(icon("redteam", 14.0, theme.status_error))
+                .child(lang.t("panel.redteam")),
         )
     }
 }

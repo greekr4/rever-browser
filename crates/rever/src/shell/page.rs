@@ -10,7 +10,7 @@ use gpui::{
     AnyElement, Bounds, ClickEvent, Context, Corners, CursorStyle, ElementInputHandler,
     EntityInputHandler, KeyDownEvent, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta, ScrollWheelEvent, UTF16Selection,
-    Window, canvas, div, prelude::*, px, rgb,
+    Window, canvas, div, prelude::*, px,
 };
 use rever_core::input::w3c_key_name;
 use rever_ui_kit::theme::Theme;
@@ -93,7 +93,6 @@ impl Browser {
             .relative()
             .flex()
             .flex_col()
-            .children(self.scan_space_bar(theme, cx))
             .child(page)
             .children(self.select_list(theme, cx))
             .children(self.context_menu_list(theme, cx))
@@ -101,114 +100,6 @@ impl Browser {
             .children(self.color_overlay(theme, cx))
             .children(self.memory_overlay(theme))
             .into_any_element()
-    }
-
-    /// The scan's spaces (ego-Lite style): one chip per opened tab — its worker's
-    /// status and findings — over the page. A click makes that space the page.
-    fn scan_space_bar(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
-        // A running scan's spaces lead; with the scan off, the user's own tabs
-        // become the spaces when the space view is on.
-        let scanning =
-            self.redteam_running && self.scan.as_ref().is_some_and(|scan| !scan.tabs.is_empty());
-        if !scanning && !self.space_view {
-            return None;
-        }
-        // (url, loc, status dot when a worker owns the space, dim, findings)
-        let mut spaces: Vec<(String, String, Option<gpui::Rgba>, bool, u32)> = Vec::new();
-        if scanning {
-            for tile in &self.scan.as_ref().expect("checked").tabs {
-                let (dot, dim) = match tile.status {
-                    crate::scan::TabStatus::Opening => (theme.text_dim, true),
-                    crate::scan::TabStatus::Inspecting => (theme.accent, false),
-                    crate::scan::TabStatus::Done => (rgb(0x5f_d0_7a), false),
-                    crate::scan::TabStatus::Failed => (theme.status_error, false),
-                };
-                spaces.push((
-                    tile.url.clone(),
-                    tile.loc.clone(),
-                    Some(dot),
-                    dim,
-                    tile.findings,
-                ));
-            }
-        } else {
-            for tab in &self.tabs {
-                spaces.push((
-                    tab.url.clone(),
-                    crate::scan::short_loc(&tab.url),
-                    None,
-                    false,
-                    0,
-                ));
-            }
-        }
-        let active_url = self.tabs[self.active].url.clone();
-        let mut chips = Vec::new();
-        for (index, (url, loc, dot, dim, findings)) in spaces.into_iter().enumerate() {
-            let selected = active_url == url;
-            chips.push(
-                div()
-                    .id(("scan-space", index))
-                    .flex()
-                    .items_center()
-                    .gap(px(6.0))
-                    .px(px(10.0))
-                    .py(px(4.0))
-                    .rounded(px(14.0))
-                    .border_1()
-                    .border_color(if selected {
-                        theme.accent
-                    } else {
-                        theme.border_2
-                    })
-                    .when(selected, |chip| chip.bg(theme.surface_3))
-                    .text_size(px(12.0))
-                    .text_color(if dim { theme.text_dim } else { theme.text })
-                    .cursor_pointer()
-                    .hover(move |style| style.bg(theme.chrome_hover))
-                    .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
-                        if let Some(index) = this.tabs.iter().position(|tab| tab.url == url) {
-                            this.select_tab(index, window, cx);
-                        }
-                    }))
-                    .when_some(dot, |chip, dot| {
-                        chip.child(
-                            div()
-                                .flex_none()
-                                .w(px(7.0))
-                                .h(px(7.0))
-                                .rounded(px(7.0))
-                                .bg(dot),
-                        )
-                    })
-                    .child(div().child(loc))
-                    .when(findings > 0, |chip| {
-                        chip.child(
-                            div()
-                                .flex_none()
-                                .text_color(rgb(0xe0_a3_3e))
-                                .child(format!("✓{findings}")),
-                        )
-                    })
-                    .into_any_element(),
-            );
-        }
-        Some(
-            div()
-                .id("scan-spaces")
-                .flex()
-                .flex_none()
-                .flex_wrap()
-                .items_center()
-                .gap(px(6.0))
-                .px(px(8.0))
-                .py(px(6.0))
-                .bg(theme.bg_bar)
-                .border_b_1()
-                .border_color(theme.border)
-                .children(chips)
-                .into_any_element(),
-        )
     }
 
     /// The development build's memory readout, in the page's bottom-left corner. It

@@ -784,8 +784,6 @@ pub(crate) struct Browser {
     pub panel_drag: Option<(f32, f32)>,
     /// The Red Team scan dialog (a movable popup) is open.
     pub redteam_open: bool,
-    /// The space view is on: the open tabs show as a bar of spaces over the page.
-    pub space_view: bool,
     /// Chosen scan intensity: "readonly" | "probe" | "redteam".
     pub redteam_intensity: &'static str,
     /// Max same-site pages the scan opens.
@@ -802,6 +800,8 @@ pub(crate) struct Browser {
     pub redteam_log_scroll: gpui::ScrollHandle,
     /// The scan report's own window, when one is open.
     pub redteam_report_win: Option<gpui::WindowHandle<crate::shell::report::ReportWindow>>,
+    /// A scan just started: open the spaces grid so its worker spaces show live.
+    pub scan_spaces_due: bool,
     /// The model the scan's CLI sessions run on (None = the CLI's own default).
     pub redteam_model: Option<(String, String)>,
     /// The scan dialog's model chip.
@@ -1289,7 +1289,6 @@ impl Browser {
             panel_height: 320.0,
             panel_drag: None,
             redteam_open: false,
-            space_view: false,
             redteam_intensity: "readonly",
             redteam_pages: 8,
             redteam_pos: (0.0, 0.0),
@@ -1298,6 +1297,7 @@ impl Browser {
             redteam_log_open: true,
             redteam_log_scroll: gpui::ScrollHandle::new(),
             redteam_report_win: None,
+            scan_spaces_due: false,
             scan: None,
             scan_tabs: Vec::new(),
             redteam_w: 720.0,
@@ -1568,6 +1568,10 @@ impl Browser {
                 store.reload();
                 cx.notify();
             });
+        }
+        if self.scan_spaces_due && !self.spaces_open {
+            self.scan_spaces_due = false;
+            self.toggle_spaces(window, cx);
         }
         self.pump_agent(cx);
         self.pump_scan(cx);
@@ -2396,13 +2400,6 @@ impl Browser {
         cx.notify();
     }
 
-    /// Show the open tabs as a bar of spaces over the page (the ego-Lite view,
-    /// without a scan: every tab is a space, the page below is the chosen one).
-    pub fn toggle_space_view(&mut self, cx: &mut Context<Self>) {
-        self.space_view = !self.space_view;
-        cx.notify();
-    }
-
     pub fn set_redteam_intensity(&mut self, level: &'static str, cx: &mut Context<Self>) {
         self.redteam_intensity = level;
         cx.notify();
@@ -2454,9 +2451,8 @@ impl Browser {
             eprintln!("[scan] dropped {cleared} old finding(s) for this site");
         }
         crate::agent::REDTEAM_SCAN.store(true, Ordering::Relaxed);
-        // The scan's spaces lead the view from here on (and stay after it: the
-        // user's tabs become the spaces until the view is toggled off).
-        self.space_view = true;
+        // The scan's worker spaces open in the grid view as they arrive.
+        self.scan_spaces_due = true;
         self.scan_tabs.clear();
         self.scan = Some(crate::scan::ScanRun::new(
             &target,
@@ -2878,8 +2874,23 @@ impl Browser {
                         .and_then(|url| {
                             let address = url.to_string();
                             let id = self.engine.open(url, size)?;
+                            // A scan worker's tab gets a space of its own (the
+                            // ego-Lite shape: one live tile per worker in the
+                            // grid, which dies with the tab when the scan ends).
+                            let space = if self.redteam_running {
+                                let id = SpaceId(self.next_space);
+                                self.next_space += 1;
+                                self.spaces.push(Space {
+                                    id,
+                                    name: crate::scan::short_loc(&address),
+                                    shown: None,
+                                });
+                                id
+                            } else {
+                                self.space
+                            };
                             // Not selected: the agent reads it by index while it loads.
-                            self.tabs.push(Tab::new(id, self.space, address, "".into()));
+                            self.tabs.push(Tab::new(id, space, address, "".into()));
                             Ok(self.tabs.len() - 1)
                         });
                     let _ = answer.send(opened);
