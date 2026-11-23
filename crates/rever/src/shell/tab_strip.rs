@@ -37,7 +37,9 @@ impl Browser {
             .pl(px(left))
             .pr(px(8.0))
             .bg(theme.chrome_frame)
-            .children(self.tabs.iter().enumerate().map(|(index, tab)| {
+            // The tabs of the space that is shown.
+            .children(self.space_tabs().into_iter().map(|index| {
+                let tab = &self.tabs[index];
                 let active = index == self.active;
                 let (hover, dim) = (theme.chrome_hover, theme.text_dim);
                 let label: SharedString = if tab.title.is_empty() {
@@ -108,5 +110,15 @@ impl Browser {
                     }
                 },
             ))
+            // The way to the grid view of the spaces.
+            .child(
+                div()
+                    .pb(px(3.0))
+                    .child(
+                        icon_button("spaces", "grid", 28.0, theme).on_click(cx.listener(
+                            |this, _: &ClickEvent, window, cx| this.toggle_spaces(window, cx),
+                        )),
+                    ),
+            )
     }
 }
