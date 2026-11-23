@@ -781,6 +781,12 @@ pub(crate) struct Browser {
     pub redteam_log_scroll: gpui::ScrollHandle,
     /// The scan report's own window, when one is open.
     pub redteam_report_win: Option<gpui::WindowHandle<crate::shell::report::ReportWindow>>,
+    /// The model the scan's CLI sessions run on (None = the CLI's own default).
+    pub redteam_model: Option<(String, String)>,
+    /// The scan dialog's model chip.
+    pub scan_model_picker: Entity<ModelPicker>,
+    /// When the live tab-grid previews were last captured.
+    pub scan_grid_at: Instant,
     /// The running (or just-finished) scan orchestrator, when there is one.
     pub scan: Option<crate::scan::ScanRun>,
     /// URLs of the tabs the scan opened; closed when it finishes.
@@ -1125,6 +1131,30 @@ impl Browser {
             }
         })
         .detach();
+        // The Red Team dialog's own model chip; the scan's CLI sessions run on it.
+        let scan_model_picker = cx.new(|cx| {
+            let this = this.clone();
+            let host = Rc::new(PickerHost {
+                models: model_store.clone(),
+            });
+            ModelPicker::new(move |cx| scan_picker_props(&this, cx), host, look.clone(), cx)
+        });
+        cx.subscribe(&scan_model_picker, |this, _, event: &ModelPickerEvent, cx| {
+            if let ModelPickerEvent::Selected {
+                agent_id,
+                model_id,
+                name,
+                ..
+            } = event
+            {
+                // Scan workers are Claude CLI sessions; other agents' models do not apply.
+                if *agent_id == AcpAgentId::ClaudeCode {
+                    this.redteam_model = Some((model_id.to_owned(), name.to_owned()));
+                    cx.notify();
+                }
+            }
+        })
+        .detach();
         // The CLIs themselves know their models; asked once per start, off the main thread.
         if self_check.is_none() {
             cx.spawn(async move |this, cx| {
@@ -1201,8 +1231,8 @@ impl Browser {
             redteam_report_win: None,
             scan: None,
             scan_tabs: Vec::new(),
-            redteam_w: 560.0,
-            redteam_h: 380.0,
+            redteam_w: 720.0,
+            redteam_h: 560.0,
             redteam_size_drag: None,
             select: None,
             prompt: None,
@@ -1215,6 +1245,9 @@ impl Browser {
             closed_tabs: Vec::new(),
             chat_scroll: gpui::ScrollHandle::new(),
             model_picker,
+            scan_model_picker,
+            redteam_model: None,
+            scan_grid_at: Instant::now(),
             model_store,
             chat_agent,
             chat_model,
@@ -1461,6 +1494,15 @@ impl Browser {
                 cx.notify();
             });
         }
+        // The scan's live tab grid: refresh the previews at most ~1/s while
+        // workers run (every frame would paint every background page).
+        if self.redteam_running
+            && self.scan.as_ref().is_some_and(|scan| !scan.tabs.is_empty())
+            && self.scan_grid_at.elapsed() > Duration::from_millis(800)
+        {
+            self.scan_grid_at = Instant::now();
+            self.capture_scan_tabs(window);
+        }
         self.pump_agent(cx);
         self.pump_scan(cx);
         if self.close_scan_tabs {
@@ -1493,6 +1535,31 @@ impl Browser {
         let frame = Arc::new(RenderImage::new(vec![Frame::new(image)]));
         if let Some(old) = self.tabs[self.active].frame.replace(frame) {
             let _ = window.drop_image(old);
+        }
+    }
+
+    /// Refresh the live previews of the scan's tab grid, one paint per open tab
+    /// (a tab with no page yet — asleep or still attaching — keeps its old one).
+    fn capture_scan_tabs(&mut self, window: &mut Window) {
+        let Some(scan) = self.scan.as_ref() else {
+            return;
+        };
+        let urls: Vec<String> = scan.tabs.iter().map(|tile| tile.url.clone()).collect();
+        for url in urls {
+            let Some(index) = self.tabs.iter().position(|tab| tab.url == url) else {
+                continue;
+            };
+            let id = self.tabs[index].id;
+            let Some(mut image) = self.engine.frame(id) else {
+                continue;
+            };
+            for pixel in image.as_chunks_mut::<4>().0 {
+                pixel.swap(0, 2);
+            }
+            let frame = Arc::new(RenderImage::new(vec![Frame::new(image)]));
+            if let Some(old) = self.tabs[index].frame.replace(frame) {
+                let _ = window.drop_image(old);
+            }
         }
     }
 
@@ -2255,6 +2322,8 @@ impl Browser {
             .mcp
             .as_ref()
             .map(|mcp| (mcp.url.clone(), mcp.auth_header.clone()));
+        // The scan's own model choice, when there is one.
+        let model = self.redteam_model.as_ref().map(|(id, _)| id.clone());
         let wake = self.wake.clone();
         let mut spawn = move |prompt: &str| {
             let _ = prompt;
@@ -2262,7 +2331,7 @@ impl Browser {
             let mcp = mcp
                 .as_ref()
                 .map(|(url, auth)| (url.as_str(), auth.as_str()));
-            crate::agent::AgentSession::spawn(&scratch, mcp, None, move || {
+            crate::agent::AgentSession::spawn(&scratch, mcp, model.as_deref(), move || {
                 let _ = wake.unbounded_send(());
             })
         };
@@ -2311,7 +2380,12 @@ impl Browser {
         }
         self.scan = Some(scan);
         if finished_with_report {
-            self.open_report_window(cx);
+            // Deferred: opening mid-pump left the platform window half-drawn
+            // (black, off-screen); opening on a later turn works.
+            let browser = cx.entity();
+            cx.defer(move |cx| {
+                let _ = browser.update(cx, |this, cx| this.open_report_window(cx));
+            });
         }
         cx.notify();
     }
@@ -2849,6 +2923,26 @@ fn picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
         model_name,
         // One turn at a time: the model changes between turns.
         disabled: busy,
+        new_tab: false,
+        column: None,
+    }
+}
+
+/// The scan dialog's model chip: the scan's own choice over the CLI's models.
+fn scan_picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
+    let (model_name, running) = browser
+        .read_with(cx, |this, _| {
+            (
+                this.redteam_model.as_ref().map(|(_, name)| name.clone()),
+                this.redteam_running,
+            )
+        })
+        .unwrap_or((None, false));
+    ModelPickerProps {
+        agent_id: AcpAgentId::ClaudeCode,
+        model_name,
+        // A running scan already spawned its sessions on a model.
+        disabled: running,
         new_tab: false,
         column: None,
     }

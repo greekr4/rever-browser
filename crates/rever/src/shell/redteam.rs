@@ -6,7 +6,7 @@
 
 use gpui::{
     AnyElement, ClickEvent, Context, DragMoveEvent, FontWeight, Hsla, MouseButton, MouseDownEvent,
-    div, prelude::*, px, relative, rgb,
+    ObjectFit, div, img, prelude::*, px, relative, rgb,
 };
 use rever_ui_kit::theme::Theme;
 
@@ -259,7 +259,9 @@ impl Browser {
                     "scan.panel.intensity.redteam",
                     0,
                     cx,
-                ));
+                ))
+                // The scan's model chip; the sessions spawn on this model.
+                .child(self.scan_model_picker.clone());
 
             let risk_row = div()
                 .flex()
@@ -289,8 +291,8 @@ impl Browser {
                 .into_any_element()
         };
 
-        // ── One tile per opened tab (ego-Lite spaces): live worker status, and a
-        // click focuses that tab so the user can watch the agent work there.
+        // ── One tile per opened tab (ego-Lite spaces): the page's live preview,
+        // the worker's status dot, and a click focuses that tab to watch it work.
         let tiles: Option<AnyElement> =
             scan.filter(|scan| !scan.tabs.is_empty())
                 .map(|scan| {
@@ -303,20 +305,40 @@ impl Browser {
                             crate::scan::TabStatus::Done => (rgb(0x5f_d0_7a), false),
                             crate::scan::TabStatus::Failed => (theme.status_error, false),
                         };
+                        // The tab's latest captured page, painted by capture_scan_tabs.
+                        let frame = self
+                            .tabs
+                            .iter()
+                            .find(|tab| tab.url == tile.url)
+                            .and_then(|tab| tab.frame.clone());
+                        let preview: AnyElement = match frame {
+                            Some(frame) => img(frame)
+                                .size_full()
+                                .object_fit(ObjectFit::Cover)
+                                .into_any_element(),
+                            None => div()
+                                .flex_1()
+                                .min_h_0()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .text_color(theme.text_dim)
+                                .child("…")
+                                .into_any_element(),
+                        };
                         children.push(
                             div()
                                 .id(("redteam-tile", index))
+                                .w(px(176.0))
+                                .h(px(144.0))
                                 .flex()
-                                .items_center()
-                                .gap(px(6.0))
-                                .px(px(8.0))
-                                .py(px(4.0))
+                                .flex_col()
                                 .rounded(px(6.0))
                                 .border_1()
                                 .border_color(theme.border_2)
-                                .max_w(px(190.0))
+                                .overflow_hidden()
                                 .cursor_pointer()
-                                .hover(move |s| s.bg(hover))
+                                .hover(move |s| s.border_color(theme.accent))
                                 .on_click(cx.listener(
                                     move |this, _: &ClickEvent, window, cx| {
                                         if let Some(index) =
@@ -328,30 +350,47 @@ impl Browser {
                                 ))
                                 .child(
                                     div()
+                                        .flex()
                                         .flex_none()
-                                        .w(px(7.0))
-                                        .h(px(7.0))
-                                        .rounded(px(7.0))
-                                        .bg(dot),
+                                        .items_center()
+                                        .gap(px(5.0))
+                                        .px(px(6.0))
+                                        .py(px(4.0))
+                                        .bg(theme.bg_bar)
+                                        .border_b_1()
+                                        .border_color(theme.border)
+                                        .child(
+                                            div()
+                                                .flex_none()
+                                                .w(px(7.0))
+                                                .h(px(7.0))
+                                                .rounded(px(7.0))
+                                                .bg(dot),
+                                        )
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .min_w_0()
+                                                .truncate()
+                                                .text_size(px(11.0))
+                                                .text_color(if dim {
+                                                    theme.text_dim
+                                                } else {
+                                                    theme.text
+                                                })
+                                                .child(tile.loc.clone()),
+                                        )
+                                        .when(tile.findings > 0, |t| {
+                                            t.child(
+                                                div()
+                                                    .flex_none()
+                                                    .text_size(px(11.0))
+                                                    .text_color(rgb(0xe0_a3_3e))
+                                                    .child(format!("✓{}", tile.findings)),
+                                            )
+                                        }),
                                 )
-                                .child(
-                                    div()
-                                        .truncate()
-                                        .text_color(if dim {
-                                            theme.text_dim
-                                        } else {
-                                            theme.text
-                                        })
-                                        .child(tile.loc.clone()),
-                                )
-                                .when(tile.findings > 0, |t| {
-                                    t.child(
-                                        div()
-                                            .flex_none()
-                                            .text_color(rgb(0xe0_a3_3e))
-                                            .child(format!("✓{}", tile.findings)),
-                                    )
-                                })
+                                .child(preview)
                                 .into_any_element(),
                         );
                     }
