@@ -14,6 +14,10 @@
           "type": "string",
           "description": "Markdown body — observations, payload, repro, etc."
         },
+        "url": {
+          "type": "string",
+          "description": "URL of the affected endpoint or page. Stored on the finding so the report can annotate robots.txt status"
+        },
         "category": {
           "description": "What kind of finding this is (groups the export report)",
           "type": "string",
