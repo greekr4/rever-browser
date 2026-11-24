@@ -7624,6 +7624,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rever-robots"
+version = "0.0.0"
+dependencies = [
+ "url",
+]
+
+[[package]]
 name = "rever-scope"
 version = "0.0.0"
 dependencies = [
@@ -7793,11 +7800,13 @@ version = "0.0.0"
 dependencies = [
  "regex",
  "rever-core",
+ "rever-robots",
  "rever-scope",
  "rever-tools-api",
  "serde",
  "serde_json",
  "tokio",
+ "url",
  "uuid 1.29.2",
 ]
 

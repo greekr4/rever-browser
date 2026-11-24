@@ -1,0 +1,9 @@
+[package]
+name = "rever-robots"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Robots Exclusion Protocol (RFC 9309) parsing and matching, vendored from lexmount/moli"
+
+[dependencies]
+url = "2"

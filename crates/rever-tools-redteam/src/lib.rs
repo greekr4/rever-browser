@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 mod args;
 
 pub mod findings;
+pub mod robots;
 pub mod scan;
 pub mod scope;
 
