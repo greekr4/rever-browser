@@ -60,6 +60,12 @@ impl Browser {
             .track_focus(&self.page_focus)
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
+            // The wheel button and the right button reach the page too: it answers the
+            // right one with its context menu.
+            .on_mouse_down(MouseButton::Middle, cx.listener(Self::on_mouse_down))
+            .on_mouse_up(MouseButton::Middle, cx.listener(Self::on_mouse_up))
+            .on_mouse_down(MouseButton::Right, cx.listener(Self::on_mouse_down))
+            .on_mouse_up(MouseButton::Right, cx.listener(Self::on_mouse_up))
             .cursor(cursor_style(self.engine.cursor(self.active_id())))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
@@ -102,18 +108,18 @@ impl Browser {
             .into_any_element()
     }
 
-    /// The development build's memory readout, in the page's bottom-left corner. It
+    /// The development build's memory and frame rate readout, in the page's bottom-left corner. It
     /// takes no clicks: they go through to the page.
     fn memory_overlay(&self, theme: &Theme) -> Option<AnyElement> {
         use crate::memory::megabytes;
         let now = self.memory.latest()?;
-        let line = |label: &'static str, bytes: u64| {
+        let line = |label: &'static str, value: String| {
             div()
                 .flex()
                 .justify_between()
                 .gap(px(10.0))
                 .child(self.lang.t(label))
-                .child(megabytes(bytes))
+                .child(value)
         };
         let graph =
             div()
@@ -143,8 +149,9 @@ impl Browser {
                 .opacity(0.9)
                 .text_size(px(11.0))
                 .text_color(theme.text_dim)
-                .child(line("dev.memory", now))
-                .child(line("dev.memory.peak", self.memory.peak()))
+                .child(line("dev.memory", megabytes(now)))
+                .child(line("dev.memory.peak", megabytes(self.memory.peak())))
+                .child(line("dev.fps", self.fps.to_string()))
                 .child(graph)
                 .into_any_element(),
         )
@@ -424,6 +431,22 @@ impl Browser {
         window.focus(&self.page_focus);
         let point = self.page_point(event.position);
         let tab = self.active_id();
+        // Cmd and a click on a link opens it in a new tab behind this one, as in Chrome;
+        // the page does not get the click.
+        if event.button == MouseButton::Left
+            && event.modifiers.platform
+            && let Some(link) = link_to_open(self.engine.hovered_link(tab))
+        {
+            return self.open_background_tab(link, cx);
+        }
+        // The wheel button on a link opens it behind this tab on release. The page does
+        // not get that click: it would open the link itself, in front.
+        if event.button == MouseButton::Middle {
+            self.wheel_link = link_to_open(self.engine.hovered_link(tab));
+            if self.wheel_link.is_some() {
+                return;
+            }
+        }
         self.engine.input(
             tab,
             InputEvent::MouseMove(servo::MouseMoveEvent::new(point)),
@@ -432,18 +455,24 @@ impl Browser {
             tab,
             InputEvent::MouseButton(MouseButtonEvent::new(
                 MouseButtonAction::Down,
-                servo::MouseButton::Primary,
+                page_button(event.button),
                 point,
             )),
         );
     }
 
-    fn on_mouse_up(&mut self, event: &MouseUpEvent, _: &mut Window, _: &mut Context<Self>) {
+    fn on_mouse_up(&mut self, event: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let tab = self.active_id();
+        if event.button == MouseButton::Middle
+            && let Some(link) = self.wheel_link.take()
+        {
+            return self.open_background_tab(link, cx);
+        }
         self.engine.input(
-            self.active_id(),
+            tab,
             InputEvent::MouseButton(MouseButtonEvent::new(
                 MouseButtonAction::Up,
-                servo::MouseButton::Primary,
+                page_button(event.button),
                 self.page_point(event.position),
             )),
         );
@@ -704,9 +733,54 @@ fn utf16_len(text: &str) -> usize {
     text.encode_utf16().count()
 }
 
+/// The link a wheel-button click, or a click with Cmd held, opens in a new tab: the one
+/// under the pointer, when it is a web address.
+fn link_to_open(hovered: Option<String>) -> Option<url::Url> {
+    hovered
+        .and_then(|link| url::Url::parse(&link).ok())
+        .filter(|link| matches!(link.scheme(), "http" | "https"))
+}
+
+/// The page's name for a mouse button of the interface.
+fn page_button(button: MouseButton) -> servo::MouseButton {
+    match button {
+        MouseButton::Middle => servo::MouseButton::Auxiliary,
+        MouseButton::Right => servo::MouseButton::Secondary,
+        _ => servo::MouseButton::Primary,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 포인터_아래의_웹_링크만_새_탭으로_연다() {
+        let open = |link: &str| link_to_open(Some(link.to_owned())).map(String::from);
+        assert_eq!(
+            open("https://a.test/x?y=1"),
+            Some("https://a.test/x?y=1".to_owned())
+        );
+        assert_eq!(open("http://a.test/"), Some("http://a.test/".to_owned()));
+        // 스크립트 링크와 메일 링크는 새 탭이 되지 않는다.
+        assert_eq!(open("javascript:void(0)"), None);
+        assert_eq!(open("mailto:a@a.test"), None);
+        assert_eq!(open("not a link"), None);
+        assert_eq!(link_to_open(None), None);
+    }
+
+    #[test]
+    fn 휠_버튼과_오른쪽_버튼은_페이지의_보조_버튼이_된다() {
+        assert_eq!(page_button(MouseButton::Left), servo::MouseButton::Primary);
+        assert_eq!(
+            page_button(MouseButton::Middle),
+            servo::MouseButton::Auxiliary
+        );
+        assert_eq!(
+            page_button(MouseButton::Right),
+            servo::MouseButton::Secondary
+        );
+    }
 
     fn keystroke(source: &str) -> Keystroke {
         Keystroke::parse(source).unwrap()

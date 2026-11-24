@@ -1,5 +1,5 @@
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/actor.rs b/actor.rs
---- a/actor.rs	2026-11-16 15:16:36
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/actor.rs b/actor.rs
+--- a/actor.rs	2026-11-24 14:49:33
 +++ b/actor.rs	2026-11-16 15:16:36
 @@ -231,6 +231,12 @@
          actor
@@ -14,8 +14,8 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
      /// Find an actor by registered name
      pub(crate) fn find<T: Actor>(&self, name: &str) -> DowncastableActorArc<T> {
          let actor = self
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/actors/thread.rs b/actors/thread.rs
---- a/actors/thread.rs	2026-11-16 15:16:36
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/actors/thread.rs b/actors/thread.rs
+--- a/actors/thread.rs	2026-11-24 14:49:33
 +++ b/actors/thread.rs	2026-11-16 15:16:36
 @@ -250,8 +250,12 @@
                  // https://searchfox.org/firefox-main/source/devtools/server/actors/thread.js#1425
@@ -30,3 +30,19 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
                          .map(|frame_name| registry.encode::<FrameActor, _>(frame_name))
                          .collect(),
                  };
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/lib.rs b/lib.rs
+--- a/lib.rs	2026-11-24 14:49:33
++++ b/lib.rs	2026-11-24 14:41:21
+@@ -697,6 +697,12 @@
+             return;
+         };
+ 
++        // rever: with no client connected there is nobody to tell, and the registry
++        // never drops an actor: one was kept for every request of every page visited.
++        if connections.is_empty() {
++            return;
++        }
++
+         let network_event_name = match self.actor_requests.get(&request_id) {
+             Some(name) => name.clone(),
+             None => self.create_network_event_actor(request_id, browsing_context_name.clone()),

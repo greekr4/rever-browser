@@ -319,6 +319,14 @@ pub static STRINGS: &[(&str, &str, &str)] = &[
     ("md.copied", "Copied", "복사됨"),
     ("md.copy", "Copy", "복사"),
     ("menu.browserMode", "Browser mode", "브라우저 모드"),
+    ("menu.layout", "Layout", "레이아웃"),
+    ("menu.layout.side", "Tabs on the side", "탭을 옆에"),
+    (
+        "menu.layout.sidebar",
+        "Everything in the sidebar",
+        "모두 사이드바에",
+    ),
+    ("menu.layout.top", "Tabs on top", "탭을 위에"),
     ("menu.notifications", "Notifications", "알림"),
     ("menu.off", "Off", "꺼짐"),
     ("menu.on", "On", "켜짐"),
@@ -767,6 +775,7 @@ pub static STRINGS: &[(&str, &str, &str)] = &[
         "끄면 저장 창 없이 다운로드/Rever 폴더에 저장해 에이전트가 멈추지 않습니다.",
     ),
     ("tab.close", "Close tab", "탭 닫기"),
+    ("tab.memory", "Memory usage", "메모리 사용량"),
     ("tab.new", "New tab", "새 탭"),
     (
         "tab.newInProfile",

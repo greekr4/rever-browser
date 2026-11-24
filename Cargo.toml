@@ -13,6 +13,12 @@ gpui = { version = "0.2.2", features = ["runtime_shaders"] }
 [patch.crates-io]
 # Network tap: hands request and response bodies to the embedder.
 servo-net = { path = "vendor/servo-net" }
+# An SVG image with only a `viewBox` has no natural size: Servo 0.8 cannot tell.
+servo-net-traits = { path = "vendor/servo-net-traits" }
+# The memory report must not take an observable array's proxy for a DOM object.
+servo-script-bindings = { path = "vendor/servo-script-bindings" }
+# `<img loading="lazy">`: Servo 0.8 loads every image of a page at once.
+servo-script = { path = "vendor/servo-script" }
 # AVIF images: Servo 0.8 decodes none. Needs libdav1d and pkg-config on the build machine.
 servo-pixels = { path = "vendor/servo-pixels" }
 # `aspect-ratio` on boxes that are not images: Servo 0.8 ignores it there.

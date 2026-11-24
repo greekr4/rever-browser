@@ -1,7 +1,10 @@
 //! Chrome's macOS keyboard shortcuts. Bindings match before the page sees the key, so a
 //! page never receives Cmd+W and the like.
 
-use gpui::{App, Context, Div, Focusable, KeyBinding, Window, actions, prelude::*};
+use gpui::{
+    App, Context, Div, Focusable, KeyBinding, MouseButton, NavigationDirection, Window, actions,
+    prelude::*,
+};
 use rever_ui_kit::text_input::SelectAll;
 
 use crate::app::Browser;
@@ -160,6 +163,15 @@ impl Browser {
             }))
             .on_action(
                 cx.listener(|this, _: &ZoomReset, _, _| this.engine.zoom(this.active_id(), None)),
+            )
+            // The mouse's thumb buttons, and a two-finger swipe, anywhere in the window.
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Back),
+                cx.listener(|this, _, _, _| this.engine.back(this.active_id())),
+            )
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Forward),
+                cx.listener(|this, _, _, _| this.engine.forward(this.active_id())),
             )
             .on_action(cx.listener(|_, _: &Minimize, window, _| window.minimize_window()))
             .on_action(cx.listener(|_, _: &Hide, _, cx| cx.hide()))

@@ -1,6 +1,6 @@
-diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/http_loader.rs b/http_loader.rs
---- a/http_loader.rs	2026-11-18 21:19:35
-+++ b/http_loader.rs	2026-11-18 21:19:35
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/http_loader.rs b/http_loader.rs
+--- a/http_loader.rs	2026-11-24 14:49:31
++++ b/http_loader.rs	2026-11-24 14:31:37
 @@ -648,6 +648,8 @@
          Ok(request) => request,
          Err(error) => return Err(NetworkError::HttpError(error.to_string())),
@@ -114,9 +114,122 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.js
                  *body = ResponseBody::Done(completed_body);
                  #[cfg(feature = "devtools")]
                  send_response_values_to_devtools(
-diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/lib.rs b/lib.rs
---- a/lib.rs	2026-11-18 21:19:35
-+++ b/lib.rs	2026-11-18 21:19:35
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/image_cache.rs b/image_cache.rs
+--- a/image_cache.rs	2026-11-24 14:49:31
++++ b/image_cache.rs	2026-11-24 14:31:37
+@@ -93,6 +93,35 @@
+         .map_err(|_| "Not a valid SVG document")
+ }
+ 
++/// rever: whether an SVG has a natural size and a natural ratio. A root that sets
++/// neither `width` nor `height` (or sets them in percent) has no natural size, and one
++/// without a `viewBox` as well has no ratio. Of that last kind the root element's text
++/// is returned too: it is laid out again at each size it is drawn.
++fn svg_natural_dimensions(bytes: &[u8]) -> (bool, bool, Option<Arc<str>>) {
++    let options = usvg::roxmltree::ParsingOptions {
++        allow_dtd: true,
++        ..Default::default()
++    };
++    let Some(document) = std::str::from_utf8(bytes)
++        .ok()
++        .and_then(|text| usvg::roxmltree::Document::parse_with_options(text, options).ok())
++    else {
++        return (true, true, None);
++    };
++    let root = document.root_element();
++    let sized = |name| {
++        root.attribute(name)
++            .is_some_and(|value: &str| !value.trim().ends_with('%'))
++    };
++    let (width, height) = (sized("width"), sized("height"));
++    let has_size = width || height;
++    let has_ratio = (width && height) || root.has_attribute("viewBox");
++    let fluid = (!has_size && !has_ratio)
++        .then(|| document.input_text().get(root.range()).map(Arc::from))
++        .flatten();
++    (has_size, has_ratio, fluid)
++}
++
+ fn decode_bytes_sync(
+     key: LoadKey,
+     bytes: &[u8],
+@@ -112,9 +141,14 @@
+         parse_svg_document_in_memory(bytes, usvg_options)
+             .ok()
+             .map(|svg_tree| {
++                let (has_natural_size, has_natural_ratio, fluid_source) =
++                    svg_natural_dimensions(bytes);
+                 DecodedImage::Vector(VectorImageData {
+                     svg_tree: Arc::new(svg_tree),
+                     cors_status: cors,
++                    has_natural_size,
++                    has_natural_ratio,
++                    fluid_source,
+                 })
+             })
+     } else {
+@@ -250,6 +284,10 @@
+     #[conditional_malloc_size_of]
+     svg_tree: Arc<usvg::Tree>,
+     cors_status: CorsStatus,
++    has_natural_size: bool,
++    has_natural_ratio: bool,
++    #[ignore_malloc_size_of = "small, and shared with no one else"]
++    fluid_source: Option<Arc<str>>,
+ }
+ 
+ impl std::fmt::Debug for VectorImageData {
+@@ -697,6 +735,8 @@
+                     id: key,
+                     svg_id: None,
+                     metadata,
++                    has_natural_size: vector_image.has_natural_size,
++                    has_natural_ratio: vector_image.has_natural_ratio,
+                     cors_status: vector_image.cors_status,
+                     load_time: pending_load.response_end,
+                 };
+@@ -1129,11 +1169,37 @@
+         }
+ 
+         let store = self.store.clone();
++        let fontdb = self.usvg_options.fontdb.clone();
+         self.thread_pool.spawn(move || {
+-            let transform = tiny_skia::Transform::from_scale(
++            let mut transform = tiny_skia::Transform::from_scale(
+                 tinyskia_requested_size.width() as f32 / natural_size.width() as f32,
+                 tinyskia_requested_size.height() as f32 / natural_size.height() as f32,
+             );
++            // rever: an SVG with no size and no ratio (a `width="100%"` border drawing) is
++            // laid out at the CSS size it fills, not stretched from usvg's 100 by 100.
++            let mut vector_image = vector_image;
++            if let Some(source) = vector_image.fluid_source.clone() {
++                let scale = f32::from_bits(
++                    net_traits::image_cache::VECTOR_RASTER_SCALE
++                        .load(std::sync::atomic::Ordering::Relaxed),
++                );
++                // usvg ignores `Options::default_size` for the shapes inside, so the
++                // size is given by an outer element the drawing is nested in.
++                let wrapped = format!(
++                    r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}">{source}</svg>"#,
++                    tinyskia_requested_size.width() as f32 / scale,
++                    tinyskia_requested_size.height() as f32 / scale,
++                );
++                let options = usvg::Options {
++                    fontdb,
++                    ..Default::default()
++                };
++                let fluid = usvg::Tree::from_data(wrapped.as_bytes(), &options).ok();
++                if let Some(tree) = fluid {
++                    vector_image.svg_tree = Arc::new(tree);
++                    transform = tiny_skia::Transform::from_scale(scale, scale);
++                }
++            }
+             let mut pixmap = tiny_skia::Pixmap::new(
+                 tinyskia_requested_size.width(),
+                 tinyskia_requested_size.height(),
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/lib.rs b/lib.rs
+--- a/lib.rs	2026-11-24 14:49:31
++++ b/lib.rs	2026-11-24 14:31:37
 @@ -23,6 +23,7 @@
  pub mod request_interceptor;
  pub mod resource_thread;
@@ -125,9 +238,9 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.js
  #[cfg(feature = "test-util")]
  pub mod test_util;
  mod websocket_loader;
-diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/tap.rs b/tap.rs
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/tap.rs b/tap.rs
 --- a/tap.rs	1970-01-01 09:00:00
-+++ b/tap.rs	2026-11-18 21:19:35
++++ b/tap.rs	2026-11-24 14:31:37
 @@ -0,0 +1,95 @@
 +/* rever patch (not upstream): hand request and response bodies to the embedder
 + * in-process. The network threads live in the embedder's process, so a
@@ -224,9 +337,9 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.js
 +        None => body,
 +    }
 +}
-diff --color --color=never -ruN -x Cargo.lock -x .cargo_ok -x .cargo_vcs_info.json a/websocket_loader.rs b/websocket_loader.rs
---- a/websocket_loader.rs	2026-11-18 21:19:35
-+++ b/websocket_loader.rs	2026-11-18 21:19:35
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/websocket_loader.rs b/websocket_loader.rs
+--- a/websocket_loader.rs	2026-11-24 14:49:31
++++ b/websocket_loader.rs	2026-11-24 14:31:37
 @@ -172,6 +172,7 @@
  fn setup_dom_listener(
      dom_action_receiver: CallbackSetter<WebSocketDomAction>,
