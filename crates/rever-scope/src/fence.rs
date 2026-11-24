@@ -29,6 +29,9 @@ use crate::scope::{is_loopback_ipv4, scope_key};
 pub enum FenceReason {
     Mutation,
     AuthInvalidation,
+    /// The host the scope admitted resolves only to addresses no outbound
+    /// request may reach (private ranges, cloud metadata, ...).
+    ForbiddenIp,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
