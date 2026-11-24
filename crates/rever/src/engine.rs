@@ -48,6 +48,10 @@ const MOBILE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Ma
 /// reports for `navigator.platform` with that UA) agree with each other, so
 /// the UA string never contradicts itself. The table is the same data
 /// obscura-browser ships (Apache-2.0).
+// No caller yet: scan realism (a later milestone) pins one profile per
+// session. Rotation between identities is itself a bot signal, so the
+// caller decides; the table only guarantees each identity is self-consistent.
+#[expect(dead_code, reason = "scan-realism milestone wires the caller")]
 pub struct UserProfile {
     pub user_agent: &'static str,
     /// The platform the UA claims. Servo has no pref for `navigator.platform`
@@ -59,6 +63,7 @@ pub struct UserProfile {
 /// Stable per-OS identities: Chrome 143 to 146 on Windows and macOS. Rotation
 /// between identities from one address is itself a bot signal, so callers pin
 /// one profile for a session rather than cycling.
+#[expect(dead_code, reason = "scan-realism milestone wires the caller")]
 pub static USER_AGENT_PROFILES: &[UserProfile] = &[
     UserProfile {
         user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
@@ -498,6 +503,7 @@ impl Engine {
     /// Switch the whole engine to a desktop identity from
     /// [`USER_AGENT_PROFILES`]. Like the mobile toggle, the user agent is one
     /// setting for the whole engine, so it holds for every tab.
+    #[expect(dead_code, reason = "scan-realism milestone wires the caller")]
     pub fn set_user_agent_profile(&self, profile: &'static UserProfile) {
         self.apply_user_agent(profile.user_agent);
     }
