@@ -5,7 +5,10 @@
 
 use std::time::{Duration, Instant};
 
-use rever_scope::fence::{fence_reason, is_fence_active, record_fence_block};
+use rever_scope::fence::{
+    fence_reason, is_fence_active, is_lab_host, is_loopback_host, record_fence_block,
+};
+use rever_scope::ip_guard;
 use rever_scope::scope::scope_block_for_url;
 
 use crate::request_spec::RequestSpec;
@@ -60,6 +63,24 @@ pub async fn send(spec: &RequestSpec, timeout: Duration) -> SendOutcome {
             status: 204,
             error: Some(format!(
                 "fence active: {reason:?} request recorded, not sent (capture-not-send). Mark the host a lab target to let it through."
+            )),
+            ..SendOutcome::default()
+        };
+    }
+    // IP-level backstop, mirroring the page-load path in rever's intercept:
+    // a scoped host that resolves only to forbidden addresses (DNS rebinding
+    // into internal ranges or cloud metadata) must not be sent to either.
+    // Loopback and lab hosts are exempt by name in fence_reason already.
+    if is_fence_active()
+        && !is_loopback_host(&spec.url)
+        && !is_lab_host(&spec.url)
+        && let Some(reason) = ip_guard::block_reason(&spec.url)
+    {
+        record_fence_block(&spec.method, &spec.url, reason);
+        return SendOutcome {
+            status: 204,
+            error: Some(format!(
+                "fence active: {reason:?} request recorded, not sent (host resolves only to forbidden addresses)"
             )),
             ..SendOutcome::default()
         };
