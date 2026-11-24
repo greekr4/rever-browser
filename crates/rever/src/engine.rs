@@ -39,6 +39,60 @@ pub enum EngineEvent {
 
 /// The phone the TypeScript's mobile mode pretends to be (viewport.ts).
 const MOBILE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
+
+/// A desktop identity for the engine's user agent.
+///
+/// Servo's own UA string names `Servo/0.8.0`, which antibot pages reject on
+/// sight. A scan can present one of these Chrome UAs instead. Each entry is a
+/// paired set: the UA's platform tokens and `platform` (what real Chrome
+/// reports for `navigator.platform` with that UA) agree with each other, so
+/// the UA string never contradicts itself. The table is the same data
+/// obscura-browser ships (Apache-2.0).
+pub struct UserProfile {
+    pub user_agent: &'static str,
+    /// The platform the UA claims. Servo has no pref for `navigator.platform`
+    /// and sends no UA client hints, so this is metadata today; a future
+    /// servo patch can serve it instead of the real OS.
+    pub platform: &'static str,
+}
+
+/// Stable per-OS identities: Chrome 143 to 146 on Windows and macOS. Rotation
+/// between identities from one address is itself a bot signal, so callers pin
+/// one profile for a session rather than cycling.
+pub static USER_AGENT_PROFILES: &[UserProfile] = &[
+    UserProfile {
+        user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+        platform: "Win32",
+    },
+    UserProfile {
+        user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+        platform: "Win32",
+    },
+    UserProfile {
+        user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        platform: "Win32",
+    },
+    UserProfile {
+        user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        platform: "Win32",
+    },
+    UserProfile {
+        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+        platform: "MacIntel",
+    },
+    UserProfile {
+        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+        platform: "MacIntel",
+    },
+    UserProfile {
+        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        platform: "MacIntel",
+    },
+    UserProfile {
+        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        platform: "MacIntel",
+    },
+];
 /// The width of that phone in CSS pixels.
 pub const MOBILE_WIDTH: f32 = 390.0;
 
@@ -438,8 +492,19 @@ impl Engine {
         } else {
             self.desktop_user_agent.clone()
         };
+        self.apply_user_agent(&user_agent);
+    }
+
+    /// Switch the whole engine to a desktop identity from
+    /// [`USER_AGENT_PROFILES`]. Like the mobile toggle, the user agent is one
+    /// setting for the whole engine, so it holds for every tab.
+    pub fn set_user_agent_profile(&self, profile: &'static UserProfile) {
+        self.apply_user_agent(profile.user_agent);
+    }
+
+    fn apply_user_agent(&self, user_agent: &str) {
         self.servo
-            .set_preference("user_agent", PrefValue::Str(user_agent));
+            .set_preference("user_agent", PrefValue::Str(user_agent.to_owned()));
     }
 
     /// The port of Servo's debugging server and the token that admits a client;
@@ -598,4 +663,44 @@ fn favicon_rgba(image: &servo::Image) -> Option<RgbaImage> {
         PixelFormat::K8 => data.iter().flat_map(|k| [*k, *k, *k, 255]).collect(),
     };
     RgbaImage::from_raw(image.width, image.height, rgba)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 프로필의_ua와_플랫폼_토큰은_서로_맞는다() {
+        // 테이블이 존재하는 이유가 이 정합성이다: UA 문자열 안의 플랫폼 토큰이
+        // platform 필드(실제 크롬이 같은 UA에서 내는 navigator.platform)와 어긋나면
+        // 지문 불일치가 탐지의 단서가 된다.
+        for profile in USER_AGENT_PROFILES {
+            let expected = match profile.platform {
+                "Win32" => "Windows NT 10.0; Win64",
+                "MacIntel" => "Macintosh; Intel Mac OS X",
+                other => panic!("unknown platform token: {other}"),
+            };
+            assert!(
+                profile.user_agent.contains(expected),
+                "{} does not match its platform {}",
+                profile.user_agent,
+                profile.platform
+            );
+        }
+    }
+
+    #[test]
+    fn 프로필의_크롬_버전과_스킨은_정합한다() {
+        // Chrome 버전 토큰은 하나뿐이어야 하고 Safari 토큰은 항상 마지막에 온다:
+        // 실제 크롬 UA의 고정 형태다.
+        for profile in USER_AGENT_PROFILES {
+            let chrome = profile.user_agent.matches("Chrome/").count();
+            assert_eq!(chrome, 1, "{}", profile.user_agent);
+            assert!(
+                profile.user_agent.ends_with("Safari/537.36"),
+                "{}",
+                profile.user_agent
+            );
+        }
+    }
 }
