@@ -28,6 +28,7 @@ use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use crate::args::{strings, text, validate};
+use crate::robots::RobotsNotes;
 use crate::{active_url, pretty, schema};
 
 pub fn register(registry: &mut ToolRegistry) {
@@ -384,7 +385,15 @@ fn by_severity(a: &DedupableFinding, b: &DedupableFinding) -> Ordering {
         .then(b.created_at.cmp(&a.created_at))
 }
 
-fn render_detail(f: &DedupableFinding, lines: &mut Vec<String>) {
+/// Whether the finding's own URL sits on a robots.txt-disallowed path.
+fn robots_disallows(f: &DedupableFinding, robots: &RobotsNotes) -> bool {
+    f.extra
+        .get("url")
+        .and_then(Value::as_str)
+        .is_some_and(|url| robots.disallows(url))
+}
+
+fn render_detail(f: &DedupableFinding, robots: &RobotsNotes, lines: &mut Vec<String>) {
     // Backstop: findings stored before masking (or imported) are masked here too.
     lines.push(format!("### {}", mask_pii(&f.title)));
     // Array.prototype.join prints an undefined label as nothing.
@@ -393,6 +402,9 @@ fn render_detail(f: &DedupableFinding, lines: &mut Vec<String>) {
         category_label(&f.category).unwrap_or_default().to_owned(),
         format!("status: {}", f.status),
     ];
+    if robots_disallows(f, robots) {
+        meta.push("robots: disallowed path".to_owned());
+    }
     if !f.tags.is_empty() {
         meta.push(format!("tags: {}", f.tags.join(", ")));
     }
@@ -418,7 +430,7 @@ fn render_detail(f: &DedupableFinding, lines: &mut Vec<String>) {
     }
 }
 
-fn render_markdown(all: &[Finding], scope_note: Option<&str>) -> String {
+fn render_markdown(all: &[Finding], scope_note: Option<&str>, robots: &RobotsNotes) -> String {
     // Parallel tab workers each record the same public endpoint; the export is
     // the one place that can merge them deterministically, whatever the workers
     // did. (finding_add already nudges duplicates away at the source.)
@@ -466,7 +478,7 @@ fn render_markdown(all: &[Finding], scope_note: Option<&str>) -> String {
         lines.push(String::new());
         confirmed.sort_by(by_severity);
         for f in &confirmed {
-            render_detail(f, &mut lines);
+            render_detail(f, robots, &mut lines);
         }
     }
     if !candidate.is_empty() {
@@ -476,7 +488,7 @@ fn render_markdown(all: &[Finding], scope_note: Option<&str>) -> String {
         lines.push(String::new());
         candidate.sort_by(by_severity);
         for f in &candidate {
-            render_detail(f, &mut lines);
+            render_detail(f, robots, &mut lines);
         }
     }
     if !recon.is_empty() {
@@ -489,9 +501,17 @@ fn render_markdown(all: &[Finding], scope_note: Option<&str>) -> String {
                 Some(first) => format!(" · `{first}`"),
                 None => String::new(),
             };
+            // A robots-disallowed endpoint is inventory the site itself
+            // declared off-limits: worth naming where the attack surface is
+            // listed, without inflating it into a vulnerability.
+            let robots_mark = if robots_disallows(f, robots) {
+                " · robots-disallowed"
+            } else {
+                ""
+            };
             // A template literal prints an undefined label as "undefined".
             lines.push(format!(
-                "- **{}** _({}, {})_{evidence}",
+                "- **{}** _({}, {})_{evidence}{robots_mark}",
                 mask_pii(&f.title),
                 severity_label(&f.severity).unwrap_or("undefined"),
                 category_label(&f.category).unwrap_or("undefined")
@@ -759,7 +779,11 @@ impl Tool for FindingExport {
                     None => "No findings recorded yet.".to_owned(),
                 });
             }
-            ok(render_markdown(&list, scope.as_deref().filter(|_| !all)))
+            ok(render_markdown(
+                &list,
+                scope.as_deref().filter(|_| !all),
+                &RobotsNotes::from_traffic(ctx),
+            ))
         })
     }
 }
@@ -1466,6 +1490,7 @@ mod tests {
         let report = render_markdown(
             &[odd("odd", "accepted_risk", 1), odd("odd2", "candidate", 2)],
             None,
+            &RobotsNotes::default(),
         );
         assert!(
             report.ends_with(
@@ -1493,13 +1518,83 @@ mod tests {
         };
         let two = [endpoint("a", 1), endpoint("b", 2)];
         assert!(
-            render_markdown(&two, None).contains(
+            render_markdown(&two, None, &RobotsNotes::default()).contains(
                 "**0 confirmed · 0 to verify · 1 recon** _(1 duplicate report merged)_\n"
             )
         );
         let three = [endpoint("a", 1), endpoint("b", 2), endpoint("c", 3)];
-        assert!(render_markdown(&three, Some("a.test")).contains(
+        assert!(render_markdown(&three, Some("a.test"), &RobotsNotes::default()).contains(
             "_site: a.test_\n\n**0 confirmed · 0 to verify · 1 recon** _(2 duplicate reports merged)_\n"
         ));
+    }
+
+    #[test]
+    fn robots_차단_경로_파인딩에는_비고가_붙는다() {
+        let ctx = ToolContext::for_tests();
+        let patch = rever_core::traffic::RequestPatch {
+            request_id: "r1".to_owned(),
+            url: Some("http://a.test/robots.txt".to_owned()),
+            method: Some("GET".to_owned()),
+            status: Some(200),
+            response_body: Some("User-agent: *\nDisallow: /admin\n".to_owned()),
+            started_at: Some(1),
+            ..Default::default()
+        };
+        ctx.traffic
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .upsert(patch, 1);
+        let notes = RobotsNotes::from_traffic(&ctx);
+
+        let finding = |url: &str| {
+            Finding(
+                json!({
+                    "id": url, "title": format!("GET {url}"), "severity": "info",
+                    "category": "endpoint", "body": "b", "evidenceIds": [],
+                    "status": "candidate", "tags": [], "createdAt": 1, "url": url,
+                    "origin": "a.test"
+                })
+                .as_object()
+                .cloned()
+                .unwrap(),
+            )
+        };
+        let report = render_markdown(
+            &[
+                finding("http://a.test/admin/panel"),
+                finding("http://a.test/public"),
+            ],
+            Some("a.test"),
+            &notes,
+        );
+        assert!(
+            report.contains("robots-disallowed"),
+            "disallowed recon line carries the mark: {report}"
+        );
+        assert!(
+            report.contains("GET http://a.test/public"),
+            "allowed path stays unmarked: {report}"
+        );
+    }
+
+    #[test]
+    fn 캡처_없으면_robots_비고도_없다() {
+        // No captured robots.txt means no claim, even for /admin paths.
+        let finding = Finding(
+            json!({
+                "id": "f", "title": "Admin panel exposed", "severity": "high",
+                "category": "access", "body": "b", "evidenceIds": [],
+                "status": "candidate", "tags": [], "createdAt": 1,
+                "url": "http://a.test/admin", "origin": "a.test"
+            })
+            .as_object()
+            .cloned()
+            .unwrap(),
+        );
+        let report = render_markdown(&[finding], None, &RobotsNotes::default());
+        assert!(
+            !report.contains("robots: disallowed path"),
+            "no capture means no claim: {report}"
+        );
     }
 }
