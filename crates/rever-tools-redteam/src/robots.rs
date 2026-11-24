@@ -47,7 +47,10 @@ impl RobotsNotes {
             else {
                 continue;
             };
-            if !entry.status.is_some_and(|status| (200..300).contains(&status)) {
+            if !entry
+                .status
+                .is_some_and(|status| (200..300).contains(&status))
+            {
                 continue;
             }
             let Ok(url) = Url::parse(&entry.url) else {
@@ -201,7 +204,14 @@ mod tests {
     #[test]
     fn 실패_응답과_base64_본문은_무시한다() {
         let ctx = ToolContext::for_tests();
-        capture(&ctx, "r1", "http://err.test/robots.txt", 500, "User-agent: *\nDisallow: /\n", 10);
+        capture(
+            &ctx,
+            "r1",
+            "http://err.test/robots.txt",
+            500,
+            "User-agent: *\nDisallow: /\n",
+            10,
+        );
         let binary = RequestPatch {
             request_id: "r2".to_owned(),
             url: Some("http://bin.test/robots.txt".to_owned()),
