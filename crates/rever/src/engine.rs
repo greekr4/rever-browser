@@ -51,7 +51,6 @@ const MOBILE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Ma
 // No caller yet: scan realism (a later milestone) pins one profile per
 // session. Rotation between identities is itself a bot signal, so the
 // caller decides; the table only guarantees each identity is self-consistent.
-#[expect(dead_code, reason = "scan-realism milestone wires the caller")]
 pub struct UserProfile {
     pub user_agent: &'static str,
     /// The platform the UA claims. Servo has no pref for `navigator.platform`
