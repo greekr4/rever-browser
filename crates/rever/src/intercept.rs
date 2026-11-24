@@ -22,7 +22,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use rever_core::traffic::{self, RequestPatch};
-use rever_scope::{fence, scope};
+use rever_scope::{fence, ip_guard, scope};
 use rever_tools_api::tool::{BoxFuture, unsupported};
 use rever_tools_debug::intercept::{
     ContinueRequest, FulfillRequest, InterceptEngine, InterceptRule, InterceptState, Mode,
@@ -193,6 +193,25 @@ pub fn on_load(
             && scope::get_scope().enabled
             && scope::scope_block_for_url(Some(&url)).is_none()
             && let Some(reason) = fence::fence_reason(load.request.method.as_str(), &url)
+        {
+            fence::record_fence_block(load.request.method.as_str(), &url, reason);
+            noted(Some(204));
+            let held_back = Decision::Fulfill {
+                status: 204,
+                headers: Vec::new(),
+                body: Vec::new(),
+            };
+            return answer(load, held_back);
+        }
+        // IP-level backstop for what the hostname fence admitted: a scoped
+        // host must not resolve into ranges the network may never reach (DNS
+        // rebinding into the analyst's own network or cloud metadata).
+        // Loopback and lab hosts are exempt by name: reaching them is the
+        // point of a lab target.
+        if fence::is_fence_active()
+            && !fence::is_loopback_host(&url)
+            && !fence::is_lab_host(&url)
+            && let Some(reason) = ip_guard::block_reason(&url)
         {
             fence::record_fence_block(load.request.method.as_str(), &url, reason);
             noted(Some(204));

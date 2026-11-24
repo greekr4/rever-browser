@@ -7,6 +7,7 @@ use regex::Regex;
 pub mod fence;
 pub mod findings_dedupe;
 pub mod findings_scope;
+pub mod ip_guard;
 pub mod redteam_tenants;
 pub mod scope;
 
