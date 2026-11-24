@@ -62,7 +62,7 @@ pub struct UserProfile {
 /// Stable per-OS identities: Chrome 143 to 146 on Windows and macOS. Rotation
 /// between identities from one address is itself a bot signal, so callers pin
 /// one profile for a session rather than cycling.
-#[expect(dead_code, reason = "scan-realism milestone wires the caller")]
+#[allow(dead_code)]
 pub static USER_AGENT_PROFILES: &[UserProfile] = &[
     UserProfile {
         user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
@@ -502,7 +502,7 @@ impl Engine {
     /// Switch the whole engine to a desktop identity from
     /// [`USER_AGENT_PROFILES`]. Like the mobile toggle, the user agent is one
     /// setting for the whole engine, so it holds for every tab.
-    #[expect(dead_code, reason = "scan-realism milestone wires the caller")]
+    #[allow(dead_code)]
     pub fn set_user_agent_profile(&self, profile: &'static UserProfile) {
         self.apply_user_agent(profile.user_agent);
     }
