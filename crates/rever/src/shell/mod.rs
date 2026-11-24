@@ -130,10 +130,14 @@ impl Render for Browser {
         if self.spaces_open {
             let root = div()
                 .size_full()
+                .relative()
                 .text_color(theme.text)
                 .text_size(px(13.0))
                 .font_family(".SystemUIFont")
-                .child(self.spaces_overview(&theme, window, cx));
+                .child(self.spaces_overview(&theme, window, cx))
+                // The scan's dialog stays over the grid: its stats, log and
+                // report buttons are how the scan is watched and stopped.
+                .children(self.redteam_dialog(&theme, cx));
             return self.shortcut_handlers(root, cx);
         }
         // Opening and closing the bottom panel slides to the new height, as the chat does.
