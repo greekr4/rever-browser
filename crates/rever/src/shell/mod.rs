@@ -23,7 +23,7 @@ use rever_ui_kit::theme::Theme;
 
 pub(crate) use self::chat::{CHAT_MIN_WIDTH, CHAT_WIDTH};
 use self::chat::{CHAT_SLIDE, chat_panel_width, slide_width};
-use crate::app::Browser;
+use crate::app::{Browser, Layout};
 
 /// The bookmark star of App.tsx's address bar.
 const STAR: &str = "12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2";
@@ -186,6 +186,13 @@ impl Render for Browser {
             .child(self.views.drawer.clone());
         // The chat panel takes what the user gave it, as far as the window allows.
         let window_width: f32 = window.viewport_size().width.into();
+        // A sidebar takes its width from what the page and the chat share.
+        let layout = self.layout;
+        let window_width = if layout.has_sidebar() {
+            window_width - tab_strip::SIDEBAR_WIDTH
+        } else {
+            window_width
+        };
         let target = chat_panel_width(
             window_width,
             self.chat_width,
@@ -222,7 +229,16 @@ impl Render for Browser {
             .right(px(chat_width))
             .flex()
             .flex_col()
-            .child(self.toolbar(&theme, cx))
+            // With everything in the sidebar only the bookmark bar stays over the page.
+            .child(if layout == Layout::Sidebar {
+                div()
+                    .flex_none()
+                    .bg(theme.chrome_toolbar)
+                    .child(self.views.bookmark_bar.clone())
+                    .into_any_element()
+            } else {
+                self.toolbar(&theme, cx).into_any_element()
+            })
             .child(page_box);
         let chat = div()
             .absolute()
@@ -271,16 +287,23 @@ impl Render for Browser {
         let root = div()
             .size_full()
             .flex()
-            .flex_col()
             .bg(theme.bg)
             .text_color(theme.text)
             .text_size(px(13.0))
-            .font_family(".SystemUIFont")
-            .child(self.tab_strip(&theme, window, cx))
+            .font_family(".SystemUIFont");
+        // The tabs: a strip over everything, or a sidebar beside it.
+        let root = if layout.has_sidebar() {
+            root.child(self.sidebar(&theme, window, cx))
+        } else {
+            root.flex_col().child(self.tab_strip(&theme, window, cx))
+        };
+        let root = root
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
+                    .min_w_0()
+                    .when(layout.has_sidebar(), |area| area.h_full())
                     .relative()
                     // A chat that covers the page leaves the page column out; a folded
                     // chat leaves itself out.

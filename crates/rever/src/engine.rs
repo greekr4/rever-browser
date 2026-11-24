@@ -3,7 +3,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use dpi::PhysicalSize;
 use image::RgbaImage;
@@ -29,6 +29,8 @@ pub enum EngineEvent {
     /// The page's icon, as RGBA.
     Favicon(TabId, RgbaImage),
     Url(TabId, String),
+    /// The answer to [`Engine::measure_memory`].
+    Memory(MemoryReport),
     Console {
         level: String,
         message: String,
@@ -41,6 +43,9 @@ const MOBILE_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Ma
 pub const MOBILE_WIDTH: f32 = 390.0;
 
 type Events = Rc<RefCell<Vec<EngineEvent>>>;
+/// Servo's memory report, cut down to the pages: the label of each set of documents
+/// measured together (`url(a, b)`) and the bytes it holds.
+pub type MemoryReport = Vec<(String, u64)>;
 /// What the pages asked the interface to show: dialogs, file pickers, select lists.
 type Controls = Rc<RefCell<Vec<(TabId, EmbedderControl)>>>;
 /// Decides each HTTP request before it is sent; dropping the load sends it.
@@ -197,6 +202,9 @@ pub struct Engine {
     /// by the handle it was added with.
     init_scripts: Vec<(String, TabId, Rc<UserScript>)>,
     next_script: u32,
+    wake: Arc<dyn Fn() + Send + Sync>,
+    /// Servo's memory report, left here by its reply until the next pump.
+    memory: Arc<Mutex<Option<MemoryReport>>>,
 }
 
 impl Engine {
@@ -212,6 +220,7 @@ impl Engine {
         // Servo's TLS stack needs a process-wide crypto provider; GPUI may have installed one already.
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let _ = std::fs::create_dir_all(&profile_dir);
+        let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(wake);
         let servo = ServoBuilder::default()
             // Where Servo reads and writes cookie_jar.json, so logins survive a restart.
             .opts(servo::Opts {
@@ -227,6 +236,10 @@ impl Engine {
                 // Variable fonts (one file for every weight, as next/font ships them):
                 // without this every weight is drawn at the font's default.
                 layout_css_font_variations_enabled: true,
+                // Servo keeps the last 20 documents of every tab alive for an instant
+                // "back", and as many ahead: a tab that had walked through news sites
+                // held 16GB. None is kept: going back loads the page again.
+                session_history_max_length: 0,
                 // The debugger tools drive pages through Servo's debugging server.
                 devtools_server_enabled: true,
                 // On this machine only. Servo reports the port it was told, not the
@@ -234,7 +247,7 @@ impl Engine {
                 devtools_server_listen_address: format!("127.0.0.1:{}", free_port()),
                 ..Default::default()
             })
-            .event_loop_waker(Box::new(Waker(Arc::new(wake))))
+            .event_loop_waker(Box::new(Waker(wake.clone())))
             .build();
         let devtools = Devtools::default();
         servo.set_delegate(Rc::new(AppDelegate(devtools.clone())));
@@ -251,6 +264,8 @@ impl Engine {
             desktop_user_agent: servo::prefs::get().user_agent.clone(),
             init_scripts: Vec::new(),
             next_script: 1,
+            wake,
+            memory: Arc::default(),
         }
     }
 
@@ -327,7 +342,43 @@ impl Engine {
     pub fn pump(&mut self) -> Vec<EngineEvent> {
         self.servo.spin_event_loop();
         self.pages.append(&mut self.opened.borrow_mut());
-        std::mem::take(&mut *self.events.borrow_mut())
+        let mut events = std::mem::take(&mut *self.events.borrow_mut());
+        if let Some(report) = self.memory.lock().ok().and_then(|mut slot| slot.take()) {
+            events.push(EngineEvent::Memory(report));
+        }
+        events
+    }
+
+    /// Ask Servo what each page holds; the answer comes as [`EngineEvent::Memory`].
+    /// Every script thread walks its documents for it, so call it sparingly.
+    pub fn measure_memory(&self) {
+        use servo::profile_traits::mem::{MemoryReportResult, ReportKind};
+        let (slot, wake) = (self.memory.clone(), self.wake.clone());
+        let answered = servo_base::generic_channel::GenericCallback::new(
+            move |result: Result<MemoryReportResult, _>| {
+                let Ok(result) = result else { return };
+                let report = result
+                    .results
+                    .into_iter()
+                    .flat_map(|process| process.reports)
+                    // "Non-explicit" sizes cut across the others: counting them counts twice.
+                    .filter(|report| !matches!(report.kind, ReportKind::NonExplicitSize))
+                    .filter_map(|report| {
+                        let label = report.path.into_iter().next()?;
+                        label
+                            .starts_with("url(")
+                            .then_some((label, report.size as u64))
+                    })
+                    .collect();
+                if let Ok(mut slot) = slot.lock() {
+                    *slot = Some(report);
+                }
+                wake();
+            },
+        );
+        if let Ok(answered) = answered {
+            self.servo.create_memory_report(answered);
+        }
     }
 
     /// Paint the tab's page and read it back as RGBA.
@@ -459,6 +510,11 @@ impl Engine {
         if let Some(zoom) = next {
             page.webview.set_page_zoom(zoom);
         }
+    }
+
+    /// The address of the link under the pointer, which the page reports for a status bar.
+    pub fn hovered_link(&self, id: TabId) -> Option<String> {
+        self.page(id)?.webview.status_text()
     }
 
     /// Evaluate JavaScript in the tab; `done` runs later, on the main thread.

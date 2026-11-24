@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>a page that reads adoptedStyleSheets</title>
+<!-- Reading the property makes an observable array proxy. Servo's memory report took
+     that proxy for a DOM object and crashed, so hovering this page's tab (which asks
+     for the report) must leave the app running. -->
+<p id="out"></p>
+<script>
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync("p { color: #63c; }");
+  document.adoptedStyleSheets = [sheet];
+  window.kept = document.adoptedStyleSheets;
+  document.getElementById("out").textContent = "adopted sheets: " + window.kept.length;
+</script>

@@ -52,6 +52,8 @@ rever-formats = { path = "../rever-formats" }
 # `subtlecrypto` is not in servo's `default` (that group is servoshell's), and
 # without it pages see `crypto.subtle === undefined` — signed-request flows die.
 servo = { version = "=0.8.0", features = ["subtlecrypto"] }
+# The callback type Servo's memory report answers through; `servo` does not re-export it.
+servo-base = "=0.8.0"
 # The cookie type of Servo's site data manager.
 cookie = "0.18"
 # The header and status types of a response the app answers a request with.

@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>an SVG background that has only a viewBox</title>
+<style>
+  div { width: 23px; height: 20px; margin: 20px; background-repeat: no-repeat; outline: 1px solid #ccc; }
+  /* No width or height on the root: no natural size, so it must shrink to fit the box. */
+  #ratio { background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 27 24%22%3E%3Crect x=%221%22 y=%223%22 width=%2225%22 height=%2218%22 rx=%229%22 fill=%22none%22 stroke=%22%2363c%22 stroke-width=%222%22/%3E%3C/svg%3E"); }
+  /* Explicit size: drawn at 27 by 24, so the box clips its right and bottom edges. */
+  #sized { background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2227%22 height=%2224%22 viewBox=%220 0 27 24%22%3E%3Crect x=%221%22 y=%223%22 width=%2225%22 height=%2218%22 rx=%229%22 fill=%22none%22 stroke=%22%2363c%22 stroke-width=%222%22/%3E%3C/svg%3E"); }
+</style>
+<!-- #ratio shows the whole pill inside the outline. #sized is cut off on the right. -->
+<div id="ratio"></div>
+<div id="sized"></div>
