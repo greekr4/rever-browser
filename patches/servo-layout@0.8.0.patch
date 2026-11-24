@@ -1,6 +1,6 @@
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/context.rs b/context.rs
---- a/context.rs	2006-07-24 10:21:28
-+++ b/context.rs	2026-11-23 12:54:29
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/context.rs b/context.rs
+--- a/context.rs	2026-11-24 14:49:30
++++ b/context.rs	2026-11-24 14:31:37
 @@ -140,8 +140,19 @@
  
      /// The current animation timeline value used to properly initialize animating images.
@@ -93,9 +93,207 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
              },
          }
      }
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/formatting_contexts.rs b/formatting_contexts.rs
---- a/formatting_contexts.rs	2006-07-24 10:21:28
-+++ b/formatting_contexts.rs	2026-11-23 12:54:29
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/display_list/mod.rs b/display_list/mod.rs
+--- a/display_list/mod.rs	2026-11-24 14:49:30
++++ b/display_list/mod.rs	2026-11-24 14:31:37
+@@ -2040,8 +2040,24 @@
+                 ResolvedImage::Image { image, size, url } => {
+                     // FIXME: https://drafts.csswg.org/css-images-4/#the-image-resolution
+                     let dppx = 1.0;
+-                    let intrinsic =
++                    let mut intrinsic =
+                         NaturalSizes::from_width_and_height(size.width / dppx, size.height / dppx);
++                    // rever: an SVG with only a `viewBox` has a ratio but no natural size,
++                    // so `background-size: auto` fits it to the box instead of clipping it.
++                    if let net_traits::image_cache::Image::Vector(vector) = &image {
++                        if !vector.has_natural_size {
++                            intrinsic.width = None;
++                            intrinsic.height = None;
++                        }
++                        // rever: and one without a `viewBox` either fills the box.
++                        if !vector.has_natural_ratio {
++                            intrinsic.ratio = None;
++                            net_traits::image_cache::VECTOR_RASTER_SCALE.store(
++                                builder.device_pixel_ratio.get().to_bits(),
++                                std::sync::atomic::Ordering::Relaxed,
++                            );
++                        }
++                    }
+                     let layer =
+                         background::layout_layer(self, painter, builder, state, index, intrinsic);
+ 
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/flexbox/layout.rs b/flexbox/layout.rs
+--- a/flexbox/layout.rs	2026-11-24 14:49:30
++++ b/flexbox/layout.rs	2026-11-24 14:31:37
+@@ -404,6 +404,8 @@
+     min_flex_factors: DesiredFlexFractionAndGrowOrShrinkFactor,
+     max_flex_factors: DesiredFlexFractionAndGrowOrShrinkFactor,
+     min_content_main_size_for_multiline_container: Au,
++    /// rever: the item's min-content and max-content contributions.
++    content_contribution_sizes: ContentSizes,
+     depends_on_block_constraints: bool,
+ }
+ 
+@@ -478,64 +480,26 @@
+         // (and check for ‘writing-mode’?)
+         // - TODO: Collapsed flex items need to be skipped for intrinsic size calculation.
+ 
+-        // <https://drafts.csswg.org/css-flexbox-1/#intrinsic-main-sizes>
+-        // > It is calculated, considering only non-collapsed flex items, by:
+-        // > 1. For each flex item, subtract its outer flex base size from its max-content
+-        // > contribution size.
+-        let mut chosen_max_flex_fraction = f32::NEG_INFINITY;
+-        let mut chosen_min_flex_fraction = f32::NEG_INFINITY;
+-        let mut sum_of_flex_grow_factors = 0.0;
+-        let mut sum_of_flex_shrink_factors = 0.0;
++        // rever: the container's intrinsic main sizes are the sums of its items'
++        // contributions, as Blink and WebKit compute them. The steps of
++        // <https://drafts.csswg.org/css-flexbox-1/#intrinsic-main-sizes>, which Servo 0.8
++        // followed, keep an item at its flex base size as soon as one sibling cannot
++        // shrink: an image sized in percent beside an empty `<source>` held its
++        // `<picture style="display: flex">` at the file's width.
+         let mut item_infos = vec![];
+-
+         for kid in self.children.iter() {
+             let kid = &*kid.borrow();
+             match kid {
+-                FlexLevelBox::FlexItem(item) => {
+-                    sum_of_flex_grow_factors += item.style().get_position().flex_grow.0;
+-                    sum_of_flex_shrink_factors += item.style().get_position().flex_shrink.0;
+-
+-                    let info = item.main_content_size_info(
+-                        layout_context,
+-                        containing_block_for_children,
+-                        &self.config,
+-                        &flex_context_getter,
+-                    );
+-
+-                    // > 2. Place all flex items into lines of infinite length. Within
+-                    // > each line, find the greatest (most positive) desired flex
+-                    // > fraction among all the flex items. This is the line’s chosen flex
+-                    // > fraction.
+-                    chosen_max_flex_fraction =
+-                        chosen_max_flex_fraction.max(info.max_flex_factors.desired_flex_fraction);
+-                    chosen_min_flex_fraction =
+-                        chosen_min_flex_fraction.max(info.min_flex_factors.desired_flex_fraction);
+-
+-                    item_infos.push(info)
+-                },
++                FlexLevelBox::FlexItem(item) => item_infos.push(item.main_content_size_info(
++                    layout_context,
++                    containing_block_for_children,
++                    &self.config,
++                    &flex_context_getter,
++                )),
+                 FlexLevelBox::OutOfFlowAbsolutelyPositionedBox(_) => {},
+             }
+         }
+ 
+-        let normalize_flex_fraction = |chosen_flex_fraction| {
+-            if chosen_flex_fraction > 0.0 && sum_of_flex_grow_factors < 1.0 {
+-                // > 3. If the chosen flex fraction is positive, and the sum of the line’s
+-                // > flex grow factors is less than 1, > divide the chosen flex fraction by that
+-                // > sum.
+-                chosen_flex_fraction / sum_of_flex_grow_factors
+-            } else if chosen_flex_fraction < 0.0 && sum_of_flex_shrink_factors < 1.0 {
+-                // > If the chosen flex fraction is negative, and the sum of the line’s flex
+-                // > shrink factors is less than 1, > multiply the chosen flex fraction by that
+-                // > sum.
+-                chosen_flex_fraction * sum_of_flex_shrink_factors
+-            } else {
+-                chosen_flex_fraction
+-            }
+-        };
+-
+-        let chosen_min_flex_fraction = normalize_flex_fraction(chosen_min_flex_fraction);
+-        let chosen_max_flex_fraction = normalize_flex_fraction(chosen_max_flex_fraction);
+-
+         let main_gap = match self.config.flex_axis {
+             FlexAxis::Row => self.style.get_column_gap(),
+             FlexAxis::Column => self.style.get_row_gap(),
+@@ -556,42 +520,18 @@
+         let mut container_depends_on_block_constraints = false;
+ 
+         for FlexItemBoxInlineContentSizesInfo {
+-            outer_flex_base_size,
+-            outer_min_main_size,
+-            outer_max_main_size,
+-            min_flex_factors,
+-            max_flex_factors,
+             min_content_main_size_for_multiline_container,
++            content_contribution_sizes,
+             depends_on_block_constraints,
++            ..
+         } in item_infos.iter()
+         {
+-            // > 4. Add each item’s flex base size to the product of its flex grow factor (scaled flex shrink
+-            // > factor, if shrinking) and the chosen flex fraction, then clamp that result by the max main size
+-            // > floored by the min main size.
+-            // > 5. The flex container’s max-content size is the largest sum (among all the lines) of the
+-            // > afore-calculated sizes of all items within a single line.
+-            container_max_content_size += (*outer_flex_base_size +
+-                Au::from_f32_px(
+-                    max_flex_factors.flex_grow_or_shrink_factor * chosen_max_flex_fraction,
+-                ))
+-            .clamp_between_extremums(*outer_min_main_size, *outer_max_main_size);
+-
+-            // > The min-content main size of a single-line flex container is calculated
+-            // > identically to the max-content main size, except that the flex items’
+-            // > min-content contributions are used instead of their max-content contributions.
+-            //
++            container_max_content_size += content_contribution_sizes.max_content;
+             // > However, for a multi-line container, the min-content main size is simply the
+             // > largest min-content contribution of all the non-collapsed flex items in the
+-            // > flex container. For this purpose, each item’s contribution is capped by the
+-            // > item’s flex base size if the item is not growable, floored by the item’s flex
+-            // > base size if the item is not shrinkable, and then further clamped by the item’s
+-            // > min and max main sizes.
++            // > flex container.
+             if self.config.flex_wrap == FlexWrap::NOWRAP {
+-                container_min_content_size += (*outer_flex_base_size +
+-                    Au::from_f32_px(
+-                        min_flex_factors.flex_grow_or_shrink_factor * chosen_min_flex_fraction,
+-                    ))
+-                .clamp_between_extremums(*outer_min_main_size, *outer_max_main_size);
++                container_min_content_size += content_contribution_sizes.min_content;
+             } else {
+                 container_min_content_size
+                     .max_assign(*min_content_main_size_for_multiline_container);
+@@ -2420,6 +2360,23 @@
+ 
+             let is_replaced = self.independent_formatting_context.is_replaced();
+ 
++            // rever: <https://drafts.csswg.org/css-sizing-3/#replaced-percentage-min-contribution>.
++            // A replaced item whose main size is a percentage that cannot be resolved
++            // here (the container is being sized from its items) can shrink to nothing.
++            // Servo 0.8 held it at its natural size, so a `flex: 0 0 100%` carousel
++            // slide around `<picture style="display: flex">` came out as wide as the
++            // picture's file.
++            if is_replaced && specified_size_suggestion.is_none() {
++                let size = style.box_size(style.writing_mode);
++                let main = match main_axis {
++                    LogicalAxis::Inline => size.inline,
++                    LogicalAxis::Block => size.block,
++                };
++                if matches!(main, Size::Numeric(numeric) if numeric.has_percentage()) {
++                    return Au::zero();
++                }
++            }
++
+             // > **content size suggestion**
+             // > The content size suggestion is the min-content size in the main axis, clamped, if it has a
+             // > preferred aspect ratio, by any definite minimum and maximum cross sizes converted through the
+@@ -2582,6 +2539,7 @@
+             min_flex_factors,
+             max_flex_factors,
+             min_content_main_size_for_multiline_container,
++            content_contribution_sizes,
+             depends_on_block_constraints,
+         }
+     }
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/formatting_contexts.rs b/formatting_contexts.rs
+--- a/formatting_contexts.rs	2026-11-24 14:49:30
++++ b/formatting_contexts.rs	2026-11-24 14:31:37
 @@ -27,7 +27,9 @@
      self, ComputeInlineContentSizes, ContentSizes, InlineContentSizesResult, LazySize,
      SizeConstraint,
@@ -191,9 +389,9 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
      }
  
      pub(crate) fn attached_to_tree(&self, layout_box: WeakLayoutBox) {
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/layout_impl.rs b/layout_impl.rs
---- a/layout_impl.rs	2006-07-24 10:21:28
-+++ b/layout_impl.rs	2026-11-23 12:54:29
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/layout_impl.rs b/layout_impl.rs
+--- a/layout_impl.rs	2026-11-24 14:49:30
++++ b/layout_impl.rs	2026-11-24 14:31:37
 @@ -208,6 +208,9 @@
      // image data, or an error if the image cache failed to load/decode the image.
      resolved_images_cache: Arc<RwLock<HashMap<ServoUrl, CachedImageOrError>>>,
@@ -220,9 +418,9 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
              pending_images: Mutex::default(),
              pending_rasterization_images: Mutex::default(),
              pending_svg_elements_for_serialization: Mutex::default(),
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/replaced.rs b/replaced.rs
---- a/replaced.rs	2006-07-24 10:21:28
-+++ b/replaced.rs	2026-11-23 12:54:29
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/replaced.rs b/replaced.rs
+--- a/replaced.rs	2026-11-24 14:49:30
++++ b/replaced.rs	2026-11-24 14:31:37
 @@ -19,6 +19,8 @@
  use servo_base::id::{BrowsingContextId, PipelineId};
  use servo_url::ServoUrl;
@@ -513,9 +711,9 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
 +        assert_eq!(svg_start_tags(markup).len(), 2);
 +    }
  }
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/style_ext.rs b/style_ext.rs
---- a/style_ext.rs	2006-07-24 10:21:28
-+++ b/style_ext.rs	2026-11-23 12:54:29
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/style_ext.rs b/style_ext.rs
+--- a/style_ext.rs	2026-11-24 14:49:30
++++ b/style_ext.rs	2026-11-24 14:31:37
 @@ -759,6 +759,15 @@
              return true;
          }
@@ -532,9 +730,9 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
          // TODO: We need to handle CSS Contain here.
          false
      }
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/stylesheets/servo.css b/stylesheets/servo.css
---- a/stylesheets/servo.css	2006-07-24 10:21:28
-+++ b/stylesheets/servo.css	2026-11-23 12:54:29
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/stylesheets/servo.css b/stylesheets/servo.css
+--- a/stylesheets/servo.css	2026-11-24 14:49:30
++++ b/stylesheets/servo.css	2026-11-24 14:31:36
 @@ -302,12 +302,12 @@
    display: inline-block;
    position: relative;
@@ -562,9 +760,88 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
    height: 14px;
    width: 14px;
  }
-diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/traversal.rs b/traversal.rs
---- a/traversal.rs	2006-07-24 10:21:28
-+++ b/traversal.rs	2026-11-23 12:54:29
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/table/layout.rs b/table/layout.rs
+--- a/table/layout.rs	2026-11-24 14:49:30
++++ b/table/layout.rs	2026-11-24 14:31:37
+@@ -1854,6 +1854,7 @@
+             row_fragment_layout.fragments.reserve(self.table.size.width);
+             for column_index in column_indices {
+                 self.do_final_cell_layout(
++                    layout_context,
+                     row_index,
+                     column_index,
+                     &table_and_track_dimensions,
+@@ -1984,6 +1985,7 @@
+     #[expect(clippy::too_many_arguments)]
+     fn do_final_cell_layout(
+         &mut self,
++        layout_context: &LayoutContext,
+         row_index: usize,
+         column_index: usize,
+         dimensions: &TableAndTrackDimensions,
+@@ -2035,6 +2037,7 @@
+         );
+         row_relative_cell_rect.start_corner -= row_fragment_layout.rect.start_corner;
+         let mut fragment = cell.create_fragment(
++            layout_context,
+             layout,
+             row_relative_cell_rect,
+             row_baseline,
+@@ -2878,6 +2881,7 @@
+     #[expect(clippy::too_many_arguments)]
+     fn create_fragment(
+         &self,
++        layout_context: &LayoutContext,
+         mut layout: CellLayout,
+         cell_rect: LogicalRect<Au>,
+         cell_baseline: Au,
+@@ -2936,19 +2940,12 @@
+         // cell, but wrong for absolute fragments that are more deeply nested in the hierarchy of
+         // fragments.
+         let physical_cell_rect = cell_content_rect.as_physical(Some(containing_block));
+-        layout
+-            .positioning_context
+-            .adjust_static_position_of_hoisted_fragments_with_offset(
+-                &physical_cell_rect.origin.to_vector(),
+-                PositioningContextLength::zero(),
+-            );
+-        positioning_context.append(layout.positioning_context);
+ 
+         let specific_layout_info = (table_style.get_inherited_table().border_collapse ==
+             BorderCollapse::Collapse)
+             .then_some(SpecificLayoutInfo::TableCellWithCollapsedBorders);
+ 
+-        BoxFragment::new(
++        let mut fragment = BoxFragment::new(
+             base_fragment_info,
+             self.context.base.style.clone(),
+             vec![Fragment::Positioning(vertical_align_fragment)],
+@@ -2958,7 +2955,21 @@
+             PhysicalSides::zero(), /* margin */
+             specific_layout_info,
+         )
+-        .with_baselines(layout.layout.baselines)
++        .with_baselines(layout.layout.baselines);
++
++        // rever: a positioned cell is the containing block of its absolutes, so lay
++        // them out here. Hoisting them all made them size against an outer ancestor.
++        layout
++            .positioning_context
++            .layout_collected_children(layout_context, &mut fragment);
++        layout
++            .positioning_context
++            .adjust_static_position_of_hoisted_fragments_with_offset(
++                &physical_cell_rect.origin.to_vector(),
++                PositioningContextLength::zero(),
++            );
++        positioning_context.append(layout.positioning_context);
++        fragment
+     }
+ }
+ 
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/traversal.rs b/traversal.rs
+--- a/traversal.rs	2026-11-24 14:49:30
++++ b/traversal.rs	2026-11-24 14:31:37
 @@ -90,6 +90,21 @@
      damage_from_environment: LayoutDamage,
      layout_roots: &mut Vec<LayoutRoot<'dom>>,

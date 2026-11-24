@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>absolutes inside a positioned table cell</title>
+<style>
+  .wrap { position: relative; width: 250px; }
+  .tabs { display: table; width: 100%; padding: 9px 18px 8px; box-sizing: border-box; }
+  .item { display: table-cell; position: relative; padding-top: 26px; text-align: center; }
+  .item::before { content: ""; position: absolute; top: 0; left: 0; right: 0;
+                  width: 20px; height: 19px; margin: 5px auto 0; background: #63c; }
+  .count { position: absolute; top: 0; left: 0; right: 0; margin-top: 2px; }
+</style>
+<!-- Each badge and icon must sit inside its own cell, centred above the label. The
+     cell is the containing block, not .wrap (which is 250 wide). -->
+<div class="wrap"><div class="tabs">
+  <a class="item" id="a"><span class="count" id="count">9</span><span>unread</span></a>
+  <a class="item" id="b"><span>star</span></a>
+  <a class="item" id="c"><span>clip</span></a>
+</div></div>

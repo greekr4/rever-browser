@@ -1,0 +1,182 @@
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/dom/document/document.rs b/dom/document/document.rs
+--- a/dom/document/document.rs	2026-11-24 14:49:32
++++ b/dom/document/document.rs	2026-11-24 14:31:37
+@@ -590,6 +590,8 @@
+     fired_unload: Cell<bool>,
+     /// List of responsive images
+     responsive_images: DomRefCell<Vec<Dom<HTMLImageElement>>>,
++    /// rever: `loading="lazy"` images that wait to come near the viewport.
++    lazy_images: DomRefCell<Vec<Dom<HTMLImageElement>>>,
+ 
+     /// [`NavigationTiming`] information for this [`Document`].
+     /// <https://html.spec.whatwg.org/multipage/#load-timing-info>
+@@ -3276,6 +3278,61 @@
+         }
+     }
+ 
++    /// rever: have `img` wait for [`Document::load_lazy_images_near_viewport`].
++    pub(crate) fn register_lazy_image(&self, img: &HTMLImageElement) {
++        let mut images = self.lazy_images.borrow_mut();
++        if !images.iter().any(|image| **image == *img) {
++            images.push(Dom::from_ref(img));
++        }
++    }
++
++    /// rever: stop `img` waiting; true when it was.
++    pub(crate) fn unregister_lazy_image(&self, img: &HTMLImageElement) -> bool {
++        let mut images = self.lazy_images.borrow_mut();
++        let before = images.len();
++        images.retain(|image| **image != *img);
++        images.len() != before
++    }
++
++    /// rever: start the lazy images that are within a screen or so of the viewport
++    /// (the distance Chrome uses on a fast connection). Run at every rendering
++    /// update, which a scroll and a layout change both cause.
++    // shortcut: an image taken out of the document keeps waiting here until the
++    // document goes; drop it on unbind if pages that churn lazy images grow.
++    pub(crate) fn load_lazy_images_near_viewport(&self, cx: &mut JSContext) {
++        let waiting: Vec<DomRoot<HTMLImageElement>> = std::mem::take(
++            &mut *self.lazy_images.borrow_mut(),
++        )
++        .iter()
++        .map(|image| DomRoot::from_ref(&**image))
++        .collect();
++        if waiting.is_empty() {
++            return;
++        }
++        let viewport = self.window().viewport_details().size;
++        let margin = app_units::Au::from_px(1250);
++        let (width, height) = (
++            app_units::Au::from_f32_px(viewport.width),
++            app_units::Au::from_f32_px(viewport.height),
++        );
++        for image in waiting {
++            let node = image.upcast::<Node>();
++            // An image without a box (`display: none`, not in the document) is not near.
++            let near = node.is_connected() &&
++                node.border_box(cx).is_some_and(|rect| {
++                    rect.max_y() > -margin &&
++                        rect.min_y() < height + margin &&
++                        rect.max_x() > -margin &&
++                        rect.min_x() < width + margin
++                });
++            if near {
++                image.resume_lazy_load(cx);
++            } else {
++                self.register_lazy_image(&image);
++            }
++        }
++    }
++
+     pub(crate) fn register_responsive_image(&self, img: &HTMLImageElement) {
+         self.responsive_images.borrow_mut().push(Dom::from_ref(img));
+     }
+@@ -4322,6 +4379,7 @@
+             active_parser_was_aborted: Cell::new(false),
+             fired_unload: Cell::new(false),
+             responsive_images: Default::default(),
++            lazy_images: Default::default(),
+             navigation_timing: Default::default(),
+             resource_fetch_timing: RefCell::new(None),
+             completely_loaded: Cell::new(false),
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/dom/html/embedded_content/htmlimageelement.rs b/dom/html/embedded_content/htmlimageelement.rs
+--- a/dom/html/embedded_content/htmlimageelement.rs	2026-11-24 14:49:32
++++ b/dom/html/embedded_content/htmlimageelement.rs	2026-11-24 14:31:37
+@@ -132,9 +132,30 @@
+     line_number: u64,
+     image_request: Cell<ImageRequestPhase>,
+     generation: Cell<u32>,
++    /// rever: a `loading="lazy"` image that came near the viewport, so it loads like
++    /// any other from then on.
++    lazy_load_resumed: Cell<bool>,
+ }
+ 
+ impl HTMLImageElement {
++    /// rever: <https://html.spec.whatwg.org/multipage/#will-lazy-load-element-steps>.
++    /// Servo 0.8 loads every image at once; a shop page with hundreds of product
++    /// pictures then holds gigabytes of decoded pixels nobody scrolled to.
++    fn will_lazy_load(&self) -> bool {
++        let loading = self
++            .upcast::<Element>()
++            .get_string_attribute(&local_name!("loading"));
++        !self.lazy_load_resumed.get() &&
++            self.owner_document().scripting_enabled() &&
++            String::from(loading).eq_ignore_ascii_case("lazy")
++    }
++
++    /// rever: <https://html.spec.whatwg.org/multipage/#lazy-load-resumption-steps>
++    pub(crate) fn resume_lazy_load(&self, cx: &mut JSContext) {
++        self.lazy_load_resumed.set(true);
++        self.update_the_image_data(cx);
++    }
++
+     /// <https://html.spec.whatwg.org/multipage/#check-the-usability-of-the-image-argument>
+     pub(crate) fn is_usable(&self) -> Fallible<bool> {
+         // If image has an intrinsic width or intrinsic height (or both) equal to zero, then return bad.
+@@ -761,6 +782,13 @@
+ 
+     /// <https://html.spec.whatwg.org/multipage/#update-the-image-data>
+     fn update_the_image_data_sync_steps(&self, cx: &mut JSContext) {
++        // rever: a lazy image waits here; the document resumes it at a rendering update
++        // once it is near the viewport.
++        if self.will_lazy_load() {
++            self.owner_document().register_lazy_image(self);
++            return;
++        }
++
+         // Step 10. Let selected source and selected pixel density be the URL and pixel density that
+         // results from selecting an image source, respectively.
+         let Some((selected_source, selected_pixel_density)) = self
+@@ -1302,6 +1330,7 @@
+             pending_request: DomRefCell::new(None),
+             form_owner: Default::default(),
+             generation: Default::default(),
++            lazy_load_resumed: Default::default(),
+             source_set: DomRefCell::new(SourceSet::new()),
+             dimension_attribute_source: Default::default(),
+             last_selected_source: DomRefCell::new(None),
+@@ -1869,6 +1898,12 @@
+             .attribute_mutated(cx, attr, mutation);
+ 
+         match attr.local_name() {
++            // rever: `loading` left the lazy state while the image waited: load it now.
++            &local_name!("loading") => {
++                if !self.will_lazy_load() && self.owner_document().unregister_lazy_image(self) {
++                    self.resume_lazy_load(cx);
++                }
++            },
+             // <https://html.spec.whatwg.org/multipage/#reacting-to-dom-mutations>
+             // > The element's src, srcset, width, or sizes attributes are set, changed, or
+             // > removed.
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/dom/window/location.rs b/dom/window/location.rs
+--- a/dom/window/location.rs	2026-11-24 14:49:32
++++ b/dom/window/location.rs	2026-11-24 14:31:37
+@@ -625,8 +625,11 @@
+         }
+         // Step 3. Assert: this's relevant Document's ancestor origins list is not null.
+         // Step 4. Otherwise, return this's relevant Document's ancestor origins list.
+-        Ok(document
+-            .ancestor_origins_list()
+-            .expect("Must always have ancestor origins initialized"))
++        // rever: a document whose list was never set (toss.im reads this early) gets
++        // the empty one; Servo 0.8 panicked here and took the whole page down.
++        Ok(document.ancestor_origins_list().unwrap_or_else(|| {
++            self.empty_dom_string_list
++                .or_init(|| DOMStringList::new(cx, window.upcast(), vec![]))
++        }))
+     }
+ }
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/event_loop/script_thread.rs b/event_loop/script_thread.rs
+--- a/event_loop/script_thread.rs	2026-11-24 14:49:32
++++ b/event_loop/script_thread.rs	2026-11-24 14:31:37
+@@ -1251,6 +1251,9 @@
+             // TODO(stevennovaryo): The time attribute should be relative to the time origin of the global object
+             document.update_intersection_observer_steps(cx, CrossProcessInstant::now());
+ 
++            // rever: lazy images are observed the same way, at the same point.
++            document.load_lazy_images_near_viewport(cx);
++
+             // See <https://github.com/whatwg/html/issues/12704>.
+             // Unspecified, but necessary: Any of the previous callbacks may have put the
+             // document into a render-blocked state. If that's the case, then abort the

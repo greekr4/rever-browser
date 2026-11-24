@@ -1,0 +1,30 @@
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/image_cache.rs b/image_cache.rs
+--- a/image_cache.rs	2026-11-24 14:49:31
++++ b/image_cache.rs	2026-11-24 14:31:37
+@@ -46,6 +46,13 @@
+ // Represents either a raster image for which the pixel data is available
+ // or a vector image for which only the natural dimensions are available
+ // and thus requires a further rasterization step to render.
++/// rever: device pixels per CSS pixel (the bits of an `f32`), told by layout, for the SVG
++/// images that are laid out again at the size they are drawn.
++// shortcut: one scale for the whole process, enough for an app whose windows share a
++// screen. Pass it through `rasterize_vector_image` when they stop doing so.
++pub static VECTOR_RASTER_SCALE: std::sync::atomic::AtomicU32 =
++    std::sync::atomic::AtomicU32::new(0x3f80_0000);
++
+ #[derive(Clone, Debug, MallocSizeOf)]
+ pub enum Image {
+     Raster(#[conditional_malloc_size_of] Arc<RasterImage>),
+@@ -57,6 +64,12 @@
+     pub id: VectorImageId,
+     pub svg_id: Option<Uuid>,
+     pub metadata: ImageMetadata,
++    /// rever: false when the root `<svg>` sets neither `width` nor `height`: then
++    /// `metadata` is not a natural size.
++    pub has_natural_size: bool,
++    /// rever: false when it has no `viewBox` either. Such an image has no ratio and is
++    /// laid out again at whatever size it is drawn.
++    pub has_natural_ratio: bool,
+     pub cors_status: CorsStatus,
+     pub load_time: Option<CrossProcessInstant>,
+ }

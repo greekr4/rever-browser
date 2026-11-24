@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>a carousel slide holding an image sized in percent</title>
+<style>
+  .track { display: flex; width: 300px; margin: 10px; outline: 1px solid #ccc; }
+  .slide { flex: 0 0 100%; position: relative; }
+  .slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ratio { display: block; aspect-ratio: 2.333 / 1; position: relative; }
+  .pic { display: flex; }
+</style>
+<!-- Every slide is as wide as its track, 300px: an image whose width is a percentage
+     can shrink to nothing, so it does not hold the slide at its natural 1024px. -->
+<div class="track"><div class="slide" id="plain"><img src="big-1024.jpg"></div></div>
+<div class="track"><div class="slide" id="ratio"><a class="ratio"><img src="big-1024.jpg"></a></div></div>
+<div class="track"><div class="slide" id="picture"><span class="pic"><img src="big-1024.jpg"></span></div></div>
+<div class="track"><div class="slide" id="both"><a class="ratio"><span class="pic"><img src="big-1024.jpg"></span></a></div></div>

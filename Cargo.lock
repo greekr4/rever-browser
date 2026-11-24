@@ -7516,6 +7516,7 @@ dependencies = [
  "serde",
  "serde_json",
  "servo",
+ "servo-base",
  "servo-net",
  "tokio",
  "url",
@@ -9716,8 +9717,6 @@ dependencies = [
 [[package]]
 name = "servo-net-traits"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80e6ac24573425319af0ac9dbc3ec7eec925b9da656902a15815506fd5e3e417"
 dependencies = [
  "bytes",
  "content-security-policy",
@@ -9883,8 +9882,6 @@ dependencies = [
 [[package]]
 name = "servo-script"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6c3e52be4165b3f98b992f384156b049d30b769004a96cf52903ea27cd32f9b"
 dependencies = [
  "accesskit",
  "app_units",
@@ -9995,8 +9992,6 @@ dependencies = [
 [[package]]
 name = "servo-script-bindings"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75f9bbcb6eb03e96610c1cbd9e71a26869874178e4f109a9a1c3f810bce88f81"
 dependencies = [
  "atomic_refcell",
  "bitflags 2.13.2",
