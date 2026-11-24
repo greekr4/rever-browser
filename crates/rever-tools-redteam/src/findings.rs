@@ -545,6 +545,10 @@ impl Tool for FindingAdd {
                         "type": "string",
                         "description": "Markdown body — observations, payload, repro, etc."
                     },
+                    "url": {
+                        "type": "string",
+                        "description": "URL of the affected endpoint or page. Stored on the finding so the report can annotate robots.txt status"
+                    },
                     "category": {
                         "description": "What kind of finding this is (groups the export report)",
                         "type": "string",
@@ -589,6 +593,7 @@ impl Tool for FindingAdd {
             }
             let title = text(&args, "title").unwrap_or_default();
             let body = text(&args, "body").unwrap_or_default();
+            let url = text(&args, "url").filter(|url| !url.is_empty());
             let category = text(&args, "category").unwrap_or("other");
             let severity = text(&args, "severity").unwrap_or("info");
             let request_id = text(&args, "requestId");
@@ -653,6 +658,9 @@ impl Tool for FindingAdd {
                 f.insert("severity".into(), json!(severity));
                 f.insert("category".into(), json!(category));
                 f.insert("body".into(), json!(mask_pii(body)));
+                if let Some(url) = url {
+                    f.insert("url".into(), json!(mask_pii(url)));
+                }
                 if let Some(request_id) = request_id {
                     f.insert("requestId".into(), json!(request_id));
                 }
@@ -1395,6 +1403,28 @@ mod tests {
             .collect();
         assert_eq!(stored.iter().filter(|s| *s == "validated").count(), 1);
         assert_eq!(stored.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn url을_넘기면_파인딩에_그대로_저장된다() {
+        let dir = TempDir::new();
+        let ctx = dir.ctx(None);
+        let (_, text) = call(
+            &FindingAdd,
+            &ctx,
+            json!({
+                "title": "Admin panel exposed",
+                "body": "GET /admin/secret.html",
+                "url": "http://127.0.0.1:8777/admin/secret.html"
+            }),
+        )
+        .await;
+        assert!(!text.starts_with("not saved"), "{text}");
+        let stored = list_findings(&ctx);
+        assert_eq!(
+            stored[0].text("url"),
+            "http://127.0.0.1:8777/admin/secret.html"
+        );
     }
 
     #[tokio::test]
