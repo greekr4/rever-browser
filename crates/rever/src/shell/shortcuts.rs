@@ -24,6 +24,7 @@ actions!(
         Tab8,
         LastTab,
         FocusAddress,
+        ToggleSpaces,
         Reload,
         Back,
         Forward,
@@ -57,6 +58,9 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-7", Tab7, None),
         KeyBinding::new("cmd-8", Tab8, None),
         KeyBinding::new("cmd-9", LastTab, None),
+        // Option+S, as in ego lite; in the grid view Escape goes back.
+        KeyBinding::new("alt-s", ToggleSpaces, None),
+        KeyBinding::new("escape", ToggleSpaces, Some("Spaces")),
         KeyBinding::new("cmd-l", FocusAddress, None),
         KeyBinding::new("cmd-r", Reload, None),
         KeyBinding::new("cmd-shift-r", Reload, None),
@@ -90,14 +94,27 @@ fn cycle(active: usize, count: usize, forward: bool) -> usize {
 
 impl Browser {
     fn select_number(&mut self, number: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(index) = tab_index(number, self.tabs.len()) {
-            self.select_tab(index, window, cx);
+        // The numbers count the tabs of the space that is shown.
+        let tabs = self.space_tabs();
+        if let Some(index) = tab_index(number, tabs.len()) {
+            self.select_tab(tabs[index], window, cx);
+        }
+    }
+
+    /// The next or the previous tab of the space that is shown.
+    fn cycle_tab(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let tabs = self.space_tabs();
+        if let Some(at) = tabs.iter().position(|index| *index == self.active) {
+            self.select_tab(tabs[cycle(at, tabs.len(), forward)], window, cx);
         }
     }
 
     /// Hooks every shortcut to the window's root element.
     pub(super) fn shortcut_handlers(&self, root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, _: &NewTab, window, cx| this.new_tab(window, cx)))
+            .on_action(
+                cx.listener(|this, _: &ToggleSpaces, window, cx| this.toggle_spaces(window, cx)),
+            )
             .on_action(
                 cx.listener(|this, _: &CloseTab, window, cx| {
                     this.close_tab(this.active, window, cx)
@@ -106,14 +123,12 @@ impl Browser {
             .on_action(cx.listener(|this, _: &ReopenClosedTab, window, cx| {
                 this.reopen_closed_tab(window, cx)
             }))
-            .on_action(cx.listener(|this, _: &NextTab, window, cx| {
-                let next = cycle(this.active, this.tabs.len(), true);
-                this.select_tab(next, window, cx)
-            }))
-            .on_action(cx.listener(|this, _: &PrevTab, window, cx| {
-                let previous = cycle(this.active, this.tabs.len(), false);
-                this.select_tab(previous, window, cx)
-            }))
+            .on_action(
+                cx.listener(|this, _: &NextTab, window, cx| this.cycle_tab(true, window, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &PrevTab, window, cx| this.cycle_tab(false, window, cx)),
+            )
             .on_action(cx.listener(|this, _: &Tab1, w, cx| this.select_number(1, w, cx)))
             .on_action(cx.listener(|this, _: &Tab2, w, cx| this.select_number(2, w, cx)))
             .on_action(cx.listener(|this, _: &Tab3, w, cx| this.select_number(3, w, cx)))
@@ -123,7 +138,9 @@ impl Browser {
             .on_action(cx.listener(|this, _: &Tab7, w, cx| this.select_number(7, w, cx)))
             .on_action(cx.listener(|this, _: &Tab8, w, cx| this.select_number(8, w, cx)))
             .on_action(cx.listener(|this, _: &LastTab, window, cx| {
-                this.select_tab(this.tabs.len() - 1, window, cx)
+                if let Some(last) = this.space_tabs().last() {
+                    this.select_tab(*last, window, cx)
+                }
             }))
             .on_action(cx.listener(|this, _: &FocusAddress, window, cx| {
                 window.focus(&this.views.address.focus_handle(cx));

@@ -170,6 +170,21 @@ fn short_tag(url: &str) -> String {
     chars.into_iter().collect()
 }
 
+/// A tile label: `host + path` (the TS grid's `loc`), rooted paths kept.
+pub(crate) fn short_loc(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(parsed) => {
+            let path = parsed.path();
+            format!(
+                "{}{}",
+                parsed.host_str().unwrap_or_default(),
+                if path == "/" { "" } else { path }
+            )
+        }
+        Err(_) => url.split(['?', '#']).next().unwrap_or(url).to_owned(),
+    }
+}
+
 /// A discovered page URL carrying a query supersedes its bare GET — a query
 /// endpoint generates the reflection/injection checklist, a bare one does not.
 pub fn merge_query_endpoints(endpoints: Vec<String>, links: &[String], cap: usize) -> Vec<String> {
@@ -575,6 +590,8 @@ pub const PROBE_PROMPT: &str = "Red Team 단일 엔드포인트 활성 프로브
 pub struct ScanLine {
     pub kind: LineKind,
     pub text: String,
+    /// Seconds into the scan when the line was pushed, shown as `MM:SS`.
+    pub at: u32,
     /// The tab (or worker) the line came from, shown as `[N]`.
     pub tab: Option<String>,
 }
@@ -587,6 +604,24 @@ pub enum LineKind {
     Error,
 }
 
+/// One tile of the scan's tab grid: the page a tab was opened for, what its
+/// worker is doing there, and what it found (the ego-Lite "one space per
+/// task" view, ported from the store's `scanTabs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TabStatus {
+    Opening,
+    Inspecting,
+    Done,
+    Failed,
+}
+
+#[derive(Clone, Debug)]
+pub struct ScanTab {
+    pub url: String,
+    pub status: TabStatus,
+    pub findings: u32,
+}
+
 /// A phase's turn outcome, distilled.
 struct TurnOutcome {
     final_text: String,
@@ -597,6 +632,8 @@ struct TurnOutcome {
 struct Turn {
     session: AgentSession,
     label: Option<String>,
+    /// The page URL this worker owns a tab for (page workers only).
+    url: Option<String>,
     outcome: TurnOutcome,
     failed: Option<String>,
     done: bool,
@@ -609,12 +646,14 @@ impl Turn {
         spawn: &mut Spawner,
         prompt: &str,
         label: Option<String>,
+        url: Option<String>,
     ) -> Result<(), String> {
         let mut session = spawn(prompt)?;
         let _ = session.send(prompt);
         pool.push(Turn {
             session,
             label,
+            url,
             outcome: TurnOutcome {
                 final_text: String::new(),
                 finding_adds: 0,
@@ -669,11 +708,25 @@ pub struct ScanRun {
     pub findings: u32,
     pub report: String,
     pub log: Vec<ScanLine>,
+    /// One tile per opened tab: what its worker is doing (the tab grid).
+    pub tabs: Vec<ScanTab>,
+    started: std::time::Instant,
     stop: bool,
 }
 
 /// How the orchestrator spawns sessions: (prompt, label) → a live session.
 pub type Spawner<'a> = dyn FnMut(&str) -> Result<AgentSession, String> + 'a;
+
+/// The dialog (and MCP `scan:launch`) speak the UI vocabulary
+/// "readonly" | "probe" | "redteam"; the orchestrator's full-power level is
+/// "full". One mapping so the Red Team button can never arrive neutered.
+pub fn orchestrator_intensity(level: &str) -> &'static str {
+    match level {
+        "probe" => "probe",
+        "redteam" | "full" => "full",
+        _ => "readonly",
+    }
+}
 
 impl ScanRun {
     pub fn new(target: &str, pages: u32, intensity: &str) -> Self {
@@ -692,12 +745,29 @@ impl ScanRun {
             findings: 0,
             report: String::new(),
             log: Vec::new(),
+            tabs: Vec::new(),
+            started: std::time::Instant::now(),
             stop: false,
         }
     }
 
     pub fn running(&self) -> bool {
         !matches!(self.phase, Phase::Done | Phase::Failed(_))
+    }
+
+    /// Seconds since the scan started (the dialog's live clock).
+    pub fn elapsed_secs(&self) -> u32 {
+        self.started.elapsed().as_secs() as u32
+    }
+
+    /// What was typed into the dialog's target field when the scan began.
+    pub fn target(&self) -> &str {
+        &self.target
+    }
+
+    /// Pages the discovery phase opened tabs for so far.
+    pub fn pages_seen(&self) -> u32 {
+        self.opened.len() as u32
     }
 
     pub fn stop(&mut self) {
@@ -708,6 +778,7 @@ impl ScanRun {
         self.log.push(ScanLine {
             kind,
             text: text.into(),
+            at: self.elapsed_secs(),
             tab,
         });
         if self.log.len() > LOG_CAP {
@@ -898,7 +969,7 @@ impl ScanRun {
                         .unwrap_or_else(|_| self.target.clone());
                     let prompt = path_probe_prompt(&origin, &site);
                     if let Err(error) =
-                        Turn::spawn_into(&mut self.pool, spawn, &prompt, Some("scan".into()))
+                        Turn::spawn_into(&mut self.pool, spawn, &prompt, Some("scan".into()), None)
                     {
                         self.log(LineKind::Error, error, None);
                     }
@@ -950,6 +1021,17 @@ impl ScanRun {
                     self.log(LineKind::Error, error, turn.label.clone());
                 }
                 self.findings += turn.outcome.finding_adds;
+                if let Some(url) = &turn.url {
+                    self.mark_tile(
+                        url,
+                        if turn.failed.is_some() {
+                            TabStatus::Failed
+                        } else {
+                            TabStatus::Done
+                        },
+                        turn.outcome.finding_adds,
+                    );
+                }
             } else {
                 keep.push(turn);
             }
@@ -984,9 +1066,40 @@ impl ScanRun {
                     Some(short_tag(&url)),
                 )
             };
-            if let Err(error) = Turn::spawn_into(&mut self.pool, spawn, &prompt, label.clone()) {
-                eprintln!("[scan] worker spawn failed: {error}");
-                self.log(LineKind::Error, error, label);
+            let owned_tab = if self.phase == Phase::ProbeWorkers {
+                None
+            } else {
+                Some(url.clone())
+            };
+            match Turn::spawn_into(
+                &mut self.pool,
+                spawn,
+                &prompt,
+                label.clone(),
+                owned_tab.clone(),
+            ) {
+                Ok(()) => {
+                    if let Some(url) = &owned_tab {
+                        self.mark_tile(url, TabStatus::Inspecting, 0);
+                    }
+                }
+                Err(error) => {
+                    eprintln!("[scan] worker spawn failed: {error}");
+                    self.log(LineKind::Error, error, label);
+                    if let Some(url) = &owned_tab {
+                        self.mark_tile(url, TabStatus::Failed, 0);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Update one tile of the tab grid (no-op for unknown URLs).
+    fn mark_tile(&mut self, url: &str, status: TabStatus, findings: u32) {
+        if let Some(tile) = self.tabs.iter_mut().find(|tile| tile.url == url) {
+            tile.status = status;
+            if status == TabStatus::Done {
+                tile.findings = findings;
             }
         }
     }
@@ -1014,7 +1127,12 @@ impl ScanRun {
     fn enter_workers(&mut self, spawn: &mut Spawner, actions: &mut Vec<ScanAction>) {
         for url in self.links.clone() {
             actions.push(ScanAction::OpenTab(url.clone()));
-            self.opened.push(url);
+            self.opened.push(url.clone());
+            self.tabs.push(ScanTab {
+                url,
+                status: TabStatus::Opening,
+                findings: 0,
+            });
         }
         self.queue = self.links.clone().into();
         self.log(
@@ -1040,6 +1158,7 @@ impl ScanRun {
                 let mut turn = Turn {
                     session,
                     label: None,
+                    url: None,
                     outcome: TurnOutcome {
                         final_text: String::new(),
                         finding_adds: 0,
@@ -1172,5 +1291,47 @@ mod tests {
         assert!(level_line("probe", true).contains("payload_probe/path_probe/crlf_test 금지"));
         assert!(level_line("full", true).contains("적응 재시도"));
         assert!(level_line("full", false).contains("변형 요청 최대 1개"));
+    }
+
+    #[test]
+    fn 대화상자의_redteam은_오케스트레이터의_full로_매핑된다() {
+        assert_eq!(orchestrator_intensity("redteam"), "full");
+        assert_eq!(orchestrator_intensity("full"), "full");
+        assert_eq!(orchestrator_intensity("probe"), "probe");
+        assert_eq!(orchestrator_intensity("readonly"), "readonly");
+        assert_eq!(orchestrator_intensity("nonsense"), "readonly");
+    }
+
+    #[test]
+    fn 탭_타일은_url로_찾아_상태와_발견_수를_갱신한다() {
+        let mut scan = ScanRun::new("http://a.test/", 4, "readonly");
+        scan.tabs = vec![
+            ScanTab {
+                url: "http://a.test/items".into(),
+                status: TabStatus::Opening,
+                findings: 0,
+            },
+            ScanTab {
+                url: "http://a.test/about".into(),
+                status: TabStatus::Inspecting,
+                findings: 0,
+            },
+        ];
+        scan.mark_tile("http://a.test/items", TabStatus::Inspecting, 0);
+        scan.mark_tile("http://a.test/about", TabStatus::Done, 3);
+        scan.mark_tile("http://unknown/", TabStatus::Failed, 9);
+        assert_eq!(scan.tabs[0].status, TabStatus::Inspecting);
+        assert_eq!(scan.tabs[1].status, TabStatus::Done);
+        assert_eq!(scan.tabs[1].findings, 3);
+        // Inspecting calls must not clobber a finished count with 0.
+        scan.mark_tile("http://a.test/about", TabStatus::Inspecting, 0);
+        assert_eq!(scan.tabs[1].findings, 3);
+    }
+
+    #[test]
+    fn 타일_이름은_호스트와_경로를_쓴다() {
+        assert_eq!(short_loc("https://a.test/"), "a.test");
+        assert_eq!(short_loc("https://a.test/items?page=1"), "a.test/items");
+        assert_eq!(short_loc("not a url"), "not a url");
     }
 }

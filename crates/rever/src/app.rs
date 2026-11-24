@@ -14,7 +14,8 @@ use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use futures::channel::oneshot;
 use gpui::{
     App, AppContext, Bounds, ClipboardItem, Context, Entity, FocusHandle, Focusable,
-    PathPromptOptions, Pixels, PromptLevel, RenderImage, SharedString, WeakEntity, Window,
+    PathPromptOptions, Pixels, PromptLevel, RenderImage, SharedString, TitlebarOptions, WeakEntity,
+    Window, WindowBounds, WindowOptions, px, size,
 };
 use image::{Frame, RgbaImage};
 use net::tap::NetworkTapEvent;
@@ -56,6 +57,7 @@ use rever_ui_state::chat_history::{ChatHistory, new_conversation_id};
 use rever_ui_state::constants::AcpAgentId;
 
 use crate::permissions::ChatRules;
+use rever_ui_state::spaces::{self as space_rules, SavedSpaces};
 use rever_ui_state::tabs::{
     STORE_KEY as TABS_KEY, Tab as SessionTab, parse_saved_tabs, serialize_tabs,
 };
@@ -99,7 +101,7 @@ pub(crate) fn panel_title_key(panel: &str) -> &'static str {
     }
 }
 
-fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -462,8 +464,25 @@ fn tab_sleep_after() -> Duration {
         .map_or(TAB_SLEEP_AFTER, Duration::from_secs)
 }
 
+/// How long the grid view of the spaces takes to zoom open or shut.
+pub(crate) const SPACES_ZOOM: Duration = Duration::from_millis(260);
+
+/// A space: a group of tabs with a tab strip of its own. One space is shown at a
+/// time; the grid view shows them all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SpaceId(pub u32);
+
+pub(crate) struct Space {
+    pub id: SpaceId,
+    pub name: String,
+    /// The tab the space showed when it was last left, shown again on return.
+    pub shown: Option<TabId>,
+}
+
 pub(crate) struct Tab {
     pub id: TabId,
+    /// The space whose tab strip holds this tab.
+    pub space: SpaceId,
     pub title: SharedString,
     pub url: String,
     /// The latest page frame, in the BGRA layout GPUI paints.
@@ -478,9 +497,10 @@ pub(crate) struct Tab {
 
 impl Tab {
     /// A tab whose page is loading: nothing painted yet.
-    fn new(id: TabId, url: String, title: SharedString) -> Self {
+    fn new(id: TabId, space: SpaceId, url: String, title: SharedString) -> Self {
         Self {
             id,
+            space,
             title,
             url,
             frame: None,
@@ -774,6 +794,18 @@ pub(crate) struct Browser {
     pub redteam_drag: Option<(f32, f32)>,
     /// A scan turn is streaming into the dialog (not the chat panel).
     pub redteam_running: bool,
+    /// The activity log section of the dialog is expanded.
+    pub redteam_log_open: bool,
+    /// The activity log's scroll position, kept at the newest line while running.
+    pub redteam_log_scroll: gpui::ScrollHandle,
+    /// The scan report's own window, when one is open.
+    pub redteam_report_win: Option<gpui::WindowHandle<crate::shell::report::ReportWindow>>,
+    /// A scan just started: open the spaces grid so its worker spaces show live.
+    pub scan_spaces_due: bool,
+    /// The model the scan's CLI sessions run on (None = the CLI's own default).
+    pub redteam_model: Option<(String, String)>,
+    /// The scan dialog's model chip.
+    pub scan_model_picker: Entity<ModelPicker>,
     /// The running (or just-finished) scan orchestrator, when there is one.
     pub scan: Option<crate::scan::ScanRun>,
     /// URLs of the tabs the scan opened; closed when it finishes.
@@ -805,6 +837,21 @@ pub(crate) struct Browser {
     closed_tabs: Vec<String>,
     /// The open tabs as last written for the next start.
     saved_session: String,
+    /// The spaces the tabs are grouped in; never empty.
+    pub spaces: Vec<Space>,
+    /// The space whose tabs the tab strip shows.
+    pub space: SpaceId,
+    next_space: u32,
+    saved_spaces: String,
+    /// The grid view is open: every space as a tile, in place of the page.
+    pub spaces_open: bool,
+    pub spaces_focus: FocusHandle,
+    /// The grid view zooming open or shut: when it began, the space whose picture
+    /// moves between the page and its tile, and whether the view is opening.
+    pub spaces_zoom: Option<(Instant, SpaceId, bool)>,
+    /// A picture of each space's page for the grid view, taken while it is open.
+    pub space_shots: Vec<(SpaceId, Arc<RenderImage>)>,
+    space_shots_at: Instant,
     /// What the process holds, for the development build's overlay.
     pub memory: crate::memory::MemoryWatch,
     /// The agent's tool calls that wait for the user's yes or no.
@@ -945,9 +992,24 @@ impl Browser {
         let (pages, active) = start_pages(url, stores.storage.get(TABS_KEY).as_deref());
         // Only the shown tab loads; the others stay asleep until they are used, so a
         // long list of tabs costs one page at start.
+        // The tabs come back in the spaces they were in.
+        let saved_spaces = space_rules::parse_saved_spaces(
+            stores.storage.get(space_rules::STORE_KEY).as_deref(),
+            pages.len(),
+        );
+        let spaces: Vec<Space> = (1u32..)
+            .zip(saved_spaces.names)
+            .map(|(id, name)| Space {
+                id: SpaceId(id),
+                name,
+                shown: None,
+            })
+            .collect();
+        let next_space = spaces.len() as u32 + 1;
         let mut tabs = Vec::new();
         for (index, (url, title)) in pages.into_iter().enumerate() {
-            let mut tab = Tab::new(engine.reserve(), url.to_string(), title.into());
+            let space = spaces[saved_spaces.of[index]].id;
+            let mut tab = Tab::new(engine.reserve(), space, url.to_string(), title.into());
             if index == active {
                 engine
                     .open_as(tab.id, url, PhysicalSize::new(800, 600))
@@ -958,6 +1020,8 @@ impl Browser {
             tabs.push(tab);
         }
         let url = tabs[active].url.clone();
+        // The space shown is the one of the tab shown.
+        let space = tabs[active].space;
 
         // Servo and the tap wake this task from their threads; the work happens here, on the main thread.
         cx.spawn_in(window, async move |this, cx| {
@@ -1118,6 +1182,38 @@ impl Browser {
             }
         })
         .detach();
+        // The Red Team dialog's own model chip; the scan's CLI sessions run on it.
+        let scan_model_picker = cx.new(|cx| {
+            let this = this.clone();
+            let host = Rc::new(PickerHost {
+                models: model_store.clone(),
+            });
+            ModelPicker::new(
+                move |cx| scan_picker_props(&this, cx),
+                host,
+                look.clone(),
+                cx,
+            )
+        });
+        cx.subscribe(
+            &scan_model_picker,
+            |this, _, event: &ModelPickerEvent, cx| {
+                if let ModelPickerEvent::Selected {
+                    agent_id,
+                    model_id,
+                    name,
+                    ..
+                } = event
+                {
+                    // Scan workers are Claude CLI sessions; other agents' models do not apply.
+                    if *agent_id == AcpAgentId::ClaudeCode {
+                        this.redteam_model = Some((model_id.to_owned(), name.to_owned()));
+                        cx.notify();
+                    }
+                }
+            },
+        )
+        .detach();
         // The CLIs themselves know their models; asked once per start, off the main thread.
         if self_check.is_none() {
             cx.spawn(async move |this, cx| {
@@ -1148,6 +1244,15 @@ impl Browser {
             tabs,
             active,
             saved_session: String::new(),
+            spaces,
+            space,
+            next_space,
+            saved_spaces: String::new(),
+            spaces_open: false,
+            spaces_focus: cx.focus_handle(),
+            spaces_zoom: None,
+            space_shots: Vec::new(),
+            space_shots_at: Instant::now(),
             memory: Default::default(),
             permissions,
             permission_prompt,
@@ -1189,10 +1294,14 @@ impl Browser {
             redteam_pos: (0.0, 0.0),
             redteam_drag: None,
             redteam_running: false,
+            redteam_log_open: true,
+            redteam_log_scroll: gpui::ScrollHandle::new(),
+            redteam_report_win: None,
+            scan_spaces_due: false,
             scan: None,
             scan_tabs: Vec::new(),
-            redteam_w: 560.0,
-            redteam_h: 380.0,
+            redteam_w: 720.0,
+            redteam_h: 560.0,
             redteam_size_drag: None,
             select: None,
             prompt: None,
@@ -1205,6 +1314,8 @@ impl Browser {
             closed_tabs: Vec::new(),
             chat_scroll: gpui::ScrollHandle::new(),
             model_picker,
+            scan_model_picker,
+            redteam_model: None,
             model_store,
             chat_agent,
             chat_model,
@@ -1315,7 +1426,8 @@ impl Browser {
                 }
                 EngineEvent::Closed(id) => closed.push(id),
                 EngineEvent::Opened(id) => {
-                    self.tabs.push(Tab::new(id, String::new(), "".into()));
+                    self.tabs
+                        .push(Tab::new(id, self.space, String::new(), "".into()));
                     opened = true;
                 }
                 EngineEvent::Title(tab, title) => {
@@ -1392,8 +1504,14 @@ impl Browser {
         if frame_ready {
             self.capture(window);
         }
+        let painted = frame_ready || !behind.is_empty();
         for tab in behind {
             self.engine.settle(tab);
+        }
+        // The grid view's pictures follow their pages, twice a second at most.
+        if self.spaces_open && painted && self.space_shots_at.elapsed() > Duration::from_millis(500)
+        {
+            self.capture_spaces(window);
         }
         if tabs_changed {
             self.save_session();
@@ -1450,6 +1568,14 @@ impl Browser {
                 store.reload();
                 cx.notify();
             });
+        }
+        if self.scan_spaces_due && !self.spaces_open {
+            self.scan_spaces_due = false;
+            self.toggle_spaces(window, cx);
+            // A notify from this async context does not by itself schedule a
+            // frame: without this, the opened grid never paints. request_
+            // animation_frame would panic here (it is paint-phase only).
+            window.refresh();
         }
         self.pump_agent(cx);
         self.pump_scan(cx);
@@ -1531,7 +1657,7 @@ impl Browser {
         let Ok(id) = self.engine.open(url, size) else {
             return;
         };
-        self.tabs.push(Tab::new(id, address, "".into()));
+        self.tabs.push(Tab::new(id, self.space, address, "".into()));
         self.select_tab(self.tabs.len() - 1, window, cx);
     }
 
@@ -1545,6 +1671,12 @@ impl Browser {
             left.used = Instant::now();
         }
         self.active = index;
+        // The tab's space becomes the one shown, and remembers this tab.
+        let (space, shown) = (self.tabs[index].space, self.tabs[index].id);
+        self.space = space;
+        if let Some(entry) = self.spaces.iter_mut().find(|entry| entry.id == space) {
+            entry.shown = Some(shown);
+        }
         self.wake_tab(index);
         let url = self.tabs[index].url.clone();
         self.views
@@ -1579,6 +1711,29 @@ impl Browser {
             }
             self.saved_session = saved;
         }
+        // The spaces, for the same tabs: the ones the line above saved have an address.
+        let place = |space: SpaceId| {
+            self.spaces
+                .iter()
+                .position(|entry| entry.id == space)
+                .unwrap_or(0)
+        };
+        let spaces = space_rules::serialize_spaces(&SavedSpaces {
+            names: self.spaces.iter().map(|space| space.name.clone()).collect(),
+            of: self
+                .tabs
+                .iter()
+                .filter(|tab| !tab.url.is_empty())
+                .map(|tab| place(tab.space))
+                .collect(),
+            current: place(self.space),
+        });
+        if spaces != self.saved_spaces {
+            if let Err(error) = self.stores.storage.set(space_rules::STORE_KEY, &spaces) {
+                eprintln!("rever: the spaces were not saved: {error}");
+            }
+            self.saved_spaces = spaces;
+        }
     }
 
     pub fn close_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -1586,6 +1741,24 @@ impl Browser {
         if self.tabs.len() == 1 || index >= self.tabs.len() {
             return;
         }
+        let Some(neighbour) = space_rules::neighbour_after_close(&self.tab_spaces(), index) else {
+            // The only tab of its space: the space closes with it.
+            return self.close_space(self.tabs[index].space, window, cx);
+        };
+        self.drop_tab(index, window);
+        // Closing the shown tab shows its neighbour in the space; closing another one
+        // keeps the shown tab. Positions after `index` moved down by one.
+        let keep = if index == self.active {
+            neighbour
+        } else {
+            self.active
+        };
+        let next = if keep > index { keep - 1 } else { keep };
+        self.select_tab(next, window, cx);
+    }
+
+    /// Take the tab at `index` out of the list and end its page.
+    fn drop_tab(&mut self, index: usize, window: &mut Window) {
         let tab = self.tabs.remove(index);
         self.engine.close(tab.id);
         if is_web_url(&tab.url) {
@@ -1594,12 +1767,143 @@ impl Browser {
         for image in [tab.frame, tab.favicon].into_iter().flatten() {
             let _ = window.drop_image(image);
         }
-        let next = if index < self.active {
-            self.active - 1
-        } else {
-            self.active.min(self.tabs.len() - 1)
-        };
-        self.select_tab(next, window, cx);
+    }
+
+    /// Each tab's space, in tab order.
+    fn tab_spaces(&self) -> Vec<SpaceId> {
+        self.tabs.iter().map(|tab| tab.space).collect()
+    }
+
+    /// The positions of the shown space's tabs: what the tab strip holds.
+    pub fn space_tabs(&self) -> Vec<usize> {
+        space_rules::tabs_of(&self.tab_spaces(), self.space)
+    }
+
+    /// Show `space`: the tab it showed last, else its first one.
+    pub fn enter_space(&mut self, space: SpaceId, window: &mut Window, cx: &mut Context<Self>) {
+        let shown = self
+            .spaces
+            .iter()
+            .find(|entry| entry.id == space)
+            .and_then(|entry| entry.shown);
+        let index = self
+            .tabs
+            .iter()
+            .position(|tab| Some(tab.id) == shown)
+            .or_else(|| self.tabs.iter().position(|tab| tab.space == space));
+        if let Some(index) = index {
+            self.select_tab(index, window, cx);
+        }
+    }
+
+    /// Start a space with one new tab and show it.
+    pub fn new_space(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let taken: Vec<String> = self.spaces.iter().map(|space| space.name.clone()).collect();
+        let id = SpaceId(self.next_space);
+        self.next_space += 1;
+        self.spaces.push(Space {
+            id,
+            name: space_rules::new_space_name(&taken),
+            shown: None,
+        });
+        // The new tab lands in the space that is shown.
+        self.space = id;
+        self.new_tab(window, cx);
+    }
+
+    /// Close a space with all its tabs. The last space stays, as the last tab does.
+    pub fn close_space(&mut self, space: SpaceId, window: &mut Window, cx: &mut Context<Self>) {
+        if self.spaces.len() <= 1 {
+            return;
+        }
+        let shown = self.tabs.get(self.active).map(|tab| tab.id);
+        for index in (0..self.tabs.len()).rev() {
+            if self.tabs[index].space == space {
+                self.drop_tab(index, window);
+            }
+        }
+        self.spaces.retain(|entry| entry.id != space);
+        if let Some(at) = self.space_shots.iter().position(|(of, _)| *of == space) {
+            let _ = window.drop_image(self.space_shots.remove(at).1);
+        }
+        // The shown tab stays shown when it survived; else the first space takes over.
+        match self.tabs.iter().position(|tab| Some(tab.id) == shown) {
+            Some(index) => self.select_tab(index, window, cx),
+            None => self.enter_space(self.spaces[0].id, window, cx),
+        }
+    }
+
+    /// Open the grid view of the spaces, or go back from it to the space that is shown.
+    pub fn toggle_spaces(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.spaces_open {
+            return self.leave_spaces(self.space, window, cx);
+        }
+        self.spaces_open = true;
+        window.focus(&self.spaces_focus);
+        self.capture_spaces(window);
+        // The page shrinks into its tile.
+        self.spaces_zoom = Some((Instant::now(), self.space, true));
+        cx.notify();
+    }
+
+    /// Go from the grid view into `space`: its tile grows to fill the window, then the
+    /// space itself is shown.
+    pub fn leave_spaces(&mut self, space: SpaceId, window: &mut Window, cx: &mut Context<Self>) {
+        // Already on the way out.
+        if matches!(self.spaces_zoom, Some((_, _, false))) {
+            return;
+        }
+        self.spaces_zoom = Some((Instant::now(), space, false));
+        cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(SPACES_ZOOM).await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.close_spaces(window);
+                this.enter_space(space, window, cx);
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Take the grid view away at once.
+    pub fn close_spaces(&mut self, window: &mut Window) {
+        self.spaces_open = false;
+        self.spaces_zoom = None;
+        // The pictures are a page's worth of pixels each: gone with the view.
+        for (_, shot) in self.space_shots.drain(..) {
+            let _ = window.drop_image(shot);
+        }
+        window.focus(&self.page_focus);
+    }
+
+    /// Take a picture of each space's page for the grid view. A sleeping page has
+    /// none: its tile shows the page's title instead.
+    fn capture_spaces(&mut self, window: &mut Window) {
+        self.space_shots_at = Instant::now();
+        for space in &self.spaces {
+            let tab = self
+                .tabs
+                .iter()
+                .find(|tab| Some(tab.id) == space.shown)
+                .or_else(|| self.tabs.iter().find(|tab| tab.space == space.id));
+            let Some(mut image) = tab
+                .filter(|tab| !tab.asleep)
+                .and_then(|tab| self.engine.frame(tab.id))
+            else {
+                continue;
+            };
+            // GPUI paints BGRA.
+            for pixel in image.as_chunks_mut::<4>().0 {
+                pixel.swap(0, 2);
+            }
+            let shot = Arc::new(RenderImage::new(vec![Frame::new(image)]));
+            match self.space_shots.iter_mut().find(|(of, _)| *of == space.id) {
+                Some((_, old)) => {
+                    let _ = window.drop_image(std::mem::replace(old, shot));
+                }
+                None => self.space_shots.push((space.id, shot)),
+            }
+        }
     }
 
     /// The picker's choice: remembered, and used from the next message on. A model of
@@ -2043,10 +2347,11 @@ impl Browser {
             .get("intensity")
             .and_then(serde_json::Value::as_str)
             .unwrap_or("readonly");
-        // "redteam" is the TypeScript name of what the dialog calls "full".
+        // Keep the dialog's vocabulary ("redteam"); start maps it to the
+        // orchestrator's "full".
         let intensity = match intensity {
             "probe" => "probe",
-            "full" | "redteam" => "full",
+            "full" | "redteam" => "redteam",
             _ => "readonly",
         };
         let autostart = payload
@@ -2062,6 +2367,9 @@ impl Browser {
         self.views
             .redteam_target
             .update(cx, |input, cx| input.set_text(url, cx));
+        self.views
+            .redteam_pages
+            .update(cx, |input, cx| input.set_text(pages.to_string(), cx));
         self.redteam_intensity = intensity;
         self.redteam_pages = pages;
         self.redteam_open = true;
@@ -2127,6 +2435,16 @@ impl Browser {
         if target.is_empty() || self.agent_busy || self.redteam_running {
             return;
         }
+        let pages = self
+            .views
+            .redteam_pages
+            .read(cx)
+            .text()
+            .trim()
+            .parse()
+            .unwrap_or(self.redteam_pages)
+            .clamp(1, 200);
+        self.redteam_pages = pages;
         // Fresh-scan guarantee: findings persist per site, which cannot tell two
         // apps on the same origin apart — drop this site's old findings first.
         // (The TS also cleared the target host's cookies; the Rust auth bootstrap
@@ -2137,14 +2455,84 @@ impl Browser {
             eprintln!("[scan] dropped {cleared} old finding(s) for this site");
         }
         crate::agent::REDTEAM_SCAN.store(true, Ordering::Relaxed);
+        // The scan's worker spaces open in the grid view as they arrive; the
+        // wake brings the pump, which opens it where a window is at hand.
+        self.scan_spaces_due = true;
+        let _ = self.wake.unbounded_send(());
         self.scan_tabs.clear();
         self.scan = Some(crate::scan::ScanRun::new(
             &target,
-            self.redteam_pages,
-            self.redteam_intensity,
+            pages,
+            // "redteam" is the dialog's name for the orchestrator's "full".
+            crate::scan::orchestrator_intensity(self.redteam_intensity),
         ));
         self.redteam_running = true;
+        self.redteam_log_open = true;
+        // A 1s tick so the stats row's elapsed clock moves between scan events.
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+                let running = this.update(cx, |this, cx| {
+                    let running = this.redteam_running;
+                    cx.notify();
+                    running
+                });
+                if running.is_err() || !running.unwrap_or(false) {
+                    break;
+                }
+            }
+        })
+        .detach();
         self.pump_scan(cx);
+        cx.notify();
+    }
+
+    /// Show the finished scan's report in its own window, refreshing (and
+    /// focusing) the window when one is already open.
+    pub fn open_report_window(&mut self, cx: &mut Context<Self>) {
+        let Some(scan) = self.scan.as_ref() else {
+            return;
+        };
+        if scan.report.is_empty() {
+            return;
+        }
+        let target = scan.target().to_owned();
+        let findings = scan.findings;
+        let report = scan.report.clone();
+        if let Some(handle) = self.redteam_report_win {
+            let refreshed = handle.update(cx, |view, window, cx| {
+                view.set(&target, findings, &report);
+                window.activate_window();
+                cx.notify();
+            });
+            if refreshed.is_ok() {
+                return;
+            }
+        }
+        let lang = self.lang;
+        let mode = self.theme_mode;
+        let bounds = Bounds::centered(None, size(px(760.0), px(880.0)), cx);
+        let window = cx
+            .open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some(lang.t("scan.report.title").into()),
+                        appears_transparent: false,
+                        traffic_light_position: None,
+                    }),
+                    ..Default::default()
+                },
+                |_, cx| {
+                    cx.new(|_| {
+                        crate::shell::report::ReportWindow::new(
+                            &target, findings, &report, lang, mode,
+                        )
+                    })
+                },
+            )
+            .expect("could not open the report window");
+        self.redteam_report_win = Some(window);
         cx.notify();
     }
 
@@ -2167,6 +2555,8 @@ impl Browser {
             .mcp
             .as_ref()
             .map(|mcp| (mcp.url.clone(), mcp.auth_header.clone()));
+        // The scan's own model choice, when there is one.
+        let model = self.redteam_model.as_ref().map(|(id, _)| id.clone());
         let wake = self.wake.clone();
         let mut spawn = move |prompt: &str| {
             let _ = prompt;
@@ -2174,7 +2564,7 @@ impl Browser {
             let mcp = mcp
                 .as_ref()
                 .map(|(url, auth)| (url.as_str(), auth.as_str()));
-            crate::agent::AgentSession::spawn(&scratch, mcp, None, move || {
+            crate::agent::AgentSession::spawn(&scratch, mcp, model.as_deref(), move || {
                 let _ = wake.unbounded_send(());
             })
         };
@@ -2208,11 +2598,25 @@ impl Browser {
                 crate::scan::ScanAction::CloseScanTabs => self.close_scan_tabs = true,
             }
         }
+        let was_running = self.redteam_running;
         self.redteam_running = scan.running();
+        // Follow the activity log's newest line while the scan streams.
+        if self.redteam_running {
+            self.redteam_log_scroll.scroll_to_bottom();
+        }
+        // A finished scan lands its report in the report window — after the
+        // scan is back in place (open_report_window reads self.scan).
+        let finished_with_report = was_running && !scan.running() && !scan.report.is_empty();
         if !scan.running() {
             crate::agent::REDTEAM_SCAN.store(false, Ordering::Relaxed);
         }
         self.scan = Some(scan);
+        if finished_with_report {
+            // Deferred: opening mid-pump left the platform window half-drawn
+            // (black, off-screen); opening on a later turn works.
+            let browser = cx.entity();
+            cx.defer(move |cx| browser.update(cx, |this, cx| this.open_report_window(cx)));
+        }
         cx.notify();
     }
 
@@ -2476,8 +2880,23 @@ impl Browser {
                         .and_then(|url| {
                             let address = url.to_string();
                             let id = self.engine.open(url, size)?;
+                            // A scan worker's tab gets a space of its own (the
+                            // ego-Lite shape: one live tile per worker in the
+                            // grid, which dies with the tab when the scan ends).
+                            let space = if self.redteam_running {
+                                let id = SpaceId(self.next_space);
+                                self.next_space += 1;
+                                self.spaces.push(Space {
+                                    id,
+                                    name: crate::scan::short_loc(&address),
+                                    shown: None,
+                                });
+                                id
+                            } else {
+                                self.space
+                            };
                             // Not selected: the agent reads it by index while it loads.
-                            self.tabs.push(Tab::new(id, address, "".into()));
+                            self.tabs.push(Tab::new(id, space, address, "".into()));
                             Ok(self.tabs.len() - 1)
                         });
                     let _ = answer.send(opened);
@@ -2749,6 +3168,26 @@ fn picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
         model_name,
         // One turn at a time: the model changes between turns.
         disabled: busy,
+        new_tab: false,
+        column: None,
+    }
+}
+
+/// The scan dialog's model chip: the scan's own choice over the CLI's models.
+fn scan_picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
+    let (model_name, running) = browser
+        .read_with(cx, |this, _| {
+            (
+                this.redteam_model.as_ref().map(|(_, name)| name.clone()),
+                this.redteam_running,
+            )
+        })
+        .unwrap_or((None, false));
+    ModelPickerProps {
+        agent_id: AcpAgentId::ClaudeCode,
+        model_name,
+        // A running scan already spawned its sessions on a model.
+        disabled: running,
         new_tab: false,
         column: None,
     }

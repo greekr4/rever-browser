@@ -24,7 +24,7 @@ use servo::{
 use crate::app::{Browser, page_area};
 
 impl Browser {
-    pub(super) fn page(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn page(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let frame = self.tabs[self.active].frame.clone();
         let bounds_cell = self.page_bounds.clone();
         let this = cx.entity();
@@ -84,7 +84,8 @@ impl Browser {
                 this.on_key(KeyState::Up, &event.keystroke)
             }))
             .child(painted);
-        // The button pins itself to the bottom-left of this box.
+        // The button pins itself to the bottom-left of this box. While a scan
+        // runs, its spaces lead: the bar of them sits over the page.
         div()
             .flex_1()
             .min_h_0()
@@ -98,6 +99,7 @@ impl Browser {
             .children(self.prompt_overlay(theme, cx))
             .children(self.color_overlay(theme, cx))
             .children(self.memory_overlay(theme))
+            .into_any_element()
     }
 
     /// The development build's memory readout, in the page's bottom-left corner. It

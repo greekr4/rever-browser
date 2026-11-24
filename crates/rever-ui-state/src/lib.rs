@@ -14,6 +14,7 @@ pub mod ip_visibility;
 pub mod navigation_request;
 pub mod notify;
 pub mod scan_mode;
+pub mod spaces;
 pub mod storage;
 pub mod tabs;
 pub mod viewport;
