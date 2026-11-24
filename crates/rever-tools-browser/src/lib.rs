@@ -44,6 +44,7 @@ pub mod browser;
 pub mod cdp_eval;
 pub mod gestures;
 pub mod human_input;
+pub mod markdown;
 pub mod ui_crawl;
 pub mod wait;
 

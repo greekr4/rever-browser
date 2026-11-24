@@ -358,10 +358,18 @@ function firstSentence(d = '') {
   return s.length > 160 ? s.slice(0, 157) + '…' : s
 }
 
+/// The Markdown section of a `browser_snapshot` result, or null.
+export function extractMarkdown(text) {
+  const marker = '--- page markdown ---'
+  const at = text.indexOf(marker)
+  return at < 0 ? null : text.slice(at + marker.length).trim()
+}
+
 const USAGE = `revb — drive a running Rever Browser from scripts
 
   revb run <script.mjs | ->     run a script; every MCP tool is a global async fn
   revb call <tool> ['<json>']   call one tool and print its result
+  revb md <url>                 open the url and print its page text as Markdown
   revb list                     list tools
   revb skill [--full]           print the scripting guide (--full: + live tool catalog)
   revb endpoint                 print the endpoint the CLI connects to`
@@ -380,6 +388,15 @@ async function main(argv) {
       if (!rest[0]) fail('usage: revb call <tool> [\'<json args>\']')
       const args = rest[1] ? JSON.parse(rest[1]) : {}
       return withClient(async (c) => print(await c.call(rest[0], args)))
+    }
+    case 'md': {
+      if (!rest[0]) fail('usage: revb md <url>')
+      return withClient(async (c) => {
+        await c.call('browser_navigate', { url: rest[0] })
+        const snap = await c.call('browser_snapshot', { markdown: true })
+        const text = typeof snap === 'string' ? snap : JSON.stringify(snap, null, 2)
+        print(extractMarkdown(text) ?? text)
+      })
     }
     case 'list':
       return withClient(async (c) => {
