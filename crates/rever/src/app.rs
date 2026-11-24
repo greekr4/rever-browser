@@ -245,6 +245,54 @@ fn history_tab_id(tab: TabId) -> String {
 }
 
 /// System → Light → Dark → System, as `cycle` in app-theme.ts.
+/// Where the tabs and the toolbar sit in the window.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Layout {
+    /// The tab strip across the top, the toolbar under it: Chrome's layout.
+    #[default]
+    TabsOnTop,
+    /// The tabs as a list in a sidebar; the toolbar stays over the page.
+    TabsOnSide,
+    /// The tabs and the toolbar in the sidebar; the page takes the full height.
+    Sidebar,
+}
+
+/// The storage key of the layout choice.
+const LAYOUT_KEY: &str = "layout";
+
+impl Layout {
+    /// The next layout, in the order the menu item cycles through.
+    fn next(self) -> Self {
+        match self {
+            Self::TabsOnTop => Self::TabsOnSide,
+            Self::TabsOnSide => Self::Sidebar,
+            Self::Sidebar => Self::TabsOnTop,
+        }
+    }
+
+    /// The name the choice is stored under, and the suffix of its label key.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::TabsOnTop => "top",
+            Self::TabsOnSide => "side",
+            Self::Sidebar => "sidebar",
+        }
+    }
+
+    /// The layout of a stored name; an unknown or missing one is the default.
+    fn from_name(name: Option<&str>) -> Self {
+        [Self::TabsOnSide, Self::Sidebar]
+            .into_iter()
+            .find(|layout| name == Some(layout.name()))
+            .unwrap_or_default()
+    }
+
+    /// Whether the tabs are a list in a sidebar.
+    pub fn has_sidebar(self) -> bool {
+        self != Self::TabsOnTop
+    }
+}
+
 fn next_theme(mode: ThemeMode) -> ThemeMode {
     match mode {
         ThemeMode::System => ThemeMode::Light,
@@ -764,6 +812,7 @@ pub(crate) struct Browser {
     pub page_focus: FocusHandle,
     pub lang: Lang,
     pub theme_mode: ThemeMode,
+    pub layout: Layout,
     app_theme: AppThemeStore,
     /// The active tab's frame as RGBA, kept only for --self-check.
     last_rgba: Option<RgbaImage>,
@@ -854,6 +903,14 @@ pub(crate) struct Browser {
     space_shots_at: Instant,
     /// What the process holds, for the development build's overlay.
     pub memory: crate::memory::MemoryWatch,
+    /// The link a wheel-button press landed on; its release opens it in a new tab.
+    pub wheel_link: Option<Url>,
+    /// Page frames shown in the last full second, and the count of the running one.
+    pub fps: u32,
+    frames: u32,
+    /// Servo's latest memory report, for the card a hovered tab shows.
+    pub page_memory: crate::engine::MemoryReport,
+    page_memory_asked: Option<Instant>,
     /// The agent's tool calls that wait for the user's yes or no.
     pub permissions: Rc<RefCell<PermissionStore<ChatRules>>>,
     pub permission_prompt: Entity<PermissionPrompt>,
@@ -968,6 +1025,7 @@ impl Browser {
                 if looked.is_err() {
                     break;
                 }
+                crate::memory::release_unused();
             }
         })
         .detach();
@@ -977,6 +1035,7 @@ impl Browser {
                 while let Some(bytes) = crate::memory::footprint() {
                     let recorded = this.update(cx, |this, cx| {
                         this.memory.record(bytes);
+                        this.fps = std::mem::take(&mut this.frames);
                         cx.notify();
                     });
                     if recorded.is_err() {
@@ -1063,6 +1122,13 @@ impl Browser {
         } else {
             theme_from_stored(app_theme.mode())
         };
+        // REVER_LAYOUT wins over the saved choice too.
+        let layout = Layout::from_name(
+            std::env::var("REVER_LAYOUT")
+                .ok()
+                .or_else(|| stores.storage.get(LAYOUT_KEY))
+                .as_deref(),
+        );
         let views = Views::new(
             &stores,
             lang,
@@ -1254,6 +1320,11 @@ impl Browser {
             space_shots: Vec::new(),
             space_shots_at: Instant::now(),
             memory: Default::default(),
+            wheel_link: None,
+            fps: 0,
+            frames: 0,
+            page_memory: Vec::new(),
+            page_memory_asked: None,
             permissions,
             permission_prompt,
             chat,
@@ -1278,6 +1349,7 @@ impl Browser {
             page_focus: cx.focus_handle(),
             lang,
             theme_mode,
+            layout,
             app_theme,
             last_rgba: None,
             self_check,
@@ -1406,6 +1478,15 @@ impl Browser {
         }
     }
 
+    /// A tab is hovered: measure what the pages hold, at most once in two seconds.
+    pub(crate) fn measure_page_memory(&mut self) {
+        let fresh = Duration::from_secs(2);
+        if self.page_memory_asked.is_none_or(|at| at.elapsed() > fresh) {
+            self.page_memory_asked = Some(Instant::now());
+            self.engine.measure_memory();
+        }
+    }
+
     fn pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let active = self.active_id();
         let mut frame_ready = false;
@@ -1485,6 +1566,10 @@ impl Browser {
                         history.push(entry);
                         cx.notify();
                     });
+                }
+                EngineEvent::Memory(report) => {
+                    self.page_memory = report;
+                    cx.notify();
                 }
                 EngineEvent::Console { level, message } => {
                     self.stores
@@ -1606,6 +1691,7 @@ impl Browser {
         for pixel in image.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
         }
+        self.frames += 1;
         let frame = Arc::new(RenderImage::new(vec![Frame::new(image)]));
         if let Some(old) = self.tabs[self.active].frame.replace(frame) {
             let _ = window.drop_image(old);
@@ -1659,6 +1745,21 @@ impl Browser {
         };
         self.tabs.push(Tab::new(id, self.space, address, "".into()));
         self.select_tab(self.tabs.len() - 1, window, cx);
+    }
+
+    /// Open `url` in a new tab behind the shown one, as a wheel-button click on a link does.
+    pub fn open_background_tab(&mut self, url: Url, cx: &mut Context<Self>) {
+        let size = self
+            .engine
+            .size(self.active_id())
+            .unwrap_or(PhysicalSize::new(800, 600));
+        let address = url.to_string();
+        let Ok(id) = self.engine.open(url, size) else {
+            return;
+        };
+        self.tabs.push(Tab::new(id, self.space, address, "".into()));
+        self.save_session();
+        cx.notify();
     }
 
     pub fn select_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -1993,6 +2094,14 @@ impl Browser {
             "history" => self.stores.history.read(cx).entries().len(),
             _ => 0,
         }
+    }
+
+    fn cycle_layout(&mut self, cx: &mut Context<Self>) {
+        self.layout = self.layout.next();
+        if let Err(error) = self.stores.storage.set(LAYOUT_KEY, self.layout.name()) {
+            eprintln!("rever: the layout choice was not saved: {error}");
+        }
+        cx.notify();
     }
 
     fn cycle_theme(&mut self, cx: &mut Context<Self>) {
@@ -3194,9 +3303,9 @@ fn scan_picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProp
 }
 
 fn menu_props(browser: &WeakEntity<Browser>, cx: &App) -> AppMenuProps {
-    let (theme_mode, lang) = browser
-        .read_with(cx, |this, _| (this.theme_mode, this.lang))
-        .unwrap_or((ThemeMode::Light, Lang::En));
+    let (theme_mode, lang, layout) = browser
+        .read_with(cx, |this, _| (this.theme_mode, this.lang, this.layout))
+        .unwrap_or((ThemeMode::Light, Lang::En, Layout::default()));
     let t = |key| lang.t(key);
     let mode = theme_name(theme_mode);
     let act = |action: fn(&mut Browser, &mut Context<Browser>)| {
@@ -3217,6 +3326,11 @@ fn menu_props(browser: &WeakEntity<Browser>, cx: &App) -> AppMenuProps {
                     ThemeMode::Dark => "menu.theme.dark",
                 }))
                 .title(fill(t("toolbar.theme"), &[("mode", mode)])),
+            AppMenuItem::new(t("menu.layout"), act(Browser::cycle_layout)).hint(t(match layout {
+                Layout::TabsOnTop => "menu.layout.top",
+                Layout::TabsOnSide => "menu.layout.side",
+                Layout::Sidebar => "menu.layout.sidebar",
+            })),
             not_yet("menu.pageTheme"),
             AppMenuItem::new(t("lang.label"), act(Browser::toggle_lang)).hint(match lang {
                 Lang::En => "English",
@@ -3378,6 +3492,29 @@ mod tests {
             (frames[1].direction, frames[1].opcode),
             (WsDirection::Received, 2)
         );
+    }
+
+    #[test]
+    fn 레이아웃은_위_옆_사이드바_순서로_돌고_저장값과_오간다() {
+        assert_eq!(Layout::TabsOnTop.next(), Layout::TabsOnSide);
+        assert_eq!(Layout::TabsOnSide.next(), Layout::Sidebar);
+        assert_eq!(Layout::Sidebar.next(), Layout::TabsOnTop);
+        for layout in [Layout::TabsOnTop, Layout::TabsOnSide, Layout::Sidebar] {
+            assert_eq!(Layout::from_name(Some(layout.name())), layout);
+        }
+    }
+
+    #[test]
+    fn 저장된_레이아웃이_없거나_모르는_값이면_탭이_위에_있다() {
+        assert_eq!(Layout::from_name(None), Layout::TabsOnTop);
+        assert_eq!(Layout::from_name(Some("floating")), Layout::TabsOnTop);
+    }
+
+    #[test]
+    fn 탭이_위에_있을_때만_사이드바가_없다() {
+        assert!(!Layout::TabsOnTop.has_sidebar());
+        assert!(Layout::TabsOnSide.has_sidebar());
+        assert!(Layout::Sidebar.has_sidebar());
     }
 
     #[test]

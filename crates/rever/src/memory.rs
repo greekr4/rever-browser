@@ -54,6 +54,43 @@ pub fn megabytes(bytes: u64) -> String {
     text + "MB"
 }
 
+/// What the page at `url` holds, out of Servo's memory report: each entry is a label
+/// `url(a, b)` naming the documents measured together, and their bytes. `None` when
+/// the report has nothing for the page.
+pub fn page_bytes(report: &[(String, u64)], url: &str) -> Option<u64> {
+    // shortcut: tabs that share a script thread, or show the same address, each count
+    // the shared bytes in full, and layout is reported under the address the page was
+    // opened at. Give reports a tab id in the Servo patch when exact numbers matter.
+    let mut sizes = report
+        .iter()
+        .filter(|(label, _)| {
+            label
+                .strip_prefix("url(")
+                .and_then(|label| label.strip_suffix(')'))
+                .is_some_and(|urls| urls.split(", ").any(|one| one == url))
+        })
+        .map(|(_, bytes)| *bytes)
+        .peekable();
+    sizes.peek().is_some().then(|| sizes.sum())
+}
+
+/// Hand the allocator's free pages back to the system. What a page freed when it was
+/// left otherwise stays in the process's footprint: after a walk through a few news
+/// sites that was most of it.
+#[cfg(target_os = "macos")]
+pub fn release_unused() {
+    unsafe extern "C" {
+        fn malloc_zone_pressure_relief(zone: *mut libc::c_void, goal: usize) -> usize;
+    }
+    // SAFETY: a null zone means every zone, and a goal of zero means all that can go.
+    unsafe {
+        malloc_zone_pressure_relief(std::ptr::null_mut(), 0);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn release_unused() {}
+
 /// The memory this process holds, as Activity Monitor's "Memory" column counts it.
 #[cfg(target_os = "macos")]
 pub fn footprint() -> Option<u64> {
@@ -101,6 +138,33 @@ mod tests {
         let bars = watch.bars();
         assert_eq!(bars.len(), KEPT);
         assert_eq!((bars[0], bars[KEPT - 1]), (0.5, 1.0));
+    }
+
+    fn report() -> Vec<(String, u64)> {
+        [
+            ("url(https://a.test/)", 100),
+            ("url(https://a.test/)", 20),
+            // 한 스크립트 스레드를 같이 쓰는 문서들은 한 라벨에 묶여 온다.
+            ("url(https://a.test/, https://a.test/frame)", 3),
+            ("url(https://b.test/)", 7000),
+        ]
+        .map(|(label, bytes)| (label.to_owned(), bytes))
+        .to_vec()
+    }
+
+    #[test]
+    fn 페이지가_들어_있는_라벨의_크기를_모두_더한다() {
+        assert_eq!(page_bytes(&report(), "https://a.test/"), Some(123));
+    }
+
+    #[test]
+    fn 주소가_앞부분만_같은_다른_페이지는_세지_않는다() {
+        assert_eq!(page_bytes(&report(), "https://a.test/frame"), Some(3));
+    }
+
+    #[test]
+    fn 리포트에_없는_페이지는_값이_없다() {
+        assert_eq!(page_bytes(&report(), "https://c.test/"), None);
     }
 
     #[cfg(target_os = "macos")]

@@ -21,6 +21,7 @@ const PORT_STRINGS: &[(&str, &str, &str)] = &[
         "도구 {n}개 실행 중",
     ),
     ("chat.working", "Working…", "작업 중…"),
+    ("dev.fps", "FPS", "FPS"),
     ("dev.memory", "Memory", "메모리"),
     ("dev.memory.peak", "Peak", "최고"),
     (
