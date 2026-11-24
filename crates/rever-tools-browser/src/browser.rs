@@ -25,6 +25,7 @@ use crate::gestures::{
     upload_to_ref, wait_for_settle,
 };
 use crate::human_input::{HumanInput, Mouse, Point, named_keys};
+use crate::markdown;
 use crate::{
     js_number, js_round, js_space, js_str, lock, no_tab, now_ms, pretty, schema, tab_schema,
     utf16_len, utf16_prefix,
@@ -246,12 +247,16 @@ tool!(
     BrowserSnapshot,
     ToolDef::new(
         "browser_snapshot",
-        "Capture the current page as a compact accessibility-tree snapshot. Returns url, title, and a YAML-like outline where actionable nodes carry [ref=rN] handles. Use these refs in browser_click and browser_type. This is the primary way to \"see\" the page — far cheaper than dumping HTML or screenshots. By default only what is painted inside the viewport is returned; hidden, overlay-covered and off-screen nodes are omitted and summarised as scroll hints. Scroll (browser_scroll) to reach them, or pass full=true when you genuinely need the whole document. Pass `tab` to snapshot a specific tab (index from browser_tabs) — refs are per-tab, so acting on them (browser_click/browser_type) needs the same `tab`.",
+        "Capture the current page as a compact accessibility-tree snapshot. Returns url, title, and a YAML-like outline where actionable nodes carry [ref=rN] handles. Use these refs in browser_click and browser_type. This is the primary way to \"see\" the page — far cheaper than dumping HTML or screenshots. By default only what is painted inside the viewport is returned; hidden, overlay-covered and off-screen nodes are omitted and summarised as scroll hints. Scroll (browser_scroll) to reach them, or pass full=true when you genuinely need the whole document. Pass `tab` to snapshot a specific tab (index from browser_tabs) — refs are per-tab, so acting on them (browser_click/browser_type) needs the same `tab`. Pass markdown=true to also append the page body as Markdown under the tree: the cheap way to read what it says.",
         schema(
             json!({
                 "full": opt(
                     "boolean",
                     "Return the entire document instead of the viewport-filtered tree (much larger; default false)"
+                ),
+                "markdown": opt(
+                    "boolean",
+                    "Also return the page body as Markdown text under the tree (reads the active tab; default false)"
                 ),
                 "tab": tab_schema(TAB),
             }),
@@ -266,13 +271,16 @@ tool!(
         let snap = snapshotter(ctx)
             .take_snapshot(ctx.browser.as_ref(), opts)
             .await?;
-        let text = format!(
+        let mut text = format!(
             "url: {}\ntitle: {}\n\n{}{}",
             snap.url,
             snap.title,
             snap.tree,
             filter_note(&snap.stats)
         );
+        if args.opt_bool("markdown").unwrap_or(false) {
+            text.push_str(&markdown::markdown_section(ctx.browser.as_ref()).await);
+        }
         Ok(budgeted(ctx, text))
     }
 );

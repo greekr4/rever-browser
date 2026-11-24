@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fetchRest, parsePage, parseTruncated, pickRpcResponse, toValue, userDataDir } from './revb.mjs'
+import { extractMarkdown, fetchRest, parsePage, parseTruncated, pickRpcResponse, toValue, userDataDir } from './revb.mjs'
 
 describe('pickRpcResponse', () => {
   it('SSE 스트림에서 앞선 알림을 건너뛰고 id가 맞는 응답을 고른다', () => {
@@ -25,6 +25,17 @@ describe('pickRpcResponse', () => {
 
   it('202 빈 본문이면 null을 돌려준다', () => {
     expect(pickRpcResponse('', 1)).toBeNull()
+  })
+})
+
+describe('extractMarkdown', () => {
+  it('마커 뒤의 마크다운만 잘라 돌려준다', () => {
+    const snap = 'url: http://x\ntitle: t\n\n- button "A" [ref=r1]\n\n--- page markdown ---\n# 제목\n\n본문'
+    expect(extractMarkdown(snap)).toBe('# 제목\n\n본문')
+  })
+
+  it('마커가 없으면 null을 돌려준다', () => {
+    expect(extractMarkdown('- button "A" [ref=r1]')).toBeNull()
   })
 })
 

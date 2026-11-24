@@ -24,13 +24,17 @@
   },
   {
     "name": "browser_snapshot",
-    "description": "Capture the current page as a compact accessibility-tree snapshot. Returns url, title, and a YAML-like outline where actionable nodes carry [ref=rN] handles. Use these refs in browser_click and browser_type. This is the primary way to \"see\" the page — far cheaper than dumping HTML or screenshots. By default only what is painted inside the viewport is returned; hidden, overlay-covered and off-screen nodes are omitted and summarised as scroll hints. Scroll (browser_scroll) to reach them, or pass full=true when you genuinely need the whole document. Pass `tab` to snapshot a specific tab (index from browser_tabs) — refs are per-tab, so acting on them (browser_click/browser_type) needs the same `tab`.",
+    "description": "Capture the current page as a compact accessibility-tree snapshot. Returns url, title, and a YAML-like outline where actionable nodes carry [ref=rN] handles. Use these refs in browser_click and browser_type. This is the primary way to \"see\" the page — far cheaper than dumping HTML or screenshots. By default only what is painted inside the viewport is returned; hidden, overlay-covered and off-screen nodes are omitted and summarised as scroll hints. Scroll (browser_scroll) to reach them, or pass full=true when you genuinely need the whole document. Pass `tab` to snapshot a specific tab (index from browser_tabs) — refs are per-tab, so acting on them (browser_click/browser_type) needs the same `tab`. Pass markdown=true to also append the page body as Markdown under the tree: the cheap way to read what it says.",
     "inputSchema": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
       "properties": {
         "full": {
           "description": "Return the entire document instead of the viewport-filtered tree (much larger; default false)",
+          "type": "boolean"
+        },
+        "markdown": {
+          "description": "Also return the page body as Markdown text under the tree (reads the active tab; default false)",
           "type": "boolean"
         },
         "tab": {

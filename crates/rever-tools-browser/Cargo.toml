@@ -9,6 +9,10 @@ description = "MCP tools driving the tab: navigate, snapshot, click, type, scrol
 rever-tools-api = { path = "../rever-tools-api" }
 rever-core = { path = "../rever-core" }
 rever-snapshot = { path = "../rever-snapshot" }
+# Page body text as Markdown for the snapshot tool.
+rever-html2md = { path = "../rever-html2md" }
+html5ever = "0.39"
+markup5ever_rcdom = "0.39"
 # Scope check of navigate, and the fence the crawl reports against.
 rever-scope = { path = "../rever-scope" }
 # The requests an action set off (triggered-requests.ts is ported there).
