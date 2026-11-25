@@ -14,7 +14,7 @@ use std::time::Duration;
 use gpui::{
     AnyElement, App, ClipboardItem, CursorStyle, Div, ElementId, Font, FontStyle, FontWeight, Hsla,
     InteractiveText, MouseButton, Rgba, SharedString, StrikethroughStyle, StyledText, TextRun,
-    Window, canvas, div, font, prelude::*, px, relative, rgb, rgba,
+    Window, actions, canvas, div, font, prelude::*, px, relative, rgb, rgba,
 };
 pub use pulldown_cmark::Alignment;
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd, TextMergeStream};
@@ -23,6 +23,8 @@ use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::theme::Theme;
 
 use crate::selection;
+
+actions!(markdown, [CopySelection]);
 
 // ---------------------------------------------------------------------------
 // Parsing
@@ -1181,16 +1183,32 @@ impl RenderOnce for Markdown {
                     move |_, _, _cx| selection::clear_owner(owner),
                     move |_, _, _, _| {},
                 ));
-                let overlay = selection_overlay(owner, self.theme, cx);
+                let overlay = selection_overlay(owner);
+                // Keyboard focus rides on the root so the app can bind Cmd-C
+                // to a context only this element carries; a press on the text
+                // moves focus here, and the input's own copy binding keeps
+                // winning whenever the input is what holds focus.
+                let focus = selection::focus_handle(cx, owner);
+                let focus_for_down = focus.clone();
                 root.child(marker)
                     // `.chat-log .md > :first-child { margin-top: 0 }`
                     .children(painter.stack(&self.blocks, &gaps, false, &context))
                     .pb(px(trailing))
                     .child(overlay)
+                    .track_focus(&focus)
+                    .key_context("MarkdownSelection")
                     .cursor(CursorStyle::IBeam)
+                    .on_action(move |_: &CopySelection, window, cx| {
+                        if selection::copy_and_clear(cx, owner) {
+                            window.refresh();
+                        }
+                    })
                     .on_mouse_down(MouseButton::Left, move |event, window, _cx| {
-                        selection::mouse_down(owner, event);
-                        window.refresh();
+                        if selection::mouse_down(owner, event) {
+                            focus_for_down.focus(window);
+                        } else {
+                            window.refresh();
+                        }
                     })
                     .on_mouse_move(move |event, window, _cx| {
                         if selection::mouse_move(owner, event) {
@@ -1212,48 +1230,17 @@ impl RenderOnce for Markdown {
     }
 }
 
-/// The selection layer: a canvas that paints the highlight over the text, and
-/// a copy bubble at the selection's head once the drag ends. The canvas's own
-/// bounds start at the markdown root, so its origin is what the bubble's
-/// window-space head point is made relative to.
-fn selection_overlay(owner: u64, theme: Theme, cx: &App) -> Div {
-    let bubble = selection::has_selection(owner).then(|| {
-        let (left, top) = selection::bubble_point(owner).unwrap_or((0.0, 0.0));
-        div()
-            .absolute()
-            .left(px(left))
-            .top(px(top - 28.0))
-            .id("md-copy-bubble")
-            .px(px(8.0))
-            .py(px(3.0))
-            .rounded(px(6.0))
-            .bg(theme.surface_3)
-            .border_1()
-            .border_color(theme.border_2)
-            .text_size(px(11.0))
-            .text_color(theme.text)
-            .cursor(CursorStyle::PointingHand)
-            .child("Copy")
-            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                cx.stop_propagation();
-                selection::copy_and_clear(cx, owner);
-                window.refresh();
-            })
-    });
-    div()
-        .absolute()
-        .size_full()
-        .child(canvas(
-            move |_, _, _| {},
-            move |bounds, _, window, cx| {
-                let (rects, bubble) = selection::highlight(owner, bounds.origin);
-                selection::set_bubble_point(owner, bubble);
-                for rect in rects {
-                    window.paint_quad(gpui::fill(rect, selection::highlight_color()));
-                }
-            },
-        ))
-        .children(bubble)
+/// The selection layer: a canvas that paints the highlight over the text.
+/// It has no hitbox of its own, so mouse events pass through to the text.
+fn selection_overlay(owner: u64) -> Div {
+    div().absolute().size_full().child(canvas(
+        move |_, _, _| {},
+        move |_, _, window, _cx| {
+            for rect in selection::highlight(owner) {
+                window.paint_quad(gpui::fill(rect, selection::highlight_color()));
+            }
+        },
+    ))
 }
 
 /// What a block inherits from the blocks around it.
@@ -2585,7 +2572,7 @@ mod tests {
 
 #[cfg(test)]
 mod selection_tests {
-    use super::{ElementId, markdown};
+    use super::{CopySelection, ElementId, markdown};
     use gpui::prelude::*;
     use gpui::{
         Context, Modifiers, MouseButton, Point, Render, TestAppContext, VisualTestContext, Window,
@@ -2638,6 +2625,28 @@ mod selection_tests {
                 && !selected.is_empty()
                 && !selected.contains('문'),
             "selection picked text from the first paragraph: {selected}"
+        );
+        // One visual line of selection is one rectangle, not one per glyph.
+        let rects = crate::selection::highlight(owner);
+        assert_eq!(rects.len(), 1, "a single-line selection is one rect");
+        // Cmd-C copies it: the drag moved focus to the markdown, so the
+        // contextual binding reaches the element's action.
+        // The keystroke-to-binding hop is gpui's own machinery (the same
+        // pattern text_input ships); in this test harness only the
+        // dispatch below is reachable, so it stands in for cmd-c.
+        cx.dispatch_action(CopySelection);
+        cx.run_until_parked();
+        let clipboard = cx
+            .read_from_clipboard()
+            .and_then(|item| item.text().to_owned());
+        assert_eq!(
+            clipboard,
+            Some(selected.clone()),
+            "cmd-c copied the selection"
+        );
+        assert!(
+            !crate::selection::has_selection(owner),
+            "copying clears the selection"
         );
     }
 }

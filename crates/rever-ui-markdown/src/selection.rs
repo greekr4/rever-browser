@@ -16,7 +16,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher as _;
 
 use gpui::{
-    AnyElement, App, Bounds, ClipboardItem, Element, ElementId, GlobalElementId,
+    AnyElement, App, Bounds, ClipboardItem, Element, ElementId, FocusHandle, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     Pixels, Point, SharedString, TextLayout, Window, px,
 };
@@ -89,9 +89,9 @@ impl P32 {
 pub(crate) struct SelectionState {
     hits: RefCell<HashMap<u64, Vec<HitEntry>>>,
     active: RefCell<Option<Active>>,
-    /// Where each owner's copy bubble sits, relative to its root: recorded
-    /// during the overlay's paint so the next render can place the button.
-    bubbles: RefCell<HashMap<u64, (f32, f32)>>,
+    /// Each owner's keyboard focus: a drag moves focus to the markdown so a
+    /// contextual Cmd-C binding reaches it.
+    focus: RefCell<HashMap<u64, FocusHandle>>,
 }
 
 // GPUI draws on one thread; a thread-local sidesteps both `Send` bounds and
@@ -104,6 +104,16 @@ thread_local! {
 /// inside conflict-free.
 fn state<R>(f: impl FnOnce(&SelectionState) -> R) -> R {
     STATE.with(f)
+}
+
+/// The keyboard focus of `owner`, created on first use.
+pub(crate) fn focus_handle(cx: &App, owner: u64) -> FocusHandle {
+    if let Some(handle) = state(|s| s.focus.borrow().get(&owner).cloned()) {
+        return handle;
+    }
+    let handle = cx.focus_handle();
+    state(|s| s.focus.borrow_mut().insert(owner, handle.clone()));
+    handle
 }
 
 /// The instance key of a markdown root id.
@@ -193,10 +203,10 @@ fn distance_to(bounds: Bounds<Pixels>, position: Point<Pixels>) -> f32 {
 /// A drag starts here. Below the threshold nothing is selected yet, so a
 /// plain click still reaches links and the copy button. A press on no text
 /// at all clears whatever was selected.
-pub(crate) fn mouse_down(owner: u64, event: &MouseDownEvent) {
+pub(crate) fn mouse_down(owner: u64, event: &MouseDownEvent) -> bool {
     let Some(hit) = hit_test(owner, event.position) else {
         clear(owner);
-        return;
+        return false;
     };
     state(|s| {
         *s.active.borrow_mut() = Some(Active {
@@ -207,6 +217,7 @@ pub(crate) fn mouse_down(owner: u64, event: &MouseDownEvent) {
             live: false,
         })
     });
+    true
 }
 
 /// The drag moves: past the threshold the selection goes live and the head
@@ -277,20 +288,16 @@ fn order(a: Hit, b: Hit) -> (Hit, Hit) {
 
 /// The highlight rectangles of the active selection in `owner`, in window
 /// space, and where the copy bubble sits relative to `origin`.
-pub(crate) fn highlight(
-    owner: u64,
-    origin: Point<Pixels>,
-) -> (Vec<Bounds<Pixels>>, Option<(f32, f32)>) {
+pub(crate) fn highlight(owner: u64) -> Vec<Bounds<Pixels>> {
     let active = state(|s| s.active.borrow().clone());
     let Some(active) = active else {
-        return (Vec::new(), None);
+        return Vec::new();
     };
     let entries = state(|s| s.hits.borrow().get(&owner).cloned());
     let Some(entries) = entries else {
-        return (Vec::new(), None);
+        return Vec::new();
     };
     let mut rects = Vec::new();
-    let mut bubble = None;
     for entry in entries {
         let Some((start, end)) = block_range(&active, owner, entry.ordinal) else {
             continue;
@@ -300,33 +307,30 @@ pub(crate) fn highlight(
             continue;
         }
         rects.extend(line_rects(&entry, start, end));
-        // The bubble follows the selection's moving head.
-        if active.head.ordinal == entry.ordinal {
-            let head = active.head.index.min(entry.text.len());
-            if let Some(point) = entry.layout.position_for_index(head) {
-                bubble = Some((f32::from(point.x - origin.x), f32::from(point.y - origin.y)));
-            }
-        }
     }
-    (rects, bubble)
+    rects
 }
 
 /// One entry's selection as whole-line rectangles: sample the caret positions
 /// of every char boundary in the range and group them by row.
 fn line_rects(entry: &HitEntry, start: usize, end: usize) -> Vec<Bounds<Pixels>> {
     let text = &entry.text[..];
-    let mut rows: Vec<(f32, f32, f32)> = Vec::new(); // y, min_x, max_x
+    // Rows sit on the block's line grid: same wrapped line means same grid
+    // slot, so sub-pixel y wobble between runs cannot split a row.
+    let grid = f32::from(entry.line_height).max(1.0);
+    let mut rows: Vec<(i32, f32, f32, f32)> = Vec::new(); // slot, y, min_x, max_x
     let mut at = start;
     while at <= end {
         if let Some(point) = entry.layout.position_for_index(at) {
             let (x, y) = (f32::from(point.x), f32::from(point.y));
+            let slot = (y / grid).round() as i32;
             let row = rows.last_mut();
             match row {
-                Some((row_y, min_x, max_x)) if (*row_y - y).abs() < 0.5 => {
+                Some((row_slot, row_y, min_x, max_x)) if *row_slot == slot => {
                     *min_x = min_x.min(x);
                     *max_x = max_x.max(x);
                 }
-                _ => rows.push((y, x, x)),
+                _ => rows.push((slot, y, x, x)),
             }
         }
         if at >= end {
@@ -335,7 +339,7 @@ fn line_rects(entry: &HitEntry, start: usize, end: usize) -> Vec<Bounds<Pixels>>
         at = next_boundary(text, at, end);
     }
     rows.into_iter()
-        .map(|(y, min_x, max_x)| Bounds {
+        .map(|(_slot, y, min_x, max_x)| Bounds {
             origin: Point {
                 x: px(min_x),
                 y: px(y),
@@ -380,11 +384,12 @@ pub(crate) fn selected_text(owner: u64) -> Option<String> {
 }
 
 /// Copy the selection to the clipboard and clear it.
-pub(crate) fn copy_and_clear(cx: &mut App, owner: u64) {
-    if let Some(text) = selected_text(owner) {
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
-    }
+pub(crate) fn copy_and_clear(cx: &mut App, owner: u64) -> bool {
+    let copied = selected_text(owner).inspect(|text| {
+        cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+    });
     clear(owner);
+    copied.is_some()
 }
 
 /// Forget the selection of `owner`.
@@ -405,26 +410,6 @@ pub(crate) fn has_selection(owner: u64) -> bool {
             .as_ref()
             .is_some_and(|a| a.owner == owner && a.live)
     })
-}
-
-/// Where the copy bubble of `owner` sits relative to its root.
-pub(crate) fn bubble_point(owner: u64) -> Option<(f32, f32)> {
-    state(|s| s.bubbles.borrow().get(&owner).copied())
-}
-
-/// Records the bubble point measured during the overlay's paint.
-pub(crate) fn set_bubble_point(owner: u64, point: Option<(f32, f32)>) {
-    state(|s| {
-        let mut bubbles = s.bubbles.borrow_mut();
-        match point {
-            Some(point) => {
-                bubbles.insert(owner, point);
-            }
-            None => {
-                bubbles.remove(&owner);
-            }
-        }
-    });
 }
 
 /// The overlay color.
@@ -577,4 +562,9 @@ pub(crate) fn debug_state(owner: u64) -> String {
                 .map(|a| (a.owner, a.live, a.down, a.head))
         )
     })
+}
+
+#[cfg(test)]
+pub(crate) fn focus_handle_pub(owner: &u64) -> FocusHandle {
+    state(|s| s.focus.borrow().get(owner).cloned()).expect("focus handle exists")
 }
