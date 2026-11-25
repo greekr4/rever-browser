@@ -19,3 +19,7 @@ regex = "1"
 [[example]]
 name = "preview_markdown"
 path = "examples/preview.rs"
+
+[dev-dependencies]
+# TestAppContext: the drag selection is tested against a real window tree.
+gpui = { workspace = true, features = ["test-support"] }

@@ -6,6 +6,7 @@ use gpui::{
     prelude::*,
 };
 use rever_ui_kit::text_input::SelectAll;
+use rever_ui_markdown::CopySelection;
 
 use crate::app::Browser;
 
@@ -41,9 +42,14 @@ actions!(
     ]
 );
 
+// Not a browser shortcut: it only fires while a chat message holds focus,
+// right after a text drag, so the page's and the input's own Cmd-C are
+// untouched.
+
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-t", NewTab, None),
+        KeyBinding::new("cmd-c", CopySelection, Some("MarkdownSelection")),
         KeyBinding::new("cmd-w", CloseTab, None),
         KeyBinding::new("cmd-shift-t", ReopenClosedTab, None),
         KeyBinding::new("ctrl-tab", NextTab, None),

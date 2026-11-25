@@ -12,15 +12,19 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, App, ClipboardItem, ElementId, Font, FontStyle, FontWeight, Hsla, InteractiveText,
-    Rgba, SharedString, StrikethroughStyle, StyledText, TextRun, Window, div, font, prelude::*, px,
-    relative, rgb, rgba,
+    AnyElement, App, ClipboardItem, CursorStyle, Div, ElementId, Font, FontStyle, FontWeight, Hsla,
+    InteractiveText, MouseButton, Rgba, SharedString, StrikethroughStyle, StyledText, TextLayout,
+    TextRun, Window, actions, canvas, div, font, prelude::*, px, relative, rgb, rgba,
 };
 pub use pulldown_cmark::Alignment;
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd, TextMergeStream};
 use regex::Regex;
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::theme::Theme;
+
+use crate::selection;
+
+actions!(markdown, [CopySelection]);
 
 // ---------------------------------------------------------------------------
 // Parsing
@@ -1073,6 +1077,25 @@ pub fn markdown(text: &str, theme: &Theme) -> Markdown {
         dim: false,
         lang: Lang::En,
         on_link: None,
+        selectable: false,
+    }
+}
+
+/// One run of text rendered as-is: no Markdown parsing, nothing restyled.
+/// For bubbles whose exact characters must survive (a user's own message),
+/// with the same `.selectable(true)` support as [`markdown`].
+pub fn plain(text: &str, theme: &Theme) -> Markdown {
+    Markdown {
+        id: "md".into(),
+        blocks: vec![Block::Text(vec![Span {
+            text: text.to_owned(),
+            ..Span::default()
+        }])],
+        theme: *theme,
+        dim: false,
+        lang: Lang::En,
+        on_link: None,
+        selectable: false,
     }
 }
 
@@ -1084,6 +1107,7 @@ pub struct Markdown {
     dim: bool,
     lang: Lang,
     on_link: Option<LinkHandler>,
+    selectable: bool,
 }
 
 impl Markdown {
@@ -1095,6 +1119,13 @@ impl Markdown {
     /// `.md--dim`: faded and italic.
     pub fn dim(mut self, dim: bool) -> Self {
         self.dim = dim;
+        self
+    }
+
+    /// Drag-to-select the text, with a copy bubble at the selection's head.
+    /// Off by default: only panels that want selection pay for the hit maps.
+    pub fn selectable(mut self, selectable: bool) -> Self {
+        self.selectable = selectable;
         self
     }
 
@@ -1113,7 +1144,9 @@ impl Markdown {
 }
 
 impl RenderOnce for Markdown {
-    fn render(self, window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        // Text blocks record their layouts under this key when selection is on.
+        let owner = self.selectable.then(|| selection::key(&self.id));
         let mut painter = Painter {
             theme: self.theme,
             tokens: Tokens::of(&self.theme),
@@ -1122,6 +1155,7 @@ impl RenderOnce for Markdown {
             dim: self.dim,
             lang: self.lang,
             on_link: self.on_link,
+            owner,
             next_id: 0,
         };
         let context = Context {
@@ -1130,7 +1164,7 @@ impl RenderOnce for Markdown {
         };
         let gaps = spacing(&self.blocks);
         let trailing = gaps.last().copied().unwrap_or(0.0);
-        div()
+        let root = div()
             .id(self.id)
             .flex()
             .flex_col()
@@ -1138,11 +1172,74 @@ impl RenderOnce for Markdown {
             .text_size(px(FONT_PX))
             .line_height(relative(LINE_HEIGHT))
             .text_color(self.theme.text)
-            .when(self.dim, |root| root.opacity(0.6).italic())
-            // `.chat-log .md > :first-child { margin-top: 0 }`
-            .children(painter.stack(&self.blocks, &gaps, false, &context))
-            .pb(px(trailing))
+            .when(self.dim, |root| root.opacity(0.6).italic());
+        match owner {
+            Some(owner) => {
+                // Drop last frame's hit entries before any block records
+                // new ones. This must run in PREPAINT: the whole tree
+                // prepaints before anything paints, so a paint-phase clear
+                // would wipe what this frame's own prepaint just recorded.
+                let marker = div().absolute().child(canvas(
+                    move |_, _, _cx| selection::clear_owner(owner),
+                    move |_, _, _, _| {},
+                ));
+                let overlay = selection_overlay(owner);
+                // Keyboard focus rides on the root so the app can bind Cmd-C
+                // to a context only this element carries; a press on the text
+                // moves focus here, and the input's own copy binding keeps
+                // winning whenever the input is what holds focus.
+                let focus = selection::focus_handle(cx, owner);
+                let focus_for_down = focus.clone();
+                root.child(marker)
+                    // `.chat-log .md > :first-child { margin-top: 0 }`
+                    .children(painter.stack(&self.blocks, &gaps, false, &context))
+                    .pb(px(trailing))
+                    .child(overlay)
+                    .track_focus(&focus)
+                    .key_context("MarkdownSelection")
+                    .cursor(CursorStyle::IBeam)
+                    .on_action(move |_: &CopySelection, window, cx| {
+                        if selection::copy_and_clear(cx, owner) {
+                            window.refresh();
+                        }
+                    })
+                    .on_mouse_down(MouseButton::Left, move |event, window, _cx| {
+                        if selection::mouse_down(owner, event) {
+                            focus_for_down.focus(window);
+                        } else {
+                            window.refresh();
+                        }
+                    })
+                    .on_mouse_move(move |event, window, _cx| {
+                        if selection::mouse_move(owner, event) {
+                            window.refresh();
+                        }
+                    })
+                    .on_mouse_up(MouseButton::Left, move |event, window, _cx| {
+                        if selection::mouse_up(owner, event) {
+                            window.refresh();
+                        }
+                    })
+            }
+            None => root
+                // `.chat-log .md > :first-child { margin-top: 0 }`
+                .children(painter.stack(&self.blocks, &gaps, false, &context))
+                .pb(px(trailing)),
+        }
     }
+}
+
+/// The selection layer: a canvas that paints the highlight over the text.
+/// It has no hitbox of its own, so mouse events pass through to the text.
+fn selection_overlay(owner: u64) -> Div {
+    div().absolute().size_full().child(canvas(
+        move |_, _, _| {},
+        move |_, _, window, _cx| {
+            for rect in selection::highlight(owner) {
+                window.paint_quad(gpui::fill(rect, selection::highlight_color()));
+            }
+        },
+    ))
 }
 
 /// What a block inherits from the blocks around it.
@@ -1159,6 +1256,9 @@ struct Painter {
     dim: bool,
     lang: Lang,
     on_link: Option<LinkHandler>,
+    /// Set when the markdown root has selection on: text blocks record their
+    /// layouts under this key.
+    owner: Option<u64>,
     next_id: usize,
 }
 
@@ -1276,8 +1376,14 @@ impl Painter {
                 links.push((start..text.len(), url.clone()));
             }
         }
-        let styled = StyledText::new(text).with_runs(runs);
-        match &self.on_link {
+        let styled = StyledText::new(text.clone()).with_runs(runs);
+        // The layout handle is cloned before the styled text moves on: the
+        // clone shares the same measurement cell, so it fills during prepaint.
+        let layout = styled.layout().clone();
+        // Counted even without links, so ordinals stay unique per block.
+        self.next_id += 1;
+        let ordinal = self.next_id;
+        let inner = match &self.on_link {
             Some(on_link) if !links.is_empty() => {
                 let on_link = on_link.clone();
                 let (ranges, urls): (Vec<_>, Vec<_>) = links.into_iter().unzip();
@@ -1290,7 +1396,34 @@ impl Painter {
                     .into_any_element()
             }
             _ => styled.into_any_element(),
+        };
+        self.selectable(ordinal, layout, SharedString::from(text), inner)
+    }
+
+    /// Wraps a text element for selection when the root has it on.
+    fn selectable(
+        &self,
+        ordinal: usize,
+        layout: TextLayout,
+        text: SharedString,
+        inner: AnyElement,
+    ) -> AnyElement {
+        match self.owner {
+            Some(owner) => selection::SelectableText::new(owner, ordinal, layout, text, inner)
+                .into_any_element(),
+            None => inner,
         }
+    }
+
+    /// A code block's `<pre>`: one run of text in its parent's text style, with
+    /// the same selection bookkeeping as [`Self::text`].
+    fn raw_text(&mut self, text: String) -> AnyElement {
+        let styled = StyledText::new(text.clone());
+        let layout = styled.layout().clone();
+        self.next_id += 1;
+        let ordinal = self.next_id;
+        let inner = styled.into_any_element();
+        self.selectable(ordinal, layout, text.into(), inner)
     }
 
     /// `<div class="code-block">`: the `<pre>` scrolls sideways, and the copy button
@@ -1316,7 +1449,7 @@ impl Painter {
                     .line_height(relative(CODE_LINE_HEIGHT))
                     .text_color(context.color)
                     .whitespace_nowrap()
-                    .child(SharedString::from(shown)),
+                    .child(self.raw_text(shown)),
             )
             .child(CopyButton {
                 // `innerText` of the <pre>: the code with its final newline.
@@ -2448,5 +2581,266 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::{CopySelection, ElementId, FONT_PX, LINE_HEIGHT, markdown};
+    use gpui::prelude::*;
+    use gpui::{
+        Context, Modifiers, MouseButton, Point, Render, TestAppContext, VisualTestContext, Window,
+        div, px,
+    };
+    use rever_ui_kit::theme::{Theme, ThemeMode};
+
+    /// A window holding one selectable message `width` pixels wide: narrow
+    /// enough and its text wraps.
+    struct Host {
+        id: &'static str,
+        text: &'static str,
+        width: f32,
+    }
+
+    impl Render for Host {
+        fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let theme = Theme::resolve(ThemeMode::Light, window.appearance());
+            div()
+                .id("md-host")
+                .debug_selector(|| "md-host".into())
+                .p(px(20.0))
+                .w(px(40.0 + self.width))
+                .child(markdown(self.text, &theme).id(self.id).selectable(true))
+        }
+    }
+
+    fn open<'a>(
+        cx: &'a mut TestAppContext,
+        text: &'static str,
+        width: f32,
+    ) -> (u64, &'a mut VisualTestContext) {
+        open_as(cx, "md-sel", text, width)
+    }
+
+    /// [`open`] with the message id of the test's choosing: windows opened in
+    /// one test keep separate hit maps.
+    fn open_as<'a>(
+        cx: &'a mut TestAppContext,
+        id: &'static str,
+        text: &'static str,
+        width: f32,
+    ) -> (u64, &'a mut VisualTestContext) {
+        // The app binds this at startup before any window opens.
+        cx.update(|cx: &mut gpui::App| {
+            cx.bind_keys([gpui::KeyBinding::new(
+                "cmd-c",
+                CopySelection,
+                Some("MarkdownSelection"),
+            )]);
+        });
+        let (_view, cx) = cx.add_window_view(|_window: &mut Window, _cx: &mut Context<Host>| {
+            Host { id, text, width }
+        });
+        cx.run_until_parked();
+        (crate::selection::key(&ElementId::from(id)), cx)
+    }
+
+    fn drag(cx: &mut VisualTestContext, start: Point<gpui::Pixels>, end: Point<gpui::Pixels>) {
+        cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+    }
+
+    /// A point just inside the glyph that starts at caret `at` on its line.
+    fn on(carets: &[Point<gpui::Pixels>], at: usize) -> Point<gpui::Pixels> {
+        carets[at] + gpui::point(px(1.0), px(FONT_PX * LINE_HEIGHT / 2.0))
+    }
+
+    #[gpui::test]
+    fn 드래그하면_텍스트가_선택된다(cx: &mut TestAppContext) {
+        let (owner, cx) = open(
+            cx,
+            "가나다라마바사 아자차카타파하\n\n둘째 문단의 글자들",
+            600.0,
+        );
+        let carets = crate::selection::carets(owner);
+        drag(
+            cx,
+            on(&carets, 0),
+            carets[0] + gpui::point(px(120.0), px(12.0)),
+        );
+        let selected = crate::selection::selected_text(owner);
+        assert!(selected.is_some(), "nothing was selected");
+        let selected = selected.unwrap();
+        assert!(
+            "가나다라마바사 아자차카타파하".starts_with(&selected)
+                && !selected.is_empty()
+                && !selected.contains('문'),
+            "selection picked text from the first paragraph: {selected}"
+        );
+        // One visual line of selection is one rectangle, not one per glyph.
+        let rects = crate::selection::highlight(owner);
+        assert_eq!(rects.len(), 1, "a single-line selection is one rect");
+        // Cmd-C copies it: the drag moved focus to the markdown so the
+        // contextual binding reaches the element's action.
+        cx.simulate_keystrokes("cmd-c");
+        let clipboard = cx
+            .read_from_clipboard()
+            .and_then(|item| item.text().to_owned());
+        assert_eq!(
+            clipboard,
+            Some(selected.clone()),
+            "cmd-c copied the selection"
+        );
+        assert!(
+            crate::selection::selected_text(owner).is_none(),
+            "copying clears the selection"
+        );
+    }
+
+    #[gpui::test]
+    fn 줄이_바뀌어도_다음_줄_첫_글자부터_칠해진다(cx: &mut TestAppContext) {
+        let text: &'static str = concat!(
+            "가나다라마 바사아자차 카타파하가 나다라마바 ",
+            "가나다라마 바사아자차 카타파하가 나다라마바 ",
+            "가나다라마 바사아자차 카타파하가 나다라마바"
+        );
+        let (owner, cx) = open(cx, text, 120.0);
+        let carets = crate::selection::carets(owner);
+        // Carets are char boundaries: this is the byte offset of each.
+        let bytes: Vec<usize> = text
+            .char_indices()
+            .map(|(at, _)| at)
+            .chain([text.len()])
+            .collect();
+        assert_eq!(carets.len(), bytes.len(), "one caret per char boundary");
+        // A caret at a wrap boundary sits at the end of the line above. So the
+        // first caret on a lower line is the boundary after that line's first
+        // glyph and the next one starts its third glyph.
+        let second = (1..carets.len())
+            .find(|&at| carets[at].y != carets[0].y)
+            .expect("the text wraps");
+        assert_eq!(carets[second - 1].y, carets[0].y);
+        let on_second = (second..carets.len())
+            .take_while(|&at| carets[at].y == carets[second].y)
+            .count();
+        assert!(on_second >= 3, "the second line holds enough glyphs");
+        let third_glyph = second + 1;
+        drag(cx, on(&carets, 0), on(&carets, third_glyph));
+        let rects = crate::selection::highlight(owner);
+        assert_eq!(rects.len(), 2, "one rect per visual line: {rects:?}");
+        assert_eq!(rects[0].origin.y, carets[0].y);
+        assert_eq!(rects[1].origin.y, carets[second].y);
+        assert_eq!(
+            rects[1].origin.x, carets[0].x,
+            "the second line is painted from its first glyph: {rects:?}"
+        );
+        assert_eq!(rects[1].right(), carets[third_glyph].x);
+        assert!(
+            rects[0].right() >= carets[second - 2].x,
+            "the last glyph of the first line is painted too: {rects:?}"
+        );
+        assert_eq!(
+            crate::selection::selected_text(owner).as_deref(),
+            Some(&text[..bytes[third_glyph]])
+        );
+    }
+
+    #[gpui::test]
+    fn 커서가_글자_중간을_지나면_그_글자도_선택된다(cx: &mut TestAppContext) {
+        let text = "가나다라마바사";
+        let (owner, cx) = open(cx, text, 600.0);
+        let carets = crate::selection::carets(owner);
+        // Release a little past the middle of the fourth glyph.
+        let past_middle = px(f32::from(carets[4].x - carets[3].x) / 2.0 + 1.0);
+        let end = carets[3] + gpui::point(past_middle, px(FONT_PX * LINE_HEIGHT / 2.0));
+        drag(cx, on(&carets, 0), end);
+        assert_eq!(
+            crate::selection::selected_text(owner).as_deref(),
+            Some("가나다라")
+        );
+    }
+
+    #[gpui::test]
+    fn 왼쪽으로_드래그해도_누른_글자는_선택에_남는다(cx: &mut TestAppContext) {
+        let text = "가나다라마바사";
+        let (owner, cx) = open(cx, text, 600.0);
+        let carets = crate::selection::carets(owner);
+        // Press on the fifth glyph and drag back to the second.
+        drag(cx, on(&carets, 4), on(&carets, 1));
+        assert_eq!(
+            crate::selection::selected_text(owner).as_deref(),
+            Some("나다라마")
+        );
+    }
+
+    /// The end of the block's last line. Releasing a pixel short of it still
+    /// selects to the end: that glyph's far boundary is the closer one.
+    fn end_of(carets: &[Point<gpui::Pixels>]) -> Point<gpui::Pixels> {
+        *carets.last().expect("the block has carets") + gpui::point(px(-1.0), px(2.0))
+    }
+
+    #[gpui::test]
+    fn 마크다운_블록_종류마다_드래그로_선택된다(cx: &mut TestAppContext) {
+        for (source, expected) in [
+            ("# 제목 글자들", "제목 글자들"),
+            ("- 항목의 글자들", "항목의 글자들"),
+            ("> 인용의 글자들", "인용의 글자들"),
+            ("| 머리 |\n| --- |\n| 칸의 글자들 |", "머리"),
+            ("[링크 글자들](https://example.test)", "링크 글자들"),
+            (
+                "```\n첫째 코드 줄\n둘째 코드 줄\n```",
+                "첫째 코드 줄\n둘째 코드 줄",
+            ),
+        ] {
+            let (owner, cx) = open_as(cx, expected, source, 600.0);
+            let carets = crate::selection::carets(owner);
+            assert!(!carets.is_empty(), "no selectable text in {source:?}");
+            drag(cx, on(&carets, 0), end_of(&carets));
+            assert_eq!(
+                crate::selection::selected_text(owner).as_deref(),
+                Some(expected),
+                "dragging across {source:?}"
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn 긴_코드_줄의_하이라이트는_상자_안에서_끝난다(cx: &mut TestAppContext) {
+        const LONG: &str =
+            "가나다라마바사아자차카타파하가나다라마바사아자차카타파하가나다라마바사아자차";
+        let source: &'static str =
+            Box::leak(format!("```\n첫째 줄\n{LONG}\n셋째 줄\n```").into_boxed_str());
+        let (owner, cx) = open(cx, source, 120.0);
+        let carets = crate::selection::carets(owner);
+        assert!(carets.len() > 40, "code block text is selectable");
+        // The message is 120px wide and its padding 20px: this is the right
+        // edge of the box the code scrolls in. The middle line runs past it.
+        let box_right = cx.debug_bounds("md-host").expect("host on screen").right() - px(20.0);
+        assert!(carets.iter().any(|caret| caret.x > box_right));
+        let end = carets[carets.len() - 1];
+        assert!(end.x < box_right, "the last line ends inside the box");
+        drag(cx, on(&carets, 0), end_of(&carets));
+        let rects = crate::selection::highlight(owner);
+        assert_eq!(rects.len(), 3, "one rect per code line: {rects:?}");
+        for rect in &rects {
+            assert!(
+                rect.right() <= box_right,
+                "highlight escaped the code box: {rect:?}"
+            );
+        }
+        assert!(
+            rects[1].right() > box_right - px(2.0),
+            "the long line is painted up to the box edge: {rects:?}"
+        );
+        assert!(
+            rects[0].right() < box_right - px(60.0),
+            "the short first line is painted only as far as its text: {rects:?}"
+        );
+        assert_eq!(
+            crate::selection::selected_text(owner),
+            Some(format!("첫째 줄\n{LONG}\n셋째 줄"))
+        );
     }
 }

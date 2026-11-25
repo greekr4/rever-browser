@@ -7,7 +7,7 @@ use gpui::{
     MouseButton, MouseDownEvent, Transformation, div, percentage, prelude::*, px, svg,
 };
 use rever_ui_kit::theme::Theme;
-use rever_ui_markdown::markdown;
+use rever_ui_markdown::{markdown, plain};
 
 use super::{icon, icon_button};
 use crate::app::{Browser, ChatLine, link_target, shows_end};
@@ -190,7 +190,11 @@ impl Browser {
                                 .border_1()
                                 .border_color(theme.border_2)
                                 .bg(theme.surface_2)
-                                .child(line.text.clone()),
+                                .child(
+                                    plain(&line.text, theme)
+                                        .id(("chat-user-plaintext", index))
+                                        .selectable(true),
+                                ),
                         )
                         .into_any_element(),
                 );
@@ -216,6 +220,7 @@ impl Browser {
                             markdown(&line.text, theme)
                                 .id(("chat-message", index))
                                 .lang(lang)
+                                .selectable(true)
                                 .on_link(move |href, window, cx| {
                                     let Some(url) = link_target(href) else {
                                         return;

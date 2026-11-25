@@ -1,6 +1,6 @@
 diff --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/Cargo.toml b/Cargo.toml
---- a/Cargo.toml	2006-07-24 10:21:28
-+++ b/Cargo.toml	2026-11-12 17:01:52
+--- a/Cargo.toml	1970-01-01 09:00:01
++++ b/Cargo.toml	2026-11-25 09:54:56
 @@ -293,7 +293,8 @@
  [dependencies.log]
  version = "0.4.16"
@@ -21,3 +21,61 @@ diff --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/Cargo.tom
      "serde",
  ]
  
+diff --color -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json a/src/elements/text.rs b/src/elements/text.rs
+--- a/src/elements/text.rs	2006-07-24 10:21:28
++++ b/src/elements/text.rs	2026-11-25 09:54:56
+@@ -643,6 +643,9 @@
+ #[derive(Default)]
+ pub struct InteractiveTextState {
+     mouse_down_index: Rc<Cell<Option<usize>>>,
++    // rever patch: where the press started. A release far from it was a
++    // drag, not a click, so the click listener must not fire.
++    mouse_down_position: Rc<Cell<Option<Point<Pixels>>>>,
+     hovered_index: Rc<Cell<Option<usize>>>,
+     active_tooltip: Rc<RefCell<Option<ActiveTooltip>>>,
+ }
+@@ -785,14 +788,26 @@
+ 
+                     let text_layout = text_layout.clone();
+                     let mouse_down = interactive_state.mouse_down_index.clone();
++                    let mouse_down_position = interactive_state.mouse_down_position.clone();
+                     if let Some(mouse_down_index) = mouse_down.get() {
+                         let hitbox = hitbox.clone();
+                         let clickable_ranges = mem::take(&mut self.clickable_ranges);
+                         window.on_mouse_event(
+                             move |event: &MouseUpEvent, phase, window: &mut Window, cx| {
+                                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
+-                                    if let Ok(mouse_up_index) =
+-                                        text_layout.index_for_position(event.position)
++                                    // rever patch: a press that wandered was a
++                                    // drag. Leave the click unfired so text
++                                    // selection can own the gesture.
++                                    let dragged = mouse_down_position.get().is_some_and(|down| {
++                                        let delta = event.position - down;
++                                        delta.x > Pixels::from(4.0)
++                                            || delta.x < Pixels::from(-4.0)
++                                            || delta.y > Pixels::from(4.0)
++                                            || delta.y < Pixels::from(-4.0)
++                                    });
++                                    if !dragged
++                                        && let Ok(mouse_up_index) =
++                                            text_layout.index_for_position(event.position)
+                                     {
+                                         click_listener(
+                                             &clickable_ranges,
+@@ -806,6 +821,7 @@
+                                     }
+ 
+                                     mouse_down.take();
++                                    mouse_down_position.take();
+                                     window.refresh();
+                                 }
+                             },
+@@ -819,6 +835,7 @@
+                                     text_layout.index_for_position(event.position)
+                             {
+                                 mouse_down.set(Some(mouse_down_index));
++                                mouse_down_position.set(Some(event.position));
+                                 window.refresh();
+                             }
+                         });
