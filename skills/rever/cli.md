@@ -23,19 +23,27 @@ revb run - <<'EOF'               # or a script from stdin
 console.log((await list_requests({ limit: 20 })).length)
 EOF
 revb call get_request '{"requestId":"123.4"}'   # one call, prints the result
+revb describe get_request      # one tool's full description and input schema, as JSON
+revb call browser_snapshot --markdown           # or the arguments as flags typed by the tool's schema
 revb md <url>                    # open the url and print its page text as Markdown
-revb list                        # every tool: name<TAB>first sentence of its description
+revb list                        # every tool: name<TAB>first sentence of its description (--list works too)
 revb skill --full                # this guide + the live tool catalog of the running app
 revb endpoint                    # url / pid / endpoint file (diagnostics)
 ```
 
 `run` and `call` exit 1 on any thrown error, so `&&` chains and CI checks work.
 
+Flags follow the tool's schema. A boolean is true on its own (`--full`) and
+`--full=false` turns it off. An array repeats (`--hosts a --hosts b`) or takes
+JSON. A value that starts with `{` or `[` is read as JSON. A flag the tool does
+not take is refused with the ones it does. An agent that has no MCP tool schemas
+in its context finds them with `revb describe <tool>`.
+
 ## Script API
 
 - **Every tool is a global**: `await browser_navigate({ url })`, `await list_requests({ limit: 50 })`.
   Names and arguments are exactly those in `revb list` / `revb skill --full` — nothing is renamed.
-- `rev.tools()` → `[{ name, description }]` of the live catalog.
+- `rev.tools()` → `[{ name, description, inputSchema }]` of the live catalog.
 - `rev.call(name, args)` → call a tool by string name.
 - `rev.endpoint` → the MCP URL in use.
 - `sh(cmd, input?)` → run a shell command, returns its stdout (`sh('jq .id', JSON.stringify(x))`).

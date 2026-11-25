@@ -1216,7 +1216,7 @@ mod tests {
         serde_json::from_str(line).unwrap_or_else(|e| panic!("not a JSON-RPC reply ({e}): {body}"))
     }
 
-    /// A minimal MCP client over real HTTP, like scripts/mcp-call.py.
+    /// A minimal MCP client over real HTTP, like bin/revb.mjs.
     struct Client {
         http: Http,
         url: String,
@@ -1360,7 +1360,7 @@ mod tests {
     fn 클라이언트가_요청한_프로토콜_버전에_맞춘다() {
         let fixture = serve();
         for (asked, answered) in [
-            // What scripts/mcp-call.py asks for.
+            // An older client's version.
             ("2024-11-05", "2024-11-05"),
             ("2025-11-25", "2025-11-25"),
             // The sessionless revision is not offered: the newest with a handshake answers.

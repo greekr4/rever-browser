@@ -66,10 +66,13 @@ With the app running and the fixture captured (see `docs/agent-testing.md`):
 
 ```bash
 # --- rever-browser: focused tool outputs ---
-python3 scripts/mcp-call.py list_requests '{"host":"127.0.0.1"}' > r_list.json
-python3 scripts/mcp-call.py get_request   '{"requestId":"<id>"}' > r_get.json
-python3 scripts/mcp-call.py grep_scripts  '{"pattern":"sign"}'   > r_grep.json
-python3 scripts/mcp-call.py repeater_send '{"requestId":"<id>"}' > r_repeater.json
+# The numbers below were measured on the server's compact JSON. `revb call`
+# pretty-prints it, so this wrapper prints it compact again.
+revb() { node bin/revb.mjs run - <<<"process.stdout.write(JSON.stringify(await $1($2)))"; }
+revb list_requests '{"host":"127.0.0.1"}' > r_list.json
+revb get_request   '{"requestId":"<id>"}' > r_get.json
+revb grep_scripts  '{"pattern":"sign"}'   > r_grep.json
+revb repeater_send '{"requestId":"<id>"}' > r_repeater.json
 ```
 
 Playwright MCP side — drive `@playwright/mcp` to the same page and save each

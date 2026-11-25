@@ -145,7 +145,7 @@ Playwright MCP엔 스크립트 바디 grep·crypto 후킹·Repeater가 없어 JS
 | **스토리지 & 실시간** | 쿠키/스토리지 공간, WebSocket 프레임 캡처 |
 | **자동화 & 내보내기** | 매크로, CLI 컴파일, HAR 1.2 내보내기, Python 클라이언트 내보내기 |
 
-> 툴별 전체 레퍼런스는 `docs/`에 있고, 런타임에 MCP 엔드포인트로도 조회할 수 있습니다 (`python3 scripts/mcp-call.py --list`).
+> 툴별 전체 레퍼런스는 `docs/`에 있고, 런타임에 MCP 엔드포인트로도 조회할 수 있습니다 (`node bin/revb.mjs list`. 도구 하나의 설명과 인자 스키마는 `node bin/revb.mjs describe <tool>`).
 
 ## 요구 사항
 
