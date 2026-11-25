@@ -73,8 +73,8 @@ pub static STRINGS: &[(&str, &str, &str)] = &[
     ("chat.perm.auto", "Auto-approve", "자동 승인"),
     (
         "chat.perm.auto.hint",
-        "Runs tools without asking. Risky ones (fuzzing, non-GET replays) still ask.",
-        "묻지 않고 실행합니다. 위험 도구(퍼징, GET 외 재전송)는 계속 확인합니다.",
+        "Runs every tool without asking. That includes the agent's shell commands on this computer.",
+        "모든 도구를 묻지 않고 실행합니다. 에이전트가 이 컴퓨터에서 돌리는 셸 명령도 포함입니다.",
     ),
     ("chat.perm.label", "Tool permissions", "도구 권한"),
     ("chat.perm.manual", "Ask every time", "매번 확인"),
