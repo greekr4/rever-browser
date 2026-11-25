@@ -1,8 +1,9 @@
-//! Which tool calls of the chat agent the user is asked about.
+//! Which tool calls of the chat agent count as risky.
 //!
 //! The app's own tools follow the shared risky-tool rules (`rever_tool_profile`). A
 //! tool from outside the app — the CLI's shell, its file tools — acts on this machine
-//! rather than on the page, so it is always asked about, whatever auto-approve says.
+//! rather than on the page, so it is risky too. Auto-approve answers risky calls like
+//! any other. With it off every call is asked about.
 
 use rever_agent::claude_cli_protocol::MCP_SERVER_NAME;
 use rever_chat_core::RiskyTools;
@@ -82,10 +83,16 @@ mod tests {
         to_permission_request(SESSION_ID, &json!({ "tool_name": tool, "input": input }))
     }
 
-    /// Hands `request` to a fresh queue: whether it waits for the user, and the answer
-    /// given so far.
+    /// Hands `request` to a fresh queue with auto-approve on: whether it waits for
+    /// the user, and the answer given so far.
     fn ask(request: Value) -> (bool, Option<RequestPermissionResponse>) {
+        ask_as(true, request)
+    }
+
+    /// [`ask`] with auto-approve set to `auto`.
+    fn ask_as(auto: bool, request: Value) -> (bool, Option<RequestPermissionResponse>) {
         let mut store = PermissionStore::new(ChatRules, |_| {});
+        store.set_acp_auto_approve(auto);
         let answer = Arc::new(Mutex::new(None));
         let given = answer.clone();
         let waits = store
@@ -105,15 +112,33 @@ mod tests {
     }
 
     #[test]
-    fn 앱의_위험_도구는_사용자에게_묻는다() {
+    fn 자동_승인이면_앱의_위험_도구도_묻지_않는다() {
         let (waits, answer) = ask(cli_request("mcp__rever-traffic__intruder_run", json!({})));
+        assert!(!waits);
+        assert!(answer.is_some(), "the call was not answered");
+    }
+
+    #[test]
+    fn 자동_승인이_꺼지면_앱의_위험_도구는_사용자에게_묻는다() {
+        let (waits, answer) = ask_as(
+            false,
+            cli_request("mcp__rever-traffic__intruder_run", json!({})),
+        );
         assert!(waits);
         assert_eq!(answer, None);
     }
 
     #[test]
-    fn 앱_밖의_도구는_자동_승인이어도_묻는다() {
-        let (waits, _) = ask(cli_request("Bash", json!({ "command": "ls" })));
+    fn 자동_승인이면_앱_밖의_도구도_묻지_않는다() {
+        // The agent's shell acts on this computer. Auto-approve covers it too.
+        let (waits, answer) = ask(cli_request("Bash", json!({ "command": "ls" })));
+        assert!(!waits);
+        assert!(answer.is_some(), "the call was not answered");
+    }
+
+    #[test]
+    fn 자동_승인이_꺼지면_앱_밖의_도구는_묻는다() {
+        let (waits, _) = ask_as(false, cli_request("Bash", json!({ "command": "ls" })));
         assert!(waits);
     }
 

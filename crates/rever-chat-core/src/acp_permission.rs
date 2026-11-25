@@ -220,7 +220,9 @@ impl<R: RiskyTools> PermissionStore<R> {
         // Red Team scan: auto-approve probe tools (even risky ones) on the scan's own
         // scoped site — the user authorized the sweep of their own target.
         // - Raw shell HTTP (curl/wget in Bash) is excluded: it runs in the agent
-        //   process and bypasses the server scope check, so it always prompts.
+        //   process and bypasses the server scope check, so the scan's own pass
+        //   does not cover it. It follows the auto-approve setting like any
+        //   other call.
         // - A known host that is out of scope falls through to the normal prompt.
         // - No resolvable host (replay_request/repeater_send target a captured request
         //   by id) → auto-approve: the server-side scope check (repeater.ts →
@@ -237,10 +239,10 @@ impl<R: RiskyTools> PermissionStore<R> {
             }
         }
 
-        // Auto-approve never applies to risky tools: a side-effecting action on the
-        // user's live session always surfaces the prompt, regardless of the setting.
-        if !risky && self.auto_approve {
-            self.auto_allow(&params, false, resolve);
+        // Auto-approve answers everything, risky or not: the setting is the
+        // switch. The audit still marks what was risky.
+        if self.auto_approve {
+            self.auto_allow(&params, risky, resolve);
             return None;
         }
 
@@ -375,6 +377,8 @@ mod tests {
 
     /// One test's store: the Red Team state the TypeScript kept in a module, the
     /// audit trail, and a request helper that hands back the "promise".
+    /// Auto-approve is off in it, the mode that has prompts. A test turns it on
+    /// to assert what it skips.
     struct Fixture {
         store: PermissionStore<TsRiskyTools>,
         red_team: RedTeamMode,
@@ -385,12 +389,14 @@ mod tests {
         fn new() -> Self {
             let audits: Shared<Vec<ApprovalAudit>> = Shared::default();
             let sink = audits.clone();
+            let mut store = PermissionStore::new(TsRiskyTools, move |entry| {
+                sink.lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push(entry)
+            });
+            store.set_acp_auto_approve(false);
             Self {
-                store: PermissionStore::new(TsRiskyTools, move |entry| {
-                    sink.lock()
-                        .unwrap_or_else(PoisonError::into_inner)
-                        .push(entry)
-                }),
+                store,
                 red_team: RedTeamMode::new(),
                 audits,
             }
@@ -542,9 +548,30 @@ mod tests {
     }
 
     #[test]
+    fn 저장소는_자동_승인이_켜진_채로_시작한다() {
+        assert!(PermissionStore::new(TsRiskyTools, |_| {}).acp_auto_approve());
+    }
+
+    #[test]
+    fn 자동_승인이_켜지면_위험_도구도_묻지_않고_허용하고_감사에는_위험으로_남긴다() {
+        let mut f = Fixture::new();
+        f.store.set_acp_auto_approve(true);
+        let (id, r) = f.request(risky_req("s1"));
+        assert_eq!(id, None);
+        assert_eq!(read(&r), allow());
+        assert!(!f.store.has_pending_permission("s1"));
+        let audits = read(&f.audits);
+        assert_eq!(audits.len(), 1);
+        assert_eq!(
+            (audits[0].decision, audits[0].auto, audits[0].risky),
+            (Decision::Allow, true, true)
+        );
+    }
+
+    #[test]
     fn 위험하지_않은_툴은_자동승인_설정에_따라_바로_허용하거나_큐에_넣는다() {
         let mut f = Fixture::new();
-        assert!(f.store.acp_auto_approve());
+        f.store.set_acp_auto_approve(true);
         let (id, r) = f.request(full_req("s1", "Read", json!({ "file_path": "/a" })));
         assert_eq!(id, None);
         assert_eq!(read(&r), selected_json("always"));
@@ -741,6 +768,7 @@ mod tests {
             json!([{ "tool": "burst_send", "target": null, "decision": "reject", "auto": true, "risky": true }])
         );
         // A request without options or a tool call must not panic.
+        f.store.set_acp_auto_approve(true);
         let (id, r) = f.request(json!({ "sessionId": "s9" }));
         assert_eq!(id, None);
         assert_eq!(read(&r), selected_json(""));
