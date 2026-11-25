@@ -101,7 +101,7 @@ pub fn merge_replay_headers(
 // what it returns and parks the full text in a small LRU so the agent can page
 // the rest with tool_result_more. Keep one store per process (not per MCP
 // session) so a result produced in one session can be paged from another
-// (e.g. scripts/mcp-call.py).
+// (e.g. bin/revb.mjs).
 
 const DEFAULT_MAX_CHARS: usize = 12_000;
 const MAX_STORED_RESULTS: usize = 50;

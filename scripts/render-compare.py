@@ -2,11 +2,11 @@
 """Compare how the app and Chrome draw the same pages, worst difference first.
 
 For every URL it takes the top of the page in the running app (through
-scripts/mcp-call.py) and in headless Chrome at the same viewport, scores how far the
+bin/revb.mjs) and in headless Chrome at the same viewport, scores how far the
 two pictures are apart, and writes report.html with them side by side.
 
-Python, not Rust: it only strings together mcp-call.py, the Chrome binary and sips,
-and needs no build step. It uses nothing outside the standard library.
+Python, not Rust: it only strings together revb (Node), the Chrome binary and
+sips, and needs no build step. It uses nothing outside the standard library.
 
 Usage:
     REVER_USER_DATA_DIR=<dir of a running instance> \\
@@ -38,23 +38,26 @@ THUMB = (160, 120)
 
 
 def app(tool: str, args: dict | None = None) -> str:
+    """One revb call. A screenshot comes back as the path of the saved file."""
     import json
 
     out = subprocess.run(
-        [sys.executable, os.path.join(HERE, "mcp-call.py"), tool, json.dumps(args or {})],
+        ["node", os.path.join(HERE, "..", "bin", "revb.mjs"), "call", tool, json.dumps(args or {})],
         capture_output=True, text=True, timeout=240,
     )
-    return out.stdout
+    if out.returncode != 0:
+        raise SystemExit(f"revb {tool} failed: {out.stderr.strip()}")
+    return out.stdout.strip()
 
 
 def app_shot(url: str, settle: float, path: str) -> bool:
     app("scope_add", {"hosts": [urllib.parse.urlsplit(url).hostname]})
     app("browser_navigate", {"url": url})
     time.sleep(settle)
-    saved = re.search(r"\[image saved: (.+?)\]", app("browser_screenshot"))
-    if not saved:
+    saved = app("browser_screenshot")
+    if not saved or not os.path.exists(saved):
         return False
-    shutil.copy(saved.group(1), path)
+    shutil.copy(saved, path)
     return True
 
 

@@ -378,7 +378,7 @@ pub enum CatalogKind {
 /// Header value must be exactly `full` or `direct`; anything else, including no
 /// header, is `follow`. An external client (the /rever skill, a hand-added
 /// Claude Code or Codex) gets the in-app profile, not all ~160 tool schemas;
-/// in-app callers that need every tool (macros, workflows, mcp-call.py, e2e)
+/// in-app callers that need every tool (macros, workflows, revb, e2e)
 /// send `full` explicitly.
 ///
 /// Takes the header's values: `Some("full")`, a repeated header's list (only

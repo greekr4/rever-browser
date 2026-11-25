@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractMarkdown, fetchRest, parsePage, parseTruncated, pickRpcResponse, toValue, userDataDir } from './revb.mjs'
+import { extractMarkdown, fetchRest, flagsToArgs, format, parsePage, parseTruncated, pickRpcResponse, toValue, userDataDir } from './revb.mjs'
 
 describe('pickRpcResponse', () => {
   it('SSE 스트림에서 앞선 알림을 건너뛰고 id가 맞는 응답을 고른다', () => {
@@ -88,6 +88,63 @@ describe('절단 페이징', () => {
 
   it('절단되지 않은 결과는 그대로 돌려준다', async () => {
     expect(await fetchRest('short', async () => '')).toBe('short')
+  })
+})
+
+describe('flagsToArgs', () => {
+  const schema = {
+    type: 'object',
+    properties: {
+      url: { type: 'string' },
+      full: { type: 'boolean' },
+      tab: { type: 'integer' },
+      ratio: { type: 'number' },
+      hosts: { type: 'array', items: { type: 'string' } },
+      filter: { type: 'object' },
+    },
+    required: ['url'],
+  }
+
+  it('스키마의 타입대로 값을 바꾼다', () => {
+    const args = flagsToArgs(schema, ['--url', 'http://x', '--tab=2', '--ratio', '0.5'])
+    expect(args).toEqual({ url: 'http://x', tab: 2, ratio: 0.5 })
+  })
+
+  it('불린 플래그는 단독이면 true이고 =false로 끈다', () => {
+    expect(flagsToArgs(schema, ['--full'])).toEqual({ full: true })
+    expect(flagsToArgs(schema, ['--full=false'])).toEqual({ full: false })
+  })
+
+  it('배열 플래그는 반복하거나 JSON 하나로 넘긴다', () => {
+    expect(flagsToArgs(schema, ['--hosts', 'a.test', '--hosts', 'b.test'])).toEqual({ hosts: ['a.test', 'b.test'] })
+    expect(flagsToArgs(schema, ['--hosts', '["a.test","b.test"]'])).toEqual({ hosts: ['a.test', 'b.test'] })
+  })
+
+  it('{ 나 [ 로 시작하는 값은 JSON이다', () => {
+    expect(flagsToArgs(schema, ['--filter', '{"a":1}'])).toEqual({ filter: { a: 1 } })
+  })
+
+  it('스키마에 없는 인자는 거절하고 가능한 인자를 알려준다', () => {
+    expect(() => flagsToArgs(schema, ['--nope', '1'])).toThrow(/--nope.*--url/)
+    expect(() => flagsToArgs(schema, ['--full', 'yes'])).toThrow(/yes/)
+  })
+
+  it('타입이 맞지 않는 값은 거절한다', () => {
+    expect(() => flagsToArgs(schema, ['--tab', '1.5'])).toThrow(/--tab/)
+    expect(() => flagsToArgs(schema, ['--full=maybe'])).toThrow(/--full/)
+    expect(() => flagsToArgs(schema, ['--url'])).toThrow(/--url needs a value/)
+    expect(() => flagsToArgs(schema, ['--filter', '{oops'])).toThrow(/--filter/)
+  })
+})
+
+describe('format', () => {
+  it('문자열은 그대로 찍고 줄을 끝낸다', () => {
+    expect(format('- button "OK" [ref=r1]')).toBe('- button "OK" [ref=r1]\n')
+  })
+
+  it('그 외에는 들여쓴 JSON이다', () => {
+    expect(format([{ a: 1 }])).toBe('[\n  {\n    "a": 1\n  }\n]\n')
+    expect(format(3)).toBe('3\n')
   })
 })
 

@@ -145,7 +145,7 @@ Playwright MCP has no script-body grep, crypto hooks, or Repeater, so analyzing 
 | **Storage & realtime** | Cookie/storage jars, WebSocket frame capture |
 | **Automation & export** | Macros, CLI compile, HAR 1.2 export, Python client export |
 
-> A full per-tool reference lives in `docs/` and is also discoverable at runtime via the MCP endpoint (`python3 scripts/mcp-call.py --list`).
+> A full per-tool reference lives in `docs/` and is also discoverable at runtime at runtime with `node bin/revb.mjs list` (every tool) or `node bin/revb.mjs describe <tool>` (one tool's description and input schema).
 
 ## Requirements
 

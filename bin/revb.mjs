@@ -2,11 +2,13 @@
 // revb — script runner for a running Rever Browser. Zero dependencies (Node 18+).
 // Spec: docs/rever-cli-design.md. Named `revb` because `rever` is taken on npm.
 //
-//   revb run <script.mjs | ->     run a script with every MCP tool as a global async fn
-//   revb call <tool> ['<json>']   one call, mcp-call.py compatible
-//   revb list                     tool names + one-line descriptions
-//   revb skill [--full]           print the CLI guide (--full appends the live tool catalog)
-//   revb endpoint                 print the published endpoint (diagnostics)
+//   revb run <script.mjs | ->          run a script with every MCP tool as a global async fn
+//   revb call <tool> ['<json>' | --k v] one call: a JSON object, or flags typed by the tool's schema
+//   revb describe <tool>               one tool's description and input schema, as JSON
+//   revb md <url>                      open the url and print its page text as Markdown
+//   revb list                          tool names + one-line descriptions
+//   revb skill [--full]                print the CLI guide (--full appends the live tool catalog)
+//   revb endpoint                      print the published endpoint (diagnostics)
 
 import { execSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -16,7 +18,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-// ui_crawl / intruder_run / scan can outlive the 180s mcp-call.py allowed.
+// ui_crawl / intruder_run / scan can run for minutes.
 const CALL_TIMEOUT_MS = 600_000
 const PAGE_CHARS = 60_000 // tool_result_more's max limit
 const MAX_PAGES = 200 // 12M chars; the server keeps at most 20M across all results
@@ -77,6 +79,67 @@ export function toValue(text) {
   } catch {
     return text
   }
+}
+
+/** How a result is printed: text as it is, anything else as indented JSON. */
+export function format(value) {
+  return (typeof value === 'string' ? value : JSON.stringify(value, null, 2)) + '\n'
+}
+
+/**
+ * Turn `--key value` arguments into a tool's input, typed by the tool's schema.
+ * A boolean flag is true on its own (`--full`) or takes `=false`. An array flag
+ * repeats (`--hosts a --hosts b`). A value that starts with `{` or `[` is JSON.
+ * An argument the schema does not list is refused with the ones it does.
+ */
+export function flagsToArgs(schema, argv) {
+  const props = schema?.properties ?? {}
+  const out = {}
+  for (let i = 0; i < argv.length; i++) {
+    const isFlag = argv[i].startsWith('--')
+    const eq = argv[i].indexOf('=')
+    const key = isFlag ? argv[i].slice(2, eq < 0 ? undefined : eq) : ''
+    const prop = props[key]
+    if (!prop) {
+      const known = Object.keys(props).map((name) => '--' + name).join(' ')
+      throw new Error(`${isFlag ? 'unknown' : 'unexpected'} argument ${argv[i]}. This tool takes: ${known || 'no arguments'}`)
+    }
+    let raw
+    if (eq >= 0) raw = argv[i].slice(eq + 1)
+    else if (prop.type === 'boolean' && !['true', 'false'].includes(argv[i + 1])) raw = 'true'
+    else if (i + 1 >= argv.length) throw new Error(`--${key} needs a value`)
+    else raw = argv[++i]
+    const json = /^[[{]/.test(raw.trim())
+    if (prop.type === 'array' && !json) {
+      ;(out[key] ??= []).push(typed(raw, prop.items ?? {}, key))
+    } else if (json) {
+      try {
+        out[key] = JSON.parse(raw)
+      } catch {
+        throw new Error(`--${key} takes JSON, got: ${raw}`)
+      }
+    } else {
+      out[key] = typed(raw, prop, key)
+    }
+  }
+  return out
+}
+
+/** One flag value as its schema type asks. */
+function typed(raw, prop, key) {
+  if (prop.type === 'boolean') {
+    if (raw === 'true') return true
+    if (raw === 'false') return false
+    throw new Error(`--${key} is a boolean: write --${key} or --${key}=false`)
+  }
+  if (prop.type === 'integer' || prop.type === 'number') {
+    const n = Number(raw)
+    if (raw.trim() === '' || Number.isNaN(n) || (prop.type === 'integer' && !Number.isInteger(n))) {
+      throw new Error(`--${key} is ${prop.type === 'integer' ? 'an integer' : 'a number'}, got ${raw}`)
+    }
+    return n
+  }
+  return raw
 }
 
 const TRUNC_RE =
@@ -306,7 +369,7 @@ async function withClient(fn) {
 }
 
 function print(v) {
-  process.stdout.write((typeof v === 'string' ? v : JSON.stringify(v, null, 2)) + '\n')
+  process.stdout.write(format(v))
 }
 
 async function cmdRun(file) {
@@ -318,7 +381,7 @@ async function cmdRun(file) {
       if (!(t.name in globalThis)) globalThis[t.name] = (args) => client.call(t.name, args)
     }
     globalThis.rev = {
-      tools: () => tools.map((t) => ({ name: t.name, description: t.description })),
+      tools: () => tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
       call: (name, args) => client.call(name, args),
       endpoint: client.url.href
     }
@@ -367,27 +430,53 @@ export function extractMarkdown(text) {
 
 const USAGE = `revb — drive a running Rever Browser from scripts
 
-  revb run <script.mjs | ->     run a script; every MCP tool is a global async fn
-  revb call <tool> ['<json>']   call one tool and print its result
-  revb md <url>                 open the url and print its page text as Markdown
-  revb list                     list tools
-  revb skill [--full]           print the scripting guide (--full: + live tool catalog)
-  revb endpoint                 print the endpoint the CLI connects to`
+  revb run <script.mjs | ->        run a script; every MCP tool is a global async fn
+  revb call <tool> ['<json>']      call one tool and print its result
+  revb call <tool> --key value     or pass its arguments as flags typed by the tool's schema
+  revb describe <tool>             one tool's description and input schema as JSON
+  revb md <url>                    open the url and print its page text as Markdown
+  revb list                        list tools (--list works too)
+  revb skill [--full]              print the scripting guide (--full: + live tool catalog)
+  revb endpoint                    print the endpoint the CLI connects to`
 
 function fail(msg) {
   process.stderr.write(`revb: ${msg}\n`)
   process.exit(1)
 }
 
+/** The live catalog entry of `name`, or a refusal naming the way out. */
+async function findTool(client, name) {
+  const tool = (await client.tools()).find((t) => t.name === name)
+  if (!tool) fail(`no tool named ${name}. Run revb list for every tool.`)
+  return tool
+}
+
+/** A call's arguments: one JSON object, or `--key value` flags typed by the tool's schema. */
+async function callArgs(client, name, argv) {
+  if (argv.length === 0) return {}
+  if (argv[0].startsWith('--')) return flagsToArgs((await findTool(client, name)).inputSchema, argv)
+  if (argv.length > 1) fail(`revb call takes one JSON object or --key value flags, got: ${argv.join(' ')}`)
+  return JSON.parse(argv[0])
+}
+
 async function main(argv) {
-  const [cmd, ...rest] = argv
+  const [first, ...rest] = argv
+  const cmd = first === '--list' ? 'list' : first
   switch (cmd) {
     case 'run':
       return cmdRun(rest[0])
     case 'call': {
-      if (!rest[0]) fail('usage: revb call <tool> [\'<json args>\']')
-      const args = rest[1] ? JSON.parse(rest[1]) : {}
-      return withClient(async (c) => print(await c.call(rest[0], args)))
+      const name = rest[0]
+      if (!name) fail('usage: revb call <tool> [\'<json>\'] or revb call <tool> --key value')
+      return withClient(async (c) => print(await c.call(name, await callArgs(c, name, rest.slice(1)))))
+    }
+    case 'describe': {
+      const name = rest[0]
+      if (!name) fail('usage: revb describe <tool>')
+      return withClient(async (c) => {
+        const tool = await findTool(c, name)
+        print({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema })
+      })
     }
     case 'md': {
       if (!rest[0]) fail('usage: revb md <url>')

@@ -299,11 +299,11 @@ fn app_checks(root: &Path) -> Vec<(String, bool, String)> {
         .stderr(Stdio::null())
         .spawn();
     // While the app is up (it quits by itself after 8 seconds), call its MCP server the
-    // way an outside agent does: through the endpoint file and scripts/mcp-call.py.
-    let mcp = |tool: &str| {
-        Command::new("python3")
-            .arg(root.join("scripts/mcp-call.py"))
-            .arg(tool)
+    // way an outside agent does: through the endpoint file and bin/revb.mjs.
+    let mcp = |args: &[&str]| {
+        Command::new("node")
+            .arg(root.join("bin/revb.mjs"))
+            .args(args)
             .env("REVER_USER_DATA_DIR", &user_data)
             .output()
             .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
@@ -319,9 +319,9 @@ fn app_checks(root: &Path) -> Vec<(String, bool, String)> {
     // The fixture's fetch and XHR need a moment to be captured.
     std::thread::sleep(Duration::from_secs(3));
     let (mcp_tools, mcp_requests, mcp_storage) = (
-        mcp("--list"),
-        mcp("list_requests"),
-        mcp("local_storage_get"),
+        mcp(&["list"]),
+        mcp(&["call", "list_requests"]),
+        mcp(&["call", "local_storage_get"]),
     );
     let launched = child.and_then(|mut child| child.wait());
     let state: Value = fs::read_to_string(out_dir.join("state.json"))
