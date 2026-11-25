@@ -216,6 +216,7 @@ impl Browser {
                             markdown(&line.text, theme)
                                 .id(("chat-message", index))
                                 .lang(lang)
+                                .selectable(true)
                                 .on_link(move |href, window, cx| {
                                     let Some(url) = link_target(href) else {
                                         return;

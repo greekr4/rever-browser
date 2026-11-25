@@ -12,15 +12,17 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, App, ClipboardItem, ElementId, Font, FontStyle, FontWeight, Hsla, InteractiveText,
-    Rgba, SharedString, StrikethroughStyle, StyledText, TextRun, Window, div, font, prelude::*, px,
-    relative, rgb, rgba,
+    AnyElement, App, ClipboardItem, CursorStyle, Div, ElementId, Font, FontStyle, FontWeight, Hsla,
+    InteractiveText, MouseButton, Rgba, SharedString, StrikethroughStyle, StyledText, TextRun,
+    Window, canvas, div, font, prelude::*, px, relative, rgb, rgba,
 };
 pub use pulldown_cmark::Alignment;
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd, TextMergeStream};
 use regex::Regex;
 use rever_ui_kit::i18n::Lang;
 use rever_ui_kit::theme::Theme;
+
+use crate::selection;
 
 // ---------------------------------------------------------------------------
 // Parsing
@@ -1073,6 +1075,7 @@ pub fn markdown(text: &str, theme: &Theme) -> Markdown {
         dim: false,
         lang: Lang::En,
         on_link: None,
+        selectable: false,
     }
 }
 
@@ -1084,6 +1087,7 @@ pub struct Markdown {
     dim: bool,
     lang: Lang,
     on_link: Option<LinkHandler>,
+    selectable: bool,
 }
 
 impl Markdown {
@@ -1095,6 +1099,13 @@ impl Markdown {
     /// `.md--dim`: faded and italic.
     pub fn dim(mut self, dim: bool) -> Self {
         self.dim = dim;
+        self
+    }
+
+    /// Drag-to-select the text, with a copy bubble at the selection's head.
+    /// Off by default: only panels that want selection pay for the hit maps.
+    pub fn selectable(mut self, selectable: bool) -> Self {
+        self.selectable = selectable;
         self
     }
 
@@ -1113,7 +1124,9 @@ impl Markdown {
 }
 
 impl RenderOnce for Markdown {
-    fn render(self, window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        // Text blocks record their layouts under this key when selection is on.
+        let owner = self.selectable.then(|| selection::key(&self.id));
         let mut painter = Painter {
             theme: self.theme,
             tokens: Tokens::of(&self.theme),
@@ -1122,6 +1135,7 @@ impl RenderOnce for Markdown {
             dim: self.dim,
             lang: self.lang,
             on_link: self.on_link,
+            owner,
             next_id: 0,
         };
         let context = Context {
@@ -1130,7 +1144,7 @@ impl RenderOnce for Markdown {
         };
         let gaps = spacing(&self.blocks);
         let trailing = gaps.last().copied().unwrap_or(0.0);
-        div()
+        let root = div()
             .id(self.id)
             .flex()
             .flex_col()
@@ -1138,11 +1152,88 @@ impl RenderOnce for Markdown {
             .text_size(px(FONT_PX))
             .line_height(relative(LINE_HEIGHT))
             .text_color(self.theme.text)
-            .when(self.dim, |root| root.opacity(0.6).italic())
-            // `.chat-log .md > :first-child { margin-top: 0 }`
-            .children(painter.stack(&self.blocks, &gaps, false, &context))
-            .pb(px(trailing))
+            .when(self.dim, |root| root.opacity(0.6).italic());
+        let root = match owner {
+            Some(owner) => {
+                // Drop last frame's hit entries before any block records new
+                // ones; this marker paints ahead of the text children.
+                let marker = div().absolute().child(canvas(
+                    move |_, _, _| {},
+                    move |_, _, _, cx| selection::clear_owner(owner),
+                ));
+                let overlay = selection_overlay(owner, self.theme, cx);
+                root.child(marker)
+                    // `.chat-log .md > :first-child { margin-top: 0 }`
+                    .children(painter.stack(&self.blocks, &gaps, false, &context))
+                    .pb(px(trailing))
+                    .child(overlay)
+                    .cursor(CursorStyle::IBeam)
+                    .on_mouse_down(MouseButton::Left, move |event, window, _cx| {
+                        selection::mouse_down(owner, event);
+                        window.refresh();
+                    })
+                    .on_mouse_move(move |event, window, _cx| {
+                        if selection::mouse_move(owner, event) {
+                            window.refresh();
+                        }
+                    })
+                    .on_mouse_up(MouseButton::Left, move |event, window, _cx| {
+                        if selection::mouse_up(owner, event) {
+                            window.refresh();
+                        }
+                    })
+            }
+            None => root
+                // `.chat-log .md > :first-child { margin-top: 0 }`
+                .children(painter.stack(&self.blocks, &gaps, false, &context))
+                .pb(px(trailing)),
+        };
+        root
     }
+}
+
+/// The selection layer: a canvas that paints the highlight over the text, and
+/// a copy bubble at the selection's head once the drag ends. The canvas's own
+/// bounds start at the markdown root, so its origin is what the bubble's
+/// window-space head point is made relative to.
+fn selection_overlay(owner: u64, theme: Theme, cx: &App) -> Div {
+    let bubble = selection::has_selection(owner).then(|| {
+        let (left, top) = selection::bubble_point(owner).unwrap_or((0.0, 0.0));
+        div()
+            .absolute()
+            .left(px(left))
+            .top(px(top - 28.0))
+            .id("md-copy-bubble")
+            .px(px(8.0))
+            .py(px(3.0))
+            .rounded(px(6.0))
+            .bg(theme.surface_3)
+            .border_1()
+            .border_color(theme.border_2)
+            .text_size(px(11.0))
+            .text_color(theme.text)
+            .cursor(CursorStyle::PointingHand)
+            .child("Copy")
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                cx.stop_propagation();
+                selection::copy_and_clear(cx, owner);
+                window.refresh();
+            })
+    });
+    div()
+        .absolute()
+        .size_full()
+        .child(canvas(
+            move |_, _, _| {},
+            move |bounds, _, window, cx| {
+                let (rects, bubble) = selection::highlight(owner, bounds.origin);
+                selection::set_bubble_point(owner, bubble);
+                for rect in rects {
+                    window.paint_quad(gpui::fill(rect, selection::highlight_color()));
+                }
+            },
+        ))
+        .children(bubble)
 }
 
 /// What a block inherits from the blocks around it.
@@ -1159,6 +1250,9 @@ struct Painter {
     dim: bool,
     lang: Lang,
     on_link: Option<LinkHandler>,
+    /// Set when the markdown root has selection on: text blocks record their
+    /// layouts under this key.
+    owner: Option<u64>,
     next_id: usize,
 }
 
@@ -1276,8 +1370,14 @@ impl Painter {
                 links.push((start..text.len(), url.clone()));
             }
         }
-        let styled = StyledText::new(text).with_runs(runs);
-        match &self.on_link {
+        let styled = StyledText::new(text.clone()).with_runs(runs);
+        // The layout handle is cloned before the styled text moves on: the
+        // clone shares the same measurement cell, so it fills during prepaint.
+        let layout = styled.layout().clone();
+        // Counted even without links, so ordinals stay unique per block.
+        self.next_id += 1;
+        let ordinal = self.next_id;
+        let inner = match &self.on_link {
             Some(on_link) if !links.is_empty() => {
                 let on_link = on_link.clone();
                 let (ranges, urls): (Vec<_>, Vec<_>) = links.into_iter().unzip();
@@ -1290,6 +1390,18 @@ impl Painter {
                     .into_any_element()
             }
             _ => styled.into_any_element(),
+        };
+        match self.owner {
+            Some(owner) => selection::SelectableText::new(
+                owner,
+                ordinal,
+                px(FONT_PX * LINE_HEIGHT),
+                layout,
+                SharedString::from(text),
+                inner,
+            )
+            .into_any_element(),
+            None => inner,
         }
     }
 
