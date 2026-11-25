@@ -23,6 +23,7 @@ revb run - <<'EOF'               # or a script from stdin
 console.log((await list_requests({ limit: 20 })).length)
 EOF
 revb call get_request '{"requestId":"123.4"}'   # one call, prints the result
+revb md <url>                    # open the url and print its page text as Markdown
 revb list                        # every tool: name<TAB>first sentence of its description
 revb skill --full                # this guide + the live tool catalog of the running app
 revb endpoint                    # url / pid / endpoint file (diagnostics)
