@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use gpui::{
     AnyElement, App, ClipboardItem, CursorStyle, Div, ElementId, Font, FontStyle, FontWeight, Hsla,
-    InteractiveText, MouseButton, Rgba, SharedString, StrikethroughStyle, StyledText, TextRun,
-    Window, actions, canvas, div, font, prelude::*, px, relative, rgb, rgba,
+    InteractiveText, MouseButton, Rgba, SharedString, StrikethroughStyle, StyledText, TextLayout,
+    TextRun, Window, actions, canvas, div, font, prelude::*, px, relative, rgb, rgba,
 };
 pub use pulldown_cmark::Alignment;
 use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd, TextMergeStream};
@@ -1397,17 +1397,33 @@ impl Painter {
             }
             _ => styled.into_any_element(),
         };
+        self.selectable(ordinal, layout, SharedString::from(text), inner)
+    }
+
+    /// Wraps a text element for selection when the root has it on.
+    fn selectable(
+        &self,
+        ordinal: usize,
+        layout: TextLayout,
+        text: SharedString,
+        inner: AnyElement,
+    ) -> AnyElement {
         match self.owner {
-            Some(owner) => selection::SelectableText::new(
-                owner,
-                ordinal,
-                layout,
-                SharedString::from(text),
-                inner,
-            )
-            .into_any_element(),
+            Some(owner) => selection::SelectableText::new(owner, ordinal, layout, text, inner)
+                .into_any_element(),
             None => inner,
         }
+    }
+
+    /// A code block's `<pre>`: one run of text in its parent's text style, with
+    /// the same selection bookkeeping as [`Self::text`].
+    fn raw_text(&mut self, text: String) -> AnyElement {
+        let styled = StyledText::new(text.clone());
+        let layout = styled.layout().clone();
+        self.next_id += 1;
+        let ordinal = self.next_id;
+        let inner = styled.into_any_element();
+        self.selectable(ordinal, layout, text.into(), inner)
     }
 
     /// `<div class="code-block">`: the `<pre>` scrolls sideways, and the copy button
@@ -1433,7 +1449,7 @@ impl Painter {
                     .line_height(relative(CODE_LINE_HEIGHT))
                     .text_color(context.color)
                     .whitespace_nowrap()
-                    .child(SharedString::from(shown)),
+                    .child(self.raw_text(shown)),
             )
             .child(CopyButton {
                 // `innerText` of the <pre>: the code with its final newline.
@@ -2581,6 +2597,7 @@ mod selection_tests {
     /// A window holding one selectable message `width` pixels wide: narrow
     /// enough and its text wraps.
     struct Host {
+        id: &'static str,
         text: &'static str,
         width: f32,
     }
@@ -2593,12 +2610,23 @@ mod selection_tests {
                 .debug_selector(|| "md-host".into())
                 .p(px(20.0))
                 .w(px(40.0 + self.width))
-                .child(markdown(self.text, &theme).id("md-sel").selectable(true))
+                .child(markdown(self.text, &theme).id(self.id).selectable(true))
         }
     }
 
     fn open<'a>(
         cx: &'a mut TestAppContext,
+        text: &'static str,
+        width: f32,
+    ) -> (u64, &'a mut VisualTestContext) {
+        open_as(cx, "md-sel", text, width)
+    }
+
+    /// [`open`] with the message id of the test's choosing: windows opened in
+    /// one test keep separate hit maps.
+    fn open_as<'a>(
+        cx: &'a mut TestAppContext,
+        id: &'static str,
         text: &'static str,
         width: f32,
     ) -> (u64, &'a mut VisualTestContext) {
@@ -2610,10 +2638,11 @@ mod selection_tests {
                 Some("MarkdownSelection"),
             )]);
         });
-        let (_view, cx) = cx
-            .add_window_view(|_window: &mut Window, _cx: &mut Context<Host>| Host { text, width });
+        let (_view, cx) = cx.add_window_view(|_window: &mut Window, _cx: &mut Context<Host>| {
+            Host { id, text, width }
+        });
         cx.run_until_parked();
-        (crate::selection::key(&ElementId::from("md-sel")), cx)
+        (crate::selection::key(&ElementId::from(id)), cx)
     }
 
     fn drag(cx: &mut VisualTestContext, start: Point<gpui::Pixels>, end: Point<gpui::Pixels>) {
@@ -2743,6 +2772,75 @@ mod selection_tests {
         assert_eq!(
             crate::selection::selected_text(owner).as_deref(),
             Some("나다라마")
+        );
+    }
+
+    /// The end of the block's last line. Releasing a pixel short of it still
+    /// selects to the end: that glyph's far boundary is the closer one.
+    fn end_of(carets: &[Point<gpui::Pixels>]) -> Point<gpui::Pixels> {
+        *carets.last().expect("the block has carets") + gpui::point(px(-1.0), px(2.0))
+    }
+
+    #[gpui::test]
+    fn 마크다운_블록_종류마다_드래그로_선택된다(cx: &mut TestAppContext) {
+        for (source, expected) in [
+            ("# 제목 글자들", "제목 글자들"),
+            ("- 항목의 글자들", "항목의 글자들"),
+            ("> 인용의 글자들", "인용의 글자들"),
+            ("| 머리 |\n| --- |\n| 칸의 글자들 |", "머리"),
+            ("[링크 글자들](https://example.test)", "링크 글자들"),
+            (
+                "```\n첫째 코드 줄\n둘째 코드 줄\n```",
+                "첫째 코드 줄\n둘째 코드 줄",
+            ),
+        ] {
+            let (owner, cx) = open_as(cx, expected, source, 600.0);
+            let carets = crate::selection::carets(owner);
+            assert!(!carets.is_empty(), "no selectable text in {source:?}");
+            drag(cx, on(&carets, 0), end_of(&carets));
+            assert_eq!(
+                crate::selection::selected_text(owner).as_deref(),
+                Some(expected),
+                "dragging across {source:?}"
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn 긴_코드_줄의_하이라이트는_상자_안에서_끝난다(cx: &mut TestAppContext) {
+        const LONG: &str =
+            "가나다라마바사아자차카타파하가나다라마바사아자차카타파하가나다라마바사아자차";
+        let source: &'static str =
+            Box::leak(format!("```\n첫째 줄\n{LONG}\n셋째 줄\n```").into_boxed_str());
+        let (owner, cx) = open(cx, source, 120.0);
+        let carets = crate::selection::carets(owner);
+        assert!(carets.len() > 40, "code block text is selectable");
+        // The message is 120px wide and its padding 20px: this is the right
+        // edge of the box the code scrolls in. The middle line runs past it.
+        let box_right = cx.debug_bounds("md-host").expect("host on screen").right() - px(20.0);
+        assert!(carets.iter().any(|caret| caret.x > box_right));
+        let end = carets[carets.len() - 1];
+        assert!(end.x < box_right, "the last line ends inside the box");
+        drag(cx, on(&carets, 0), end_of(&carets));
+        let rects = crate::selection::highlight(owner);
+        assert_eq!(rects.len(), 3, "one rect per code line: {rects:?}");
+        for rect in &rects {
+            assert!(
+                rect.right() <= box_right,
+                "highlight escaped the code box: {rect:?}"
+            );
+        }
+        assert!(
+            rects[1].right() > box_right - px(2.0),
+            "the long line is painted up to the box edge: {rects:?}"
+        );
+        assert!(
+            rects[0].right() < box_right - px(60.0),
+            "the short first line is painted only as far as its text: {rects:?}"
+        );
+        assert_eq!(
+            crate::selection::selected_text(owner),
+            Some(format!("첫째 줄\n{LONG}\n셋째 줄"))
         );
     }
 }

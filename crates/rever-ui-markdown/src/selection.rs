@@ -7,8 +7,7 @@
 //! highlight. Cmd-C copies it.
 //!
 //! One selection exists per app at a time, like any text selection: a drag
-//! anywhere replaces the previous one. Code blocks are excluded; each already
-//! carries its own copy button.
+//! anywhere replaces the previous one.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -18,7 +17,7 @@ use std::hash::Hasher as _;
 use gpui::{
     AnyElement, App, Bounds, ClipboardItem, Element, ElementId, FocusHandle, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, Point, SharedString, TextLayout, Window,
+    Pixels, Point, SharedString, TextLayout, Window, px,
 };
 
 /// Drags shorter than this stay clicks: links keep working when the pointer
@@ -40,6 +39,9 @@ struct HitEntry {
     layout: TextLayout,
     text: SharedString,
     line_height: Pixels,
+    /// What is visible of the block: the scroll boxes it paints inside. A code
+    /// line lays out past its box and only its start shows.
+    clip: Bounds<Pixels>,
 }
 
 /// The selection of one markdown element instance.
@@ -140,6 +142,7 @@ pub(crate) fn record(
     bounds: Bounds<Pixels>,
     layout: TextLayout,
     text: SharedString,
+    clip: Bounds<Pixels>,
 ) {
     state(|s| {
         s.hits
@@ -152,6 +155,7 @@ pub(crate) fn record(
                 line_height: layout.line_height(),
                 layout,
                 text,
+                clip,
             })
     });
 }
@@ -162,10 +166,10 @@ pub(crate) fn record(
 fn locate(owner: u64, position: Point<Pixels>) -> Option<(Hit, bool)> {
     state(|s| {
         let hits = s.hits.borrow();
-        let entry = hits
-            .get(&owner)?
+        let entries = hits.get(&owner)?;
+        let entry = entries
             .iter()
-            .find(|entry| entry.bounds.contains(&position))?;
+            .find(|entry| entry.bounds.contains(&position) && entry.clip.contains(&position))?;
         let hit = |index: usize| Hit {
             ordinal: entry.ordinal,
             index: index.min(entry.text.len()),
@@ -323,7 +327,14 @@ pub(crate) fn highlight(owner: u64) -> Vec<Bounds<Pixels>> {
         if start >= end {
             continue;
         }
-        rects.extend(line_rects(&entry, start, end));
+        // The highlight overlay paints outside the block's scroll boxes: it
+        // clips to what they show.
+        rects.extend(
+            line_rects(&entry, start, end)
+                .into_iter()
+                .map(|rect| rect.intersect(&entry.clip))
+                .filter(|rect| rect.size.width > px(0.0) && rect.size.height > px(0.0)),
+        );
     }
     rects
 }
@@ -483,6 +494,7 @@ impl Element for SelectableText {
             bounds,
             self.layout.clone(),
             self.text.clone(),
+            window.content_mask().bounds,
         );
     }
 
