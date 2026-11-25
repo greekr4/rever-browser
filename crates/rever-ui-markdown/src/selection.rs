@@ -3,8 +3,8 @@
 //! GPUI has no selection for static text: only input fields can select. The
 //! markdown element keeps one itself: every text block records where its
 //! [`TextLayout`] landed during paint, the root element turns a mouse drag
-//! into a character range across those blocks, an overlay paints the
-//! highlight, and a small bubble copies the selected text.
+//! into a character range across those blocks, and an overlay paints the
+//! highlight. Cmd-C copies it.
 //!
 //! One selection exists per app at a time, like any text selection: a drag
 //! anywhere replaces the previous one. Code blocks are excluded; each already
@@ -18,19 +18,15 @@ use std::hash::Hasher as _;
 use gpui::{
     AnyElement, App, Bounds, ClipboardItem, Element, ElementId, FocusHandle, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, Point, SharedString, TextLayout, Window, px,
+    Pixels, Point, SharedString, TextLayout, Window,
 };
 
 /// Drags shorter than this stay clicks: links keep working when the pointer
 /// only wiggles.
 const DRAG_THRESHOLD: f32 = 3.0;
-/// Selection color, at the opacity the app's inactive text uses.
-fn highlight_hsla() -> gpui::Hsla {
-    gpui::hsla(220.0 / 360.0, 0.65, 0.55, 0.25)
-}
 
 /// Where a mouse position landed: which text block, and which byte in it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Hit {
     ordinal: usize,
     index: usize,
@@ -50,18 +46,26 @@ struct HitEntry {
 #[derive(Clone, Copy, Debug)]
 struct Active {
     owner: u64,
-    /// Where the mouse went down; the anchor once the drag activated.
-    down: Hit,
+    /// The glyph the press landed on: its first and last byte boundary. Both
+    /// are the same hit when the press fell in blank space.
+    pressed: (Hit, Hit),
     /// The moving end of the selection.
     head: Hit,
-    /// The pixel position of `down`, for the drag threshold.
+    /// The pixel position of the press, for the drag threshold.
     down_point: P32,
     /// Whether the drag passed the threshold and selected anything.
     live: bool,
 }
 
-/// A Point whose fields are plain f32s, so comparisons and distance math read
-/// without unit ceremony.
+/// The fixed end of the selection: the glyph the press landed on stays
+/// selected whichever way the drag went.
+fn anchor(active: &Active) -> Hit {
+    let (start, end) = active.pressed;
+    if active.head <= start { end } else { start }
+}
+
+/// A Point whose fields are plain f32s, so distance math reads without unit
+/// ceremony.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct P32 {
     x: f32,
@@ -83,8 +87,8 @@ impl P32 {
     }
 }
 
-/// App-global selection state. `RefCell` because element paint and mouse
-/// handlers both reach it while `App` is only `&mut` borrowed once.
+/// The selection state. `RefCell`s because element paint and mouse handlers
+/// both reach it while `App` is only borrowed once.
 #[derive(Default)]
 pub(crate) struct SelectionState {
     hits: RefCell<HashMap<u64, Vec<HitEntry>>>,
@@ -124,20 +128,18 @@ pub(crate) fn key(id: &ElementId) -> u64 {
 }
 
 /// Drops the previous frame's hit entries for `owner`. The marker element at
-/// the top of the markdown tree calls this before any block paints.
+/// the top of the markdown tree calls this before any block records.
 pub(crate) fn clear_owner(owner: u64) {
     state(|s| s.hits.borrow_mut().remove(&owner));
 }
 
 /// A text block's layout, recorded from its paint.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn record(
     owner: u64,
     ordinal: usize,
     bounds: Bounds<Pixels>,
     layout: TextLayout,
     text: SharedString,
-    line_height: Pixels,
 ) {
     state(|s| {
         s.hits
@@ -147,77 +149,97 @@ pub(crate) fn record(
             .push(HitEntry {
                 ordinal,
                 bounds,
+                line_height: layout.line_height(),
                 layout,
                 text,
-                line_height,
             })
     });
 }
 
-/// Which block and byte `position` lands on inside `owner`.
-pub(crate) fn hit_test(owner: u64, position: Point<Pixels>) -> Option<Hit> {
+/// The block and byte `position` lands on inside `owner`. The flag is false
+/// when the position is in the blank space before or after a line's text:
+/// no glyph sits there.
+fn locate(owner: u64, position: Point<Pixels>) -> Option<(Hit, bool)> {
     state(|s| {
         let hits = s.hits.borrow();
-        let entries = hits.get(&owner)?;
-        let mut best: Option<(f32, usize)> = None;
-        for (at, entry) in entries.iter().enumerate() {
-            if !entry.bounds.contains(&position) {
-                continue;
-            }
-            let distance = distance_to(entry.bounds, position);
-            if best.is_none_or(|(so_far, _)| distance < so_far) {
-                best = Some((distance, at));
-            }
-        }
-        let at = best.map(|(_, at)| at)?;
-        let entry = &entries[at];
-        let index = entry
-            .layout
-            .index_for_position(position)
-            .unwrap_or(entry.text.len());
-        Some(Hit {
+        let entry = hits
+            .get(&owner)?
+            .iter()
+            .find(|entry| entry.bounds.contains(&position))?;
+        let hit = |index: usize| Hit {
             ordinal: entry.ordinal,
             index: index.min(entry.text.len()),
-        })
+        };
+        match entry.layout.index_for_position(position) {
+            Ok(index) => Some((closest_boundary(entry, position, index), true)),
+            Err(index) => Some((hit(index), false)),
+        }
     })
 }
 
-fn distance_to(bounds: Bounds<Pixels>, position: Point<Pixels>) -> f32 {
-    let dx = if position.x < bounds.left() {
-        f32::from(bounds.left() - position.x)
-    } else if position.x > bounds.right() {
-        f32::from(position.x - bounds.right())
-    } else {
-        0.0
+/// Which block and byte `position` lands on inside `owner`.
+pub(crate) fn hit_test(owner: u64, position: Point<Pixels>) -> Option<Hit> {
+    locate(owner, position).map(|(hit, _)| hit)
+}
+
+/// `index` is where the glyph under `position` starts. The boundary after
+/// that glyph is the closer one once the pointer is past its middle.
+fn closest_boundary(entry: &HitEntry, position: Point<Pixels>, index: usize) -> Hit {
+    let next = next_boundary(&entry.text, index, entry.text.len());
+    let closer = match (
+        entry.layout.position_for_index(index),
+        entry.layout.position_for_index(next),
+    ) {
+        (Some(a), Some(b)) if a.y == b.y => {
+            f32::from(b.x - position.x).abs() < f32::from(position.x - a.x).abs()
+        }
+        _ => false,
     };
-    let dy = if position.y < bounds.top() {
-        f32::from(bounds.top() - position.y)
-    } else if position.y > bounds.bottom() {
-        f32::from(position.y - bounds.bottom())
-    } else {
-        0.0
-    };
-    dx * dx + dy * dy
+    Hit {
+        ordinal: entry.ordinal,
+        index: if closer { next } else { index },
+    }
 }
 
 /// A drag starts here. Below the threshold nothing is selected yet, so a
 /// plain click still reaches links and the copy button. A press on no text
 /// at all clears whatever was selected.
 pub(crate) fn mouse_down(owner: u64, event: &MouseDownEvent) -> bool {
-    let Some(hit) = hit_test(owner, event.position) else {
+    let Some((hit, on_glyph)) = locate(owner, event.position) else {
         clear(owner);
         return false;
+    };
+    let pressed = if on_glyph {
+        (hit, glyph_end(owner, hit))
+    } else {
+        (hit, hit)
     };
     state(|s| {
         *s.active.borrow_mut() = Some(Active {
             owner,
-            down: hit,
+            pressed,
             head: hit,
             down_point: event.position.into(),
             live: false,
         })
     });
     true
+}
+
+/// The boundary after the glyph that `hit` starts.
+fn glyph_end(owner: u64, hit: Hit) -> Hit {
+    let end = state(|s| {
+        let hits = s.hits.borrow();
+        let entry = hits
+            .get(&owner)?
+            .iter()
+            .find(|entry| entry.ordinal == hit.ordinal)?;
+        Some(next_boundary(&entry.text, hit.index, entry.text.len()))
+    });
+    Hit {
+        index: end.unwrap_or(hit.index),
+        ..hit
+    }
 }
 
 /// The drag moves: past the threshold the selection goes live and the head
@@ -260,11 +282,14 @@ pub(crate) fn mouse_up(_owner: u64, _event: &MouseUpEvent) -> bool {
 
 /// The selected byte range of `owner`'s block `ordinal`, if it is selected.
 fn block_range(active: &Active, owner: u64, ordinal: usize) -> Option<(usize, usize)> {
-    if active.owner != owner {
+    if active.owner != owner || !active.live {
         return None;
     }
-    let (lo, hi) = order(active.down, active.head);
-    if !active.live || lo == hi {
+    let (lo, hi) = (
+        anchor(active).min(active.head),
+        anchor(active).max(active.head),
+    );
+    if lo == hi {
         return None;
     }
     (lo.ordinal <= ordinal && ordinal <= hi.ordinal).then(|| {
@@ -278,18 +303,10 @@ fn block_range(active: &Active, owner: u64, ordinal: usize) -> Option<(usize, us
     })
 }
 
-fn order(a: Hit, b: Hit) -> (Hit, Hit) {
-    if (a.ordinal, a.index) <= (b.ordinal, b.index) {
-        (a, b)
-    } else {
-        (b, a)
-    }
-}
-
 /// The highlight rectangles of the active selection in `owner`, in window
-/// space, and where the copy bubble sits relative to `origin`.
+/// space.
 pub(crate) fn highlight(owner: u64) -> Vec<Bounds<Pixels>> {
-    let active = state(|s| s.active.borrow().clone());
+    let active = state(|s| *s.active.borrow());
     let Some(active) = active else {
         return Vec::new();
     };
@@ -311,42 +328,34 @@ pub(crate) fn highlight(owner: u64) -> Vec<Bounds<Pixels>> {
     rects
 }
 
-/// One entry's selection as whole-line rectangles: sample the caret positions
-/// of every char boundary in the range and group them by row.
+/// One block's selection as one rectangle per visual line. A rectangle runs
+/// from the caret before a line's first selected glyph to the caret after its
+/// last.
 fn line_rects(entry: &HitEntry, start: usize, end: usize) -> Vec<Bounds<Pixels>> {
-    let text = &entry.text[..];
-    // Rows sit on the block's line grid: same wrapped line means same grid
-    // slot, so sub-pixel y wobble between runs cannot split a row.
-    let grid = f32::from(entry.line_height).max(1.0);
-    let mut rows: Vec<(i32, f32, f32, f32)> = Vec::new(); // slot, y, min_x, max_x
-    let mut at = start;
-    while at <= end {
-        if let Some(point) = entry.layout.position_for_index(at) {
-            let (x, y) = (f32::from(point.x), f32::from(point.y));
-            let slot = (y / grid).round() as i32;
-            let row = rows.last_mut();
-            match row {
-                Some((row_slot, row_y, min_x, max_x)) if *row_slot == slot => {
-                    *min_x = min_x.min(x);
-                    *max_x = max_x.max(x);
-                }
-                _ => rows.push((slot, y, x, x)),
+    let mut rects: Vec<Bounds<Pixels>> = Vec::new();
+    let mut from = start;
+    while from < end {
+        let to = next_boundary(&entry.text, from, end);
+        if let (Some(a), Some(b)) = (
+            entry.layout.position_for_index(from),
+            entry.layout.position_for_index(to),
+        ) {
+            // The caret at a wrap boundary sits at the end of the line above.
+            // So a step that changes line opens the next one at the block's
+            // left edge.
+            let left = if a.y == b.y { a.x } else { entry.bounds.left() };
+            match rects.last_mut().filter(|rect| rect.top() == b.y) {
+                Some(rect) => rect.size.width = b.x - rect.origin.x,
+                None if b.x > left => rects.push(Bounds {
+                    origin: Point { x: left, y: b.y },
+                    size: gpui::size(b.x - left, entry.line_height),
+                }),
+                None => {}
             }
         }
-        if at >= end {
-            break;
-        }
-        at = next_boundary(text, at, end);
+        from = to;
     }
-    rows.into_iter()
-        .map(|(_slot, y, min_x, max_x)| Bounds {
-            origin: Point {
-                x: px(min_x),
-                y: px(y),
-            },
-            size: gpui::size(px((max_x - min_x).max(2.0)), entry.line_height),
-        })
-        .collect()
+    rects
 }
 
 fn next_boundary(text: &str, at: usize, end: usize) -> usize {
@@ -359,10 +368,7 @@ fn next_boundary(text: &str, at: usize, end: usize) -> usize {
 
 /// The selected text of `owner`, blocks joined the way they were laid out.
 pub(crate) fn selected_text(owner: u64) -> Option<String> {
-    let active = state(|s| s.active.borrow().clone())?;
-    if !active.live {
-        return None;
-    }
+    let active = state(|s| *s.active.borrow())?;
     let entries = state(|s| s.hits.borrow().get(&owner).cloned())?;
     let mut out = String::new();
     let mut any = false;
@@ -402,51 +408,9 @@ pub(crate) fn clear(owner: u64) {
     });
 }
 
-/// Whether `owner` has a finished selection worth a copy bubble.
-pub(crate) fn has_selection(owner: u64) -> bool {
-    state(|s| {
-        s.active
-            .borrow()
-            .as_ref()
-            .is_some_and(|a| a.owner == owner && a.live)
-    })
-}
-
-/// The overlay color.
+/// The highlight color.
 pub(crate) fn highlight_color() -> gpui::Hsla {
-    highlight_hsla()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn hit(ordinal: usize, index: usize) -> Hit {
-        Hit { ordinal, index }
-    }
-
-    #[test]
-    fn p32_거리는_피타고라스를_따른다() {
-        let a = P32 { x: 0.0, y: 0.0 };
-        let b = P32 { x: 3.0, y: 4.0 };
-        assert_eq!(a.distance(b), 5.0);
-    }
-
-    #[test]
-    fn 역방향_드래그는_순서를_바꿔_정규화한다() {
-        let (lo, hi) = order(hit(2, 10), hit(1, 4));
-        assert_eq!((lo.ordinal, lo.index), (1, 4));
-        assert_eq!((hi.ordinal, hi.index), (2, 10));
-    }
-
-    #[test]
-    fn 다음_문자_경계는_유니코드를_건너뛴다() {
-        let text = "a한b";
-        // '한' is three bytes: boundaries at 0, 1, 4, 5.
-        assert_eq!(next_boundary(text, 0, 5), 1);
-        assert_eq!(next_boundary(text, 1, 5), 4);
-        assert_eq!(next_boundary(text, 4, 5), 5);
-    }
+    gpui::hsla(220.0 / 360.0, 0.65, 0.55, 0.25)
 }
 
 /// Wraps one text block: delegates everything to the inner element, and on
@@ -455,7 +419,6 @@ mod tests {
 pub(crate) struct SelectableText {
     owner: u64,
     ordinal: usize,
-    line_height: Pixels,
     layout: TextLayout,
     text: SharedString,
     inner: AnyElement,
@@ -468,7 +431,6 @@ impl SelectableText {
     pub(crate) fn new(
         owner: u64,
         ordinal: usize,
-        line_height: Pixels,
         layout: TextLayout,
         text: SharedString,
         inner: AnyElement,
@@ -476,7 +438,6 @@ impl SelectableText {
         Self {
             owner,
             ordinal,
-            line_height,
             layout,
             text,
             inner,
@@ -516,14 +477,12 @@ impl Element for SelectableText {
         cx: &mut App,
     ) {
         self.inner.prepaint(window, cx);
-        let _ = cx;
         record(
             self.owner,
             self.ordinal,
             bounds,
             self.layout.clone(),
             self.text.clone(),
-            self.line_height,
         );
     }
 
@@ -549,22 +508,66 @@ impl IntoElement for SelectableText {
     }
 }
 
+/// Caret positions of every char boundary in `owner`'s first text block:
+/// tests drive drags with them instead of guessing glyph widths.
 #[cfg(test)]
-pub(crate) fn debug_state(owner: u64) -> String {
+pub(crate) fn carets(owner: u64) -> Vec<Point<Pixels>> {
     state(|s| {
         let hits = s.hits.borrow();
-        format!(
-            "hits for owner: {} entries; active: {:?}",
-            hits.get(&owner).map_or(0, |v| v.len()),
-            s.active
-                .borrow()
-                .as_ref()
-                .map(|a| (a.owner, a.live, a.down, a.head))
+        let entry = hits.get(&owner)?.first()?;
+        Some(
+            (0..=entry.text.len())
+                .filter(|at| entry.text.is_char_boundary(*at))
+                .filter_map(|at| entry.layout.position_for_index(at))
+                .collect(),
         )
     })
+    .unwrap_or_default()
 }
 
 #[cfg(test)]
-pub(crate) fn focus_handle_pub(owner: &u64) -> FocusHandle {
-    state(|s| s.focus.borrow().get(owner).cloned()).expect("focus handle exists")
+mod tests {
+    use super::*;
+
+    fn hit(ordinal: usize, index: usize) -> Hit {
+        Hit { ordinal, index }
+    }
+
+    /// A selection whose press landed on the glyph spanning bytes 9 to 12.
+    fn active(head: Hit) -> Active {
+        Active {
+            owner: 1,
+            pressed: (hit(0, 9), hit(0, 12)),
+            head,
+            down_point: P32::default(),
+            live: true,
+        }
+    }
+
+    #[test]
+    fn 왼쪽으로_드래그하면_누른_글자의_끝이_고정점이다() {
+        assert_eq!(anchor(&active(hit(0, 0))), hit(0, 12));
+    }
+
+    #[test]
+    fn 오른쪽으로_드래그하면_누른_글자의_시작이_고정점이다() {
+        assert_eq!(anchor(&active(hit(0, 30))), hit(0, 9));
+        assert_eq!(anchor(&active(hit(1, 0))), hit(0, 9));
+    }
+
+    #[test]
+    fn p32_거리는_피타고라스를_따른다() {
+        let a = P32 { x: 0.0, y: 0.0 };
+        let b = P32 { x: 3.0, y: 4.0 };
+        assert_eq!(a.distance(b), 5.0);
+    }
+
+    #[test]
+    fn 다음_문자_경계는_유니코드를_건너뛴다() {
+        let text = "a한b";
+        // '한' is three bytes: boundaries at 0, 1, 4, 5.
+        assert_eq!(next_boundary(text, 0, 5), 1);
+        assert_eq!(next_boundary(text, 1, 5), 4);
+        assert_eq!(next_boundary(text, 4, 5), 5);
+    }
 }

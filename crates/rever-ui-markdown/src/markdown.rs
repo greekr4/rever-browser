@@ -1173,7 +1173,7 @@ impl RenderOnce for Markdown {
             .line_height(relative(LINE_HEIGHT))
             .text_color(self.theme.text)
             .when(self.dim, |root| root.opacity(0.6).italic());
-        let root = match owner {
+        match owner {
             Some(owner) => {
                 // Drop last frame's hit entries before any block records
                 // new ones. This must run in PREPAINT: the whole tree
@@ -1225,8 +1225,7 @@ impl RenderOnce for Markdown {
                 // `.chat-log .md > :first-child { margin-top: 0 }`
                 .children(painter.stack(&self.blocks, &gaps, false, &context))
                 .pb(px(trailing)),
-        };
-        root
+        }
     }
 }
 
@@ -1402,7 +1401,6 @@ impl Painter {
             Some(owner) => selection::SelectableText::new(
                 owner,
                 ordinal,
-                px(FONT_PX * LINE_HEIGHT),
                 layout,
                 SharedString::from(text),
                 inner,
@@ -2572,7 +2570,7 @@ mod tests {
 
 #[cfg(test)]
 mod selection_tests {
-    use super::{CopySelection, ElementId, markdown};
+    use super::{CopySelection, ElementId, FONT_PX, LINE_HEIGHT, markdown};
     use gpui::prelude::*;
     use gpui::{
         Context, Modifiers, MouseButton, Point, Render, TestAppContext, VisualTestContext, Window,
@@ -2580,8 +2578,11 @@ mod selection_tests {
     };
     use rever_ui_kit::theme::{Theme, ThemeMode};
 
+    /// A window holding one selectable message `width` pixels wide: narrow
+    /// enough and its text wraps.
     struct Host {
         text: &'static str,
+        width: f32,
     }
 
     impl Render for Host {
@@ -2591,8 +2592,28 @@ mod selection_tests {
                 .id("md-host")
                 .debug_selector(|| "md-host".into())
                 .p(px(20.0))
+                .w(px(40.0 + self.width))
                 .child(markdown(self.text, &theme).id("md-sel").selectable(true))
         }
+    }
+
+    fn open<'a>(
+        cx: &'a mut TestAppContext,
+        text: &'static str,
+        width: f32,
+    ) -> (u64, &'a mut VisualTestContext) {
+        // The app binds this at startup before any window opens.
+        cx.update(|cx: &mut gpui::App| {
+            cx.bind_keys([gpui::KeyBinding::new(
+                "cmd-c",
+                CopySelection,
+                Some("MarkdownSelection"),
+            )]);
+        });
+        let (_view, cx) = cx
+            .add_window_view(|_window: &mut Window, _cx: &mut Context<Host>| Host { text, width });
+        cx.run_until_parked();
+        (crate::selection::key(&ElementId::from("md-sel")), cx)
     }
 
     fn drag(cx: &mut VisualTestContext, start: Point<gpui::Pixels>, end: Point<gpui::Pixels>) {
@@ -2602,21 +2623,24 @@ mod selection_tests {
         cx.run_until_parked();
     }
 
+    /// A point just inside the glyph that starts at caret `at` on its line.
+    fn on(carets: &[Point<gpui::Pixels>], at: usize) -> Point<gpui::Pixels> {
+        carets[at] + gpui::point(px(1.0), px(FONT_PX * LINE_HEIGHT / 2.0))
+    }
+
     #[gpui::test]
     fn 드래그하면_텍스트가_선택된다(cx: &mut TestAppContext) {
-        let (_view, cx) =
-            cx.add_window_view(|_window: &mut Window, _cx: &mut Context<Host>| Host {
-                text: "가나다라마바사 아자차카타파하\n\n둘째 문단의 글자들",
-            });
-        cx.run_until_parked();
-        let owner = crate::selection::key(&ElementId::from("md-sel"));
-        eprintln!("[t] before drag: {}", crate::selection::debug_state(owner));
-        let bounds = cx.debug_bounds("md-host").expect("markdown host on screen");
-        eprintln!("[t] host bounds: {:?}", bounds);
-        let start = bounds.origin + gpui::point(px(24.0), px(24.0));
-        let end = start + gpui::point(px(120.0), px(2.0));
-        drag(cx, start, end);
-        eprintln!("[t] after drag: {}", crate::selection::debug_state(owner));
+        let (owner, cx) = open(
+            cx,
+            "가나다라마바사 아자차카타파하\n\n둘째 문단의 글자들",
+            600.0,
+        );
+        let carets = crate::selection::carets(owner);
+        drag(
+            cx,
+            on(&carets, 0),
+            carets[0] + gpui::point(px(120.0), px(12.0)),
+        );
         let selected = crate::selection::selected_text(owner);
         assert!(selected.is_some(), "nothing was selected");
         let selected = selected.unwrap();
@@ -2629,13 +2653,9 @@ mod selection_tests {
         // One visual line of selection is one rectangle, not one per glyph.
         let rects = crate::selection::highlight(owner);
         assert_eq!(rects.len(), 1, "a single-line selection is one rect");
-        // Cmd-C copies it: the drag moved focus to the markdown, so the
+        // Cmd-C copies it: the drag moved focus to the markdown so the
         // contextual binding reaches the element's action.
-        // The keystroke-to-binding hop is gpui's own machinery (the same
-        // pattern text_input ships); in this test harness only the
-        // dispatch below is reachable, so it stands in for cmd-c.
-        cx.dispatch_action(CopySelection);
-        cx.run_until_parked();
+        cx.simulate_keystrokes("cmd-c");
         let clipboard = cx
             .read_from_clipboard()
             .and_then(|item| item.text().to_owned());
@@ -2645,8 +2665,84 @@ mod selection_tests {
             "cmd-c copied the selection"
         );
         assert!(
-            !crate::selection::has_selection(owner),
+            crate::selection::selected_text(owner).is_none(),
             "copying clears the selection"
+        );
+    }
+
+    #[gpui::test]
+    fn 줄이_바뀌어도_다음_줄_첫_글자부터_칠해진다(cx: &mut TestAppContext) {
+        let text: &'static str = concat!(
+            "가나다라마 바사아자차 카타파하가 나다라마바 ",
+            "가나다라마 바사아자차 카타파하가 나다라마바 ",
+            "가나다라마 바사아자차 카타파하가 나다라마바"
+        );
+        let (owner, cx) = open(cx, text, 120.0);
+        let carets = crate::selection::carets(owner);
+        // Carets are char boundaries: this is the byte offset of each.
+        let bytes: Vec<usize> = text
+            .char_indices()
+            .map(|(at, _)| at)
+            .chain([text.len()])
+            .collect();
+        assert_eq!(carets.len(), bytes.len(), "one caret per char boundary");
+        // A caret at a wrap boundary sits at the end of the line above. So the
+        // first caret on a lower line is the boundary after that line's first
+        // glyph and the next one starts its third glyph.
+        let second = (1..carets.len())
+            .find(|&at| carets[at].y != carets[0].y)
+            .expect("the text wraps");
+        assert_eq!(carets[second - 1].y, carets[0].y);
+        let on_second = (second..carets.len())
+            .take_while(|&at| carets[at].y == carets[second].y)
+            .count();
+        assert!(on_second >= 3, "the second line holds enough glyphs");
+        let third_glyph = second + 1;
+        drag(cx, on(&carets, 0), on(&carets, third_glyph));
+        let rects = crate::selection::highlight(owner);
+        assert_eq!(rects.len(), 2, "one rect per visual line: {rects:?}");
+        assert_eq!(rects[0].origin.y, carets[0].y);
+        assert_eq!(rects[1].origin.y, carets[second].y);
+        assert_eq!(
+            rects[1].origin.x, carets[0].x,
+            "the second line is painted from its first glyph: {rects:?}"
+        );
+        assert_eq!(rects[1].right(), carets[third_glyph].x);
+        assert!(
+            rects[0].right() >= carets[second - 2].x,
+            "the last glyph of the first line is painted too: {rects:?}"
+        );
+        assert_eq!(
+            crate::selection::selected_text(owner).as_deref(),
+            Some(&text[..bytes[third_glyph]])
+        );
+    }
+
+    #[gpui::test]
+    fn 커서가_글자_중간을_지나면_그_글자도_선택된다(cx: &mut TestAppContext) {
+        let text = "가나다라마바사";
+        let (owner, cx) = open(cx, text, 600.0);
+        let carets = crate::selection::carets(owner);
+        // Release a little past the middle of the fourth glyph.
+        let past_middle = px(f32::from(carets[4].x - carets[3].x) / 2.0 + 1.0);
+        let end = carets[3] + gpui::point(past_middle, px(FONT_PX * LINE_HEIGHT / 2.0));
+        drag(cx, on(&carets, 0), end);
+        assert_eq!(
+            crate::selection::selected_text(owner).as_deref(),
+            Some("가나다라")
+        );
+    }
+
+    #[gpui::test]
+    fn 왼쪽으로_드래그해도_누른_글자는_선택에_남는다(cx: &mut TestAppContext) {
+        let text = "가나다라마바사";
+        let (owner, cx) = open(cx, text, 600.0);
+        let carets = crate::selection::carets(owner);
+        // Press on the fifth glyph and drag back to the second.
+        drag(cx, on(&carets, 4), on(&carets, 1));
+        assert_eq!(
+            crate::selection::selected_text(owner).as_deref(),
+            Some("나다라마")
         );
     }
 }
