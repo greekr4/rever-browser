@@ -563,3 +563,18 @@ impl IntoElement for SelectableText {
         self
     }
 }
+
+#[cfg(test)]
+pub(crate) fn debug_state(owner: u64) -> String {
+    state(|s| {
+        let hits = s.hits.borrow();
+        format!(
+            "hits for owner: {} entries; active: {:?}",
+            hits.get(&owner).map_or(0, |v| v.len()),
+            s.active
+                .borrow()
+                .as_ref()
+                .map(|a| (a.owner, a.live, a.down, a.head))
+        )
+    })
+}

@@ -3,4 +3,4 @@
 pub mod markdown;
 pub(crate) mod selection;
 
-pub use markdown::{Markdown, markdown};
+pub use markdown::{Markdown, markdown, plain};

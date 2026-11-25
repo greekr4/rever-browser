@@ -1079,6 +1079,24 @@ pub fn markdown(text: &str, theme: &Theme) -> Markdown {
     }
 }
 
+/// One run of text rendered as-is: no Markdown parsing, nothing restyled.
+/// For bubbles whose exact characters must survive (a user's own message),
+/// with the same `.selectable(true)` support as [`markdown`].
+pub fn plain(text: &str, theme: &Theme) -> Markdown {
+    Markdown {
+        id: "md".into(),
+        blocks: vec![Block::Text(vec![Span {
+            text: text.to_owned(),
+            ..Span::default()
+        }])],
+        theme: *theme,
+        dim: false,
+        lang: Lang::En,
+        on_link: None,
+        selectable: false,
+    }
+}
+
 #[derive(IntoElement)]
 pub struct Markdown {
     id: ElementId,
@@ -1155,11 +1173,13 @@ impl RenderOnce for Markdown {
             .when(self.dim, |root| root.opacity(0.6).italic());
         let root = match owner {
             Some(owner) => {
-                // Drop last frame's hit entries before any block records new
-                // ones; this marker paints ahead of the text children.
+                // Drop last frame's hit entries before any block records
+                // new ones. This must run in PREPAINT: the whole tree
+                // prepaints before anything paints, so a paint-phase clear
+                // would wipe what this frame's own prepaint just recorded.
                 let marker = div().absolute().child(canvas(
-                    move |_, _, _| {},
-                    move |_, _, _, cx| selection::clear_owner(owner),
+                    move |_, _, _cx| selection::clear_owner(owner),
+                    move |_, _, _, _| {},
                 ));
                 let overlay = selection_overlay(owner, self.theme, cx);
                 root.child(marker)
@@ -2560,5 +2580,64 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::{ElementId, markdown};
+    use gpui::prelude::*;
+    use gpui::{
+        Context, Modifiers, MouseButton, Point, Render, TestAppContext, VisualTestContext, Window,
+        div, px,
+    };
+    use rever_ui_kit::theme::{Theme, ThemeMode};
+
+    struct Host {
+        text: &'static str,
+    }
+
+    impl Render for Host {
+        fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let theme = Theme::resolve(ThemeMode::Light, window.appearance());
+            div()
+                .id("md-host")
+                .debug_selector(|| "md-host".into())
+                .p(px(20.0))
+                .child(markdown(self.text, &theme).id("md-sel").selectable(true))
+        }
+    }
+
+    fn drag(cx: &mut VisualTestContext, start: Point<gpui::Pixels>, end: Point<gpui::Pixels>) {
+        cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    fn 드래그하면_텍스트가_선택된다(cx: &mut TestAppContext) {
+        let (_view, cx) =
+            cx.add_window_view(|_window: &mut Window, _cx: &mut Context<Host>| Host {
+                text: "가나다라마바사 아자차카타파하\n\n둘째 문단의 글자들",
+            });
+        cx.run_until_parked();
+        let owner = crate::selection::key(&ElementId::from("md-sel"));
+        eprintln!("[t] before drag: {}", crate::selection::debug_state(owner));
+        let bounds = cx.debug_bounds("md-host").expect("markdown host on screen");
+        eprintln!("[t] host bounds: {:?}", bounds);
+        let start = bounds.origin + gpui::point(px(24.0), px(24.0));
+        let end = start + gpui::point(px(120.0), px(2.0));
+        drag(cx, start, end);
+        eprintln!("[t] after drag: {}", crate::selection::debug_state(owner));
+        let selected = crate::selection::selected_text(owner);
+        assert!(selected.is_some(), "nothing was selected");
+        let selected = selected.unwrap();
+        assert!(
+            "가나다라마바사 아자차카타파하".starts_with(&selected)
+                && !selected.is_empty()
+                && !selected.contains('문'),
+            "selection picked text from the first paragraph: {selected}"
+        );
     }
 }
