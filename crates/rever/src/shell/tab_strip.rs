@@ -128,6 +128,9 @@ impl Browser {
                         .items_center()
                         .child(self.nav_buttons(theme, cx))
                         .child(div().flex_1())
+                        .children(self.window_badge(theme))
+                        .child(self.proxy_button.clone())
+                        .children(self.profile_menu.clone())
                         .child(self.menu.clone()),
                 )
                 .child(

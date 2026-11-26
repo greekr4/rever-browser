@@ -54,6 +54,9 @@ use rever_ui_menus::ui::{Look, LookFn, fill};
 use rever_ui_setup::browser_import_modal::BrowserImportModal;
 use rever_ui_setup::host::SetupHost;
 use rever_ui_setup::onboarding_modal::OnboardingModal;
+use rever_ui_setup::profile_menu::ProfileMenu;
+use rever_ui_setup::profiles::ProfilesStore;
+use rever_ui_setup::proxy_button::ProxyButton;
 use rever_ui_state::app_theme::{self, AppThemeStore};
 use rever_ui_state::chat_collapsed::ChatCollapsedStore;
 use rever_ui_state::chat_history::{ChatHistory, new_conversation_id};
@@ -507,6 +510,21 @@ fn record_ws(store: &Mutex<TrafficStore>, event: NetworkTapEvent) {
 /// Saver does: its page is closed and opens again from its address when the tab is used.
 const TAB_SLEEP_AFTER: Duration = Duration::from_secs(10 * 60);
 
+/// In the sidebar the proxy and profile buttons sit at the window's left edge: their
+/// popups open to the right there, and to the left under the toolbar.
+fn place_popups(
+    layout: Layout,
+    proxy: &Entity<ProxyButton>,
+    profiles: Option<&Entity<ProfileMenu>>,
+    cx: &mut App,
+) {
+    let right = layout == Layout::Sidebar;
+    proxy.update(cx, |button, cx| button.set_opens_right(right, cx));
+    if let Some(menu) = profiles {
+        menu.update(cx, |menu, cx| menu.set_opens_right(right, cx));
+    }
+}
+
 /// Whether a tab left alone for `idle` goes to sleep.
 /// Whether a tab left alone for `idle` goes to sleep. The shown tab never does, and
 /// none does while the agent or a scan works: they drive tabs behind the shown one.
@@ -945,6 +963,12 @@ pub(crate) struct Browser {
     pub onboarding: Entity<OnboardingModal>,
     /// The offer to bring Chrome's logins over, once after the guide and from the menu.
     pub browser_import: Entity<BrowserImportModal>,
+    /// The profiles, each a window of its own. Only the app's first window lists them.
+    pub profile_menu: Option<Entity<ProfileMenu>>,
+    /// Opens a window that goes through a proxy; in such a window, changes its proxy.
+    pub proxy_button: Entity<ProxyButton>,
+    /// What a profile or proxy window is called; `None` in the app's first window.
+    pub window_label: Option<SharedString>,
     /// Keeps the conversation at its newest line while a reply streams.
     pub chat_scroll: gpui::ScrollHandle,
     /// The model chip of the composer: every agent's models in one list.
@@ -1216,9 +1240,58 @@ impl Browser {
             this.clone(),
         ));
         let onboarding = cx.new(|cx| OnboardingModal::new(setup.clone(), look.clone(), cx));
+        let own_window = crate::profile_windows::this_window();
+        let window_proxy = own_window.as_ref().and_then(|own| own.proxy.clone());
+        let window_label = own_window.map(|own| SharedString::from(own.label));
+        // A profile window is one profile: the list of them stays in the first window.
+        let profile_menu = (window_label.is_none() && self_check.is_none()).then(|| {
+            let store = cx.new(|_| ProfilesStore::new(setup.clone()));
+            cx.new(|cx| ProfileMenu::new(store, setup.clone(), look.clone(), cx))
+        });
+        let proxy_button = {
+            let this = this.clone();
+            let tab = move |cx: &App| {
+                this.read_with(cx, |this, _| {
+                    let tab = &this.tabs[this.active];
+                    rever_ui_state::tabs::Tab {
+                        id: tab.id.0.to_string(),
+                        url: tab.url.clone(),
+                        title: tab.title.to_string(),
+                        web_contents_id: None,
+                        initial_url: String::new(),
+                        // The window's proxy is every tab's; "isolated" is what lets
+                        // the button change it in place.
+                        partition: window_proxy.as_ref().map(|_| "window".to_owned()),
+                        proxy: window_proxy.clone(),
+                        profile_id: None,
+                    }
+                })
+                .ok()
+            };
+            let button =
+                cx.new(|cx| ProxyButton::new(setup.clone(), tab, |_| {}, look.clone(), cx));
+            button.update(cx, |button, _| button.set_http_only(true));
+            button
+        };
+        place_popups(layout, &proxy_button, profile_menu.as_ref(), cx);
+        if window_label.is_none() && self_check.is_none() {
+            // What a crashed incognito or proxy window left on the disk.
+            crate::profile_windows::sweep_ephemeral(&data_dir().join("profiles"));
+        } else {
+            // Logins brought from another browser for this profile, left by the
+            // window that made it.
+            let cookies = crate::profile_windows::take_cookies(&data_dir());
+            let page = tool_browser.clone();
+            cx.background_spawn(async move {
+                crate::storage_host::store_cookies(page.as_ref(), &cookies).await;
+            })
+            .detach();
+        }
         let browser_import = {
             // A self-check run offers nothing: its storage starts empty every time.
-            let storage: Rc<dyn rever_ui_state::Storage> = if self_check.is_some() {
+            let storage: Rc<dyn rever_ui_state::Storage> = if self_check.is_some()
+                || crate::profile_windows::this_window().is_some()
+            {
                 let offered = rever_ui_state::storage::MemoryStorage::new();
                 let _ = rever_ui_state::Storage::set(&offered, "rev:browser-import-offered", "1");
                 Rc::new(offered)
@@ -1378,6 +1451,9 @@ impl Browser {
             permission_prompt,
             onboarding,
             browser_import,
+            profile_menu,
+            proxy_button,
+            window_label,
             chat,
             open_panel,
             page_bounds: Rc::new(Cell::new(Bounds::default())),
@@ -2165,6 +2241,25 @@ impl Browser {
         cx.notify();
     }
 
+    /// A new tab from a menu, which has no window at hand: opened through the tools'
+    /// command, then shown.
+    pub(crate) fn open_tab_from_menu(&mut self, url: &str, cx: &mut Context<Self>) {
+        let (answer, opened) = oneshot::channel();
+        let _ = self
+            .tool_tx
+            .unbounded_send(bridge::Command::OpenTab(url.to_owned(), answer));
+        let _ = self.wake.unbounded_send(());
+        let (commands, wake) = (self.tool_tx.clone(), self.wake.clone());
+        cx.spawn(async move |_, _| {
+            if let Ok(Ok(index)) = opened.await {
+                let (answer, _) = oneshot::channel();
+                let _ = commands.unbounded_send(bridge::Command::SelectTab(index, answer));
+                let _ = wake.unbounded_send(());
+            }
+        })
+        .detach();
+    }
+
     /// The first-run guide closed: the import offer, which waited for it, looks again.
     pub(crate) fn setup_changed(&mut self, cx: &mut Context<Self>) {
         self.browser_import.update(cx, |_, cx| cx.notify());
@@ -2236,6 +2331,12 @@ impl Browser {
         if let Err(error) = self.stores.storage.set(LAYOUT_KEY, self.layout.name()) {
             eprintln!("rever: the layout choice was not saved: {error}");
         }
+        place_popups(
+            self.layout,
+            &self.proxy_button,
+            self.profile_menu.as_ref(),
+            cx,
+        );
         cx.notify();
     }
 

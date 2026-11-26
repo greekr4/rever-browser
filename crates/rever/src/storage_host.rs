@@ -64,33 +64,54 @@ pub(crate) async fn import_chrome(
     profile: Option<String>,
     hosts: Option<Vec<String>>,
 ) -> Result<BrowserImportResult, String> {
-    let summary = rever_cookie_import::import_chrome_macos(profile.as_deref(), hosts.as_deref())?;
-    let (mut imported, mut skipped) = (0u64, 0u64);
-    for c in &summary.cookies {
-        let url = cookie_url(&c.host, &c.path);
-        let cookie = Cookie {
-            name: c.name.clone(),
-            value: c.value.clone(),
-            domain: c.host.clone(),
-            path: c.path.clone(),
+    let (cookies, mut result) = read_chrome(profile.as_deref(), hosts.as_deref())?;
+    result.imported = store_cookies(browser.as_ref(), &cookies).await;
+    result.skipped = cookies.len() as u64 - result.imported;
+    Ok(result)
+}
+
+/// Chrome's cookies, decrypted, and the counts an import reports; `imported` is for
+/// whoever stores them to fill in.
+pub(crate) fn read_chrome(
+    profile: Option<&str>,
+    hosts: Option<&[String]>,
+) -> Result<(Vec<Cookie>, BrowserImportResult), String> {
+    let summary = rever_cookie_import::import_chrome_macos(profile, hosts)?;
+    let cookies = summary
+        .cookies
+        .into_iter()
+        .map(|c| Cookie {
+            name: c.name,
+            value: c.value,
+            domain: c.host,
+            path: c.path,
             expires: c.expires,
             http_only: c.http_only,
             secure: c.secure,
             same_site: None,
-        };
-        match browser.set_cookie(&url, cookie).await {
-            Ok(()) => imported += 1,
-            Err(_) => skipped += 1,
-        }
-    }
-    Ok(BrowserImportResult {
+        })
+        .collect();
+    let result = BrowserImportResult {
         ok: true,
-        imported,
-        skipped,
+        imported: 0,
+        skipped: 0,
         undecryptable: summary.undecryptable,
         total: summary.total,
         error: None,
-    })
+    };
+    Ok((cookies, result))
+}
+
+/// Put the cookies in the engine's jar; returns how many it took.
+pub(crate) async fn store_cookies(browser: &dyn Browser, cookies: &[Cookie]) -> u64 {
+    let mut stored = 0;
+    for cookie in cookies {
+        let url = cookie_url(&cookie.domain, &cookie.path);
+        if browser.set_cookie(&url, cookie.clone()).await.is_ok() {
+            stored += 1;
+        }
+    }
+    stored
 }
 
 impl StorageHost for StorageBridge {

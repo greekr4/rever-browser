@@ -18,8 +18,9 @@ impl Browser {
             .gap(px(2.0))
             .child(self.nav_buttons(theme, cx))
             .child(self.omnibox(theme, cx).flex_1().mx(px(4.0)))
-            // The proxy and profile menus are not ported yet, so their label and button
-            // (which did nothing) are left out until they are.
+            .children(self.window_badge(theme))
+            .child(self.proxy_button.clone())
+            .children(self.profile_menu.clone())
             .child(self.ip_badge.clone())
             .child(self.menu.clone());
         div()
@@ -29,6 +30,31 @@ impl Browser {
             .border_color(theme.border)
             .child(row)
             .child(self.views.bookmark_bar.clone())
+    }
+
+    /// Which profile or proxy window this is; nothing in the app's first window.
+    pub(super) fn window_badge(&self, theme: &Theme) -> Option<impl IntoElement + use<>> {
+        let label = self.window_label.clone()?;
+        // A window the proxy button opened belongs to no profile.
+        let label = if label.is_empty() {
+            self.lang.t("profile.incognitoTag").into()
+        } else {
+            label
+        };
+        Some(
+            div()
+                .mx(px(4.0))
+                .px(px(8.0))
+                .h(px(22.0))
+                .flex()
+                .flex_none()
+                .items_center()
+                .rounded_full()
+                .bg(theme.accent)
+                .text_color(theme.bg)
+                .text_size(px(11.0))
+                .child(label),
+        )
     }
 
     /// Back, forward and reload.

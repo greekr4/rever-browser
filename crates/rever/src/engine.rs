@@ -287,6 +287,7 @@ impl Engine {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let _ = std::fs::create_dir_all(&profile_dir);
         let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(wake);
+        let proxy = crate::profile_windows::engine_proxy().unwrap_or_default();
         let servo = ServoBuilder::default()
             // Where Servo reads and writes cookie_jar.json, so logins survive a restart.
             .opts(servo::Opts {
@@ -311,6 +312,9 @@ impl Engine {
                 // On this machine only. Servo reports the port it was told, not the
                 // one it got, so a free one is picked here first.
                 devtools_server_listen_address: format!("127.0.0.1:{}", free_port()),
+                // A proxy window's proxy: every request and WebSocket of this process.
+                network_http_proxy_uri: proxy.clone(),
+                network_https_proxy_uri: proxy,
                 ..Default::default()
             })
             .event_loop_waker(Box::new(Waker(wake.clone())))

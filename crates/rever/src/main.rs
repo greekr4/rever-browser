@@ -23,6 +23,7 @@ mod mcp_client;
 mod memory;
 mod panels;
 mod permissions;
+mod profile_windows;
 mod scan;
 mod setup_host;
 mod shell;

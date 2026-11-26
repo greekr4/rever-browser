@@ -7555,6 +7555,7 @@ dependencies = [
  "image",
  "libc",
  "objc",
+ "percent-encoding",
  "regex",
  "reqwest",
  "rever-agent",
