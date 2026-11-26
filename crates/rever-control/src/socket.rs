@@ -141,6 +141,12 @@ pub fn serve(path: &Path, token: &str, handler: Handler) -> Result<ControlServer
             while !thread_stop.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((stream, _)) => {
+                        // BSD and macOS hand the accepted socket the listener's
+                        // non-blocking flag, which would fail a write halfway
+                        // through a large reply.
+                        if stream.set_nonblocking(false).is_err() {
+                            continue;
+                        }
                         let token = token.clone();
                         let handler = handler.clone();
                         // One thread per client: a scan's workers may all be
@@ -240,6 +246,20 @@ mod tests {
         assert_eq!(reply["ok"], true);
         assert_eq!(reply["result"]["tool"], "list_requests");
         assert_eq!(reply["result"]["args"]["limit"], 2);
+        server.close();
+    }
+
+    #[test]
+    fn 소켓_버퍼보다_큰_응답도_끝까지_온다() {
+        // macOS marks an accepted socket non-blocking, which used to cut the
+        // reply at one buffer and hang the caller.
+        let path = temp_socket("big");
+        let big = "x".repeat(256 * 1024);
+        let handler: Handler =
+            Arc::new(move |_: Call| Reply::result(json!({ "text": big.clone() })));
+        let server = serve(&path, "t0ken", handler).unwrap();
+        let reply = send(&path, r#"{"token":"t0ken","tool":"big"}"#);
+        assert_eq!(reply["result"]["text"].as_str().unwrap().len(), 256 * 1024);
         server.close();
     }
 

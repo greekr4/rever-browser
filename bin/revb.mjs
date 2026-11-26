@@ -378,9 +378,18 @@ export class SocketClient {
         this.sock.off('error', reject)
         this.sock.on('error', () => {}) // a dying app is reported by the pending call
         this.sock.on('data', (chunk) => this.onData(chunk))
+        // A closed socket must fail the calls in flight, or each waits out the
+        // ten-minute tool timeout.
+        this.sock.on('close', () => this.failPending('the app closed the control socket'))
         resolve()
       })
     })
+  }
+
+  failPending(message) {
+    const waiters = this.pending
+    this.pending = []
+    for (const waiter of waiters) waiter.reject(new Error(message))
   }
 
   onData(chunk) {
