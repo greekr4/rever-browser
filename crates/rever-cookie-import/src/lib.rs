@@ -13,6 +13,7 @@ use std::process::Command;
 use aes::Aes128;
 use aes::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
 use sha1::Sha1;
+use sha2::{Digest, Sha256};
 
 type Decryptor = cbc::Decryptor<Aes128>;
 
@@ -50,7 +51,9 @@ pub fn derive_key(keychain_password: &[u8]) -> [u8; 16] {
 
 /// Decrypt one `encrypted_value`. `v10`/`v11`-prefixed values are AES-128-CBC;
 /// anything else is treated as a plaintext value (older Chrome).
-pub fn decrypt_value(encrypted: &[u8], key: &[u8; 16]) -> Result<String, String> {
+/// Chrome 130 and later put SHA-256(`host`) in front of the value, to tie a
+/// cookie to its host; that prefix is taken off.
+pub fn decrypt_value(encrypted: &[u8], key: &[u8; 16], host: &str) -> Result<String, String> {
     let body = match encrypted.get(..3) {
         Some(b"v10") | Some(b"v11") => &encrypted[3..],
         // Not an encrypted blob: an old plaintext value stored as-is.
@@ -59,7 +62,10 @@ pub fn decrypt_value(encrypted: &[u8], key: &[u8; 16]) -> Result<String, String>
     let plain = Decryptor::new(key.into(), &IV.into())
         .decrypt_padded_vec_mut::<Pkcs7>(body)
         .map_err(|e| format!("AES decrypt failed: {e}"))?;
-    Ok(String::from_utf8_lossy(&plain).into_owned())
+    let value = plain
+        .strip_prefix(&Sha256::digest(host.as_bytes())[..])
+        .unwrap_or(&plain);
+    Ok(String::from_utf8_lossy(value).into_owned())
 }
 
 /// Chrome stores `expires_utc` as microseconds since 1601-01-01; convert to
@@ -185,7 +191,7 @@ pub fn import_chrome_macos(
     let mut cookies = Vec::new();
     let mut undecryptable = 0;
     for row in rows {
-        match decrypt_value(&row.encrypted, &key) {
+        match decrypt_value(&row.encrypted, &key, &row.host) {
             Ok(value) => cookies.push(ImportedCookie {
                 host: row.host,
                 name: row.name,
@@ -223,12 +229,29 @@ mod tests {
         let key = derive_key(b"s3cr3t-keychain-pw");
         let blob = seal(b"session=abc123; theme=dark", &key, b"v10");
         assert_eq!(
-            decrypt_value(&blob, &key).unwrap(),
+            decrypt_value(&blob, &key, "a.test").unwrap(),
             "session=abc123; theme=dark"
         );
         // v11 prefix decrypts the same way.
         let blob = seal(b"x=1", &key, b"v11");
-        assert_eq!(decrypt_value(&blob, &key).unwrap(), "x=1");
+        assert_eq!(decrypt_value(&blob, &key, "a.test").unwrap(), "x=1");
+    }
+
+    #[test]
+    fn 호스트_해시가_앞에_붙은_값은_해시를_떼고_돌려준다() {
+        // Chrome 130 이후: 평문 앞에 SHA-256(host_key) 32바이트가 붙는다.
+        let key = derive_key(b"pw");
+        let plain = [&Sha256::digest(b".a.test")[..], b"token=xyz"].concat();
+        let blob = seal(&plain, &key, b"v10");
+        assert_eq!(decrypt_value(&blob, &key, ".a.test").unwrap(), "token=xyz");
+    }
+
+    #[test]
+    fn 다른_호스트의_해시는_값의_일부로_둔다() {
+        let key = derive_key(b"pw");
+        let plain = [&Sha256::digest(b".other.test")[..], b"token=xyz"].concat();
+        let blob = seal(&plain, &key, b"v10");
+        assert_ne!(decrypt_value(&blob, &key, ".a.test").unwrap(), "token=xyz");
     }
 
     #[test]
@@ -238,7 +261,7 @@ mod tests {
         // A wrong key fails PKCS7 unpadding or yields garbage — never the plaintext.
         let wrong = derive_key(b"wrong");
         assert_ne!(
-            decrypt_value(&blob, &wrong).ok().as_deref(),
+            decrypt_value(&blob, &wrong, "a.test").ok().as_deref(),
             Some("secret=42")
         );
     }
@@ -246,7 +269,10 @@ mod tests {
     #[test]
     fn 프리픽스가_없으면_평문으로_취급한다() {
         let key = derive_key(b"k");
-        assert_eq!(decrypt_value(b"plainvalue", &key).unwrap(), "plainvalue");
+        assert_eq!(
+            decrypt_value(b"plainvalue", &key, "a.test").unwrap(),
+            "plainvalue"
+        );
     }
 
     #[test]

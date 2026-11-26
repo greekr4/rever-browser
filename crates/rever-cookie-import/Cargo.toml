@@ -12,6 +12,8 @@ cbc = { version = "0.1", features = ["alloc"] }
 # PBKDF2-HMAC-SHA1 derives the AES key from the keychain password.
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 sha1 = "0.10"
+# Chrome 130+ prefixes each cookie value with SHA-256 of its host.
+sha2 = "0.10"
 
 [dev-dependencies]
 # Round-trip test encrypts with the same scheme to lock the decrypt path.
