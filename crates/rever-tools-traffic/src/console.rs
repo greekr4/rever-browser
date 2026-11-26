@@ -19,7 +19,7 @@ tool!(
     ConsoleEval,
     ToolDef::new(
         "console_eval",
-        "Evaluate a JavaScript expression in the active page. Supports await. Returns a preview of the result; complex objects get a short handle (@hN) for further inspection with console_get_props.",
+        "Evaluate a JavaScript expression in the active page. Supports await. Returns the result as JSON, by value: no remote-object handle is issued, so there is nothing to inspect afterwards.",
         schema(
             json!({
                 "expression": { "type": "string", "description": "JavaScript expression to evaluate" },
@@ -75,7 +75,7 @@ tool!(
     ConsoleExceptions,
     ToolDef::new(
         "console_exceptions",
-        "Return captured JavaScript runtime exceptions from the active page.",
+        "[NOT CAPTURED IN THIS BUILD] Nothing feeds the exception store yet, so this always returns an empty list. Use console_eval to reproduce the failure instead. Return captured JavaScript runtime exceptions from the active page.",
         schema(
             json!({ "limit": limit_prop("Max items (default 50)", 200) }),
             &[],
@@ -99,7 +99,7 @@ tool!(
     ConsoleClear,
     ToolDef::new(
         "console_clear",
-        "Clear the captured console log buffer and all object handles from previous console_eval calls.",
+        "Clear the captured console log buffer.",
         no_input(),
     ),
     |ctx, _args| {
@@ -112,7 +112,7 @@ tool!(
     ConsoleGetProps,
     ToolDef::new(
         "console_get_props",
-        "Inspect an object handle returned by console_eval. Returns up to 50 key/value pairs.",
+        "[NOT SUPPORTED IN THIS BUILD] console_eval returns values by value and never issues a handle, so there is nothing to look up. Inspect an object handle returned by console_eval, as CDP's Runtime.getProperties did.",
         schema(
             json!({
                 "handle": { "type": "string", "description": "Handle from console_eval, e.g. \"@h1\"" },

@@ -47,7 +47,7 @@ tool!(
     FetchBody,
     ToolDef::new(
         "fetch_body",
-        "Force-retrieve the response body for a captured request whose body was skipped (image/video/font/css are skipped by default) or dropped (served from cache / a service worker). Tries the live CDP copy first, then re-fetches the URL reusing the original request headers (so auth/cookies still apply). Binary bodies are returned base64. Use when you decided after the fact that you need a body list_requests/get_request does not have.",
+        "Force-retrieve the response body for a captured request whose body was skipped (image/video/font/css are skipped by default) or dropped (served from cache / a service worker). Tries the body the engine still holds first, then re-fetches the URL reusing the original request headers (so auth/cookies still apply). Binary bodies are returned base64. Use when you decided after the fact that you need a body list_requests/get_request does not have.",
         schema(
             json!({
                 "requestId": { "type": "string", "description": "requestId from list_requests" }

@@ -115,17 +115,8 @@ pub(crate) fn data_dir() -> PathBuf {
 }
 
 /// Every ported tool over this window's capture store and page, served over MCP.
-/// A failure costs the agent its tools, not the browser: it is logged and the app goes on.
-fn start_mcp(
-    traffic: Arc<Mutex<TrafficStore>>,
-    browser: Arc<bridge::AppBrowser>,
-    debug_endpoint: crate::debug::Endpoint,
-) -> (
-    Option<McpServer>,
-    Arc<InterceptState>,
-    Arc<DownloadState>,
-    Arc<rever_tools_api::tool::ToolContext>,
-) {
+/// Every tool domain the app serves, in registration order.
+fn tool_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::default();
     rever_tools_traffic::register(&mut registry);
     rever_tools_inspect::register(&mut registry);
@@ -137,6 +128,21 @@ fn start_mcp(
     rever_tools_automation::register(&mut registry);
     rever_tools_http::register(&mut registry);
     rever_tools_probe::register(&mut registry);
+    registry
+}
+
+/// A failure costs the agent its tools, not the browser: it is logged and the app goes on.
+fn start_mcp(
+    traffic: Arc<Mutex<TrafficStore>>,
+    browser: Arc<bridge::AppBrowser>,
+    debug_endpoint: crate::debug::Endpoint,
+) -> (
+    Option<McpServer>,
+    Arc<InterceptState>,
+    Arc<DownloadState>,
+    Arc<rever_tools_api::tool::ToolContext>,
+) {
+    let registry = tool_registry();
     let data_dir = data_dir();
     // The server publishes its endpoint file here.
     let _ = std::fs::create_dir_all(&data_dir);
@@ -3381,6 +3387,18 @@ mod tests {
     use super::*;
 
     const LONG: Duration = Duration::from_secs(3600);
+
+    #[test]
+    fn 도구_설명문에_일렉트론이라는_말이_없다() {
+        // The Electron app is gone, so a description that explains itself by
+        // Electron's behaviour can only mislead the agent reading it.
+        let defs = tool_registry().defs();
+        assert!(defs.len() > 150, "only {} tools registered", defs.len());
+        for def in defs {
+            assert!(!def.description.contains("Electron"), "{}", def.name);
+            assert!(!def.description.contains("webContents"), "{}", def.name);
+        }
+    }
 
     #[test]
     fn 오래_쓰지_않은_뒤_탭은_잠든다() {

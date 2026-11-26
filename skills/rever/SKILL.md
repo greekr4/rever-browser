@@ -5,7 +5,7 @@ description: Reverse-engineer web APIs by driving a running Rever Browser instan
 
 # Rever Browser
 
-Drive a running **Rever Browser** app from this Claude Code session to reverse-engineer web APIs. Rever captures a real Chromium tab's network traffic and exposes ~140 MCP tools (browser control, traffic store, bundle analysis, interception, crypto tracing) that you use here.
+Drive a running **Rever Browser** app from this Claude Code session to reverse-engineer web APIs. Rever captures a real tab's network traffic and exposes ~140 MCP tools (browser control, traffic store, bundle analysis, interception, crypto tracing) that you use here.
 
 ## Prerequisite
 
@@ -44,10 +44,11 @@ python3 rever.py list_requests
 - **Bundle analysis** — `list_scripts`, `grep_script`/`grep_scripts`, `extract_context`, `detect_bundler`, `deobfuscate_script` / `deob_auto`, `get_original_source`, `list_sources` (source maps).
 - **Auth & crypto** — `auth_dump`, `decode_token`, `crypto_trace_start/stop/list`, `crypto_chain`, `hmac_compute`, `hash_iter`.
 - **Reproduce & fuzz** — `find_api_base`, `graphql_introspect`, `burst_send`, `intruder_run`, `crlf_test`, `lfi_probe`, `create_macro` / `export_python_client`.
-- **Intercept & override** — `intercept_add`/`intercept_fulfill`/`intercept_fail`, `inject_*`, `header_preset_*`, `dom_*`.
-- **Debugger** — `bp_add`, `bp_eval_in_frame`, `bp_step_*`, `bp_resume`.
-- **Console / cookies** — `console_logs`, `console_eval`, `console_exceptions`, `cookie_list`/`cookie_set`/`cookie_delete`.
+- **Intercept & override** — `intercept_add`/`intercept_fulfill`/`intercept_fail`, `inject_*`, `dom_*`.
+- **Console / cookies** — `console_logs`, `console_eval`, `cookie_list`/`cookie_set`/`cookie_delete`.
 - **Findings** — `finding_add`, `finding_list`, `finding_export`.
+
+Not offered in this build (registered but hidden from every profile, because they cannot work here): `bp_*` breakpoints (a breakpoint freezes the tab), `exec_trace`, `inspect_listeners`, `header_preset_apply`/`header_preset_disable`, `console_get_props`, `console_exceptions`.
 
 Run `--list` (or `tools/list`) for the full, current set.
 
