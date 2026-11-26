@@ -23,7 +23,7 @@
 
 ## rever-browser란?
 
-`rever-browser`는 **Rust**로 만든 데스크톱 앱입니다([GPUI](https://github.com/zed-industries/gpui) 셸 + [Servo](https://servo.org) 엔진). **실제 브라우저 탭**과 **에이전트**(기본값 `claude` CLI)를 결합합니다. 임베드된 탭에서 대상 사이트를 브라우징하면 엔진의 네트워크 탭이 모든 요청을 기록하고, 에이전트는 그 트래픽을 읽고 사이트의 JavaScript·WASM을 분석하며, 인프로세스 **MCP 툴 서버**(170개 이상 툴)로 탭을 직접 조종합니다.
+`rever-browser`는 **Rust**로 만든 데스크톱 앱입니다([GPUI](https://github.com/zed-industries/gpui) 셸 + [Servo](https://servo.org) 엔진). **실제 브라우저 탭**과 **에이전트**(기본값 `claude` CLI)를 결합합니다. 임베드된 탭에서 대상 사이트를 브라우징하면 엔진의 네트워크 탭이 모든 요청을 기록하고, 에이전트는 그 트래픽을 읽고 사이트의 JavaScript·WASM을 분석하며, 인프로세스 **툴 서버**를 내장 `revb` CLI가 유닉스 소켓으로 호출해 탭을 직접 조종합니다(**190개 이상 툴**).
 
 *"이 사이트는 어떤 요청을 보내지?"* 에서 *"서명된 API를 그대로 재현하는 원클릭 매크로"* 까지, 앱을 벗어나지 않고 갑니다. 그 과정은 한 단계씩, 지금 보고 있는 바로 그 탭에서 펼쳐집니다.
 
@@ -103,7 +103,7 @@ element → API map (tab 3)
 ## 그외 기능들
 
 - **실시간 트래픽 캡처**: 엔진 네트워크 스택 안의 탭이 브라우징 탭의 모든 요청을 링 버퍼에 기록합니다. WebSocket 연결과 프레임도 포함합니다. 바디는 항목과 함께 저장하고 이미지/비디오/폰트/CSS는 건너뛰어 가볍게 유지합니다.
-- **에이전트는 Claude Code**: 로컬 `claude` CLI를 stream-json으로 구동하고 rever의 MCP 서버를 자동 연결해서 에이전트가 모든 브라우저 툴과 트래픽 툴을 씁니다. 다른 에이전트는 아직 연결하지 않았습니다.
+- **에이전트는 Claude Code**: 로컬 `claude` CLI를 stream-json으로 구동하면서 모든 툴이 `revb` 셸 명령이라고 알려 줍니다. 그래서 에이전트는 Bash에서 탭을 몰고 트래픽을 읽습니다. 다른 에이전트는 아직 연결하지 않았습니다.
 - **브라우저 자동화**: 안정적 요소 ref를 가진 접근성 스냅샷, 그리고 클릭·호버·입력·스크롤·드래그·캔버스 드로잉·클립보드 붙여넣기·파일 업로드·키 입력·탭/뷰포트 제어·실시간 스크린샷.
 - **번들·스크립트·WASM 분석**: 캡처된 JavaScript를 재다운로드 없이 grep·추출·번들러 탐지·`webcrack` 기반 난독화 해제, 소스맵에서 원본 TS/JS 복원, 안티봇 "VM" 번들 식별, `.wasm` 모듈을 WAT / C유사 / 풀 C로 디스어셈블. 요청 서명이 WebAssembly로 컴파일된 사각지대까지 커버합니다.
 - **매크로 & 워크플로**: 툴 호출 시퀀스를 LLM 없이 결정적으로 재생되는 명명 매크로로 변환합니다. 인앱 Macro·Pipeline·Template 에디터로 원클릭 플로를 구성하고, 캡처한 요청은 바로 실행 가능한 CLI 명령이나 Python 클라이언트로 내보냅니다.
@@ -129,7 +129,7 @@ Playwright MCP엔 스크립트 바디 grep·crypto 후킹·Repeater가 없어 JS
 
 ## 툴 구성
 
-**170개 이상의 MCP 툴**, 전부 에이전트(또는 셸)로 구동합니다. 카테고리별:
+**190개 이상의 툴**, 에이전트가 `revb`로(또는 셸에서 직접) 구동합니다. 카테고리별:
 
 | 카테고리 | 다루는 것 |
 |---|---|
@@ -145,7 +145,7 @@ Playwright MCP엔 스크립트 바디 grep·crypto 후킹·Repeater가 없어 JS
 | **스토리지 & 실시간** | 쿠키/스토리지 공간, WebSocket 프레임 캡처 |
 | **자동화 & 내보내기** | 매크로, CLI 컴파일, HAR 1.2 내보내기, Python 클라이언트 내보내기 |
 
-> 툴별 전체 레퍼런스는 `docs/`에 있고, 런타임에 MCP 엔드포인트로도 조회할 수 있습니다 (`node bin/revb.mjs list`. 도구 하나의 설명과 인자 스키마는 `node bin/revb.mjs describe <tool>`).
+> 툴별 전체 레퍼런스는 `docs/`에 있고, 런타임에 조회할 수도 있습니다 (`node bin/revb.mjs list`. 도구 하나의 설명과 인자 스키마는 `node bin/revb.mjs describe <tool>`).
 
 ## 요구 사항
 
@@ -171,25 +171,25 @@ cargo run -p port-harness  # 포트 인벤토리 + 동작 검사
 
 ## Claude Code에서 Rever 사용 (`/rever` 스킬)
 
-Rever는 Claude Code 스킬을 제공해서, 어떤 `claude` 세션이든 실행 중인 Rever Browser를 조종하고 그 MCP 툴을 쓸 수 있습니다. 독립 레포 [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill)로 제공되며, [`skills`](https://www.npmjs.com/package/skills) CLI로 설치합니다:
+Rever는 Claude Code 스킬을 제공해서, 어떤 `claude` 세션이든 실행 중인 Rever Browser를 조종하고 그 툴을 쓸 수 있습니다. 독립 레포 [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill)로 제공되며, [`skills`](https://www.npmjs.com/package/skills) CLI로 설치합니다:
 
 ```bash
 npx skills add greekr4/rever-browser-skill --global --agent claude-code
 ```
 
-Rever Browser 앱을 실행하면(시작 시 MCP 엔드포인트를 게시) 아무 `claude` 세션에서 `/rever`를 입력하세요. 스킬이 엔드포인트를 찾아 네이티브 MCP 툴로 등록하거나 번들된 `rever.py`로 툴을 직접 호출합니다. 엔드포인트 경로가 `~/Library/Application Support/` 아래에 있어 현재는 macOS만 지원합니다.
+Rever Browser 앱을 실행하면(시작 시 컨트롤 소켓을 게시) 아무 `claude` 세션에서 `/rever`를 입력하세요. 스킬이 소켓을 찾아 `revb`로 툴을 호출합니다(Node가 없는 환경에서는 번들된 `rever.py`). 엔드포인트 경로가 `~/Library/Application Support/` 아래에 있어 현재는 macOS만 지원합니다.
 
 ## 아키텍처
 
-하나의 Rust 워크스페이스입니다. `rever` 크레이트가 앱 본체(GPUI 창 + Servo 탭)이며, 각 관심사는 고유 크레이트(`rever-core`, `rever-mcp`, `rever-tools-*`, `rever-ui-*` 등)에 살아 있습니다.
+하나의 Rust 워크스페이스입니다. `rever` 크레이트가 앱 본체(GPUI 창 + Servo 탭)이며, 각 관심사는 고유 크레이트(`rever-core`, `rever-control-server`, `rever-tools-*`, `rever-ui-*` 등)에 살아 있습니다.
 
 - **엔진.** Servo를 패치해 벤더합니다(`patches/servo-net@0.8.0.patch`). 네트워크 탭이 모든 요청·응답 바디·WebSocket 프레임을 인프로세스로 전달합니다.
-- **MCP 서버.** `rever-mcp`가 툴 레지스트리를 랜덤 로컬포트 HTTP로 서빙하고(`mcp-endpoint.json`에 공개), 에이전트와 외부 클라이언트가 같은 툴을 씁니다.
-- **에이전트.** `claude` CLI를 stream-json으로 구동합니다. 권한 요청은 이 앱 자체의 비위험 MCP 툴만 자동 승인되며, 캡처-노전송 펜스가 최후의 안전망입니다.
+- **컨트롤 서버.** `rever-control-server`가 툴 레지스트리를 유닉스 소켓으로 서빙합니다(경로·토큰·pid를 `control-endpoint.json`에 공개). 에이전트와 외부 클라이언트가 같은 툴을 씁니다.
+- **에이전트.** `claude` CLI를 stream-json으로 구동합니다. 권한 요청은 위험 툴 이름이 없는 단일 `revb` 명령만 자동 승인되며, 캡처-노전송 펜스가 최후의 안전망입니다.
 
-**트래픽 캡처:** 엔진 탭 → `TrafficStore`(링 버퍼) → 패널과 MCP 툴이 함께 읽습니다.
+**트래픽 캡처:** 엔진 탭 → `TrafficStore`(링 버퍼) → 패널과 툴이 함께 읽습니다.
 
-**에이전트 루프:** 채팅 → `AgentSession`(claude CLI) → HTTP로 MCP 툴 → 탭/스토어/페이지 입력.
+**에이전트 루프:** 채팅 → `AgentSession`(claude CLI) → `revb` → 컨트롤 소켓 → 탭/스토어/페이지 입력.
 
 설계 노트는 `docs/`에 있습니다.
 

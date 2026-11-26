@@ -23,7 +23,7 @@
 
 ## What is rever-browser?
 
-`rever-browser` is a desktop app built in **Rust** (a [GPUI](https://github.com/zed-industries/gpui) shell around the [Servo](https://servo.org) engine) that pairs a **real browser tab** with an **agent** (the `claude` CLI by default). You browse a target site in the embedded tab; the engine's network tap records every request, and the agent reads that traffic, analyzes the site's JavaScript and WASM, and drives the tab itself through an in-process **MCP tool server** with **170+ tools**.
+`rever-browser` is a desktop app built in **Rust** (a [GPUI](https://github.com/zed-industries/gpui) shell around the [Servo](https://servo.org) engine) that pairs a **real browser tab** with an **agent** (the `claude` CLI by default). You browse a target site in the embedded tab; the engine's network tap records every request, and the agent reads that traffic, analyzes the site's JavaScript and WASM, and drives the tab itself through an in-process **tool server** that the bundled `revb` CLI reaches over a Unix socket — **190+ tools**.
 
 It takes you from *"what requests does this site make?"* to *"here's a one-click macro that reproduces its signed API"* without ever leaving the app, and you watch the agent do it step by step in the tab you're already looking at.
 
@@ -103,7 +103,7 @@ The report exports to Markdown (**Save .md**) or pipes straight into the chat pa
 ## More features
 
 - **Live traffic capture.** A tap inside the engine's network stack records every request the browsed tab makes into a ring buffer — including WebSocket connections and frames. Bodies are stored with the entry, and image/video/font/CSS payloads are skipped to keep it lean.
-- **Claude Code as the agent.** The app runs your local `claude` CLI over stream-json with rever's MCP server wired in, so the agent gets every browser and traffic tool. Other agents are not wired up yet.
+- **Claude Code as the agent.** The app runs your local `claude` CLI over stream-json and tells it that every tool is a `revb` shell command, so the agent drives the tab and reads traffic from Bash. Other agents are not wired up yet.
 - **Browser automation.** Accessibility snapshots with stable element refs, plus click, hover, type, scroll, drag, canvas draw, clipboard paste, file upload, key press, tab and viewport control, and live screenshots.
 - **Bundle, script & WASM analysis.** Grep, extract, detect the bundler, and deobfuscate captured JavaScript (no re-download) with a `webcrack`-backed deobfuscator; recover original TS/JS from source maps; flag anti-bot "VM" bundles; and disassemble `.wasm` modules to WAT, C-like, or full C. That last part closes the blind spot where request signing is compiled into WebAssembly.
 - **Macros & workflows.** Turn a sequence of tool calls into a named macro that replays deterministically with no LLM in the loop. In-app Macro, Pipeline, and Template editors build these one-click flows, and any captured request exports to a ready-to-run CLI command or Python client.
@@ -129,7 +129,7 @@ Playwright MCP has no script-body grep, crypto hooks, or Repeater, so analyzing 
 
 ## Tool surface
 
-**170+ MCP tools**, all driven by the agent (or from a shell). By category:
+**190+ tools**, driven by the agent through `revb` (or by hand from a shell). By category:
 
 | Category | What it covers |
 |---|---|
@@ -145,7 +145,7 @@ Playwright MCP has no script-body grep, crypto hooks, or Repeater, so analyzing 
 | **Storage & realtime** | Cookie/storage jars, WebSocket frame capture |
 | **Automation & export** | Macros, CLI compile, HAR 1.2 export, Python client export |
 
-> A full per-tool reference lives in `docs/` and is also discoverable at runtime at runtime with `node bin/revb.mjs list` (every tool) or `node bin/revb.mjs describe <tool>` (one tool's description and input schema).
+> A full per-tool reference lives in `docs/` and is also discoverable at runtime with `node bin/revb.mjs list` (every tool) or `node bin/revb.mjs describe <tool>` (one tool's description and input schema).
 
 ## Requirements
 
@@ -171,25 +171,25 @@ cargo run -p port-harness  # inventory + behavior checks of the port
 
 ## Use Rever from Claude Code (the `/rever` skill)
 
-Rever ships a Claude Code skill so any `claude` session can drive a running Rever Browser and use its MCP tools. It lives in its own repo, [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill), installable with the [`skills`](https://www.npmjs.com/package/skills) CLI:
+Rever ships a Claude Code skill so any `claude` session can drive a running Rever Browser and use its tools. It lives in its own repo, [greekr4/rever-browser-skill](https://github.com/greekr4/rever-browser-skill), installable with the [`skills`](https://www.npmjs.com/package/skills) CLI:
 
 ```bash
 npx skills add greekr4/rever-browser-skill --global --agent claude-code
 ```
 
-Launch the Rever Browser app (it publishes its MCP endpoint on startup), then in any `claude` session type `/rever`. The skill resolves the endpoint and either registers it as native MCP tools or calls them via the bundled `rever.py`. It's macOS only for now, since the endpoint path lives under `~/Library/Application Support/`.
+Launch the Rever Browser app (it publishes a control socket on startup), then in any `claude` session type `/rever`. The skill resolves the socket and calls the tools through `revb` (or the bundled `rever.py` where Node is unavailable). It's macOS only for now, since the endpoint path lives under `~/Library/Application Support/`.
 
 ## Architecture
 
-One Rust workspace. The `rever` crate is the app — a GPUI window hosting Servo tabs — and every concern lives in its own crate (`rever-core`, `rever-mcp`, `rever-tools-*`, `rever-ui-*`, …).
+One Rust workspace. The `rever` crate is the app — a GPUI window hosting Servo tabs — and every concern lives in its own crate (`rever-core`, `rever-control-server`, `rever-tools-*`, `rever-ui-*`, …).
 
 - **Engine.** Servo is vendored with a patch (`patches/servo-net@0.8.0.patch`) that adds a network tap: every request, response body, and WebSocket frame flows to the embedder in-process.
-- **MCP server.** `rever-mcp` serves the tool registry over HTTP on a random localhost port (endpoint published to `mcp-endpoint.json`), so the agent — and any outside client — drives the same tools.
-- **Agent.** The `claude` CLI runs over stream-json; its permission requests are auto-approved only for this app's own non-risky MCP tools, with a capture-not-send fence as the safety net.
+- **Control server.** `rever-control-server` serves the tool registry over a Unix socket (its path, token and pid are published to `control-endpoint.json`), so the agent — and any outside client — drives the same tools.
+- **Agent.** The `claude` CLI runs over stream-json; its permission requests are auto-approved only for a single `revb` command that names no risky tool, with a capture-not-send fence as the safety net.
 
-**Traffic capture:** engine tap → `TrafficStore` (ring buffer) → panels and MCP tools alike.
+**Traffic capture:** engine tap → `TrafficStore` (ring buffer) → panels and tools alike.
 
-**Agent loop:** chat → `AgentSession` (claude CLI) → MCP tools over HTTP → tap/traffic store / page input.
+**Agent loop:** chat → `AgentSession` (claude CLI) → `revb` → control socket → tap/traffic store / page input.
 
 See `docs/` for design notes.
 
