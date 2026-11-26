@@ -162,7 +162,7 @@ impl Browser {
                     .items_center()
                     .border_t_1()
                     .border_color(theme.border)
-                    .child(self.toolbar_tail(theme)),
+                    .child(self.ip_badge.clone()),
             );
         }
         bar

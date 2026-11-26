@@ -18,7 +18,9 @@ impl Browser {
             .gap(px(2.0))
             .child(self.nav_buttons(theme, cx))
             .child(self.omnibox(theme, cx).flex_1().mx(px(4.0)))
-            .child(self.toolbar_tail(theme))
+            // The proxy and profile menus are not ported yet, so their label and button
+            // (which did nothing) are left out until they are.
+            .child(self.ip_badge.clone())
             .child(self.menu.clone());
         div()
             .flex_none()
@@ -70,29 +72,6 @@ impl Browser {
                     .child(self.views.address.clone()),
             )
             .child(self.bookmark_star(theme, cx))
-    }
-
-    /// The proxy label, the IP badge and the profile button.
-    pub(super) fn toolbar_tail(&self, theme: &Theme) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .gap(px(2.0))
-            .child(
-                div()
-                    .h(px(28.0))
-                    .px(px(10.0))
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .rounded(px(14.0))
-                    .text_size(px(12.0))
-                    .text_color(theme.text_dim)
-                    .child(self.lang.t("proxy.label")),
-            )
-            .child(self.ip_badge.clone())
-            .child(icon_button("profile", "profile", 32.0, theme))
     }
 
     /// The star toggles a bookmark for the active page; only http(s) pages can have one.
