@@ -5,8 +5,8 @@
 //! rather than on the page, so it is risky too. Auto-approve answers risky calls like
 //! any other. With it off every call is asked about.
 
-use rever_tool_profile::risky_tools::is_own_cli;
 use rever_chat_core::RiskyTools;
+use rever_tool_profile::risky_tools::is_own_cli;
 use rever_ui_chat::permission_prompt::ToolRules;
 use serde_json::Value;
 

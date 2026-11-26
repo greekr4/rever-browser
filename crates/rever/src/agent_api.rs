@@ -22,7 +22,7 @@ use rever_tool_profile::openai_tool_cap::cap_tools_for_openai;
 use serde_json::{Value, json};
 
 use crate::agent::{AgentEvent, ChatAgent};
-use crate::mcp_client::McpClient;
+use crate::control_client::ControlClient;
 
 /// The Messages API version this code is written against.
 const ANTHROPIC_VERSION: &str = "2026-10-21";
@@ -381,7 +381,7 @@ struct Conversation {
     /// Names that were handed to the MCP server; refusals never enter.
     dispatched: HashSet<String>,
     /// Connected at the first turn: the client and the tools it listed.
-    mcp: Option<(McpClient, Vec<Value>)>,
+    mcp: Option<(ControlClient, Vec<Value>)>,
 }
 
 struct Shared {
@@ -510,7 +510,7 @@ impl Shared {
         if conversation.mcp.is_none()
             && let Some((url, auth)) = &self.mcp
         {
-            let mut client = McpClient::connect(url, auth)?;
+            let mut client = ControlClient::connect(url, auth)?;
             let tools = client.list_tools()?;
             conversation.mcp = Some((client, tools));
         }

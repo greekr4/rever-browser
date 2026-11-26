@@ -15,8 +15,8 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use rever_agent::claude_cli_protocol::{
-    TranslateState, TurnOutcome, claude_cli_args, error_response,
-    permission_response, to_permission_request, translate, turn_outcome, user_message,
+    TranslateState, TurnOutcome, claude_cli_args, error_response, permission_response,
+    to_permission_request, translate, turn_outcome, user_message,
 };
 use rever_chat_core::acp_permission::RequestPermissionResponse;
 use rever_tool_profile::risky_tools::is_own_cli;
@@ -477,7 +477,10 @@ mod tests {
             "Bash",
             json!({ "command": "revb call list_requests '{}'" })
         )));
-        assert!(auto_allowed(&request("ToolSearch", json!({ "query": "x" }))));
+        assert!(auto_allowed(&request(
+            "ToolSearch",
+            json!({ "query": "x" })
+        )));
     }
 
     #[test]

@@ -19,7 +19,7 @@ mod chat_agents;
 mod debug;
 mod engine;
 mod intercept;
-mod mcp_client;
+mod control_client;
 mod memory;
 mod panels;
 mod permissions;

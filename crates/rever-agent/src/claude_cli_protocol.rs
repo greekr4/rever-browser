@@ -502,7 +502,10 @@ mod tests {
         let mcp: Value = serde_json::from_str(&args[at + 1]).unwrap();
         assert_eq!(mcp["mcpServers"], json!({}));
         // Without schemas in a handshake, the guide is how the agent learns `revb`.
-        let guide = args.iter().position(|a| a == "--append-system-prompt").unwrap();
+        let guide = args
+            .iter()
+            .position(|a| a == "--append-system-prompt")
+            .unwrap();
         assert!(args[guide + 1].contains("revb call"));
         assert!(!args.iter().any(|a| a == "--model"));
         let with_model = claude_cli_args(Some("opus"));
