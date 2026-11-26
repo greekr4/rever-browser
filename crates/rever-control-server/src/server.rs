@@ -95,7 +95,7 @@ pub async fn as_tool_call<T>(call: impl Future<Output = T>) -> T {
     TOOL_CALL.scope((), call).await
 }
 
-/// Whether the running task is a tool call an MCP client made, not the app's own work.
+/// Whether the running task is a tool call an outside client made, not the app's own work.
 pub fn in_tool_call() -> bool {
     TOOL_CALL.try_with(|_| ()).is_ok()
 }
@@ -213,14 +213,13 @@ fn summarize_tool_args(schema: &Value, input: &Value) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
-// ── One MCP session ─────────────────────────────────────────────────────────
+// ── One tool catalog ───────────────────────────────────────────────────────
 
-/// What every session of one server shares.
+/// What every call of one server shares.
 struct Shared {
     registry: Arc<ToolRegistry>,
     context: Arc<ToolContext>,
     page: Arc<dyn PageEvents>,
-    profile: Arc<ToolProfileState>,
     version: String,
     runtime: Handle,
 }
@@ -323,11 +322,9 @@ fn panic_message(failure: tokio::task::JoinError) -> String {
     }
 }
 
-/// The live registered-tool bit of one tool in one session.
 // ── The control socket ──────────────────────────────────────────────────────
 
-/// Hands one socket call to the same `Shared` the MCP sessions use, so the two
-/// transports cannot drift while both exist.
+/// Hands one socket call to the `Shared` dispatch.
 fn socket_handler(shared: Arc<Shared>) -> rever_control::socket::Handler {
     Arc::new(move |call: rever_control::socket::Call| {
         let name = call.tool;
@@ -444,18 +441,18 @@ pub fn start_with(
         registry,
         context: context.clone(),
         page: options.page,
-        profile: profile.clone(),
         version: options.version,
         runtime: runtime.handle().clone(),
     });
 
     let socket_path = context.data_dir.join("control.sock");
+    let version = shared.version.clone();
     let control = rever_control::socket::serve(&socket_path, &token, socket_handler(shared))
         .map_err(|e| format!("failed to open the control socket: {e}"))?;
 
     let url = socket_path.to_string_lossy().into_owned();
     eprintln!("[control] listening on {url}");
-    write_endpoint_file(&endpoint_file, &url, Some(&socket_path), &token);
+    write_endpoint_file(&endpoint_file, &url, Some(&socket_path), &token, &version);
 
     Ok(ToolServer {
         url,
@@ -476,6 +473,8 @@ pub fn endpoint_file_path(data_dir: &Path) -> PathBuf {
 #[serde(rename_all = "camelCase")]
 struct Endpoint<'a> {
     url: &'a str,
+    /// The app's version, so the CLI can warn about a stale guide.
+    version: &'a str,
     /// The CLI's way in. Absent on a platform without Unix sockets.
     #[serde(skip_serializing_if = "Option::is_none")]
     socket: Option<String>,
@@ -510,9 +509,10 @@ fn to_iso_string(ms: i64) -> String {
     )
 }
 
-fn write_endpoint_file(file: &Path, url: &str, socket: Option<&Path>, token: &str) {
+fn write_endpoint_file(file: &Path, url: &str, socket: Option<&Path>, token: &str, version: &str) {
     let endpoint = Endpoint {
         url,
+        version,
         socket: socket.map(|p| p.to_string_lossy().into_owned()),
         token,
         pid: std::process::id(),
@@ -529,6 +529,6 @@ fn write_endpoint_file(file: &Path, url: &str, socket: Option<&Path>, token: &st
 /// `randomBytes(24).toString('hex')`.
 fn random_token() -> Result<String, String> {
     let mut bytes = [0_u8; 24];
-    getrandom::fill(&mut bytes).map_err(|e| format!("no random bytes for the MCP token: {e}"))?;
+    getrandom::fill(&mut bytes).map_err(|e| format!("no random bytes for the control token: {e}"))?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }

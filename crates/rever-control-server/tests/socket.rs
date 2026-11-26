@@ -134,6 +134,7 @@ fn 엔드포인트_파일에_소켓과_토큰을_적는다() {
     assert_eq!(endpoint["socket"], fixture.server.url.as_str());
     assert_eq!(endpoint["token"], fixture.server.token.as_str());
     assert_eq!(endpoint["pid"], std::process::id());
+    assert_eq!(endpoint["version"], "0.0.0");
     drop(fixture.server);
     assert!(!file.exists(), "닫으면 발행한 파일을 지운다");
 }

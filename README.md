@@ -23,7 +23,7 @@
 
 ## What is rever-browser?
 
-`rever-browser` is a desktop app built in **Rust** (a [GPUI](https://github.com/zed-industries/gpui) shell around the [Servo](https://servo.org) engine) that pairs a **real browser tab** with an **agent** (the `claude` CLI by default). You browse a target site in the embedded tab; the engine's network tap records every request, and the agent reads that traffic, analyzes the site's JavaScript and WASM, and drives the tab itself through an in-process **tool server** that the bundled `revb` CLI reaches over a Unix socket — **190+ tools**.
+`rever-browser` is a desktop app built in **Rust** (a [GPUI](https://github.com/zed-industries/gpui) shell around the [Servo](https://servo.org) engine) that pairs a **real browser tab** with an **agent** (the `claude` CLI by default). You browse a target site in the embedded tab; the engine's network tap records every request, and the agent reads that traffic, analyzes the site's JavaScript and WASM, and drives the tab itself through an in-process **tool server** that the bundled `revb` CLI reaches over a Unix socket — **178 tools** (counted live by `revb list`).
 
 It takes you from *"what requests does this site make?"* to *"here's a one-click macro that reproduces its signed API"* without ever leaving the app, and you watch the agent do it step by step in the tab you're already looking at.
 
@@ -129,7 +129,7 @@ Playwright MCP has no script-body grep, crypto hooks, or Repeater, so analyzing 
 
 ## Tool surface
 
-**190+ tools**, driven by the agent through `revb` (or by hand from a shell). By category:
+**178 tools**, driven by the agent through `revb` (or by hand from a shell). By category:
 
 | Category | What it covers |
 |---|---|

@@ -180,6 +180,15 @@ export function readEndpoint() {
 
 // ---------------------------------------------------------------- socket client
 
+/** This checkout's version, from the repo's package.json. */
+function cliVersion() {
+  try {
+    return JSON.parse(readFileSync(path.join(HERE, '..', 'package.json'), 'utf8')).version
+  } catch {
+    return '0.0.0'
+  }
+}
+
 /** Warn when the app and this CLI are far enough apart that the guide may lie. */
 function warnVersion(server) {
   const mm = (v) => String(v ?? '').split('.').slice(0, 2).join('.')
@@ -295,7 +304,9 @@ async function withClient(fn) {
   process.once('SIGTERM', onSignal)
   try {
     await client.connect()
-    warnVersion(client.serverVersion)
+    // The endpoint file carries the app version; the catalog would cost a
+    // round trip the plain `call` path never makes.
+    warnVersion(ep.version)
     return await fn(client)
   } finally {
     await client.close()

@@ -169,30 +169,26 @@ impl ToolProfileState {
         self.lock().follow_servers.retain(|s| identity(s) != id);
     }
 
-    /// Follower count for tests. Kept out of the docs: it exists so the MCP
-    /// adapter's tests can assert on this crate's state.
-    #[doc(hidden)]
-    pub fn follow_server_count(&self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn follow_server_count(&self) -> usize {
         self.lock().follow_servers.len()
     }
 }
 
-/// Test scaffolding shared with the adapter crates that used to hold these
-/// modules. `TempDir` is the only export.
-#[doc(hidden)]
-pub mod tests {
+#[cfg(test)]
+pub(crate) mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     use super::*;
 
     /// A fresh, empty data folder per test; removed when the test ends.
-    pub struct TempDir(pub PathBuf);
+    pub(crate) struct TempDir(pub PathBuf);
 
     impl TempDir {
-        pub fn new(label: &str) -> Self {
+        pub(crate) fn new(label: &str) -> Self {
             static NEXT: AtomicU32 = AtomicU32::new(0);
             let dir = std::env::temp_dir().join(format!(
-                "rever-mcp-{label}-{}-{}",
+                "rever-control-{label}-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::SeqCst)
             ));

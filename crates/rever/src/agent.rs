@@ -4,13 +4,13 @@
 //! Follows `src/main/providers/claude-cli-provider.ts`, using the protocol code
 //! already ported in rever-agent. Not ported yet: the initialize handshake and
 //! model list, set_model, interrupt, and the permission prompt.
-//! Until the permission prompt exists nothing can ask the user, so the only tool
-//! requests allowed are this app's own MCP tools that the risky-tool rules do not
-//! gate: the agent can read the capture and drive the page, but cannot run a shell,
-//! touch files, or send attack traffic.
+//! The app's tools are the `revb` CLI, so the only Bash requests auto-approved are
+//! a single `revb` command the risky-tool rules do not gate: the agent can read the
+//! capture and drive the page, but anything else — a second command, a pipe, attack
+//! traffic — is asked about or refused.
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -22,6 +22,8 @@ use rever_chat_core::acp_permission::RequestPermissionResponse;
 use rever_tool_profile::risky_tools::is_own_cli;
 use rever_tool_profile::risky_tools::is_risky_tool_request;
 use serde_json::{Value, json};
+
+use rever_core::paths::user_data_dir;
 
 pub(crate) const SESSION_ID: &str = "rever";
 
@@ -201,6 +203,67 @@ fn auto_allowed(request: &Value) -> bool {
     !risky || redteam
 }
 
+/// The `revb` script the child CLI will call: `REVER_REVB_DIR` wins, otherwise
+/// the checkout next to the running binary (`target/debug/rever` → `<repo>/bin`).
+fn revb_script() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("REVER_REVB_DIR") {
+        let script = PathBuf::from(dir).join("revb.mjs");
+        return script.is_file().then_some(script);
+    }
+    let root = std::env::current_exe().ok()?.parent()?.parent()?.to_path_buf();
+    let script = root.join("bin").join("revb.mjs");
+    script.is_file().then_some(script)
+}
+
+/// Write a `revb` shim that runs `script` into `<data_dir>/bin`, returning the
+/// directory to put first on a child's PATH. The shim is what lets the agent's
+/// CLI reach the tools with no install step — the app's own PATH is minimal.
+fn write_revb_shim(script: &Path, data_dir: &Path) -> Option<PathBuf> {
+    let dir = data_dir.join("bin");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return None;
+    }
+    let shim = dir.join("revb");
+    // A single quote inside the path would end the sh's string early.
+    let escaped = script.display().to_string().replace('\'', "'\\''");
+    let body = format!("#!/bin/sh\nexec node '{escaped}' \"$@\"\n");
+    let stale = std::fs::read_to_string(&shim).map_or(true, |old| old != body);
+    if stale {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if std::fs::write(&shim, &body).is_ok() {
+                let _ = std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+    }
+    Some(dir)
+}
+
+/// The shim directory first on the child's PATH, so the agent's shell finds it.
+fn prepend_to_path(cmd: &mut Command, script: &Path, data_dir: &Path) -> Option<PathBuf> {
+    let dir = write_revb_shim(script, data_dir)?;
+    let mut paths = vec![dir.clone()];
+    if let Some(path) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&path));
+    }
+    cmd.env("PATH", std::env::join_paths(paths).unwrap_or_default());
+    Some(dir)
+}
+
+/// Resolve the script and the data dir from the environment, then prepend.
+fn prepend_revb_path(cmd: &mut Command) {
+    let Some(script) = revb_script() else {
+        return;
+    };
+    let data = user_data_dir(
+        |name| std::env::var(name).ok(),
+        std::env::consts::OS,
+        &std::env::var("HOME").unwrap_or_default(),
+    );
+    prepend_to_path(cmd, &script, &data);
+}
+
 /// `REVER_CLAUDE_CLI` wins; otherwise `claude` on PATH, then the usual install
 /// folders (an app started from the Finder has a minimal PATH).
 fn spawn_cli(cwd: &Path, _mcp: Option<(&str, &str)>, model: Option<&str>) -> Result<Child, String> {
@@ -216,14 +279,14 @@ fn spawn_cli(cwd: &Path, _mcp: Option<(&str, &str)>, model: Option<&str>) -> Res
     };
     let mut last_error = String::new();
     for candidate in candidates {
-        let spawned = Command::new(&candidate)
-            .args(cli_args(model))
+        let mut cmd = Command::new(&candidate);
+        cmd.args(cli_args(model))
             .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn();
-        match spawned {
+            .stderr(Stdio::piped());
+        prepend_revb_path(&mut cmd);
+        match cmd.spawn() {
             Ok(child) => return Ok(child),
             Err(error) => last_error = format!("{candidate}: {error}"),
         }
@@ -469,6 +532,29 @@ mod tests {
             tool_events(&output, &mut names),
             vec![AgentEvent::ToolResult(String::new(), "x".to_owned())]
         );
+    }
+
+    #[test]
+    fn 에이전트_경로에_revb_심이_먼저_들어간다() {
+        let dir = std::env::temp_dir().join(format!("rever-revb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("scripts")).unwrap();
+        let script = dir.join("scripts/revb.mjs");
+        std::fs::write(&script, "// shim target\n").unwrap();
+        let mut cmd = Command::new("true");
+        let shim_dir = prepend_to_path(&mut cmd, &script, &dir.join("data")).unwrap();
+        let envs: Vec<_> = cmd.get_envs().filter_map(|(k, v)| v.map(|v| (k, v))).collect();
+        let path = envs
+            .iter()
+            .find(|(k, _)| *k == "PATH")
+            .and_then(|(_, v)| v.to_str())
+            .unwrap();
+        assert!(path.starts_with(shim_dir.to_str().unwrap()));
+        let shim = dir.join("data/bin/revb");
+        assert!(shim.is_file());
+        let body = std::fs::read_to_string(&shim).unwrap();
+        assert!(body.contains("revb.mjs"), "{body}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
