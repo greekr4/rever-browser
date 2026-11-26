@@ -38,7 +38,8 @@ impl AppThemeStore {
     pub fn load(storage: &dyn Storage) -> Self {
         let state = load_persisted(storage, APP_THEME_STORAGE_KEY);
         Self {
-            mode: field(&state, "mode").unwrap_or(ThemeMode::Light),
+            // Nothing saved yet: follow the OS, as a browser does on first run.
+            mode: field(&state, "mode").unwrap_or(ThemeMode::System),
         }
     }
 
@@ -79,23 +80,23 @@ mod tests {
     use crate::storage::MemoryStorage;
 
     #[test]
-    fn 기본_테마는_light다() {
-        assert_eq!(
-            AppThemeStore::load(&MemoryStorage::new()).mode(),
-            ThemeMode::Light
-        );
-    }
-
-    #[test]
     fn cycle은_system_light_dark_순서로_돈다() {
         let storage = MemoryStorage::new();
         let mut store = AppThemeStore::load(&storage);
         store.cycle(&storage).unwrap();
+        assert_eq!(store.mode(), ThemeMode::Light);
+        store.cycle(&storage).unwrap();
         assert_eq!(store.mode(), ThemeMode::Dark);
         store.cycle(&storage).unwrap();
         assert_eq!(store.mode(), ThemeMode::System);
-        store.cycle(&storage).unwrap();
-        assert_eq!(store.mode(), ThemeMode::Light);
+    }
+
+    #[test]
+    fn 저장된_값이_없으면_시스템을_따른다() {
+        assert_eq!(
+            AppThemeStore::load(&MemoryStorage::new()).mode(),
+            ThemeMode::System
+        );
     }
 
     #[test]
@@ -124,7 +125,7 @@ mod tests {
             storage.set("rev:app-theme", raw).unwrap();
             assert_eq!(
                 AppThemeStore::load(&storage).mode(),
-                ThemeMode::Light,
+                ThemeMode::System,
                 "{raw}"
             );
         }

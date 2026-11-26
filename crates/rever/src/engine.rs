@@ -10,7 +10,7 @@ use image::RgbaImage;
 use servo::{
     ConsoleLogLevel, CookieSource, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize,
     EmbedderControl, EventLoopWaker, InputEvent, JSValue, PrefValue, RenderingContext, Servo,
-    ServoBuilder, ServoDelegate, SoftwareRenderingContext, UserContentManager, UserScript,
+    ServoBuilder, ServoDelegate, SoftwareRenderingContext, Theme, UserContentManager, UserScript,
     WebResourceLoad, WebView, WebViewBuilder, WebViewDelegate,
 };
 use url::Url;
@@ -263,6 +263,8 @@ pub struct Engine {
     /// by the handle it was added with.
     init_scripts: Vec<(String, TabId, Rc<UserScript>)>,
     next_script: u32,
+    /// Whether pages are told the color scheme is dark (`prefers-color-scheme`).
+    dark: bool,
     wake: Arc<dyn Fn() + Send + Sync>,
     /// Servo's memory report, left here by its reply until the next pump.
     memory: Arc<Mutex<Option<MemoryReport>>>,
@@ -325,6 +327,7 @@ impl Engine {
             desktop_user_agent: servo::prefs::get().user_agent.clone(),
             init_scripts: Vec::new(),
             next_script: 1,
+            dark: false,
             wake,
             memory: Arc::default(),
         }
@@ -371,6 +374,7 @@ impl Engine {
                 loads: self.loads.clone(),
             }))
             .build();
+        webview.notify_theme_change(page_theme(self.dark));
         self.pages.push(Page {
             id,
             webview,
@@ -402,6 +406,10 @@ impl Engine {
     /// Let Servo process its queue; returns what changed.
     pub fn pump(&mut self) -> Vec<EngineEvent> {
         self.servo.spin_event_loop();
+        // A window a page opened has not been told the color scheme yet.
+        for page in self.opened.borrow().iter() {
+            page.webview.notify_theme_change(page_theme(self.dark));
+        }
         self.pages.append(&mut self.opened.borrow_mut());
         let mut events = std::mem::take(&mut *self.events.borrow_mut());
         if let Some(report) = self.memory.lock().ok().and_then(|mut slot| slot.take()) {
@@ -585,6 +593,18 @@ impl Engine {
         }
     }
 
+    /// Tell every page, and the ones opened later, whether the color scheme is dark, so
+    /// `prefers-color-scheme` follows the app's theme as it follows the OS in Chrome.
+    pub fn set_dark(&mut self, dark: bool) {
+        if self.dark == dark {
+            return;
+        }
+        self.dark = dark;
+        for page in &self.pages {
+            page.webview.notify_theme_change(page_theme(dark));
+        }
+    }
+
     /// The address of the link under the pointer, which the page reports for a status bar.
     pub fn hovered_link(&self, id: TabId) -> Option<String> {
         self.page(id)?.webview.status_text()
@@ -645,6 +665,10 @@ const ZOOM_STEPS: [f32; 15] = [
 ];
 
 /// Servo hands the icon in one of several layouts; the tab strip wants RGBA.
+fn page_theme(dark: bool) -> Theme {
+    if dark { Theme::Dark } else { Theme::Light }
+}
+
 fn favicon_rgba(image: &servo::Image) -> Option<RgbaImage> {
     use servo::PixelFormat;
     let data = image.data();

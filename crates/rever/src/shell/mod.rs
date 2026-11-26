@@ -126,6 +126,9 @@ fn icon_button(
 impl Render for Browser {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::resolve(self.theme_mode, window.appearance());
+        // Pages follow the app: a dark app asks them for their dark scheme.
+        self.engine
+            .set_dark(self.theme_mode.is_dark(window.appearance()));
         // The grid view of the spaces takes the whole window, as its own screen.
         if self.spaces_open {
             let root = div()

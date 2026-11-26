@@ -54,16 +54,27 @@ impl ThemeMode {
     }
 }
 
-impl Theme {
-    pub fn resolve(mode: ThemeMode, appearance: WindowAppearance) -> Self {
+impl ThemeMode {
+    /// Whether this mode draws dark in a window of `appearance`.
+    pub fn is_dark(self, appearance: WindowAppearance) -> bool {
         let os_dark = matches!(
             appearance,
             WindowAppearance::Dark | WindowAppearance::VibrantDark
         );
-        match mode {
-            ThemeMode::Dark => Self::dark(),
-            ThemeMode::System if os_dark => Self::dark(),
-            _ => Self::light(),
+        match self {
+            Self::Dark => true,
+            Self::System => os_dark,
+            Self::Light => false,
+        }
+    }
+}
+
+impl Theme {
+    pub fn resolve(mode: ThemeMode, appearance: WindowAppearance) -> Self {
+        if mode.is_dark(appearance) {
+            Self::dark()
+        } else {
+            Self::light()
         }
     }
 
@@ -129,5 +140,23 @@ impl Theme {
             Some(500..) => self.http_5xx,
             _ => self.http_none,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 시스템_모드는_창이_어두울_때만_어둡다() {
+        assert!(ThemeMode::System.is_dark(WindowAppearance::Dark));
+        assert!(ThemeMode::System.is_dark(WindowAppearance::VibrantDark));
+        assert!(!ThemeMode::System.is_dark(WindowAppearance::Light));
+    }
+
+    #[test]
+    fn 고른_모드는_창과_상관없이_그대로다() {
+        assert!(ThemeMode::Dark.is_dark(WindowAppearance::Light));
+        assert!(!ThemeMode::Light.is_dark(WindowAppearance::Dark));
     }
 }
