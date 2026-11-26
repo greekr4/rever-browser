@@ -9,33 +9,34 @@ Drive a running **Rever Browser** app from this Claude Code session to reverse-e
 
 ## Prerequisite
 
-The **Rever Browser app must be running** — it publishes its MCP endpoint on startup to:
+The **Rever Browser app must be running** — it publishes its control socket on startup to:
 
 ```
 ~/Library/Application Support/rever-browser/mcp-endpoint.json
 ```
 
-The port is OS-assigned (changes each launch), so always resolve it from that file. If the file is missing, tell the user to launch Rever Browser first.
+That file holds `socket` and `token`. The path is per-user, so always read it from the file. If the file is missing, tell the user to launch Rever Browser first.
+
+Rever's tools are a **CLI**, not MCP server tools: every call goes through `revb` in the shell.
 
 ## Connect
 
-**Preferred — register as native MCP tools** (tools appear as `mcp__rever__*`):
-
 ```bash
-claude mcp add --transport http rever "$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/Library/Application Support/rever-browser/mcp-endpoint.json')))['url'])")"
+revb list                                  # tool names
+revb describe <tool>                       # one tool's argument schema
+revb call <tool> '{"key": "value"}'        # call it
+revb skill                                 # the full CLI guide
 ```
 
-Re-run this whenever Rever Browser restarts (the port changes). MCP servers load at session start, so if the tools aren't visible yet, start a fresh `claude` session.
+`revb` lives in the Rever Browser repo (`bin/revb.mjs`, zero dependencies, Node 18+). If it is not on PATH, call it by path: `node <repo>/bin/revb.mjs ...`.
 
-**Quick calls without registration** — use the bundled helper (works immediately, reads the endpoint each call):
+The bundled helper does the same over the socket without Node (works immediately, reads the endpoint each call):
 
 ```bash
-python3 "$(dirname "$0")/rever.py" --list                              # list tools
+python3 rever.py --list
 python3 rever.py browser_navigate '{"url":"https://example.com"}'
 python3 rever.py list_requests
 ```
-
-**Scripts — many steps in one call** (preferred for multi-step work): `node bin/revb.mjs run script.mjs` exposes every tool as a global async function. Read the guide with `node bin/revb.mjs skill` (`--full` adds the live tool catalog).
 
 ## Tool map
 
@@ -65,6 +66,6 @@ Prefer the traffic store over re-downloading: script bodies are already captured
 
 ## Troubleshooting
 
-- **"No MCP endpoint found"** → Rever Browser isn't running. Launch the app.
-- **Tools missing after `claude mcp add`** → MCP loads at session start; open a new `claude` session, or use the `rever.py` helper for the current one.
-- **Connection refused / stale** → Rever restarted and the port changed. Re-run the connect command.
+- **"No Rever Browser endpoint found"** → Rever Browser isn't running. Launch the app.
+- **`revb: command not found`** → run it as `node <repo>/bin/revb.mjs ...`.
+- **Connection refused / stale** → Rever restarted. The socket path is stable, but a dead pid in the endpoint file means the app is gone; launch it again.
