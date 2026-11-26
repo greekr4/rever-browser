@@ -5,6 +5,7 @@ use rever_tool_profile::macro_guard::{
     CliEffect, MacroStep, macro_run_needs_guard, screen_macro_run,
 };
 use rever_tools_api::tool::{ToolContext, ToolDef, ToolRegistry};
+use rever_tools_api::utils::budget_text;
 use serde_json::{Value, json};
 
 use crate::args::text;
@@ -246,6 +247,95 @@ tool!(
     |ctx, args| { Ok(pretty(&ask(ctx, "macro:delete", pick(args, &["id"]))?)) }
 );
 
+tool!(
+    RunSteps,
+    ToolDef::new(
+        "run_steps",
+        "Run several tool calls in ONE call: they run in order and stop at the first failure. Use it whenever you already know the next few actions (fill three fields and submit, open a page then read two things) instead of one call per action. Returns each step's status and output; the outputs share one answer, so a long one is cut. Element refs are renumbered by every action, so inside a batch address elements by CSS selector (browser_click_selector, browser_type_selector) or in browser_evaluate. A step's `saveAs` result is available to later steps as {{name}}. Steps that need the user's consent (intruder, state-changing replays, CLI writes) are refused here: call those tools directly.",
+        schema(
+            json!({
+                "steps": {
+                    "description": "The tool calls to run, in order (1 to 20)",
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": RUN_STEPS_MAX,
+                    "items": step_schema(),
+                },
+            }),
+            &["steps"],
+        ),
+    ),
+    |ctx, args| {
+        unknown_tools(ctx, args.get("steps"))?;
+        let steps = run_steps(args)?;
+        if steps.is_empty() || steps.len() > RUN_STEPS_MAX {
+            return Err(format!("run_steps takes 1 to {RUN_STEPS_MAX} steps"));
+        }
+        if let Some(step) = steps
+            .iter()
+            .find(|step| matches!(step.tool.as_str(), "run_steps" | "run_macro"))
+        {
+            return Err(format!("run_steps cannot run {} as a step", step.tool));
+        }
+        // Screened whichever catalog the call came through: the agent's consent
+        // prompt looks at the outer tool only, so a risky step would slip past it.
+        let mut resolve = |_: &str| -> Result<Vec<MacroStep>, String> { Ok(Vec::new()) };
+        let effect = |id: &str, command: &str| {
+            let effect = ask(ctx, "cli:effect", json!({ "id": id, "command": command }));
+            serde_json::from_value::<CliEffect>(effect.ok()?).ok()
+        };
+        screen_macro_run(&guard_steps(&steps), &mut resolve, &[], Some(&effect))?
+            .map_err(|refusal| refusal.replacen("run_macro", "run_steps", 1))?;
+
+        let opts = RunOptions {
+            detached: true,
+            ..RunOptions::default()
+        };
+        let results = run_workflow(ctx, &steps, &mut |_| {}, &opts).await;
+        let failed = results
+            .iter()
+            .any(|result| result.status == StepStatus::Error);
+        // The outputs share one answer: each step gets an equal part of the budget.
+        let share = RUN_STEPS_BUDGET / results.len().max(1);
+        let steps: Vec<Value> = results
+            .iter()
+            .map(|result| {
+                let mut row = serde_json::to_value(result).unwrap_or_default();
+                if let Some(output) = &result.output {
+                    row["output"] = json!(cut_to(output, share));
+                }
+                row
+            })
+            .collect();
+        let body = pretty(&json!({ "steps": steps }));
+        if failed { Err(body) } else { Ok(body) }
+    }
+);
+
+/// How many steps one `run_steps` call takes.
+const RUN_STEPS_MAX: usize = 20;
+/// Characters all step outputs of one call may take together (the tools' usual budget).
+const RUN_STEPS_BUDGET: usize = 12_000;
+
+/// `text`, or its first `max` characters and a note of how much was left out.
+fn cut_to(text: &str, max: usize) -> String {
+    let budget = budget_text(text, Some(max));
+    if budget.truncated {
+        format!(
+            "{} …[cut: the first {max} of {} chars]",
+            budget.head,
+            text.chars().count()
+        )
+    } else {
+        text.to_owned()
+    }
+}
+
+/// The tool this build adds to the ones `macros.ts` registered.
+pub fn register_extras(registry: &mut ToolRegistry) {
+    registry.register(RunSteps);
+}
+
 pub fn register(registry: &mut ToolRegistry) {
     registry.register(ListMacros);
     registry.register(GetMacro);
@@ -273,11 +363,86 @@ mod tests {
         let ctx = context();
         registry_with(&ctx, |registry| {
             crate::register(registry);
+            crate::register_extras(registry);
             for name in ["echo", "browser_click", "intruder_run", "replay_request"] {
                 registry.register(Echo(name));
             }
         });
         ctx
+    }
+
+    #[tokio::test]
+    async fn run_steps는_단계를_순서대로_돌리고_각_결과를_돌려준다() {
+        let ctx = with_tools();
+        let steps = json!([
+            { "tool": "echo", "input": { "n": 1 }, "saveAs": "first" },
+            { "tool": "browser_click", "input": { "after": "{{first}}" } },
+        ]);
+        let out = call_json(&RunSteps, &ctx, json!({ "steps": steps })).await;
+        assert_eq!(out["steps"][0]["status"], "done");
+        assert_eq!(out["steps"][0]["output"], "echo:{\"n\":1}");
+        // 앞 단계의 saveAs 값이 뒤 단계의 입력에 들어간다.
+        assert_eq!(
+            out["steps"][1]["output"],
+            "browser_click:{\"after\":\"echo:{\\\"n\\\":1}\"}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_steps는_첫_실패에서_멈추고_오류로_답한다() {
+        let ctx = with_tools();
+        let steps = json!([
+            { "tool": "echo", "input": {} },
+            { "tool": "echo", "input": { "fail": true } },
+            { "tool": "echo", "input": { "never": true } },
+        ]);
+        let text = call(&RunSteps, &ctx, json!({ "steps": steps }))
+            .await
+            .unwrap_err();
+        let out: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(out["steps"].as_array().unwrap().len(), 2);
+        assert_eq!(out["steps"][1]["status"], "error");
+    }
+
+    #[tokio::test]
+    async fn run_steps는_동의가_필요한_단계를_돌리지_않는다() {
+        let ctx = with_tools();
+        let steps = json!([{ "tool": "echo" }, { "tool": "intruder_run" }]);
+        let refused = call(&RunSteps, &ctx, json!({ "steps": steps }))
+            .await
+            .unwrap_err();
+        assert!(
+            refused.starts_with("run_steps refused step 1 (intruder_run)"),
+            "{refused}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_steps는_묶음_안에_묶음을_넣지_못한다() {
+        let ctx = with_tools();
+        for inner in ["run_steps", "run_macro"] {
+            let steps = json!([{ "tool": inner, "input": {} }]);
+            let refused = call(&RunSteps, &ctx, json!({ "steps": steps }))
+                .await
+                .unwrap_err();
+            assert_eq!(refused, format!("run_steps cannot run {inner} as a step"));
+        }
+    }
+
+    #[tokio::test]
+    async fn run_steps는_긴_출력을_단계_수로_나눈_만큼만_싣는다() {
+        let ctx = with_tools();
+        let long = "x".repeat(20_000);
+        let steps = json!([
+            { "tool": "echo", "input": { "text": long } },
+            { "tool": "echo", "input": { "text": long } },
+        ]);
+        let out = call_json(&RunSteps, &ctx, json!({ "steps": steps })).await;
+        for step in out["steps"].as_array().unwrap() {
+            let shown = step["output"].as_str().unwrap();
+            assert!(shown.len() < 6_200, "{}", shown.len());
+            assert!(shown.ends_with("chars]"), "{}", &shown[shown.len() - 40..]);
+        }
     }
 
     async fn create(ctx: &ToolContext, name: &str, steps: Value) -> String {

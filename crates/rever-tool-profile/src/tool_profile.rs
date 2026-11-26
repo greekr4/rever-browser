@@ -67,8 +67,10 @@ const HIDDEN: BucketSpec = BucketSpec::Of(&[ToolBucket::Hidden]);
 
 /// Registry in declaration order: `advertised_names` lists tools in this order.
 pub const TOOL_BUCKETS: &[(&str, BucketSpec)] = &[
-    // core (26) — existing 22 + tool_profile_set + dialog answer/history + downloads
+    // core (27) — existing 22 + tool_profile_set + dialog answer/history + downloads
+    // + run_steps
     ("tool_profile_set", CORE),
+    ("run_steps", CORE),
     ("browser_navigate", CORE),
     ("browser_snapshot", CORE),
     ("browser_click", CORE),
@@ -522,6 +524,9 @@ mod tests {
     /// Tools the TypeScript build advertised that this build hides: each answers
     /// an error or does nothing here, so offering it only burns the agent's
     /// turns. They stay registered for external clients.
+    /// Tools this build adds: the TypeScript app never had them.
+    const ADDED_IN_RUST: [&str; 1] = ["run_steps"];
+
     const HIDDEN_BECAUSE_UNSUPPORTED: [&str; 6] = [
         "console_exceptions",
         "console_get_props",
@@ -581,7 +586,11 @@ mod tests {
     fn 소스_register_tool_이름과_레지스트리_키가_같다() {
         let source = source_tool_names();
         assert_eq!(
-            sorted(registry_keys()),
+            sorted(
+                registry_keys()
+                    .into_iter()
+                    .filter(|name| !ADDED_IN_RUST.contains(name))
+            ),
             sorted(source.iter().map(String::as_str))
         );
         assert_eq!(source.len(), 177);
@@ -617,13 +626,14 @@ mod tests {
             })
             .collect();
         assert_eq!(ts.len(), 177);
-        // HIDDEN_BECAUSE_UNSUPPORTED is the only deviation. Take those names out
-        // of both sides: everything the app still offers must match the
-        // TypeScript in name, bucket and order.
+        // HIDDEN_BECAUSE_UNSUPPORTED and ADDED_IN_RUST are the only deviations.
+        // Take those names out of both sides: everything else the app offers
+        // must match the TypeScript in name, bucket and order.
         let kept = |pairs: &[(&str, String)]| -> Vec<(String, String)> {
             pairs
                 .iter()
                 .filter(|(name, _)| !HIDDEN_BECAUSE_UNSUPPORTED.contains(name))
+                .filter(|(name, _)| !ADDED_IN_RUST.contains(name))
                 .map(|(name, bucket)| ((*name).to_owned(), bucket.clone()))
                 .collect()
         };
@@ -639,11 +649,11 @@ mod tests {
     }
 
     #[test]
-    fn browse_81_reverse_113_probe_49이고_예산_120을_넘지_않는다() {
+    fn browse_82_reverse_114_probe_50이고_예산_120을_넘지_않는다() {
         assert_eq!(PROFILE_TOOL_BUDGET, 120);
-        assert_eq!(advertised_names(ToolProfile::Browse, []).len(), 81);
-        assert_eq!(advertised_names(ToolProfile::Reverse, []).len(), 113);
-        assert_eq!(advertised_names(ToolProfile::Probe, []).len(), 49);
+        assert_eq!(advertised_names(ToolProfile::Browse, []).len(), 82);
+        assert_eq!(advertised_names(ToolProfile::Reverse, []).len(), 114);
+        assert_eq!(advertised_names(ToolProfile::Probe, []).len(), 50);
         for profile in TOOL_PROFILES {
             assert_eq!(assert_profile_budget(profile), Ok(()));
         }
@@ -745,7 +755,7 @@ mod tests {
             1
         );
         assert_eq!(names.iter().filter(|n| **n == "grep_scripts").count(), 1);
-        assert_eq!(names.len(), 82);
+        assert_eq!(names.len(), 83);
     }
 
     #[test]

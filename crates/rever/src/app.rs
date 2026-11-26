@@ -126,6 +126,7 @@ fn tool_registry() -> ToolRegistry {
     rever_tools_debug::register(&mut registry);
     rever_tools_redteam::register(&mut registry);
     rever_tools_automation::register(&mut registry);
+    rever_tools_automation::register_extras(&mut registry);
     rever_tools_http::register(&mut registry);
     rever_tools_probe::register(&mut registry);
     registry

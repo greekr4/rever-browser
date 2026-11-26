@@ -495,6 +495,9 @@ async fn run_ai_step(
 pub struct RunOptions {
     /// Where an AI step's agent starts. Defaults to the process's directory.
     pub cwd: Option<String>,
+    /// A detached run neither supersedes the run in flight nor is superseded:
+    /// `run_steps` calls from sessions working in parallel must not cut each other short.
+    pub detached: bool,
 }
 
 pub async fn run_workflow(
@@ -503,9 +506,13 @@ pub async fn run_workflow(
     on_progress: &mut (dyn FnMut(StepProgress) + Send),
     opts: &RunOptions,
 ) -> Vec<StepProgress> {
-    // Supersede any in-flight run.
+    // Supersede any in-flight run, unless this one stands apart.
     let runs = ctx.state::<WorkflowRuns>();
-    let run = runs.begin();
+    let run = if opts.detached {
+        Run::default()
+    } else {
+        runs.begin()
+    };
     let agents = ctx.state::<AiAgentsSlot>().get();
 
     let mut results = Vec::new();
@@ -754,6 +761,22 @@ mod tests {
 
     use super::*;
     use crate::test_support::{Echo, FakeBrowser, TestContext, context, context_on, registry_with};
+
+    #[tokio::test]
+    async fn 떼어_낸_실행은_진행_중인_실행을_끊지_않는다() {
+        let ctx = context();
+        registry_with(&ctx, |registry| registry.register(Echo("echo")));
+        // 워크플로 패널의 실행이 진행 중인 상태.
+        let running = ctx.state::<WorkflowRuns>().begin();
+        let step: RunStep = serde_json::from_value(json!({ "tool": "echo", "input": {} })).unwrap();
+        let opts = RunOptions {
+            detached: true,
+            ..RunOptions::default()
+        };
+        let results = run_workflow(&ctx, &[step], &mut |_| {}, &opts).await;
+        assert_eq!(results.len(), 1);
+        assert!(!cancelled(&running));
+    }
 
     fn vars(value: Value) -> Map<String, Value> {
         value.as_object().cloned().unwrap_or_default()
@@ -1212,6 +1235,7 @@ mod tests {
         ctx.state::<AiAgentsSlot>().set(agents);
         let opts = RunOptions {
             cwd: Some("/work".to_owned()),
+            ..RunOptions::default()
         };
         run_workflow(&ctx, steps, &mut |_| {}, &opts).await
     }

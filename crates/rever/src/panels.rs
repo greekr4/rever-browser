@@ -389,6 +389,7 @@ impl WorkflowHost for WorkflowTools {
             let cwd = crate::app::data_dir().join("agent-scratch");
             let options = RunOptions {
                 cwd: Some(cwd.to_string_lossy().into_owned()),
+                ..RunOptions::default()
             };
             runtime.block_on(run_workflow(&context, &steps, &mut report, &options))
         });
