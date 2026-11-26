@@ -151,7 +151,7 @@ impl Tool for ExecTrace {
     fn def(&self) -> ToolDef {
         ToolDef::new(
             "exec_trace",
-            "Record which JS functions run during an action, via V8 precise coverage. action=start → perform the action (browser_click, or ask the user to click) → action=stop returns every function called in that window (url:line:col, call count), the requests made, and onRequestStack marking functions a request's initiator stack passed through — the fastest way to find request-signing code in a large bundle. Feed a function's resolveSource to resolve_source. The page runs slower while recording; always stop (auto-stops after maxSeconds).",
+            "[NOT SUPPORTED IN THIS BUILD] Recording needs V8 precise coverage, which the engine does not expose: start and stop both answer that it is not supported. Record which JS functions run during an action, via V8 precise coverage. action=start → perform the action (browser_click, or ask the user to click) → action=stop returns every function called in that window (url:line:col, call count), the requests made, and onRequestStack marking functions a request's initiator stack passed through — the fastest way to find request-signing code in a large bundle. Feed a function's resolveSource to resolve_source. The page runs slower while recording; always stop (auto-stops after maxSeconds).",
             json!({
                 "type": "object",
                 "properties": {

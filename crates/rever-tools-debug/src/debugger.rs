@@ -227,7 +227,7 @@ tool!(
     BpAdd,
     ToolDef::new(
         "bp_add",
-        "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger — breakpoints/stepping are a no-op (even a literal `debugger;` will not halt). Prefer crypto_trace / console_eval instrumentation instead. Set a breakpoint at a URL glob + line number. The page will pause when execution reaches the location.",
+        "[NOT FUNCTIONAL IN THIS BUILD] A breakpoint does stop the page, but the pause never reaches the tools: bp_status keeps reporting `paused: false`, bp_resume answers `resumed` and the tab stays frozen, and every later call on that tab hangs. Setting one loses the tab. Prefer crypto_trace / console_eval instrumentation instead. Set a breakpoint at a URL glob + line number.",
         schema(
             json!({
                 "urlGlob": {
@@ -369,7 +369,7 @@ tool!(
     BpResume,
     ToolDef::new(
         "bp_resume",
-        "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger, so there is never a pause to resume from. Prefer crypto_trace / console_eval instrumentation instead. Resume execution after a breakpoint pause.",
+        "[NOT FUNCTIONAL IN THIS BUILD] A breakpoint's pause is never reported, so there is nothing to resume from: this answers `resumed` and the tab stays frozen. Prefer crypto_trace / console_eval instrumentation instead. Resume execution after a breakpoint pause.",
         no_args()
     ),
     |ctx, _args| {
@@ -382,7 +382,7 @@ tool!(
     BpStepOver,
     ToolDef::new(
         "bp_step_over",
-        "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger — stepping is a no-op (even a literal `debugger;` will not halt). Prefer crypto_trace / console_eval instrumentation instead. Step over the current line (must be paused at a breakpoint).",
+        "[NOT FUNCTIONAL IN THIS BUILD] Stepping needs a pause the tools can see, and a breakpoint's pause is never reported; the tab stays frozen and every later call on it hangs. Prefer crypto_trace / console_eval instrumentation instead. Step over the current line (must be paused at a breakpoint).",
         no_args()
     ),
     |ctx, _args| {
@@ -395,7 +395,7 @@ tool!(
     BpStepInto,
     ToolDef::new(
         "bp_step_into",
-        "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger — stepping is a no-op (even a literal `debugger;` will not halt). Prefer crypto_trace / console_eval instrumentation instead. Step into the next function call (must be paused at a breakpoint).",
+        "[NOT FUNCTIONAL IN THIS BUILD] Stepping needs a pause the tools can see, and a breakpoint's pause is never reported; the tab stays frozen and every later call on it hangs. Prefer crypto_trace / console_eval instrumentation instead. Step into the next function call (must be paused at a breakpoint).",
         no_args()
     ),
     |ctx, _args| {
@@ -408,7 +408,7 @@ tool!(
     BpStepOut,
     ToolDef::new(
         "bp_step_out",
-        "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger — stepping is a no-op (even a literal `debugger;` will not halt). Prefer crypto_trace / console_eval instrumentation instead. Step out of the current function (must be paused at a breakpoint).",
+        "[NOT FUNCTIONAL IN THIS BUILD] Stepping needs a pause the tools can see, and a breakpoint's pause is never reported; the tab stays frozen and every later call on it hangs. Prefer crypto_trace / console_eval instrumentation instead. Step out of the current function (must be paused at a breakpoint).",
         no_args()
     ),
     |ctx, _args| {
@@ -421,7 +421,7 @@ tool!(
     BpEvalInFrame,
     ToolDef::new(
         "bp_eval_in_frame",
-        "[NOT FUNCTIONAL IN THIS BUILD] Execution never pauses under Electron's webContents.debugger, so there is never a paused frame to evaluate in (even a literal `debugger;` will not halt). Prefer crypto_trace / console_eval instrumentation instead. Evaluate a JavaScript expression in a specific call frame while paused at a breakpoint.",
+        "[NOT FUNCTIONAL IN THIS BUILD] There is never a paused frame the tools can address: a breakpoint's pause is never reported, so the tab just stays frozen. Prefer crypto_trace / console_eval instrumentation instead. Evaluate a JavaScript expression in a specific call frame while paused at a breakpoint.",
         schema(
             json!({
                 "frameIndex": {

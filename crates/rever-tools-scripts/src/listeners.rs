@@ -118,7 +118,7 @@ impl Tool for InspectListeners {
     fn def(&self) -> ToolDef {
         ToolDef::new(
             "inspect_listeners",
-            "List the event listeners on an element — type, flags, `url:line:col` of the handler, and its source. Use it to go button → handler → request before clicking. ancestors=true (default) also walks parents up to document/window, where React/Vue-style frameworks register their delegated handlers. Pass the `resolveSource` object of a listener to resolve_source for the original (source-mapped) location. Never invokes a handler.",
+            "[NOT SUPPORTED IN THIS BUILD] Reading listeners needs DOMDebugger.getEventListeners, which the engine does not expose, so this always answers that it is not supported. List the event listeners on an element — type, flags, `url:line:col` of the handler, and its source. Use it to go button → handler → request before clicking. ancestors=true (default) also walks parents up to document/window, where React/Vue-style frameworks register their delegated handlers. Pass the `resolveSource` object of a listener to resolve_source for the original (source-mapped) location. Never invokes a handler.",
             json!({
                 "type": "object",
                 "properties": {

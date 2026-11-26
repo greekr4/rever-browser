@@ -189,7 +189,7 @@ impl Tool for HeaderPresetApply {
     fn def(&self) -> ToolDef {
         ToolDef::new(
             "header_preset_apply",
-            "Activate a header preset — registers an intercept rule that injects the preset's headers into every matching outbound request.",
+            "[NOT SUPPORTED IN THIS BUILD] Activating a preset needs request interception, which the engine does not expose yet: a preset that is not already active answers that it is not supported. Activate a header preset — registers an intercept rule that injects the preset's headers into every matching outbound request.",
             json!({
                 "type": "object",
                 "properties": {
@@ -229,7 +229,7 @@ impl Tool for HeaderPresetDisable {
     fn def(&self) -> ToolDef {
         ToolDef::new(
             "header_preset_disable",
-            "Deactivate a header preset (removes the intercept rule).",
+            "[NOT SUPPORTED IN THIS BUILD] Removing the rule needs request interception, which the engine does not expose yet. Deactivate a header preset (removes the intercept rule).",
             json!({
                 "type": "object",
                 "properties": {

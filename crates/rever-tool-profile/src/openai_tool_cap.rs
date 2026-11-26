@@ -170,24 +170,24 @@ mod tests {
     }
 
     #[test]
-    fn reverse에_browse_전용_34개를_더한_152개에서_list_endpoints와_등록_순_꼬리를_자른다() {
+    fn reverse에_browse_전용_33개를_더한_146개에서_list_endpoints와_등록_순_꼬리를_자른다() {
         let order = registration_order();
         assert_eq!(order.len(), 177);
         let browse_only: Vec<&str> = advertised_names(ToolProfile::Browse, [])
             .into_iter()
             .filter(|name| !is_advertised(name, ToolProfile::Reverse))
             .collect();
-        assert_eq!(browse_only.len(), 34);
+        assert_eq!(browse_only.len(), 33);
         let allowed: HashSet<&str> = advertised_names(ToolProfile::Reverse, [])
             .into_iter()
             .chain(browse_only)
             .collect();
-        assert_eq!(allowed.len(), 152);
+        assert_eq!(allowed.len(), 146);
         let filtered: Vec<String> = order
             .into_iter()
             .filter(|name| allowed.contains(name.as_str()))
             .collect();
-        assert_eq!(filtered.len(), 152);
+        assert_eq!(filtered.len(), 146);
         assert_eq!(
             filtered.last().map(String::as_str),
             Some("tool_profile_set")
@@ -200,12 +200,6 @@ mod tests {
                 "dialog_inject_override",
                 "dialog_clear_history",
                 "list_endpoints",
-                "delete_macro",
-                "scan_secrets",
-                "crypto_trace_start",
-                "crypto_trace_list",
-                "crypto_trace_stop",
-                "fetch_body",
                 "detect_antibot_vm",
                 "graphql_introspect",
                 "protobuf_decode",
