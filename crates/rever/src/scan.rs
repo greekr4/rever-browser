@@ -810,6 +810,29 @@ impl ScanRun {
         self.stop = true;
     }
 
+    /// Whether a page worker that has not finished owns the tab at `url`.
+    pub fn worker_on(&self, url: &str) -> bool {
+        self.pool
+            .iter()
+            .any(|turn| !turn.done && turn.url.as_deref() == Some(url))
+    }
+
+    /// Stop the page worker at `url`, as its deadline would: the scan moves on
+    /// with what the worker already found.
+    pub fn stop_worker(&mut self, url: &str) -> bool {
+        let Some(turn) = self
+            .pool
+            .iter_mut()
+            .find(|turn| !turn.done && turn.url.as_deref() == Some(url))
+        else {
+            return false;
+        };
+        turn.session = None;
+        turn.failed = Some("사용자가 워커를 중단했다".to_owned());
+        turn.done = true;
+        true
+    }
+
     fn log(&mut self, kind: LineKind, text: impl Into<String>, tab: Option<String>) {
         self.log.push(ScanLine {
             kind,
@@ -1413,6 +1436,40 @@ mod tests {
             started,
             limit,
         }
+    }
+
+    fn run_with_workers(urls: &[&str]) -> ScanRun {
+        let mut run = ScanRun::new("http://a.test/", 4, "readonly");
+        for url in urls {
+            let mut turn = turn_with(None, Instant::now());
+            turn.url = Some((*url).to_owned());
+            run.pool.push(turn);
+        }
+        run
+    }
+
+    #[test]
+    fn worker_on은_끝나지_않은_워커의_주소에만_참이다() {
+        let mut run = run_with_workers(&["http://a.test/one", "http://a.test/two"]);
+        run.pool[1].done = true;
+        assert!(run.worker_on("http://a.test/one"));
+        assert!(!run.worker_on("http://a.test/two"));
+        assert!(!run.worker_on("http://a.test/other"));
+    }
+
+    #[test]
+    fn stop_worker는_그_주소의_워커만_끝내고_이유를_남긴다() {
+        let mut run = run_with_workers(&["http://a.test/one", "http://a.test/two"]);
+        assert!(run.stop_worker("http://a.test/one"));
+        assert!(run.pool[0].done);
+        assert_eq!(
+            run.pool[0].failed.as_deref(),
+            Some("사용자가 워커를 중단했다")
+        );
+        assert!(!run.pool[1].done);
+        // 이미 끝난 워커와 없는 주소는 건드리지 않는다.
+        assert!(!run.stop_worker("http://a.test/one"));
+        assert!(!run.stop_worker("http://a.test/other"));
     }
 
     #[test]

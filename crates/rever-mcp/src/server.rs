@@ -122,6 +122,21 @@ pub struct NoPageEvents;
 
 impl PageEvents for NoPageEvents {}
 
+tokio::task_local! {
+    /// Set for the task a tool call runs in.
+    static TOOL_CALL: ();
+}
+
+/// Run `call` as a tool call: what it asks of the app counts as the agent's.
+pub async fn as_tool_call<T>(call: impl Future<Output = T>) -> T {
+    TOOL_CALL.scope((), call).await
+}
+
+/// Whether the running task is a tool call an MCP client made, not the app's own work.
+pub fn in_tool_call() -> bool {
+    TOOL_CALL.try_with(|_| ()).is_ok()
+}
+
 /// Marks the agent busy for as long as it lives, also when the call panics.
 struct AgentBusy(Arc<dyn PageEvents>);
 
@@ -295,7 +310,7 @@ impl Shared {
         // Its own task, so a tool that panics fails one call, not the session.
         let call = self.runtime.spawn(async move {
             let _busy = AgentBusy::enter(page);
-            tool.call(&context, args).await
+            as_tool_call(tool.call(&context, args)).await
         });
         match call.await {
             Ok(res) => {

@@ -51,6 +51,8 @@ pub enum Command {
     /// A cookie to store for a URL; an expired one deletes.
     SetCookie(String, Cookie, Answer<()>),
     ArmFiles(Vec<String>, Answer<()>),
+    /// A command an MCP client's tool call sent: the agent's, not the app's own.
+    ByAgent(Box<Command>),
 }
 
 pub struct AppBrowser {
@@ -80,7 +82,13 @@ impl AppBrowser {
         make: impl FnOnce(Answer<T>) -> Command,
     ) -> BoxFuture<'static, Result<T, String>> {
         let (answer, answered) = oneshot::channel();
-        let sent = self.commands.unbounded_send(make(answer)).is_ok();
+        let command = make(answer);
+        let command = if rever_mcp::in_tool_call() {
+            Command::ByAgent(Box::new(command))
+        } else {
+            command
+        };
+        let sent = self.commands.unbounded_send(command).is_ok();
         let _ = self.wake.unbounded_send(());
         Box::pin(async move {
             if !sent {
@@ -496,6 +504,33 @@ mod tests {
             wake,
             target: None,
         }
+    }
+
+    /// A browser handle, and the queue the main thread reads its commands from.
+    fn handle() -> (
+        AppBrowser,
+        futures::channel::mpsc::UnboundedReceiver<Command>,
+    ) {
+        let (commands, queue) = futures::channel::mpsc::unbounded::<Command>();
+        let (wake, _) = futures::channel::mpsc::unbounded::<()>();
+        (AppBrowser::new(commands, wake), queue)
+    }
+
+    #[test]
+    fn 앱_자신의_호출은_에이전트_표시_없이_들어온다() {
+        let (browser, mut queue) = handle();
+        drop(browser.reload());
+        assert!(matches!(queue.try_recv(), Ok(Command::Reload(_))));
+    }
+
+    #[tokio::test]
+    async fn 도구_호출_안에서_보낸_명령은_에이전트_표시를_단다() {
+        let (browser, mut queue) = handle();
+        rever_mcp::as_tool_call(async { drop(browser.reload()) }).await;
+        let Ok(Command::ByAgent(inner)) = queue.try_recv() else {
+            panic!("the command carries no agent mark");
+        };
+        assert!(matches!(*inner, Command::Reload(_)));
     }
 
     #[tokio::test]

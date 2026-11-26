@@ -237,6 +237,16 @@ impl Browser {
                 None => icon("globe", 16.0, dim).into_any_element(),
             })
             .child(div().flex_1().min_w_0().truncate().child(label))
+            // The agent's mark: a tool is driving this tab.
+            .when(self.agent_on(tab), |tab| {
+                tab.child(
+                    div()
+                        .size(px(6.0))
+                        .flex_none()
+                        .rounded_full()
+                        .bg(theme.accent),
+                )
+            })
             .when(closable, |tab| {
                 tab.child(
                     div()

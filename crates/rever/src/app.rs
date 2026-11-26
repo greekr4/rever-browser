@@ -511,6 +511,18 @@ fn sleeps(shown: bool, asleep: bool, idle: Duration, working: bool, after: Durat
     !shown && !asleep && !working && idle >= after
 }
 
+/// How long after a tool drove a tab it still counts as the agent's.
+const AGENT_RECENT: Duration = Duration::from_secs(5);
+
+/// Whether an agent is at work in a tab: a scan worker owns it, the chat turn that
+/// began at `turn` has driven it, or some tool drove it a moment ago.
+fn agent_on_tab(acted: Option<Instant>, turn: Option<Instant>, worker: bool, now: Instant) -> bool {
+    worker
+        || acted.is_some_and(|at| {
+            turn.is_some_and(|turn| at >= turn) || now.saturating_duration_since(at) < AGENT_RECENT
+        })
+}
+
 /// `REVER_TAB_SLEEP_SECS` overrides the wait, to watch tabs fall asleep in a test.
 fn tab_sleep_after() -> Duration {
     std::env::var("REVER_TAB_SLEEP_SECS")
@@ -548,6 +560,8 @@ pub(crate) struct Tab {
     pub used: Instant,
     /// Asleep: the tab has no page in the engine until it is used again.
     pub asleep: bool,
+    /// When a tool last drove this tab.
+    pub agent_acted: Option<Instant>,
 }
 
 impl Tab {
@@ -562,6 +576,7 @@ impl Tab {
             favicon: None,
             used: Instant::now(),
             asleep: false,
+            agent_acted: None,
         }
     }
 }
@@ -834,6 +849,8 @@ pub(crate) struct Browser {
     upload_paths: Vec<PathBuf>,
     /// When a tool last drove the page: a dialog opened right after is the agent's.
     tool_acted: Option<Instant>,
+    /// The once-a-second repaint for the agent's marks is running.
+    agent_marks_watched: bool,
     /// Height of the open bottom chip panel; the user drags its top edge.
     pub panel_height: f32,
     /// While the panel's top edge is dragged: (pointer y at start, height at start).
@@ -1365,6 +1382,7 @@ impl Browser {
             dialog_auto_dismiss: true,
             upload_paths: Vec::new(),
             tool_acted: None,
+            agent_marks_watched: false,
             panel_height: 320.0,
             panel_drag: None,
             redteam_open: false,
@@ -1439,6 +1457,61 @@ impl Browser {
             .unwrap_or(self.active);
         self.wake_tab(index);
         self.tabs[index].id
+    }
+
+    /// Whether an agent is at work in `tab`: the badge on its tab and its space.
+    pub(crate) fn agent_on(&self, tab: &Tab) -> bool {
+        let turn = self.turn_started.filter(|_| self.agent_busy);
+        let worker = self
+            .scan
+            .as_ref()
+            .is_some_and(|scan| scan.worker_on(&tab.url));
+        agent_on_tab(tab.agent_acted, turn, worker, Instant::now())
+    }
+
+    /// Stop the agent at work in a space's tabs: its scan workers, or the chat turn.
+    /// A client outside the app (the CLI) cannot be stopped from here; its mark goes.
+    pub fn stop_agent_in(&mut self, space: SpaceId, cx: &mut Context<Self>) {
+        let mut chat = false;
+        for index in 0..self.tabs.len() {
+            if self.tabs[index].space != space || !self.agent_on(&self.tabs[index]) {
+                continue;
+            }
+            let url = self.tabs[index].url.clone();
+            let worker = self
+                .scan
+                .as_mut()
+                .is_some_and(|scan| scan.stop_worker(&url));
+            chat |= !worker;
+            self.tabs[index].agent_acted = None;
+        }
+        if chat {
+            self.stop_chat(cx);
+        }
+        cx.notify();
+    }
+
+    /// Repaint once a second while a tab carries the agent's mark, so the mark
+    /// goes when the agent has left.
+    fn watch_agent_marks(&mut self, cx: &mut Context<Self>) {
+        if self.agent_marks_watched {
+            return;
+        }
+        self.agent_marks_watched = true;
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+                let marked = this.update(cx, |this, cx| {
+                    cx.notify();
+                    this.agent_marks_watched = this.tabs.iter().any(|tab| this.agent_on(tab));
+                    this.agent_marks_watched
+                });
+                if !matches!(marked, Ok(true)) {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     /// Open a sleeping tab's page again, and count the tab as used now.
@@ -2899,7 +2972,31 @@ impl Browser {
         use bridge::Command;
         let scale = f64::from(window.scale_factor());
         while let Ok(command) = self.tool_commands.try_recv() {
-            self.tool_acted = Some(Instant::now());
+            // The app's own panels send commands too; only an agent's leave a mark.
+            let command = match command {
+                Command::ByAgent(command) => {
+                    self.tool_acted = Some(Instant::now());
+                    let driven = match &*command {
+                        Command::Navigate(target, ..)
+                        | Command::Evaluate(target, ..)
+                        | Command::Screenshot(target, ..) => Some(*target),
+                        Command::Back(_)
+                        | Command::Forward(_)
+                        | Command::Reload(_)
+                        | Command::Input(..) => Some(None),
+                        _ => None,
+                    };
+                    if let Some(target) = driven {
+                        let index = target
+                            .filter(|index| *index < self.tabs.len())
+                            .unwrap_or(self.active);
+                        self.tabs[index].agent_acted = Some(Instant::now());
+                        self.watch_agent_marks(cx);
+                    }
+                    *command
+                }
+                command => command,
+            };
             let tab = self.active_id();
             match command {
                 Command::Page(target, answer) => {
@@ -3089,6 +3186,8 @@ impl Browser {
                     cx.write_to_clipboard(ClipboardItem::new_string(text));
                     let _ = answer.send(Ok(()));
                 }
+                // Unwrapped above; a mark is never nested.
+                Command::ByAgent(_) => {}
             }
         }
     }
@@ -3420,6 +3519,34 @@ mod tests {
     #[test]
     fn 에이전트나_스캔이_일하는_동안에는_아무_탭도_잠들지_않는다() {
         assert!(!sleeps(false, false, LONG, true, TAB_SLEEP_AFTER));
+    }
+
+    #[test]
+    fn 방금_도구가_건드린_탭은_에이전트_작업_중이다() {
+        let now = Instant::now();
+        assert!(agent_on_tab(Some(now), None, false, now));
+    }
+
+    #[test]
+    fn 건드린_지_오래됐거나_건드린_적_없는_탭은_작업_중이_아니다() {
+        let now = Instant::now();
+        assert!(!agent_on_tab(None, None, false, now));
+        assert!(!agent_on_tab(Some(now), None, false, now + AGENT_RECENT));
+    }
+
+    #[test]
+    fn 대화_턴이_도는_동안은_이번_턴에_건드린_탭이_계속_작업_중이다() {
+        let turn = Instant::now();
+        let touched = turn + Duration::from_secs(1);
+        let later = touched + Duration::from_secs(600);
+        assert!(agent_on_tab(Some(touched), Some(turn), false, later));
+        // 지난 턴에 건드린 탭은 이번 턴의 것이 아니다.
+        assert!(!agent_on_tab(Some(turn), Some(touched), false, later));
+    }
+
+    #[test]
+    fn 스캔_워커가_맡은_탭은_건드리지_않아도_작업_중이다() {
+        assert!(agent_on_tab(None, None, true, Instant::now()));
     }
 
     #[test]

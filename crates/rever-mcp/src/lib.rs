@@ -9,7 +9,9 @@ pub mod tool_profile_state;
 pub mod tools;
 mod validation;
 
-pub use server::{McpServer, PageEvents, ServerOptions, start, start_with};
+pub use server::{
+    McpServer, PageEvents, ServerOptions, as_tool_call, in_tool_call, start, start_with,
+};
 pub use tool_profile_state::ToolProfileState;
 
 /// Node's `writeFileSync(file, text, { mode: 0o600 })` followed by `chmodSync`:
