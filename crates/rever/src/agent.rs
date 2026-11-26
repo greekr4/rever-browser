@@ -203,16 +203,30 @@ fn auto_allowed(request: &Value) -> bool {
     !risky || redteam
 }
 
+/// The `revb` script next to `exe`: a dev checkout is `target/debug/rever` or
+/// `target/release/rever` (three levels up), a packaged layout may be flatter.
+/// Walk up at most six levels looking for `<root>/bin/revb.mjs`.
+fn revb_script_from(exe: &Path) -> Option<PathBuf> {
+    let mut dir = exe.parent();
+    for _ in 0..6 {
+        let root = dir?;
+        let script = root.join("bin").join("revb.mjs");
+        if script.is_file() {
+            return Some(script);
+        }
+        dir = root.parent();
+    }
+    None
+}
+
 /// The `revb` script the child CLI will call: `REVER_REVB_DIR` wins, otherwise
-/// the checkout next to the running binary (`target/debug/rever` → `<repo>/bin`).
+/// the checkout next to the running binary.
 fn revb_script() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("REVER_REVB_DIR") {
         let script = PathBuf::from(dir).join("revb.mjs");
         return script.is_file().then_some(script);
     }
-    let root = std::env::current_exe().ok()?.parent()?.parent()?.to_path_buf();
-    let script = root.join("bin").join("revb.mjs");
-    script.is_file().then_some(script)
+    revb_script_from(&std::env::current_exe().ok()?)
 }
 
 /// Write a `revb` shim that runs `script` into `<data_dir>/bin`, returning the
@@ -254,6 +268,9 @@ fn prepend_to_path(cmd: &mut Command, script: &Path, data_dir: &Path) -> Option<
 /// Resolve the script and the data dir from the environment, then prepend.
 fn prepend_revb_path(cmd: &mut Command) {
     let Some(script) = revb_script() else {
+        eprintln!(
+            "[agent] revb.mjs was not found; the agent cannot call tools. Set REVER_REVB_DIR to its folder."
+        );
         return;
     };
     let data = user_data_dir(
@@ -532,6 +549,34 @@ mod tests {
             tool_events(&output, &mut names),
             vec![AgentEvent::ToolResult(String::new(), "x".to_owned())]
         );
+    }
+
+    #[test]
+    fn 저장소_뿌리의_revb_mjs를_실행파일_위에서_찾는다() {
+        let dir = std::env::temp_dir().join(format!("rever-script-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let script = dir.join("bin/revb.mjs");
+        std::fs::create_dir_all(script.parent().unwrap()).unwrap();
+        std::fs::write(&script, "// script\n").unwrap();
+        let exe = dir.join("target/debug/rever");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, "").unwrap();
+        assert_eq!(revb_script_from(&exe), Some(script.clone()));
+        // release 레이아웃도 같은 뿌리를 가리킨다.
+        let exe = dir.join("target/release/rever");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, "").unwrap();
+        assert_eq!(revb_script_from(&exe).unwrap().to_string_lossy(), script.to_string_lossy());
+        // 스크립트가 없으면 아무것도 아니다. 같은 뿌리에 스크립트가 있으면
+        // 안 되므로 별도 폴더에서 확인한다.
+        let bare_root = std::env::temp_dir().join(format!("rever-script-bare-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&bare_root);
+        let bare = bare_root.join("other/deep/nest/rever");
+        std::fs::create_dir_all(bare.parent().unwrap()).unwrap();
+        std::fs::write(&bare, "").unwrap();
+        assert!(revb_script_from(&bare).is_none());
+        let _ = std::fs::remove_dir_all(&bare_root);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
