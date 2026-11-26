@@ -179,6 +179,7 @@ impl WebViewDelegate for Delegate {
             webview,
             context,
             scripts,
+            hidden: Cell::new(false),
         });
         self.push(EngineEvent::Opened(id));
     }
@@ -257,6 +258,8 @@ struct Page {
     webview: WebView,
     context: Rc<SoftwareRenderingContext>,
     scripts: Rc<UserContentManager>,
+    /// Hidden from painting: Servo stops its animations and throttles its timers.
+    hidden: Cell<bool>,
 }
 
 pub struct Engine {
@@ -407,8 +410,31 @@ impl Engine {
             webview,
             context,
             scripts,
+            hidden: Cell::new(false),
         });
         Ok(())
+    }
+
+    /// Whether the tab is being painted ([`Engine::set_painting`]).
+    pub fn painting(&self, id: TabId) -> bool {
+        self.page(id).is_some_and(|page| !page.hidden.get())
+    }
+
+    /// Paint the tab, or stop: a page nobody looks at keeps no animations running and
+    /// lets WebRender drop what it drew. Its last frame stays readable.
+    pub fn set_painting(&self, id: TabId, paint: bool) {
+        let Some(page) = self.page(id) else {
+            return;
+        };
+        if page.hidden.get() == !paint {
+            return;
+        }
+        page.hidden.set(!paint);
+        if paint {
+            page.webview.show();
+        } else {
+            page.webview.hide();
+        }
     }
 
     pub fn close(&mut self, id: TabId) {

@@ -544,6 +544,61 @@ fn agent_on_tab(acted: Option<Instant>, turn: Option<Instant>, worker: bool, now
         })
 }
 
+/// What the paint and sleep decisions look at in one tab.
+#[derive(Clone, Copy, Debug)]
+struct TabState {
+    /// The tab on screen (the shown tab of the shown space).
+    shown: bool,
+    asleep: bool,
+    /// An agent is at work in it ([`agent_on_tab`]).
+    agent: bool,
+    /// Since it was last shown or driven.
+    idle: Duration,
+}
+
+/// Painted: the tab on screen, and a tab an agent is driving (a scan worker reads and
+/// clicks behind the shown tab, and throttled timers would slow it down).
+fn paints(tab: &TabState) -> bool {
+    tab.shown || tab.agent
+}
+
+/// How long a screenshot of a tab that was not painting waits for its first frame.
+const SHOT_WAIT: Duration = Duration::from_secs(2);
+
+/// A screenshot of a tab that just started painting is answered with the frame it
+/// paints next: its last one predates the agent, or is blank when it never painted.
+fn shot_ready(new_frame: bool, waited: Duration) -> bool {
+    new_frame || waited >= SHOT_WAIT
+}
+
+/// The app's memory past which tabs left alone are put to sleep at once, oldest first,
+/// instead of after [`TAB_SLEEP_AFTER`].
+/// shortcut: one figure for every machine; read the system's memory pressure instead
+/// when a small Mac still swaps under it.
+const DEFAULT_MEMORY_BUDGET: u64 = 1_536 * 1024 * 1024;
+
+/// `REVER_MEMORY_BUDGET_MB` overrides the budget.
+fn memory_budget(asked: Option<&str>) -> u64 {
+    asked
+        .and_then(|megabytes| megabytes.parse::<u64>().ok())
+        .filter(|megabytes| *megabytes > 0)
+        .map_or(DEFAULT_MEMORY_BUDGET, |megabytes| megabytes * 1024 * 1024)
+}
+
+/// Over the budget: the tab to put to sleep now, the one left alone longest that
+/// nobody is looking at or driving. One a pass, so the memory it frees shows before
+/// the next is chosen.
+fn over_budget_victim(tabs: &[TabState], footprint: u64, budget: u64) -> Option<usize> {
+    if footprint <= budget {
+        return None;
+    }
+    tabs.iter()
+        .enumerate()
+        .filter(|(_, tab)| !tab.shown && !tab.asleep && !tab.agent)
+        .max_by_key(|(_, tab)| tab.idle)
+        .map(|(index, _)| index)
+}
+
 /// `REVER_TAB_SLEEP_SECS` overrides the wait, to watch tabs fall asleep in a test.
 fn tab_sleep_after() -> Duration {
     std::env::var("REVER_TAB_SLEEP_SECS")
@@ -872,6 +927,8 @@ pub(crate) struct Browser {
     tool_acted: Option<Instant>,
     /// The once-a-second repaint for the agent's marks is running.
     agent_marks_watched: bool,
+    /// Screenshots of tabs that were not painting, waiting for a fresh frame.
+    waiting_shots: Vec<(TabId, oneshot::Sender<Result<Vec<u8>, String>>, Instant)>,
     /// Height of the open bottom chip panel; the user drags its top edge.
     pub panel_height: f32,
     /// While the panel's top edge is dragged: (pointer y at start, height at start).
@@ -1073,7 +1130,9 @@ impl Browser {
         // oversleeps it by much.
         cx.spawn_in(window, async move |this, cx| {
             loop {
-                let pause = (tab_sleep_after() / 2).min(Duration::from_secs(30));
+                // Often enough that a burst of tabs past the memory budget is undone
+                // within a minute or so.
+                let pause = (tab_sleep_after() / 2).min(Duration::from_secs(10));
                 cx.background_executor().timer(pause).await;
                 let looked =
                     this.update_in(cx, |this, window, cx| this.sleep_idle_tabs(window, cx));
@@ -1486,6 +1545,7 @@ impl Browser {
             upload_paths: Vec::new(),
             tool_acted: None,
             agent_marks_watched: false,
+            waiting_shots: Vec::new(),
             panel_height: 320.0,
             panel_drag: None,
             redteam_open: false,
@@ -1610,6 +1670,8 @@ impl Browser {
                     this.agent_marks_watched
                 });
                 if !matches!(marked, Ok(true)) {
+                    // The agent left: the tabs it drove behind the shown one stop painting.
+                    let _ = this.update(cx, |this, _| this.update_painting());
                     break;
                 }
             }
@@ -1658,6 +1720,56 @@ impl Browser {
                 let _ = window.drop_image(frame);
             }
             cx.notify();
+        }
+        let budget = memory_budget(std::env::var("REVER_MEMORY_BUDGET_MB").ok().as_deref());
+        let footprint = crate::memory::footprint().unwrap_or(0);
+        if let Some(index) = over_budget_victim(&self.tab_states(), footprint, budget) {
+            let tab = &mut self.tabs[index];
+            self.engine.close(tab.id);
+            tab.asleep = true;
+            if let Some(frame) = tab.frame.take() {
+                let _ = window.drop_image(frame);
+            }
+            cx.notify();
+        }
+    }
+
+    /// The tab's last frame as PNG bytes.
+    fn png_of(&self, tab: TabId) -> Result<Vec<u8>, String> {
+        let image = self
+            .engine
+            .frame(tab)
+            .ok_or_else(|| "the page has not been painted yet".to_owned())?;
+        let mut bytes = Vec::new();
+        image
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(bytes)
+    }
+
+    /// What the paint and sleep decisions need of every tab.
+    fn tab_states(&self) -> Vec<TabState> {
+        let shown = self.active_id();
+        self.tabs
+            .iter()
+            .map(|tab| TabState {
+                shown: tab.id == shown,
+                asleep: tab.asleep,
+                agent: self.agent_on(tab),
+                idle: tab.used.elapsed(),
+            })
+            .collect()
+    }
+
+    /// Paint only the tabs someone is looking at or driving.
+    fn update_painting(&self) {
+        for (tab, state) in self.tabs.iter().zip(self.tab_states()) {
+            if !state.asleep {
+                self.engine.set_painting(tab.id, paints(&state));
+            }
         }
     }
 
@@ -1772,6 +1884,15 @@ impl Browser {
         if frame_ready {
             self.capture(window);
         }
+        // Screenshots that waited for a tab to paint again.
+        for (tab, answer, asked) in std::mem::take(&mut self.waiting_shots) {
+            let new_frame = behind.contains(&tab) || (tab == active && frame_ready);
+            if shot_ready(new_frame, asked.elapsed()) {
+                let _ = answer.send(self.png_of(tab));
+            } else {
+                self.waiting_shots.push((tab, answer, asked));
+            }
+        }
         let painted = frame_ready || !behind.is_empty();
         for tab in behind {
             self.engine.settle(tab);
@@ -1859,6 +1980,7 @@ impl Browser {
             }
         }
         self.run_tool_commands(window, cx);
+        self.update_painting();
         cx.notify();
     }
 
@@ -3191,21 +3313,18 @@ impl Browser {
                 }
                 Command::Screenshot(target, answer) => {
                     let tab = self.resolve_tab(target);
-                    let png = self
-                        .engine
-                        .frame(tab)
-                        .ok_or_else(|| "the page has not been painted yet".to_owned())
-                        .and_then(|image| {
-                            let mut bytes = Vec::new();
-                            image
-                                .write_to(
-                                    &mut std::io::Cursor::new(&mut bytes),
-                                    image::ImageFormat::Png,
-                                )
-                                .map(|_| bytes)
-                                .map_err(|error| error.to_string())
-                        });
-                    let _ = answer.send(png);
+                    if self.engine.painting(tab) {
+                        let _ = answer.send(self.png_of(tab));
+                    } else {
+                        self.engine.set_painting(tab, true);
+                        self.waiting_shots.push((tab, answer, Instant::now()));
+                        // A page that paints nothing new still gets its answer.
+                        cx.spawn(async move |this, cx| {
+                            cx.background_executor().timer(SHOT_WAIT).await;
+                            let _ = this.update(cx, |_, cx| cx.notify());
+                        })
+                        .detach();
+                    }
                 }
                 Command::Input(input, answer) => {
                     for event in bridge::input_events(&input, scale) {
@@ -3729,6 +3848,78 @@ mod tests {
     #[test]
     fn 스캔_워커가_맡은_탭은_건드리지_않아도_작업_중이다() {
         assert!(agent_on_tab(None, None, true, Instant::now()));
+    }
+
+    fn idle(seconds: u64) -> TabState {
+        TabState {
+            shown: false,
+            asleep: false,
+            agent: false,
+            idle: Duration::from_secs(seconds),
+        }
+    }
+
+    const MB: u64 = 1024 * 1024;
+
+    #[test]
+    fn 예산_안이면_아무_탭도_재우지_않는다() {
+        let tabs = [idle(600), idle(30)];
+        assert_eq!(over_budget_victim(&tabs, 1_000 * MB, 1_536 * MB), None);
+    }
+
+    #[test]
+    fn 예산을_넘으면_가장_오래_안_쓴_뒤쪽_탭을_재운다() {
+        let tabs = [idle(30), idle(600), idle(120)];
+        assert_eq!(over_budget_victim(&tabs, 2_000 * MB, 1_536 * MB), Some(1));
+    }
+
+    #[test]
+    fn 보이는_탭과_에이전트가_쓰는_탭과_잠든_탭은_예산을_넘어도_재우지_않는다() {
+        let tabs = [
+            TabState {
+                shown: true,
+                ..idle(900)
+            },
+            TabState {
+                agent: true,
+                ..idle(800)
+            },
+            TabState {
+                asleep: true,
+                ..idle(700)
+            },
+            idle(10),
+        ];
+        assert_eq!(over_budget_victim(&tabs, 3_000 * MB, 1_536 * MB), Some(3));
+        assert_eq!(over_budget_victim(&tabs[..3], 3_000 * MB, 1_536 * MB), None);
+    }
+
+    #[test]
+    fn 보이는_탭과_에이전트가_쓰는_탭만_그린다() {
+        assert!(paints(&TabState {
+            shown: true,
+            ..idle(0)
+        }));
+        assert!(paints(&TabState {
+            agent: true,
+            ..idle(0)
+        }));
+        assert!(!paints(&idle(0)));
+    }
+
+    #[test]
+    fn 예산은_환경_변수로_바꿀_수_있고_잘못된_값은_기본값이다() {
+        assert_eq!(memory_budget(None), DEFAULT_MEMORY_BUDGET);
+        assert_eq!(memory_budget(Some("2048")), 2_048 * MB);
+        assert_eq!(memory_budget(Some("lots")), DEFAULT_MEMORY_BUDGET);
+        assert_eq!(memory_budget(Some("0")), DEFAULT_MEMORY_BUDGET);
+    }
+
+    #[test]
+    fn 그리지_않던_탭의_스크린샷은_새_프레임이_나오거나_시간이_다_되면_답한다() {
+        assert!(!shot_ready(false, Duration::from_millis(100)));
+        assert!(shot_ready(true, Duration::from_millis(100)));
+        assert!(shot_ready(false, SHOT_WAIT));
     }
 
     #[test]
