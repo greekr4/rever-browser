@@ -45,6 +45,7 @@ rever-ui-websocket = { path = "../rever-ui-websocket" }
 rever-ui-history = { path = "../rever-ui-history" }
 rever-ui-markdown = { path = "../rever-ui-markdown" }
 rever-ui-menus = { path = "../rever-ui-menus" }
+rever-ui-setup = { path = "../rever-ui-setup" }
 # The composer's model chip and its menu.
 rever-ui-chat = { path = "../rever-ui-chat" }
 # EvalReply: the shape the console panel takes a script result in.

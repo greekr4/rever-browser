@@ -51,6 +51,9 @@ use rever_ui_kit::theme::ThemeMode;
 use rever_ui_menus::app_menu::{AppMenu, AppMenuItem, AppMenuProps};
 use rever_ui_menus::ip_badge::IpBadge;
 use rever_ui_menus::ui::{Look, LookFn, fill};
+use rever_ui_setup::browser_import_modal::BrowserImportModal;
+use rever_ui_setup::host::SetupHost;
+use rever_ui_setup::onboarding_modal::OnboardingModal;
 use rever_ui_state::app_theme::{self, AppThemeStore};
 use rever_ui_state::chat_collapsed::ChatCollapsedStore;
 use rever_ui_state::chat_history::{ChatHistory, new_conversation_id};
@@ -938,6 +941,10 @@ pub(crate) struct Browser {
     /// The agent's tool calls that wait for the user's yes or no.
     pub permissions: Rc<RefCell<PermissionStore<ChatRules>>>,
     pub permission_prompt: Entity<PermissionPrompt>,
+    /// The first-run guide: which agent the chat talks to.
+    pub onboarding: Entity<OnboardingModal>,
+    /// The offer to bring Chrome's logins over, once after the guide and from the menu.
+    pub browser_import: Entity<BrowserImportModal>,
     /// Keeps the conversation at its newest line while a reply streams.
     pub chat_scroll: gpui::ScrollHandle,
     /// The model chip of the composer: every agent's models in one list.
@@ -1202,6 +1209,24 @@ impl Browser {
             let this = this.clone();
             AppMenu::new(move |cx| menu_props(&this, cx), look.clone())
         });
+        let setup: Rc<dyn SetupHost> = Rc::new(crate::setup_host::SetupBridge::new(
+            stores.storage.clone(),
+            self_check.is_some(),
+            tool_browser.clone(),
+            this.clone(),
+        ));
+        let onboarding = cx.new(|cx| OnboardingModal::new(setup.clone(), look.clone(), cx));
+        let browser_import = {
+            // A self-check run offers nothing: its storage starts empty every time.
+            let storage: Rc<dyn rever_ui_state::Storage> = if self_check.is_some() {
+                let offered = rever_ui_state::storage::MemoryStorage::new();
+                let _ = rever_ui_state::Storage::set(&offered, "rev:browser-import-offered", "1");
+                Rc::new(offered)
+            } else {
+                stores.storage.clone()
+            };
+            cx.new(|_| BrowserImportModal::new(setup, storage, look.clone()))
+        };
         let ip_badge = {
             let host = Rc::new(IpHost::new(stores.storage.clone()));
             cx.new(|cx| IpBadge::new(host, look.clone(), cx))
@@ -1351,6 +1376,8 @@ impl Browser {
             page_memory_asked: None,
             permissions,
             permission_prompt,
+            onboarding,
+            browser_import,
             chat,
             open_panel,
             page_bounds: Rc::new(Cell::new(Bounds::default())),
@@ -2119,6 +2146,34 @@ impl Browser {
             self.forget_agent();
         }
         cx.notify();
+    }
+
+    /// The first-run pick: the agent the chat talks to from now on.
+    pub(crate) fn choose_agent(&mut self, agent: AcpAgentId, cx: &mut Context<Self>) {
+        if self.chat_agent != agent {
+            self.chat_agent = agent;
+            // The other agent's model means nothing to this one.
+            self.chat_model = None;
+            for key in [MODEL_STORAGE_KEY, MODEL_NAME_STORAGE_KEY] {
+                let _ = self.stores.storage.remove(key);
+            }
+            self.forget_agent();
+        }
+        if let Err(error) = self.stores.storage.set(AGENT_STORAGE_KEY, agent.as_str()) {
+            eprintln!("rever: {AGENT_STORAGE_KEY} was not saved: {error}");
+        }
+        cx.notify();
+    }
+
+    /// The first-run guide closed: the import offer, which waited for it, looks again.
+    pub(crate) fn setup_changed(&mut self, cx: &mut Context<Self>) {
+        self.browser_import.update(cx, |_, cx| cx.notify());
+        cx.notify();
+    }
+
+    /// The menu's "Import from your browser".
+    pub fn open_browser_import(&mut self, cx: &mut Context<Self>) {
+        self.browser_import.update(cx, |modal, cx| modal.open(cx));
     }
 
     /// Cmd+Shift+T: open the most recently closed tab again.
@@ -3341,7 +3396,7 @@ impl Browser {
 /// (page theme, notifications, viewport, view source) are listed disabled.
 /// The agents whose own CLIs report a model list, by the catalog's ids.
 const LIVE_MODEL_AGENTS: [&str; 2] = ["claude-code", "codex"];
-const AGENT_STORAGE_KEY: &str = "rever.chat.agent";
+pub(crate) const AGENT_STORAGE_KEY: &str = "rever.chat.agent";
 const MODEL_STORAGE_KEY: &str = "rever.chat.model";
 const MODEL_NAME_STORAGE_KEY: &str = "rever.chat.modelName";
 
@@ -3449,6 +3504,7 @@ fn menu_props(browser: &WeakEntity<Browser>, cx: &App) -> AppMenuProps {
             not_yet("menu.viewSource")
                 .title(t("toolbar.viewSource"))
                 .sep(),
+            AppMenuItem::new(t("import.title"), act(Browser::open_browser_import)),
         ],
     }
 }

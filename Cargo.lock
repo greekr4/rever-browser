@@ -7586,6 +7586,7 @@ dependencies = [
  "rever-ui-markdown",
  "rever-ui-menus",
  "rever-ui-repeater",
+ "rever-ui-setup",
  "rever-ui-state",
  "rever-ui-storage",
  "rever-ui-traffic",

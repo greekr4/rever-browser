@@ -24,6 +24,7 @@ mod memory;
 mod panels;
 mod permissions;
 mod scan;
+mod setup_host;
 mod shell;
 mod storage_host;
 mod workflow_agents;

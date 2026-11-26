@@ -316,7 +316,10 @@ impl Render for Browser {
                     .children(self.redteam_dialog(&theme, cx)),
             )
             // Over everything: the agent's question whether a tool may run.
-            .child(self.permission_prompt.clone());
+            .child(self.permission_prompt.clone())
+            // The first run: the import offer under the agent guide it waits for.
+            .child(self.browser_import.clone())
+            .child(self.onboarding.clone());
         self.shortcut_handlers(root, cx)
     }
 }
