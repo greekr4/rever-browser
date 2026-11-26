@@ -204,9 +204,22 @@ fn start_mcp(
     context
         .state::<rever_tools_automation::bridge::ToolRegistryHandle>()
         .set(registry.clone());
+    let data_dir = context.data_dir.clone();
     let server = rever_control_server::start(registry, context)
         .inspect_err(|error| eprintln!("[control] {error}"))
         .ok();
+    // The agent reaches its tools as `revb` in a shell. Write the shim at
+    // startup, not on the first spawn, so a missing script shows up here and
+    // the first chat turn pays no setup cost.
+    if let Some(script) = crate::agent::revb_script() {
+        if let Some(dir) = crate::agent::write_revb_shim(&script, &data_dir) {
+            eprintln!("[agent] revb shim ready in {}", dir.display());
+        } else {
+            eprintln!("[agent] could not write the revb shim into {}", data_dir.display());
+        }
+    } else {
+        eprintln!("[agent] revb.mjs not found; agents cannot call tools");
+    }
     // A workflow's AI step runs one of the chat's agents, with the app's tools.
     let endpoint = server
         .as_ref()

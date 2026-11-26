@@ -221,7 +221,7 @@ fn revb_script_from(exe: &Path) -> Option<PathBuf> {
 
 /// The `revb` script the child CLI will call: `REVER_REVB_DIR` wins, otherwise
 /// the checkout next to the running binary.
-fn revb_script() -> Option<PathBuf> {
+pub(crate) fn revb_script() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("REVER_REVB_DIR") {
         let script = PathBuf::from(dir).join("revb.mjs");
         return script.is_file().then_some(script);
@@ -232,7 +232,7 @@ fn revb_script() -> Option<PathBuf> {
 /// Write a `revb` shim that runs `script` into `<data_dir>/bin`, returning the
 /// directory to put first on a child's PATH. The shim is what lets the agent's
 /// CLI reach the tools with no install step — the app's own PATH is minimal.
-fn write_revb_shim(script: &Path, data_dir: &Path) -> Option<PathBuf> {
+pub(crate) fn write_revb_shim(script: &Path, data_dir: &Path) -> Option<PathBuf> {
     let dir = data_dir.join("bin");
     if std::fs::create_dir_all(&dir).is_err() {
         return None;
