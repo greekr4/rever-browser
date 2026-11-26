@@ -13,6 +13,7 @@ use servo::{
     MouseButtonAction, MouseButtonEvent, MouseMoveEvent, WebViewPoint, WheelDelta, WheelEvent,
     WheelMode,
 };
+use servo_base::id::BrowsingContextId;
 
 type Answer<T> = oneshot::Sender<Result<T, String>>;
 
@@ -51,6 +52,20 @@ pub enum Command {
     /// A cookie to store for a URL; an expired one deletes.
     SetCookie(String, Cookie, Answer<()>),
     ArmFiles(Vec<String>, Answer<()>),
+    /// Evaluate in a frame's document (`None`: the tab's own), whatever its origin.
+    EvaluateIn(
+        Option<usize>,
+        Option<BrowsingContextId>,
+        String,
+        Answer<JSValue>,
+    ),
+    /// The frame an `<iframe>` element holds: the element as `EvaluateIn` answered it.
+    FrameOf(
+        Option<usize>,
+        Option<BrowsingContextId>,
+        String,
+        Answer<BrowsingContextId>,
+    ),
     /// A command an MCP client's tool call sent: the agent's, not the app's own.
     ByAgent(Box<Command>),
 }
@@ -130,6 +145,36 @@ impl Browser for AppBrowser {
 
     fn reload(&self) -> BoxFuture<'_, Result<(), String>> {
         self.ask(Command::Reload)
+    }
+
+    fn evaluate_in_frame<'a>(
+        &'a self,
+        frames: &'a [String],
+        expression: &'a str,
+    ) -> BoxFuture<'a, Result<Value, String>> {
+        let target = self.target;
+        Box::pin(async move {
+            let mut frame = None;
+            for element in frames {
+                let found = self
+                    .ask(|answer| Command::EvaluateIn(target, frame, element.clone(), answer))
+                    .await?;
+                let JSValue::Element(element) = found else {
+                    return Err(
+                        "the frame is no longer on the page — call browser_snapshot again"
+                            .to_owned(),
+                    );
+                };
+                frame = Some(
+                    self.ask(|answer| Command::FrameOf(target, frame, element, answer))
+                        .await?,
+                );
+            }
+            let value = self
+                .ask(|answer| Command::EvaluateIn(target, frame, expression.to_owned(), answer))
+                .await?;
+            Ok(js_to_json(&value))
+        })
     }
 
     fn evaluate<'a>(&'a self, expression: &'a str) -> BoxFuture<'a, Result<Value, String>> {

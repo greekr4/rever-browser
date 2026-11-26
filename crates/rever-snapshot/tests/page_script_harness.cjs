@@ -304,4 +304,11 @@ out.unknownAction = act({ ref: 'r1' }, 'dance')
 buy.isConnected = false
 out.detached = act({ ref: 'r1' }, 'point')
 
+// The frames of another origin: kept by id, so the engine can go into them by element.
+out.crossFrames = JSON.parse(capture2).crossFrames.map((frame) => frame.ownerBackendNodeId)
+out.crossFrameIds = [id(adsFrame), id(beacon)]
+out.crossFrameKept = state.crossFrames.get(id(adsFrame)) === adsFrame
+out.frameOrigin = act({ frame: id(adsFrame) }, 'frameOrigin')
+out.frameOriginMissing = act({ frame: 99999 }, 'frameOrigin')
+
 process.stdout.write(JSON.stringify(out))

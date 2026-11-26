@@ -3034,6 +3034,7 @@ impl Browser {
                     let driven = match &*command {
                         Command::Navigate(target, ..)
                         | Command::Evaluate(target, ..)
+                        | Command::EvaluateIn(target, ..)
                         | Command::Screenshot(target, ..) => Some(*target),
                         Command::Back(_)
                         | Command::Forward(_)
@@ -3240,6 +3241,18 @@ impl Browser {
                 Command::WriteClipboard(text, answer) => {
                     cx.write_to_clipboard(ClipboardItem::new_string(text));
                     let _ = answer.send(Ok(()));
+                }
+                Command::EvaluateIn(target, frame, script, answer) => {
+                    let tab = self.resolve_tab(target);
+                    self.engine.evaluate_in(tab, frame, script, move |result| {
+                        let _ = answer.send(result);
+                    })
+                }
+                Command::FrameOf(target, parent, element, answer) => {
+                    let tab = self.resolve_tab(target);
+                    self.engine.frame_of(tab, parent, element, move |result| {
+                        let _ = answer.send(result);
+                    })
                 }
                 // Unwrapped above; a mark is never nested.
                 Command::ByAgent(_) => {}

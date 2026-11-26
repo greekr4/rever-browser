@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
 
-use rever_tools_api::tool::{Browser, Input};
+use rever_tools_api::tool::{BoxFuture, Browser, Input};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -266,8 +266,16 @@ struct CapturePayload {
     frames: Vec<FramePayload>,
     /// Frames the script could not read that have no node in the tree either.
     unlisted_frames: Vec<FramePayload>,
+    /// The `<iframe>` elements of another origin: their documents are read one by one.
+    cross_frames: Vec<CrossFrame>,
     layout: Option<CaptureResult>,
     click: Option<ClickScanPayload>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct CrossFrame {
+    owner_backend_node_id: u64,
 }
 
 /// Tally of actionable nodes the viewport filter kept out of the tree.
@@ -383,6 +391,15 @@ struct Built {
     stats: SnapshotStats,
     ref_targets: HashSet<u64>,
     refs: HashMap<String, RefEntry>,
+    missed_frames: Vec<MissedFrame>,
+}
+
+/// An `Iframe` line the walk could not go under.
+struct MissedFrame {
+    /// The line its document's outline would start at.
+    at: usize,
+    owner: u64,
+    depth: usize,
 }
 
 /// The walk recurses once per tree level. Documents nest far shallower than this,
@@ -405,6 +422,7 @@ struct Outline<'a> {
     seen_ref_targets: HashSet<u64>,
     frames_entered: usize,
     frames_missed: usize,
+    missed_frames: Vec<MissedFrame>,
     spliced_frames: HashSet<usize>,
     lines: Vec<String>,
     /// A node is written once; a payload whose child lists loop cannot run the walk forever.
@@ -526,6 +544,13 @@ impl<'a> Outline<'a> {
             .and_then(|backend_id| self.frames_by_owner.get(&backend_id).copied());
         if frame.is_none() && role == "Iframe" {
             self.frames_missed += 1;
+            if let Some(owner) = n.backend_dom_node_id {
+                self.missed_frames.push(MissedFrame {
+                    at: self.lines.len(),
+                    owner,
+                    depth: next_depth,
+                });
+            }
         }
         if let Some(index) = frame
             && let Some(frame) = trees.frames.get(index)
@@ -673,6 +698,7 @@ fn build(
         seen_ref_targets: HashSet::new(),
         frames_entered: 0,
         frames_missed: 0,
+        missed_frames: Vec::new(),
         spliced_frames: HashSet::new(),
         lines: Vec::new(),
         visited: HashSet::new(),
@@ -784,7 +810,190 @@ fn build(
         stats,
         ref_targets: outline.seen_ref_targets,
         refs: outline.refs,
+        missed_frames: outline.missed_frames,
     }
+}
+
+/// The expression that gives, in its parent document, the `<iframe>` the page script
+/// numbered `owner`.
+fn frame_element(owner: &u64) -> String {
+    format!("window.__reverSnapshot.crossFrames.get({owner})")
+}
+
+/// Evaluate in the page, or in the frame the chain of `<iframe>` ids leads to.
+async fn evaluate_in(browser: &dyn Browser, chain: &[u64], script: &str) -> Result<Value, String> {
+    if chain.is_empty() {
+        return browser.evaluate(script).await;
+    }
+    let frames: Vec<String> = chain.iter().map(frame_element).collect();
+    browser.evaluate_in_frame(&frames, script).await
+}
+
+/// One document's capture, ready for the outline.
+struct Captured {
+    meta: PageMeta,
+    trees: Trees,
+    layout: Option<PageLayout>,
+    cross_frames: HashSet<u64>,
+}
+
+fn read_capture(capture: CapturePayload) -> Captured {
+    let meta = capture.meta;
+    let viewport = Viewport {
+        x: meta.scroll_x,
+        y: meta.scroll_y,
+        width: meta.inner_width,
+        height: meta.inner_height,
+    };
+
+    // `full` only turns off viewport PRUNING — the click scan still runs. The
+    // agent reaches for full=true when it cannot find something, so having that
+    // switch also drop the click-scan refs would remove exactly the elements it
+    // is looking for.
+    let click = scan_clickable(capture.click);
+    // The script measures in CSS px, the space the viewport is in, so no scale applies.
+    let layout = capture
+        .layout
+        .and_then(|snap| capture_page_layout(snap, viewport, Some(&click.paths), 1.0));
+    let collected = collect_frames(capture.frames);
+    let trees = Trees {
+        root_id: capture.nodes.first().map(|n| n.node_id.clone()),
+        main: capture
+            .nodes
+            .into_iter()
+            .map(|n| (n.node_id.clone(), n))
+            .collect(),
+        frames: collected.frames,
+        unlisted_frames: capture
+            .unlisted_frames
+            .into_iter()
+            .map(|frame| {
+                frame
+                    .url
+                    .filter(|url| !url.is_empty())
+                    .unwrap_or(frame.frame_id)
+            })
+            .collect(),
+        frames_empty: collected.empty,
+        click_scan_skipped: click.skipped,
+    };
+    Captured {
+        meta,
+        trees,
+        layout,
+        cross_frames: capture
+            .cross_frames
+            .iter()
+            .map(|frame| frame.owner_backend_node_id)
+            .collect(),
+    }
+}
+
+fn capture_call() -> String {
+    let limits = json!({
+        "maxShadowDepth": MAX_SHADOW_DEPTH,
+        "maxScannedElements": MAX_SCANNED_ELEMENTS,
+        "maxFrameDepth": frames::MAX_DEPTH,
+        "maxFrames": frames::MAX_FRAMES,
+    });
+    script_call("capture", &limits)
+}
+
+fn ref_ids(refs: &HashMap<String, RefEntry>) -> Value {
+    Value::Object(
+        refs.iter()
+            .map(|(r, entry)| (r.clone(), entry.backend_node_id.into()))
+            .collect(),
+    )
+}
+
+/// What the documents of other-origin frames added to an outline.
+#[derive(Default)]
+struct FrameRefs {
+    /// The ref the outline shows → what it points at, the chain of `<iframe>` ids to
+    /// its document, and the ref that document knows it by.
+    refs: HashMap<String, (RefEntry, Vec<u64>, String)>,
+    entered: usize,
+    /// Frames inside those documents that stayed closed.
+    unreachable: usize,
+}
+
+/// Read the documents of the other-origin frames an outline could not go under, and
+/// put their outlines below their `Iframe` lines. A frame that does not answer stays
+/// as it was: listed, and counted as not entered. Returns the tree and how many of
+/// `missed` were entered.
+fn splice_frames<'a>(
+    browser: &'a dyn Browser,
+    chain: Vec<u64>,
+    tree: String,
+    missed: Vec<MissedFrame>,
+    cross_frames: HashSet<u64>,
+    full: bool,
+    found: &'a mut FrameRefs,
+) -> BoxFuture<'a, (String, usize)> {
+    Box::pin(async move {
+        let mut lines: Vec<String> = tree.split('\n').map(str::to_owned).collect();
+        let (mut shift, mut entered) = (0, 0);
+        for frame in missed {
+            if !cross_frames.contains(&frame.owner)
+                || chain.len() >= frames::MAX_DEPTH
+                || found.entered >= frames::MAX_FRAMES
+            {
+                continue;
+            }
+            let mut inside = chain.clone();
+            inside.push(frame.owner);
+            let Ok(raw) = evaluate_in(browser, &inside, &capture_call()).await else {
+                continue;
+            };
+            let Ok(capture) = script_result::<CapturePayload>(raw) else {
+                continue;
+            };
+            let captured = read_capture(capture);
+            // Nothing to compare with: a frame's refs are never marked as new.
+            let built = build(
+                &captured.trees,
+                captured.layout.as_ref(),
+                !full,
+                false,
+                &HashSet::new(),
+            );
+            let kept = script_call("setRefs", &ref_ids(&built.refs));
+            if evaluate_in(browser, &inside, &kept).await.is_err() {
+                continue;
+            }
+            found.entered += 1;
+            entered += 1;
+            // Each document numbers its refs from r1: the frame's number tells them apart.
+            let tag = format!("f{}", found.entered);
+            for (inner, entry) in built.refs {
+                found
+                    .refs
+                    .insert(format!("{tag}{inner}"), (entry, inside.clone(), inner));
+            }
+            let own = built.tree.replace("[ref=r", &format!("[ref={tag}r"));
+            let (below, entered_below) = splice_frames(
+                browser,
+                inside,
+                own,
+                built.missed_frames,
+                captured.cross_frames,
+                full,
+                found,
+            )
+            .await;
+            found.unreachable += built.stats.frames_unreachable - entered_below;
+            let indent = "  ".repeat(frame.depth);
+            let at = (frame.at + shift).min(lines.len());
+            let added: Vec<String> = below
+                .split('\n')
+                .map(|line| format!("{indent}{line}"))
+                .collect();
+            shift += added.len();
+            lines.splice(at..at, added);
+        }
+        (lines.join("\n"), entered)
+    })
 }
 
 /// The page script called with one command, as an expression to evaluate.
@@ -894,6 +1103,7 @@ struct ActionReply {
 /// Run one action of the page script on the element `target` names.
 async fn run_action(
     browser: &dyn Browser,
+    chain: &[u64],
     mut target: Value,
     action: &str,
     value: Value,
@@ -902,7 +1112,8 @@ async fn run_action(
         argument.insert("action".to_owned(), action.into());
         argument.insert("value".to_owned(), value);
     }
-    let reply: ActionReply = script_result(browser.evaluate(&script_call("act", &target)).await?)?;
+    let reply: ActionReply =
+        script_result(evaluate_in(browser, chain, &script_call("act", &target)).await?)?;
     match reply.error {
         // On no match the available options come back in the error, so the
         // caller can retry without another snapshot.
@@ -919,7 +1130,7 @@ async fn run_action(
 /// fall back to raw JS, which fires no trusted events).
 pub async fn point_for_selector(browser: &dyn Browser, selector: &str) -> Result<RefPoint, String> {
     let target = json!({ "selector": selector });
-    script_result(run_action(browser, target, "point", Value::Null).await?)
+    script_result(run_action(browser, &[], target, "point", Value::Null).await?)
 }
 
 // Refs are namespaced per tab: a "r3" from tab A must never resolve against
@@ -941,6 +1152,9 @@ struct State {
     /// everything the filter had hidden as newly appeared — the first run of this
     /// marked an off-screen button as new when nothing had changed.
     previous_pruned: bool,
+    /// The refs that live in an other-origin frame: the chain of `<iframe>` ids to its
+    /// document, and the ref that document knows the element by.
+    frame_refs: HashMap<String, (Vec<u64>, String)>,
 }
 
 /// Takes snapshots of one tab and remembers what its refs point at.
@@ -970,10 +1184,14 @@ impl Snapshotter {
 
     /// Reverse lookup: which ref from the CURRENT snapshot points at this node, if any.
     pub fn ref_for_backend_node_id(&self, backend_node_id: u64) -> Option<String> {
-        self.state()
+        let state = self.state();
+        state
             .refs
             .iter()
-            .find(|(_, entry)| entry.backend_node_id == backend_node_id)
+            // A frame's document numbers its nodes on its own: only the page's count.
+            .find(|(r, entry)| {
+                entry.backend_node_id == backend_node_id && !state.frame_refs.contains_key(*r)
+            })
             .map(|(r, _)| r.clone())
     }
 
@@ -1019,57 +1237,16 @@ impl Snapshotter {
         browser: &dyn Browser,
         opts: SnapshotOptions,
     ) -> Result<SnapshotResult, String> {
-        let limits = json!({
-            "maxShadowDepth": MAX_SHADOW_DEPTH,
-            "maxScannedElements": MAX_SCANNED_ELEMENTS,
-            "maxFrameDepth": frames::MAX_DEPTH,
-            "maxFrames": frames::MAX_FRAMES,
-        });
-        let raw = browser.evaluate(&script_call("capture", &limits)).await?;
-        let capture: CapturePayload = script_result(raw)?;
-        let meta = capture.meta;
-
-        let viewport = Viewport {
-            x: meta.scroll_x,
-            y: meta.scroll_y,
-            width: meta.inner_width,
-            height: meta.inner_height,
-        };
-
-        // `full` only turns off viewport PRUNING — the click scan still runs. The
-        // agent reaches for full=true when it cannot find something, so having that
-        // switch also drop the click-scan refs would remove exactly the elements it
-        // is looking for.
-        let click = scan_clickable(capture.click);
-        // The script measures in CSS px, the space the viewport is in, so no scale applies.
-        let layout = capture
-            .layout
-            .and_then(|snap| capture_page_layout(snap, viewport, Some(&click.paths), 1.0));
-        let collected = collect_frames(capture.frames);
-        let trees = Trees {
-            root_id: capture.nodes.first().map(|n| n.node_id.clone()),
-            main: capture
-                .nodes
-                .into_iter()
-                .map(|n| (n.node_id.clone(), n))
-                .collect(),
-            frames: collected.frames,
-            unlisted_frames: capture
-                .unlisted_frames
-                .into_iter()
-                .map(|frame| {
-                    frame
-                        .url
-                        .filter(|url| !url.is_empty())
-                        .unwrap_or(frame.frame_id)
-                })
-                .collect(),
-            frames_empty: collected.empty,
-            click_scan_skipped: click.skipped,
-        };
+        let raw = browser.evaluate(&capture_call()).await?;
+        let Captured {
+            meta,
+            trees,
+            layout,
+            cross_frames,
+        } = read_capture(script_result(raw)?);
         let pruned = !opts.full;
 
-        let (result, ref_ids) = {
+        let (mut result, ref_ids, missed) = {
             let mut state = self.state();
             // After a navigation every node is new, so the marker would say nothing.
             // Only compare within the same document.
@@ -1099,12 +1276,9 @@ impl Snapshotter {
                 }
             }
 
-            let ref_ids: serde_json::Map<String, Value> = built
-                .refs
-                .iter()
-                .map(|(r, entry)| (r.clone(), entry.backend_node_id.into()))
-                .collect();
+            let ref_ids = ref_ids(&built.refs);
             state.refs = built.refs;
+            state.frame_refs.clear();
             state.previous_ref_targets = built.ref_targets;
             state.previous_url = meta.url.clone();
             state.previous_pruned = pruned;
@@ -1115,19 +1289,52 @@ impl Snapshotter {
                 tree: built.tree,
                 stats: built.stats,
             };
-            (result, Value::Object(ref_ids))
+            (result, ref_ids, built.missed_frames)
         };
 
         // The page keeps the elements behind the refs and lets go of the rest, so a
         // later action reaches its element by ref.
         browser.evaluate(&script_call("setRefs", &ref_ids)).await?;
+
+        // The frames of another origin, each read in its own document.
+        if missed
+            .iter()
+            .any(|frame| cross_frames.contains(&frame.owner))
+        {
+            let mut found = FrameRefs::default();
+            let (tree, entered) = splice_frames(
+                browser,
+                Vec::new(),
+                std::mem::take(&mut result.tree),
+                missed,
+                cross_frames,
+                opts.full,
+                &mut found,
+            )
+            .await;
+            result.tree = tree;
+            result.stats.refs += found.refs.len();
+            result.stats.frames += found.entered;
+            result.stats.frames_unreachable =
+                result.stats.frames_unreachable - entered + found.unreachable;
+            let mut state = self.state();
+            for (shown, (entry, chain, inner)) in found.refs {
+                state.refs.insert(shown.clone(), entry);
+                state.frame_refs.insert(shown, (chain, inner));
+            }
+        }
         Ok(result)
     }
 
-    /// The page-script target for a ref, or the error for one no snapshot handed out.
-    fn target(&self, r: &str) -> Result<Value, String> {
-        if self.state().refs.contains_key(r) {
-            Ok(json!({ "ref": r }))
+    /// The document a ref lives in (the chain of `<iframe>` ids to it; none for the
+    /// page) and the page-script target there, or the error for a ref no snapshot
+    /// handed out.
+    fn target(&self, r: &str) -> Result<(Vec<u64>, Value), String> {
+        let state = self.state();
+        if let Some((chain, inner)) = state.frame_refs.get(r) {
+            Ok((chain.clone(), json!({ "ref": inner })))
+        } else if state.refs.contains_key(r) {
+            Ok((Vec::new(), json!({ "ref": r })))
         } else {
             Err(format!("unknown ref \"{r}\" — call browser_snapshot first"))
         }
@@ -1137,8 +1344,24 @@ impl Snapshotter {
     /// gesture so they inherit the frame-offset handling rather than re-deriving
     /// coordinates that would be wrong inside an iframe.
     pub async fn point_for_ref(&self, browser: &dyn Browser, r: &str) -> Result<RefPoint, String> {
-        let target = self.target(r)?;
-        script_result(run_action(browser, target, "point", Value::Null).await?)
+        let (chain, target) = self.target(r)?;
+        let mut point: RefPoint =
+            script_result(run_action(browser, &chain, target, "point", Value::Null).await?)?;
+        // An other-origin frame's document measures from its own corner: add where
+        // each frame on the way sits in the document around it.
+        // shortcut: the frame is scrolled into view, not the element's place in it;
+        // a target low in a frame taller than the window can still land off screen.
+        for depth in 0..chain.len() {
+            let frame = json!({ "frame": chain[depth] });
+            let origin: RefPoint = script_result(
+                run_action(browser, &chain[..depth], frame, "frameOrigin", Value::Null).await?,
+            )?;
+            point.x += origin.x;
+            point.y += origin.y;
+            point.left += origin.x;
+            point.top += origin.y;
+        }
+        Ok(point)
     }
 
     /// Run a small action on a ref inside the page and return what it produced.
@@ -1148,14 +1371,14 @@ impl Snapshotter {
         r: &str,
         action: RefAction,
     ) -> Result<Value, String> {
-        let target = self.target(r)?;
+        let (chain, target) = self.target(r)?;
         let (name, value) = match action {
             RefAction::Focus => ("focus", Value::Null),
             RefAction::SetValue(text) => ("setValue", text.into()),
             RefAction::Text => ("text", Value::Null),
             RefAction::Select(values) => ("select", values.into()),
         };
-        run_action(browser, target, name, value).await
+        run_action(browser, &chain, target, name, value).await
     }
 
     /// Give a ref keyboard focus without clicking it.
@@ -1208,9 +1431,11 @@ impl Snapshotter {
             can_scroll: bool,
             scroll_top: f64,
         }
-        let target = self.target(r)?;
+        let (chain, target) = self.target(r)?;
         let scroll_state = async || -> Result<ScrollState, String> {
-            script_result(run_action(browser, target.clone(), "scrollState", Value::Null).await?)
+            script_result(
+                run_action(browser, &chain, target.clone(), "scrollState", Value::Null).await?,
+            )
         };
         // A distance without an end would step forever.
         if !delta_y.is_finite() {
@@ -1252,8 +1477,6 @@ mod tests {
     use std::collections::VecDeque;
     use std::task::Wake;
 
-    use rever_tools_api::tool::BoxFuture;
-
     use super::*;
 
     /// Run a future to completion on this thread; a pending poll parks until woken.
@@ -1282,6 +1505,11 @@ mod tests {
         /// Every script call as `(command, argument)` source text.
         calls: Mutex<Vec<String>>,
         inputs: Mutex<Vec<Input>>,
+        /// What the documents of other-origin frames answer, in the order asked.
+        frame_captures: Mutex<VecDeque<Value>>,
+        frame_actions: Mutex<VecDeque<Value>>,
+        /// Every script call made inside a frame: the frame chain and the call.
+        frame_calls: Mutex<Vec<(Vec<String>, String)>>,
     }
 
     impl FakeBrowser {
@@ -1323,6 +1551,30 @@ mod tests {
         fn input(&self, input: Input) -> BoxFuture<'_, Result<(), String>> {
             self.inputs.lock().unwrap().push(input);
             Box::pin(async { Ok(()) })
+        }
+
+        fn evaluate_in_frame<'a>(
+            &'a self,
+            frames: &'a [String],
+            expression: &'a str,
+        ) -> BoxFuture<'a, Result<Value, String>> {
+            Box::pin(async move {
+                let call = expression
+                    .strip_prefix(&format!("({PAGE_SCRIPT})"))
+                    .ok_or("the expression is not a page script call")?;
+                self.frame_calls
+                    .lock()
+                    .unwrap()
+                    .push((frames.to_vec(), call.to_owned()));
+                let recorded = if call.starts_with("(\"capture\"") {
+                    self.frame_captures.lock().unwrap().pop_front()
+                } else if call.starts_with("(\"setRefs\"") {
+                    Some(json!(0))
+                } else {
+                    self.frame_actions.lock().unwrap().pop_front()
+                };
+                recorded.ok_or_else(|| "the frame did not answer".to_owned())
+            })
         }
     }
 
@@ -1899,6 +2151,100 @@ mod tests {
             ])
         );
         assert_eq!(snap_once(&page).stats.click_only_refs, 0);
+    }
+
+    // --- frames of another origin ---
+
+    /// A page with a "Buy" button and a frame of another origin, and that frame's
+    /// own document with a "Pay now" button.
+    fn page_with_foreign_frame() -> (Value, Value) {
+        let mut page = Page::new();
+        page.el(2, 3, "Iframe", "Pay", [0.0, 0.0, 400.0, 300.0]);
+        page.el(2, 4, "button", "Buy", [0.0, 320.0, 100.0, 40.0]);
+        let mut top = page.payload();
+        top["crossFrames"] = json!([{ "ownerBackendNodeId": 3 }]);
+        let mut inside = Page::new();
+        inside.el(2, 3, "button", "Pay now", [10.0, 10.0, 100.0, 40.0]);
+        (top, inside.payload())
+    }
+
+    const PAY_FRAME: &str = "window.__reverSnapshot.crossFrames.get(3)";
+
+    #[test]
+    fn 다른_출처_프레임은_그_문서를_따로_읽어_iframe_아래에_붙인다() {
+        let (top, inside) = page_with_foreign_frame();
+        let browser = FakeBrowser::with_captures([top]);
+        browser.frame_captures.lock().unwrap().push_back(inside);
+        let snapshotter = snapshotter();
+
+        let result = snap(&snapshotter, &browser, false);
+
+        assert_eq!(
+            result.tree,
+            lines(&[
+                "- RootWebArea \"Test page\"",
+                "  - Iframe \"Pay\"",
+                "    - RootWebArea \"Test page\"",
+                "      - button \"Pay now\" [ref=f1r1]",
+                "  - button \"Buy\" [ref=r1]",
+            ])
+        );
+        assert_eq!(result.stats.refs, 2);
+        assert_eq!(result.stats.frames, 1);
+        assert_eq!(result.stats.frames_unreachable, 0);
+        assert_eq!(snapshotter.ref_entry("f1r1").unwrap().name, "Pay now");
+        // 프레임 안의 문서도 자기 ref를 기억한다.
+        let calls = browser.frame_calls.lock().unwrap().clone();
+        assert_eq!(calls[0].0, [PAY_FRAME]);
+        assert!(calls[1].1.starts_with("(\"setRefs\", {\"r1\":"));
+    }
+
+    #[test]
+    fn 읽지_못한_다른_출처_프레임은_들어가지_못한_것으로_남긴다() {
+        let (top, _) = page_with_foreign_frame();
+        let browser = FakeBrowser::with_captures([top]);
+
+        let result = snap(&snapshotter(), &browser, false);
+
+        assert_eq!(
+            result.tree,
+            lines(&[
+                "- RootWebArea \"Test page\"",
+                "  - Iframe \"Pay\"",
+                "  - button \"Buy\" [ref=r1]",
+            ])
+        );
+        assert_eq!(result.stats.frames_unreachable, 1);
+    }
+
+    #[test]
+    fn 프레임_안의_ref는_그_프레임에서_실행하고_좌표에_프레임_위치를_더한다() {
+        let (top, inside) = page_with_foreign_frame();
+        let browser = FakeBrowser::with_captures([top])
+            .with_actions([json!({ "ok": { "x": 200.0, "y": 300.0 } })]);
+        browser.frame_captures.lock().unwrap().push_back(inside);
+        browser.frame_actions.lock().unwrap().push_back(json!({
+            "ok": { "x": 60.0, "y": 30.0, "left": 10.0, "top": 10.0, "width": 100.0, "height": 40.0 }
+        }));
+        let snapshotter = snapshotter();
+        snap(&snapshotter, &browser, false);
+
+        let point = block_on(snapshotter.point_for_ref(&browser, "f1r1")).unwrap();
+
+        assert_eq!((point.x, point.y), (260.0, 330.0));
+        assert_eq!((point.left, point.top), (210.0, 310.0));
+        assert_eq!((point.width, point.height), (100.0, 40.0));
+        // 누르는 곳은 프레임 안에서 재고, 프레임의 자리는 바깥 문서에서 잰다.
+        let inside_call = browser.frame_calls.lock().unwrap().last().unwrap().clone();
+        assert_eq!(inside_call.0, [PAY_FRAME]);
+        assert!(
+            inside_call.1.contains("\"ref\":\"r1\""),
+            "{}",
+            inside_call.1
+        );
+        let outside_call = browser.calls().last().unwrap().clone();
+        assert!(outside_call.contains("\"frameOrigin\""), "{outside_call}");
+        assert!(outside_call.contains("\"frame\":3"), "{outside_call}");
     }
 
     // --- frames ---
@@ -2952,6 +3298,17 @@ mod tests {
         assert_eq!(
             reply("unknownAction"),
             json!({ "error": "unknown action: dance" })
+        );
+        // 다른 출처 프레임은 번호로 기억하고, 그 문서가 시작하는 자리를 잰다.
+        assert_eq!(run["crossFrames"], run["crossFrameIds"]);
+        assert_eq!(run["crossFrameKept"], json!(true));
+        assert_eq!(
+            reply("frameOrigin"),
+            json!({ "ok": { "x": 420, "y": 600 } })
+        );
+        assert_eq!(
+            reply("frameOriginMissing"),
+            json!({ "error": "the frame is no longer on the page — call browser_snapshot again" })
         );
         // The capture is not kept once the refs are registered.
         assert_eq!(run["lastDropped"], json!(true));

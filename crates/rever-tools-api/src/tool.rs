@@ -190,6 +190,17 @@ pub trait Browser: Send + Sync {
         Box::pin(async { Err(unsupported("evaluate")) })
     }
 
+    /// Evaluate in the document of a nested frame, whatever its origin. `frames` leads
+    /// to it from the page: each entry is an expression that gives, in the document
+    /// reached so far, the `<iframe>` element to go into.
+    fn evaluate_in_frame<'a>(
+        &'a self,
+        _frames: &'a [String],
+        _expression: &'a str,
+    ) -> BoxFuture<'a, Result<Value, String>> {
+        Box::pin(async { Err(unsupported("evaluate in a frame")) })
+    }
+
     /// The visible page as PNG bytes.
     fn screenshot(&self) -> BoxFuture<'_, Result<Vec<u8>, String>> {
         Box::pin(async { Err(unsupported("screenshot")) })

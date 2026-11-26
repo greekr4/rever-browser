@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>a frame of another origin</title>
+<!-- Served on 8777; the frame comes from 8778, so its document is out of this page's
+     reach. The snapshot must still list "Pay now" and the field under the Iframe line,
+     and a click on their refs must land on them. -->
+<h1>Checkout</h1>
+<button id="buy" onclick="this.textContent='bought'">Buy</button>
+<div style="margin: 30px 0 0 40px">
+  <iframe title="Pay" src="http://127.0.0.1:8778/cross-frame-inner.html"
+          style="width: 420px; height: 260px; border: 3px solid #63c; padding: 5px"></iframe>
+</div>

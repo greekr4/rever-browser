@@ -11,8 +11,11 @@ use servo::{
     ConsoleLogLevel, CookieSource, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize,
     EmbedderControl, EventLoopWaker, InputEvent, JSValue, PrefValue, RenderingContext, Servo,
     ServoBuilder, ServoDelegate, SoftwareRenderingContext, Theme, UserContentManager, UserScript,
-    WebResourceLoad, WebView, WebViewBuilder, WebViewDelegate,
+    WebDriverCommandMsg, WebDriverFrameId, WebDriverScriptCommand, WebResourceLoad, WebView,
+    WebViewBuilder, WebViewDelegate,
 };
+use servo_base::generic_channel;
+use servo_base::id::BrowsingContextId;
 use url::Url;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -623,6 +626,77 @@ impl Engine {
             }),
             None => done(Err("the tab is closed".to_owned())),
         }
+    }
+
+    /// Send a command to the script thread of one of the tab's documents: the tab's own,
+    /// or the one in `frame`.
+    fn frame_command(
+        &self,
+        id: TabId,
+        frame: Option<BrowsingContextId>,
+        command: WebDriverScriptCommand,
+    ) -> Result<(), String> {
+        let page = self.page(id).ok_or("the tab is closed")?;
+        let context = frame.unwrap_or_else(|| page.webview.id().into());
+        self.servo
+            .execute_webdriver_command(WebDriverCommandMsg::ScriptCommand(context, command));
+        Ok(())
+    }
+
+    /// Evaluate JavaScript in a frame's document, whatever its origin (`None`: the
+    /// tab's own). A promise is awaited. `done` runs on a thread of its own: the
+    /// answer does not come through `pump`, so something has to wait for it.
+    pub fn evaluate_in(
+        &self,
+        id: TabId,
+        frame: Option<BrowsingContextId>,
+        script: String,
+        done: impl FnOnce(Result<JSValue, String>) + Send + 'static,
+    ) {
+        let Some((sender, answered)) = generic_channel::channel() else {
+            return done(Err("no channel to the page".to_owned()));
+        };
+        let command = WebDriverScriptCommand::ExecuteScriptWithCallback(script, sender);
+        if let Err(error) = self.frame_command(id, frame, command) {
+            return done(Err(error));
+        }
+        std::thread::spawn(move || {
+            done(match answered.recv() {
+                Ok(Ok(value)) => Ok(value),
+                Ok(Err(error)) => Err(format!("{error:?}")),
+                Err(_) => Err("the frame is gone".to_owned()),
+            })
+        });
+    }
+
+    /// The frame an `<iframe>` element holds. `element` is what `evaluate_in` answered
+    /// for the element, in the document `parent` names.
+    pub fn frame_of(
+        &self,
+        id: TabId,
+        parent: Option<BrowsingContextId>,
+        element: String,
+        done: impl FnOnce(Result<BrowsingContextId, String>) + Send + 'static,
+    ) {
+        let Some((sender, answered)) = generic_channel::channel() else {
+            return done(Err("no channel to the page".to_owned()));
+        };
+        let command = WebDriverScriptCommand::GetBrowsingContextId(
+            WebDriverFrameId::Element(element),
+            sender,
+        );
+        if let Err(error) = self.frame_command(id, parent, command) {
+            return done(Err(error));
+        }
+        // The script thread panics when nobody is left to hear this answer, so the
+        // wait has no time limit.
+        std::thread::spawn(move || {
+            done(match answered.recv() {
+                Ok(Ok(frame)) => Ok(frame),
+                Ok(Err(error)) => Err(format!("the element holds no frame: {error:?}")),
+                Err(_) => Err("the frame is gone".to_owned()),
+            })
+        });
     }
 
     /// Run `source` in every new document of the tab, before the page's own scripts.

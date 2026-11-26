@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>pay frame</title>
+<p id="state">waiting</p>
+<button id="pay" onclick="document.getElementById('state').textContent='paid'">Pay now</button>
+<input id="card" aria-label="Card number">
+<!-- One more level, back on the first origin: another origin again, seen from here. -->
+<iframe title="Receipt" src="http://127.0.0.1:8777/cross-frame-leaf.html"
+        style="width: 300px; height: 90px; border: 0"></iframe>
