@@ -18,6 +18,16 @@ use servo_base::generic_channel;
 use servo_base::id::BrowsingContextId;
 use url::Url;
 
+/// `REVER_DEBUGGING_SERVER=1` starts Servo's debugging server, for the breakpoint tools.
+const DEBUGGING_SERVER_ENV: &str = "REVER_DEBUGGING_SERVER";
+
+/// How many addresses the in-memory HTTP cache answers for.
+const HTTP_CACHE_ADDRESSES: u64 = 1000;
+
+fn debugging_server_wanted(asked: Option<&str>) -> bool {
+    asked == Some("1")
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TabId(pub u32);
 
@@ -307,8 +317,18 @@ impl Engine {
                 // "back", and as many ahead: a tab that had walked through news sites
                 // held 16GB. None is kept: going back loads the page again.
                 session_history_max_length: 0,
-                // The debugger tools drive pages through Servo's debugging server.
-                devtools_server_enabled: true,
+                // The breakpoint tools drive pages through Servo's debugging server.
+                // It keeps the source of every script and every console message of
+                // every page visited, for a client that may attach later: 60MB after
+                // six news sites, and growing. Those tools are hidden for now, so the
+                // server starts only when asked for.
+                devtools_server_enabled: debugging_server_wanted(
+                    std::env::var(DEBUGGING_SERVER_ENV).ok().as_deref(),
+                ),
+                // Responses kept in memory to answer a request again without the
+                // network: counted in addresses, whatever their size. Servo's 5,000
+                // came to several hundred MB in a long session.
+                network_http_cache_size: HTTP_CACHE_ADDRESSES,
                 // On this machine only. Servo reports the port it was told, not the
                 // one it got, so a free one is picked here first.
                 devtools_server_listen_address: format!("127.0.0.1:{}", free_port()),
@@ -778,6 +798,14 @@ fn favicon_rgba(image: &servo::Image) -> Option<RgbaImage> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 디버깅_서버는_요청할_때만_켠다() {
+        assert!(!debugging_server_wanted(None));
+        assert!(!debugging_server_wanted(Some("")));
+        assert!(!debugging_server_wanted(Some("0")));
+        assert!(debugging_server_wanted(Some("1")));
+    }
 
     #[test]
     fn 프로필의_ua와_플랫폼_토큰은_서로_맞는다() {
