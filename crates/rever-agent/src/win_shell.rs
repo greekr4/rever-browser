@@ -179,7 +179,7 @@ mod tests {
         }
 
         fn args() -> Vec<String> {
-            let mut args = claude_cli_args("http://127.0.0.1:4321/mcp", "Bearer abc123", None);
+            let mut args = claude_cli_args(None);
             args.extend(
                 [
                     "",

@@ -5,7 +5,7 @@
 //! rather than on the page, so it is risky too. Auto-approve answers risky calls like
 //! any other. With it off every call is asked about.
 
-use rever_agent::claude_cli_protocol::MCP_SERVER_NAME;
+use rever_tool_profile::risky_tools::is_own_cli;
 use rever_chat_core::RiskyTools;
 use rever_ui_chat::permission_prompt::ToolRules;
 use serde_json::Value;
@@ -24,12 +24,18 @@ fn outside_tool(request: &Value) -> Option<String> {
         return None;
     }
     let name = request.pointer("/toolCall/title")?.as_str()?;
-    let own = name
-        .strip_prefix("mcp__")
-        .and_then(|rest| rest.strip_prefix(MCP_SERVER_NAME))
-        .is_some_and(|rest| rest.starts_with("__"));
     // ToolSearch only loads tool descriptions.
-    (!own && name != "ToolSearch").then(|| name.to_owned())
+    if name == "ToolSearch" {
+        return None;
+    }
+    // The app's tools are a CLI, so a single `revb` command is the app's own work.
+    if name == "Bash" {
+        let command = request
+            .pointer("/toolCall/rawInput/command")
+            .and_then(Value::as_str)?;
+        return (!is_own_cli(command)).then(|| name.to_owned());
+    }
+    Some(name.to_owned())
 }
 
 impl RiskyTools for ChatRules {

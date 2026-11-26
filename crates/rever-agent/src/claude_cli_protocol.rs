@@ -71,16 +71,17 @@ pub fn flag_settings_request(key: FlagKey, value: &Value) -> Result<Value, &'sta
     Ok(json!({ "subtype": "apply_flag_settings", "settings": settings }))
 }
 
-pub fn claude_cli_args(mcp_url: &str, auth_header: &str, model: Option<&str>) -> Vec<String> {
-    let mcp = json!({
-        "mcpServers": {
-            MCP_SERVER_NAME: {
-                "type": "http",
-                "url": mcp_url,
-                "headers": { "Authorization": auth_header, "X-Rever-Catalog": "follow" }
-            }
-        }
-    });
+/// What the agent is told about reaching the app's tools. They are a CLI now,
+/// so the guidance lives here instead of in MCP tool schemas.
+pub const REVER_CLI_GUIDE: &str = "This app's tools are a command line, not MCP servers. \
+Run every tool through Bash as `revb`. \
+`revb list` prints the tool names, `revb describe <tool>` prints one tool's argument schema, \
+`revb skill` prints the full guide, and `revb call <tool> '{\"key\":\"value\"}'` calls one. \
+There are no MCP tools in this session; do not look for them.";
+
+pub fn claude_cli_args(model: Option<&str>) -> Vec<String> {
+    // No MCP servers at all; `--strict-mcp-config` keeps the user's own out.
+    let mcp = json!({ "mcpServers": {} });
     let mut args: Vec<String> = [
         "-p",
         "--input-format",
@@ -91,6 +92,8 @@ pub fn claude_cli_args(mcp_url: &str, auth_header: &str, model: Option<&str>) ->
         "--include-partial-messages",
         "--mcp-config",
         &mcp.to_string(),
+        "--append-system-prompt",
+        REVER_CLI_GUIDE,
         "--strict-mcp-config",
         // Same isolation the ACP path used (settingSources: []): no user hooks or settings.
         // Not --bare: that skips the keychain, which is where the subscription login lives.
@@ -378,12 +381,22 @@ pub fn to_permission_request(session_id: &str, req: &Value) -> Value {
         .get("tool_use_id")
         .filter(|id| !id.is_null())
         .or(tool_name);
+    // Risky-tool matching reads `title`. For Bash that has to be the command,
+    // since the tool name alone says nothing about which tool is being run.
+    let title = req
+        .pointer("/input/command")
+        .and_then(Value::as_str)
+        .filter(|_| tool_name.and_then(Value::as_str) == Some("Bash"))
+        .map_or_else(
+            || tool_name.cloned(),
+            |command| Some(json!(format!("Bash: {command}"))),
+        );
     json!({
         "sessionId": session_id,
         // title carries the tool id, which risky-tool matching looks for.
         "toolCall": object([
             ("toolCallId", tool_call_id.cloned()),
-            ("title", tool_name.cloned()),
+            ("title", title),
             ("rawInput", req.get("input").cloned()),
         ]),
         "options": permission_options()
@@ -481,23 +494,24 @@ mod tests {
     // ── claudeCliArgs ──
 
     #[test]
-    fn 구독_인증을_지키고_권한_요청을_호스트로_보낸다() {
-        let args = claude_cli_args("http://127.0.0.1:1/mcp", "Bearer t", None);
+    fn 도구는_cli로_알리고_mcp_서버는_하나도_붙이지_않는다() {
+        let args = claude_cli_args(None);
         assert!(!args.iter().any(|a| a == "--bare"));
         assert!(args.join(" ").contains("--permission-prompt-tool stdio"));
         let at = args.iter().position(|a| a == "--mcp-config").unwrap();
         let mcp: Value = serde_json::from_str(&args[at + 1]).unwrap();
-        let server = &mcp["mcpServers"]["rever-traffic"];
-        assert_eq!(server["type"], "http");
-        assert_eq!(server["url"], "http://127.0.0.1:1/mcp");
+        assert_eq!(mcp["mcpServers"], json!({}));
+        // Without schemas in a handshake, the guide is how the agent learns `revb`.
+        let guide = args.iter().position(|a| a == "--append-system-prompt").unwrap();
+        assert!(args[guide + 1].contains("revb call"));
         assert!(!args.iter().any(|a| a == "--model"));
-        let with_model = claude_cli_args("u", "a", Some("opus"));
+        let with_model = claude_cli_args(Some("opus"));
         assert_eq!(with_model[with_model.len() - 2..], ["--model", "opus"]);
     }
 
     #[test]
     fn 중첩_하위_에이전트_task_도구를_차단한다() {
-        let args = claude_cli_args("u", "a", None);
+        let args = claude_cli_args(None);
         assert!(
             args.join(" ")
                 .contains("--disallowed-tools Task,Agent,Workflow")

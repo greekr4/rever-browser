@@ -203,6 +203,10 @@ export function readEndpoint() {
       if (e.code === 'ESRCH') fail(`Rever Browser is not running (pid ${ep.pid} from ${file} is gone). Start the app, then retry.`)
     }
   }
+  // The CLI's path is the socket. `url` used to be an HTTP endpoint and an
+  // older app still publishes one; the socket wins when both are present.
+  const socket = ep.socket || (ep.url && !String(ep.url).startsWith('http') ? ep.url : null)
+  if (socket) return { ...ep, socket, file }
   const host = new URL(ep.url).hostname
   if (host !== '127.0.0.1' && host !== 'localhost') {
     fail(`refusing non-loopback endpoint ${ep.url} in ${file}`)
