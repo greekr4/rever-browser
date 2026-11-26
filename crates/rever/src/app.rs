@@ -3540,16 +3540,29 @@ fn history_props(browser: &WeakEntity<Browser>, cx: &App) -> ChatHistoryMenuProp
         .unwrap_or_default()
 }
 
+/// The chosen entry of an agent's model list, and what the chip reads for it.
+fn model_names(
+    this: &Browser,
+    agent: AcpAgentId,
+    chosen: Option<&(String, String)>,
+) -> (Option<String>, Option<String>) {
+    let chosen = chosen.map(|(_, name)| name.clone());
+    let models = this.model_store.borrow().agent_models(agent);
+    let chip = rever_ui_chat::model_picker::chip_model_name(chosen.as_deref(), &models);
+    (chosen, chip)
+}
+
 fn picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
-    let (agent_id, model_name, busy) = browser
+    let (agent_id, (model_name, chip_name), busy) = browser
         .read_with(cx, |this, _| {
-            let name = this.chat_model.as_ref().map(|(_, name)| name.clone());
-            (this.chat_agent, name, this.agent_busy)
+            let names = model_names(this, this.chat_agent, this.chat_model.as_ref());
+            (this.chat_agent, names, this.agent_busy)
         })
-        .unwrap_or((AcpAgentId::ClaudeCode, None, false));
+        .unwrap_or((AcpAgentId::ClaudeCode, (None, None), false));
     ModelPickerProps {
         agent_id,
         model_name,
+        chip_name,
         // One turn at a time: the model changes between turns.
         disabled: busy,
         new_tab: false,
@@ -3559,17 +3572,16 @@ fn picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
 
 /// The scan dialog's model chip: the scan's own choice over the CLI's models.
 fn scan_picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
-    let (model_name, running) = browser
+    let ((model_name, chip_name), running) = browser
         .read_with(cx, |this, _| {
-            (
-                this.redteam_model.as_ref().map(|(_, name)| name.clone()),
-                this.redteam_running,
-            )
+            let names = model_names(this, AcpAgentId::ClaudeCode, this.redteam_model.as_ref());
+            (names, this.redteam_running)
         })
-        .unwrap_or((None, false));
+        .unwrap_or(((None, None), false));
     ModelPickerProps {
         agent_id: AcpAgentId::ClaudeCode,
         model_name,
+        chip_name,
         // A running scan already spawned its sessions on a model.
         disabled: running,
         new_tab: false,
