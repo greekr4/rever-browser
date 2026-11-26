@@ -9,6 +9,8 @@ use std::io::Write;
 use std::path::Path;
 
 pub mod paging;
+#[cfg(unix)]
+pub mod socket;
 pub mod tool_profile;
 pub mod tool_profile_state;
 pub mod validation;
