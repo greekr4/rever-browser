@@ -46,10 +46,10 @@ use tokio::runtime::Handle;
 use tokio::sync::oneshot;
 use url::Url;
 
-use crate::tool_profile_state::{FollowServer, ToolProfileState};
-use crate::tools::paging::ToolResultMore;
-use crate::tools::tool_profile::ToolProfileSet;
-use crate::write_private_file;
+use rever_control::tool_profile_state::{FollowServer, ToolProfileState};
+use rever_control::paging::ToolResultMore;
+use rever_control::tool_profile::ToolProfileSet;
+use rever_control::write_private_file;
 
 const READ_BODY_LIMIT: usize = 16 * 1024 * 1024; // 16MB
 
@@ -1067,8 +1067,8 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::tool_profile_state::ProfileSource;
-    use crate::tool_profile_state::tests::TempDir;
+    use rever_control::tool_profile_state::ProfileSource;
+    use rever_control::tool_profile_state::tests::TempDir;
 
     // ── Stand-in tools ──────────────────────────────────────────────────────
 

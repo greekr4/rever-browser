@@ -1,0 +1,17 @@
+[package]
+name = "rever-control"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "The tool catalog and control plane: validation, paging and tool profiles, with no transport"
+
+[dependencies]
+rever-tools-api = { path = "../rever-tools-api" }
+# Profile rules and catalog header modes.
+rever-tool-profile = { path = "../rever-tool-profile" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[dev-dependencies]
+# The paging and profile tests drive tools on a current-thread runtime.
+tokio = { version = "1", features = ["rt", "macros"] }

@@ -3,10 +3,12 @@ name = "rever-mcp"
 version = "0.0.0"
 edition = "2024"
 publish = false
-description = "The MCP server: serves registered tools over streamable HTTP and publishes its endpoint"
+description = "The MCP adapter: serves registered tools over streamable HTTP and publishes its endpoint"
 
 [dependencies]
 rever-tools-api = { path = "../rever-tools-api" }
+# Validation, paging and the tool profile — the transport-free half.
+rever-control = { path = "../rever-control" }
 rever-core = { path = "../rever-core" }
 # Profile rules, catalog header modes and the follow-catalog diff.
 rever-tool-profile = { path = "../rever-tool-profile" }
