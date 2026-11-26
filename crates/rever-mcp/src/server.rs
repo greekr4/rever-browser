@@ -529,4 +529,3 @@ fn random_token() -> Result<String, String> {
     getrandom::fill(&mut bytes).map_err(|e| format!("no random bytes for the MCP token: {e}"))?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
-

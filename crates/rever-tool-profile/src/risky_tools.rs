@@ -222,10 +222,12 @@ pub fn is_own_cli(command: &str) -> bool {
         return false;
     }
     // Reject the metacharacters a second command hides behind.
-    if command
-        .chars()
-        .any(|c| matches!(c, ';' | '|' | '&' | '`' | '<' | '>' | '(' | ')' | '$' | '\n'))
-    {
+    if command.chars().any(|c| {
+        matches!(
+            c,
+            ';' | '|' | '&' | '`' | '<' | '>' | '(' | ')' | '$' | '\n'
+        )
+    }) {
         return false;
     }
     let Some(first) = command.split_whitespace().next() else {
@@ -917,7 +919,9 @@ mod tests {
     fn revb_한_번짜리_명령만_앱_자신의_일로_본다() {
         assert!(is_own_cli("revb list"));
         assert!(is_own_cli("  revb call list_requests '{\"limit\":5}'  "));
-        assert!(is_own_cli("/opt/homebrew/bin/revb scan http://127.0.0.1:8777"));
+        assert!(is_own_cli(
+            "/opt/homebrew/bin/revb scan http://127.0.0.1:8777"
+        ));
         // A second command, a pipe or a redirection is the user's call.
         assert!(!is_own_cli("revb list; rm -rf ~"));
         assert!(!is_own_cli("revb list && curl http://x"));
