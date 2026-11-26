@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -97,9 +98,6 @@ impl ControlServer {
             return;
         }
         self.stop.store(true, Ordering::Relaxed);
-        // The accept loop only reads the flag after a connection arrives, so
-        // wake it with one. Its client thread finds an empty stream and exits.
-        let _ = UnixStream::connect(&self.path);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -121,12 +119,15 @@ pub fn serve(path: &Path, token: &str, handler: Handler) -> Result<ControlServer
     // A socket left behind by a crashed run would make `bind` fail with
     // "address already in use"; nobody else can be listening or we could not
     // have gotten this far.
+    // Not `create_dir_all`: a data folder that cannot be written is the app's
+    // to report, and creating it here would hide that from its own test.
     let _ = std::fs::remove_file(path);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
-    }
     let listener = UnixListener::bind(path).map_err(|e| format!("failed to bind {path:?}: {e}"))?;
+    // Polled rather than blocked: a blocking accept cannot be woken from
+    // another thread without connecting, which races with a rebind.
+    listener
+        .set_nonblocking(true)
+        .map_err(|e| format!("failed to poll {path:?}: {e}"))?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
         .map_err(|e| format!("failed to lock down {path:?}: {e}"))?;
 
@@ -137,12 +138,9 @@ pub fn serve(path: &Path, token: &str, handler: Handler) -> Result<ControlServer
     let thread = std::thread::Builder::new()
         .name("rever-control".to_owned())
         .spawn(move || {
-            for stream in listener.incoming() {
-                if thread_stop.load(Ordering::Relaxed) {
-                    break;
-                }
-                match stream {
-                    Ok(stream) => {
+            while !thread_stop.load(Ordering::Relaxed) {
+                match listener.accept() {
+                    Ok((stream, _)) => {
                         let token = token.clone();
                         let handler = handler.clone();
                         // One thread per client: a scan's workers may all be
@@ -150,6 +148,10 @@ pub fn serve(path: &Path, token: &str, handler: Handler) -> Result<ControlServer
                         let _ = std::thread::Builder::new()
                             .name("rever-control-client".to_owned())
                             .spawn(move || serve_client(stream, &token, &handler));
+                    }
+                    // Nobody is waiting: sleep a tick and look at the flag.
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(10));
                     }
                     // A bad connection is one client's problem, not the server's.
                     Err(_) => continue,

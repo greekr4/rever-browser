@@ -13,6 +13,7 @@
 import { execSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -353,9 +354,98 @@ function warnVersion(server) {
   }
 }
 
+// ---------------------------------------------------------------- socket client
+
+/** The app's control socket: one JSON line in, one JSON line out. */
+export class SocketClient {
+  constructor(socketPath, token) {
+    this.socketPath = socketPath
+    // Scripts read `rev.endpoint`; a socket has no href, so stand one in.
+    this.url = { href: socketPath }
+    this.token = token
+    this.serverVersion = null
+    this.pending = []
+    this.buffer = ''
+    this.sock = null
+  }
+
+  connect() {
+    return new Promise((resolve, reject) => {
+      this.sock = net.connect(this.socketPath)
+      this.sock.setEncoding('utf8')
+      this.sock.once('error', reject)
+      this.sock.once('connect', () => {
+        this.sock.off('error', reject)
+        this.sock.on('error', () => {}) // a dying app is reported by the pending call
+        this.sock.on('data', (chunk) => this.onData(chunk))
+        resolve()
+      })
+    })
+  }
+
+  onData(chunk) {
+    this.buffer += chunk
+    for (;;) {
+      const at = this.buffer.indexOf('\n')
+      if (at < 0) return
+      const line = this.buffer.slice(0, at)
+      this.buffer = this.buffer.slice(at + 1)
+      const waiter = this.pending.shift()
+      if (!waiter) continue
+      try {
+        waiter.resolve(JSON.parse(line))
+      } catch (e) {
+        waiter.reject(e)
+      }
+    }
+  }
+
+  request(tool, args) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending = this.pending.filter((w) => w !== waiter)
+        reject(new Error(`control socket timed out after ${CALL_TIMEOUT_MS} ms`))
+      }, CALL_TIMEOUT_MS)
+      const waiter = {
+        resolve: (v) => {
+          clearTimeout(timer)
+          resolve(v)
+        },
+        reject: (e) => {
+          clearTimeout(timer)
+          reject(e)
+        }
+      }
+      this.pending.push(waiter)
+      this.sock.write(JSON.stringify({ token: this.token, tool, args }) + '\n')
+    })
+  }
+
+  async call(name, args) {
+    const reply = await this.request(name, args ?? {})
+    if (!reply.ok) throw new RpcError(reply.error)
+    return reply.result
+  }
+
+  async tools() {
+    const reply = await this.request('__catalog', null)
+    if (!reply.ok) throw new RpcError(reply.error)
+    this.serverVersion = reply.result.version
+    return reply.result.tools
+  }
+
+  async close() {
+    if (!this.sock) return
+    this.sock.end()
+    this.sock = null
+  }
+}
+
 async function withClient(fn) {
   const ep = readEndpoint()
-  const client = new Client(ep.url, ep.token)
+  // The socket is the direct path; the HTTP endpoint stays for an app that
+  // has not published one yet.
+  const client = ep.socket ? new SocketClient(ep.socket, ep.token) : new Client(ep.url, ep.token)
   const onSignal = () => client.close().finally(() => process.exit(130))
   process.once('SIGINT', onSignal)
   process.once('SIGTERM', onSignal)

@@ -46,9 +46,9 @@ use tokio::runtime::Handle;
 use tokio::sync::oneshot;
 use url::Url;
 
-use rever_control::tool_profile_state::{FollowServer, ToolProfileState};
 use rever_control::paging::ToolResultMore;
 use rever_control::tool_profile::ToolProfileSet;
+use rever_control::tool_profile_state::{FollowServer, ToolProfileState};
 use rever_control::write_private_file;
 
 const READ_BODY_LIMIT: usize = 16 * 1024 * 1024; // 16MB
@@ -859,6 +859,9 @@ pub fn endpoint_file_path(data_dir: &Path) -> PathBuf {
 #[serde(rename_all = "camelCase")]
 struct Endpoint<'a> {
     url: &'a str,
+    /// The CLI's way in. Absent on a platform without Unix sockets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    socket: Option<String>,
     token: &'a str,
     pid: u32,
     started_at: String,
@@ -890,9 +893,10 @@ fn to_iso_string(ms: i64) -> String {
     )
 }
 
-fn write_endpoint_file(file: &Path, url: &str, token: &str) {
+fn write_endpoint_file(file: &Path, url: &str, socket: Option<&Path>, token: &str) {
     let endpoint = Endpoint {
         url,
+        socket: socket.map(|p| p.to_string_lossy().into_owned()),
         token,
         pid: std::process::id(),
         started_at: to_iso_string(now_ms()),
@@ -910,6 +914,47 @@ fn random_token() -> Result<String, String> {
     let mut bytes = [0_u8; 24];
     getrandom::fill(&mut bytes).map_err(|e| format!("no random bytes for the MCP token: {e}"))?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+// ── The control socket ──────────────────────────────────────────────────────
+
+/// Hands one socket call to the same `Shared` the MCP sessions use, so the two
+/// transports cannot drift while both exist.
+fn socket_handler(shared: Arc<Shared>) -> rever_control::socket::Handler {
+    Arc::new(move |call: rever_control::socket::Call| {
+        let name = call.tool;
+        let args = call.args;
+        // Not a tool: the CLI's catalog, so `revb list` and `revb describe`
+        // need no second protocol.
+        if name == "__catalog" {
+            let tools: Vec<Value> = shared
+                .defs()
+                .into_iter()
+                .map(|def| {
+                    serde_json::json!({
+                        "name": def.name,
+                        "description": def.description,
+                        "inputSchema": def.input_schema,
+                    })
+                })
+                .collect();
+            return rever_control::socket::Reply::result(
+                serde_json::json!({ "version": shared.version, "tools": tools }),
+            );
+        }
+        let Some(tool) = shared.find(&name) else {
+            return rever_control::socket::Reply::error(format!("tool not found: {name}"));
+        };
+        let runtime = shared.runtime.clone();
+        let inner = shared.clone();
+        // A socket thread is not a runtime thread, so blocking here is safe.
+        let result =
+            runtime.block_on(async move { inner.call_with_activity(tool, &name, args).await });
+        match serde_json::to_value(result) {
+            Ok(value) => rever_control::socket::Reply::result(value),
+            Err(e) => rever_control::socket::Reply::error(e.to_string()),
+        }
+    })
 }
 
 // ── Start and stop ──────────────────────────────────────────────────────────
@@ -940,6 +985,8 @@ pub struct McpServer {
     pub auth_header: String,
     endpoint_file: PathBuf,
     profile: Arc<ToolProfileState>,
+    /// The CLI's socket; `None` when it could not be bound.
+    control: Option<rever_control::socket::ControlServer>,
     // Dropping the sender is the stop signal.
     stop: oneshot::Sender<()>,
     thread: JoinHandle<()>,
@@ -953,6 +1000,7 @@ impl McpServer {
 
     pub fn close(self) {
         let _ = std::fs::remove_file(&self.endpoint_file);
+        drop(self.control);
         drop(self.stop);
         let _ = self.thread.join();
     }
@@ -986,6 +1034,13 @@ pub fn start_with(
 
     let profile = ToolProfileState::of(&context);
     let endpoint_file = endpoint_file_path(&context.data_dir);
+    #[cfg(unix)]
+    let socket_path = Some(context.data_dir.join("control.sock"));
+    #[cfg(not(unix))]
+    let socket_path: Option<PathBuf> = None;
+    #[cfg(not(unix))]
+    let control: Option<rever_control::socket::ControlServer> = None;
+
     let shared = Arc::new(Shared {
         registry,
         context,
@@ -994,6 +1049,16 @@ pub fn start_with(
         version: options.version,
         runtime: runtime.handle().clone(),
     });
+
+    // The CLI talks to the same `Shared`, over a Unix socket.
+    let control = socket_path
+        .as_ref()
+        .map(|path| {
+            rever_control::socket::serve(path, &token, socket_handler(shared.clone()))
+                .inspect_err(|e| eprintln!("[control] {e}"))
+                .ok()
+        })
+        .flatten();
 
     let mut sessions = LocalSessionManager::default();
     // A session lives until the client deletes it, however long the agent
@@ -1042,7 +1107,7 @@ pub fn start_with(
 
     let url = format!("http://127.0.0.1:{bound_port}/mcp");
     eprintln!("[mcp] listening on {url}");
-    write_endpoint_file(&endpoint_file, &url, &token);
+    write_endpoint_file(&endpoint_file, &url, socket_path.as_deref(), &token);
 
     Ok(McpServer {
         url,
@@ -1050,6 +1115,7 @@ pub fn start_with(
         token,
         endpoint_file,
         profile,
+        control,
         stop,
         thread,
     })
@@ -2552,11 +2618,13 @@ mod tests {
         let endpoint: Value = serde_json::from_str(&text).unwrap();
         let started_at = endpoint["startedAt"].as_str().unwrap().to_owned();
         // The exact bytes JSON.stringify(…, null, 2) writes, keys in this order.
+        let socket = fixture.dir.0.join("control.sock");
         assert_eq!(
             text,
             format!(
-                "{{\n  \"url\": \"{}\",\n  \"token\": \"{}\",\n  \"pid\": {},\n  \"startedAt\": \"{started_at}\"\n}}",
+                "{{\n  \"url\": \"{}\",\n  \"socket\": \"{}\",\n  \"token\": \"{}\",\n  \"pid\": {},\n  \"startedAt\": \"{started_at}\"\n}}",
                 fixture.server.url,
+                socket.display(),
                 fixture.server.token,
                 std::process::id()
             )
@@ -2589,7 +2657,7 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
-        write_endpoint_file(&file, "http://127.0.0.1:1/mcp", "t");
+        write_endpoint_file(&file, "http://127.0.0.1:1/mcp", None, "t");
         let mode = std::fs::metadata(&file).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
         let endpoint: Value =
