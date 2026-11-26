@@ -20,7 +20,7 @@ import socket
 import sys
 
 ENDPOINT = os.path.expanduser(
-    "~/Library/Application Support/rever-browser/mcp-endpoint.json"
+    "~/Library/Application Support/rever-browser/control-endpoint.json"
 )
 
 

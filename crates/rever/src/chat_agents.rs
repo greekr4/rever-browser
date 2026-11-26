@@ -11,7 +11,7 @@ use gpui::{App, Task};
 use rever_agent::acp_detect::{AgentProbe, detect_agents};
 use rever_agent::claude_cli::ClaudeCliFinder;
 use rever_agent::grok_login::{TokenResponse, read_grok_login_file, resolve_grok_credential};
-use rever_mcp::ToolProfileState;
+use rever_control_server::ToolProfileState;
 use rever_ui_chat::model_catalog::{LiveModel, ModelCatalogStore};
 use rever_ui_chat::model_picker::{AgentHealth, AgentHealthStatus, KeyProvider, ModelPickerHost};
 use rever_ui_state::constants::{ACP_AGENTS, AcpAgentId};

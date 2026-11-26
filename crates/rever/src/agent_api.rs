@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rever_mcp::ToolProfileState;
+use rever_control_server::ToolProfileState;
 use rever_tool_profile::direct_tool_gate::{begin_direct_turn, take_direct_tool};
 use rever_tool_profile::openai_tool_cap::cap_tools_for_openai;
 use serde_json::{Value, json};

@@ -1,6 +1,6 @@
 //! Runs the MCP server over a few stand-in tools, for driving it from outside:
 //!
-//!   REVER_USER_DATA_DIR=/tmp/rever-data cargo run -p rever-mcp --example serve
+//!   REVER_USER_DATA_DIR=/tmp/rever-data cargo run -p rever-control-server --example serve
 //!   REVER_USER_DATA_DIR=/tmp/rever-data node bin/revb.mjs list
 //!
 //! Stops when stdin closes or a line is entered.
@@ -54,7 +54,7 @@ impl Tool for Big {
 fn main() -> Result<(), String> {
     let data_dir = std::env::var_os("REVER_USER_DATA_DIR")
         .map(PathBuf::from)
-        .ok_or("set REVER_USER_DATA_DIR to the folder mcp-endpoint.json goes in")?;
+        .ok_or("set REVER_USER_DATA_DIR to the folder control-endpoint.json goes in")?;
     std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
 
     let mut registry = ToolRegistry::default();
@@ -69,7 +69,7 @@ fn main() -> Result<(), String> {
     registry.register(Big);
     let context = ToolContext::new(Arc::default(), Arc::new(NoBrowser), data_dir);
 
-    let server = rever_mcp::start(Arc::new(registry), Arc::new(context))?;
+    let server = rever_control_server::start(Arc::new(registry), Arc::new(context))?;
     println!("{}", server.url);
     let _ = std::io::stdin().read_line(&mut String::new());
     server.close();

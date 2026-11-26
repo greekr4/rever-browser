@@ -98,7 +98,7 @@ impl AppBrowser {
     ) -> BoxFuture<'static, Result<T, String>> {
         let (answer, answered) = oneshot::channel();
         let command = make(answer);
-        let command = if rever_mcp::in_tool_call() {
+        let command = if rever_control_server::in_tool_call() {
             Command::ByAgent(Box::new(command))
         } else {
             command
@@ -571,7 +571,7 @@ mod tests {
     #[tokio::test]
     async fn 도구_호출_안에서_보낸_명령은_에이전트_표시를_단다() {
         let (browser, mut queue) = handle();
-        rever_mcp::as_tool_call(async { drop(browser.reload()) }).await;
+        rever_control_server::as_tool_call(async { drop(browser.reload()) }).await;
         let Ok(Command::ByAgent(inner)) = queue.try_recv() else {
             panic!("the command carries no agent mark");
         };

@@ -11,8 +11,6 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub const MCP_SERVER_NAME: &str = "rever-traffic";
-
 /// Tools that are plumbing, not user-visible work (deferred MCP schema loading).
 const HIDDEN_TOOLS: &[&str] = &["ToolSearch"];
 

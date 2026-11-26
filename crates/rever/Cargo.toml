@@ -14,7 +14,7 @@ rever-agent = { path = "../rever-agent" }
 rever-inject = { path = "../rever-inject" }
 rever-tools-api = { path = "../rever-tools-api" }
 # The MCP server and the tool crates it serves; the risky-tool rules decide what the agent may call unasked.
-rever-mcp = { path = "../rever-mcp" }
+rever-control-server = { path = "../rever-control-server" }
 rever-tool-profile = { path = "../rever-tool-profile" }
 rever-chat-core = { path = "../rever-chat-core" }
 rever-tools-traffic = { path = "../rever-tools-traffic" }

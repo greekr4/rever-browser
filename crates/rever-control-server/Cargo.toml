@@ -1,9 +1,9 @@
 [package]
-name = "rever-mcp"
+name = "rever-control-server"
 version = "0.0.0"
 edition = "2024"
 publish = false
-description = "The control server: serves registered tools over a Unix socket and publishes it"
+description = "The control server: serves the tool registry over a Unix socket and publishes it"
 
 [dependencies]
 rever-tools-api = { path = "../rever-tools-api" }

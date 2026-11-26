@@ -7503,11 +7503,11 @@ dependencies = [
  "rever-agent",
  "rever-chat-core",
  "rever-cli-spec",
+ "rever-control-server",
  "rever-cookie-import",
  "rever-core",
  "rever-formats",
  "rever-inject",
- "rever-mcp",
  "rever-scope",
  "rever-tool-profile",
  "rever-tools-api",
@@ -7600,6 +7600,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rever-control-server"
+version = "0.0.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "rever-control",
+ "rever-scope",
+ "rever-tools-api",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rever-cookie-import"
 version = "0.0.0"
 dependencies = [
@@ -7649,19 +7662,6 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "rever-mcp"
-version = "0.0.0"
-dependencies = [
- "getrandom 0.3.4",
- "rever-control",
- "rever-scope",
- "rever-tools-api",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

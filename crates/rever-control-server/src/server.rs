@@ -1,5 +1,5 @@
 //! The control server: it exposes a tool registry over a Unix socket, guards
-//! it with a token, and publishes the socket in `mcp-endpoint.json`.
+//! it with a token, and publishes the socket in `control-endpoint.json`.
 //!
 //! The tools come ready in a [`ToolRegistry`]; this crate adds the two the
 //! catalog needs (`tool_result_more`, `tool_profile_set`) and answers calls.
@@ -20,7 +20,7 @@ use rever_control::tool_profile::ToolProfileSet;
 use rever_control::tool_profile_state::ToolProfileState;
 use rever_control::write_private_file;
 
-const ENDPOINT_FILE: &str = "mcp-endpoint.json";
+const ENDPOINT_FILE: &str = "control-endpoint.json";
 
 /// `Date.now()`.
 fn now_ms() -> i64 {
@@ -384,7 +384,7 @@ impl Default for ServerOptions {
 }
 
 /// A running server. Dropping it closes the socket and removes the endpoint file.
-pub struct McpServer {
+pub struct ToolServer {
     /// The socket's path. Named `url` because the app passes it around as one.
     pub url: String,
     pub token: String,
@@ -400,7 +400,7 @@ pub struct McpServer {
     runtime: tokio::runtime::Runtime,
 }
 
-impl McpServer {
+impl ToolServer {
     /// The tool profile this server tracks.
     pub fn tool_profile(&self) -> &Arc<ToolProfileState> {
         &self.profile
@@ -411,13 +411,13 @@ impl McpServer {
     }
 }
 
-impl Drop for McpServer {
+impl Drop for ToolServer {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.endpoint_file);
     }
 }
 
-pub fn start(registry: Arc<ToolRegistry>, context: Arc<ToolContext>) -> Result<McpServer, String> {
+pub fn start(registry: Arc<ToolRegistry>, context: Arc<ToolContext>) -> Result<ToolServer, String> {
     start_with(registry, context, ServerOptions::default())
 }
 
@@ -425,7 +425,7 @@ pub fn start_with(
     registry: Arc<ToolRegistry>,
     context: Arc<ToolContext>,
     options: ServerOptions,
-) -> Result<McpServer, String> {
+) -> Result<ToolServer, String> {
     let token = random_token()?;
     let profile = ToolProfileState::of(&context);
     let endpoint_file = endpoint_file_path(&context.data_dir);
@@ -454,7 +454,7 @@ pub fn start_with(
     eprintln!("[control] listening on {url}");
     write_endpoint_file(&endpoint_file, &url, Some(&socket_path), &token);
 
-    Ok(McpServer {
+    Ok(ToolServer {
         url,
         auth_header: format!("Bearer {token}"),
         token,
@@ -519,7 +519,7 @@ fn write_endpoint_file(file: &Path, url: &str, socket: Option<&Path>, token: &st
         .map_err(std::io::Error::other)
         .and_then(|text| write_private_file(file, &text));
     if let Err(e) = written {
-        eprintln!("[mcp] could not publish endpoint file: {e}");
+        eprintln!("[control] could not publish endpoint file: {e}");
     }
 }
 

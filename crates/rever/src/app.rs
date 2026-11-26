@@ -28,7 +28,7 @@ use rever_core::paths::user_data_dir;
 use rever_core::traffic::{
     self, ConsoleEntry, Headers, ListFilter, RequestPatch, TrafficStore, WsDirection, WsFrame,
 };
-use rever_mcp::McpServer;
+use rever_control_server::ToolServer;
 use rever_tools_api::tool::{
     DialogAnswer, DialogRecord, PageInfo, TabInfo, ToolContext, ToolRegistry,
 };
@@ -144,7 +144,7 @@ fn start_mcp(
     browser: Arc<bridge::AppBrowser>,
     debug_endpoint: crate::debug::Endpoint,
 ) -> (
-    Option<McpServer>,
+    Option<ToolServer>,
     Arc<InterceptState>,
     Arc<DownloadState>,
     Arc<rever_tools_api::tool::ToolContext>,
@@ -204,8 +204,8 @@ fn start_mcp(
     context
         .state::<rever_tools_automation::bridge::ToolRegistryHandle>()
         .set(registry.clone());
-    let server = rever_mcp::start(registry, context)
-        .inspect_err(|error| eprintln!("[mcp] {error}"))
+    let server = rever_control_server::start(registry, context)
+        .inspect_err(|error| eprintln!("[control] {error}"))
         .ok();
     // A workflow's AI step runs one of the chat's agents, with the app's tools.
     let endpoint = server
@@ -902,9 +902,9 @@ pub(crate) struct Browser {
     tool_tx: UnboundedSender<bridge::Command>,
     /// The scan asked for its tabs to be closed; the wake loop does it.
     close_scan_tabs: bool,
-    /// Serves the tools to the agent CLI and to outside clients (mcp-endpoint.json);
+    /// Serves the tools to the agent CLI and to outside clients (control-endpoint.json);
     /// `None` when it could not start. Dropping it stops the server.
-    mcp: Option<McpServer>,
+    mcp: Option<ToolServer>,
     /// The tools' shared context — the scan clears this site's findings through it.
     tool_context: Arc<ToolContext>,
     pub page_focus: FocusHandle,

@@ -190,7 +190,7 @@ export async function fetchRest(first, more, maxPages = MAX_PAGES) {
 // ---------------------------------------------------------------- endpoint
 
 export function readEndpoint() {
-  const file = path.join(userDataDir(), 'mcp-endpoint.json')
+  const file = path.join(userDataDir(), 'control-endpoint.json')
   if (!existsSync(file)) {
     fail(`Rever Browser is not running (no ${file}). Start the app, then retry.`)
   }
