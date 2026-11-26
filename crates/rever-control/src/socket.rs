@@ -116,11 +116,18 @@ impl Drop for ControlServer {
 /// The file is created with mode 0600, so only the user can connect at all;
 /// the token catches a client that somehow got past the file.
 pub fn serve(path: &Path, token: &str, handler: Handler) -> Result<ControlServer, String> {
-    // A socket left behind by a crashed run would make `bind` fail with
-    // "address already in use"; nobody else can be listening or we could not
-    // have gotten this far.
-    // Not `create_dir_all`: a data folder that cannot be written is the app's
-    // to report, and creating it here would hide that from its own test.
+    // A live listener means another instance already serves this path. Taking
+    // the file over would leave that instance running but unreachable.
+    if UnixStream::connect(path).is_ok() {
+        return Err(format!(
+            "another instance already serves {}",
+            path.display()
+        ));
+    }
+    // Nothing answers there, so the file is left over from a crashed run and
+    // `bind` would fail with "address already in use". Not `create_dir_all`: a
+    // data folder that cannot be written is the app's to report, and creating
+    // it here would hide that from its own test.
     let _ = std::fs::remove_file(path);
     let listener = UnixListener::bind(path).map_err(|e| format!("failed to bind {path:?}: {e}"))?;
     // Polled rather than blocked: a blocking accept cannot be woken from
@@ -260,6 +267,30 @@ mod tests {
         let server = serve(&path, "t0ken", handler).unwrap();
         let reply = send(&path, r#"{"token":"t0ken","tool":"big"}"#);
         assert_eq!(reply["result"]["text"].as_str().unwrap().len(), 256 * 1024);
+        server.close();
+    }
+
+    #[test]
+    fn 살아있는_다른_서버의_소켓은_빼앗지_않는다() {
+        let path = temp_socket("busy");
+        let first = serve(&path, "t0ken", echo_handler()).unwrap();
+        let second = serve(&path, "t0ken", echo_handler());
+        assert!(second.is_err(), "두 번째 서버가 같은 소켓을 잡으면 안 된다");
+        // 빼앗기지 않았으니 첫 번째는 그대로 답한다.
+        let reply = send(&path, r#"{"token":"t0ken","tool":"list_requests"}"#);
+        assert_eq!(reply["ok"], true);
+        first.close();
+    }
+
+    #[test]
+    fn 죽은_소켓_파일은_지우고_다시_연다() {
+        let path = temp_socket("stale");
+        // A crashed run leaves the file behind with nothing listening on it.
+        drop(UnixListener::bind(&path).unwrap());
+        assert!(path.exists());
+        let server = serve(&path, "t0ken", echo_handler()).unwrap();
+        let reply = send(&path, r#"{"token":"t0ken","tool":"list_requests"}"#);
+        assert_eq!(reply["ok"], true);
         server.close();
     }
 

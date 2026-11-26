@@ -429,6 +429,9 @@ pub fn start_with(
     let token = random_token()?;
     let profile = ToolProfileState::of(&context);
     let endpoint_file = endpoint_file_path(&context.data_dir);
+    // The file was `mcp-endpoint.json` before the tools became a CLI; an
+    // upgrade would otherwise leave a dead pointer behind.
+    let _ = std::fs::remove_file(endpoint_file.with_file_name("mcp-endpoint.json"));
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
