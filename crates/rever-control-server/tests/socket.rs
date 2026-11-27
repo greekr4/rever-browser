@@ -8,10 +8,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rever_control_server::{start, ServerOptions};
-use rever_tools_api::tool::{
-    BoxFuture, NoBrowser, Tool, ToolContext, ToolDef, ToolRegistry,
-};
+use rever_control_server::{ServerOptions, start};
+use rever_tools_api::tool::{BoxFuture, NoBrowser, Tool, ToolContext, ToolDef, ToolRegistry};
 use rever_tools_api::utils::{ToolResult, ok};
 use serde_json::{Value, json};
 
@@ -84,10 +82,12 @@ fn 소켓으로_도구를_부르면_결과가_온다() {
     let reply = fixture.call("echo", json!({ "n": 1 }));
     assert_eq!(reply["ok"], true);
     assert_eq!(reply["result"]["content"][0]["type"], "text");
-    assert!(reply["result"]["content"][0]["text"]
-        .as_str()
-        .unwrap()
-        .contains("echo"));
+    assert!(
+        reply["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("echo")
+    );
     drop(fixture.server);
 }
 
@@ -129,8 +129,7 @@ fn 토큰이_없으면_거절한다() {
 fn 엔드포인트_파일에_소켓과_토큰을_적는다() {
     let fixture = Fixture::new("endpoint");
     let file = fixture.dir.join("control-endpoint.json");
-    let endpoint: Value =
-        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let endpoint: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert_eq!(endpoint["socket"], fixture.server.url.as_str());
     assert_eq!(endpoint["token"], fixture.server.token.as_str());
     assert_eq!(endpoint["pid"], std::process::id());
@@ -153,7 +152,8 @@ fn 버전은_서버_옵션에서_온다() {
         version: "9.9.9".to_owned(),
         ..ServerOptions::default()
     };
-    let server = rever_control_server::start_with(Arc::new(registry), Arc::new(context), options).unwrap();
+    let server =
+        rever_control_server::start_with(Arc::new(registry), Arc::new(context), options).unwrap();
     let stream = UnixStream::connect(server.url.as_str()).unwrap();
     let mut writer = stream.try_clone().unwrap();
     writeln!(

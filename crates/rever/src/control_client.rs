@@ -35,8 +35,8 @@ impl ControlClient {
         // The endpoint file carries the HTTP-era `Bearer …` header; the socket
         // ticket is just the token.
         let token = token.trim_start_matches("Bearer ").trim();
-        let stream = UnixStream::connect(path)
-            .map_err(|error| format!("control socket {path}: {error}"))?;
+        let stream =
+            UnixStream::connect(path).map_err(|error| format!("control socket {path}: {error}"))?;
         stream
             .set_read_timeout(Some(TOOL_TIMEOUT))
             .map_err(|error| error.to_string())?;

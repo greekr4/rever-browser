@@ -23,12 +23,12 @@ use rever_agent::claude_cli::ClaudeCliFinder;
 use rever_agent::model_catalog::ModelCatalog;
 use rever_chat_core::acp_permission::{ACP_PERMISSION_TIMEOUT_MS, ApproveOptions, PermissionStore};
 use rever_chat_core::red_team_mode::RedTeamMode;
+use rever_control_server::ToolServer;
 use rever_core::address::normalize_address;
 use rever_core::paths::user_data_dir;
 use rever_core::traffic::{
     self, ConsoleEntry, Headers, ListFilter, RequestPatch, TrafficStore, WsDirection, WsFrame,
 };
-use rever_control_server::ToolServer;
 use rever_tools_api::tool::{
     DialogAnswer, DialogRecord, PageInfo, TabInfo, ToolContext, ToolRegistry,
 };
@@ -215,7 +215,10 @@ fn start_mcp(
         if let Some(dir) = crate::agent::write_revb_shim(&script, &data_dir) {
             eprintln!("[agent] revb shim ready in {}", dir.display());
         } else {
-            eprintln!("[agent] could not write the revb shim into {}", data_dir.display());
+            eprintln!(
+                "[agent] could not write the revb shim into {}",
+                data_dir.display()
+            );
         }
     } else {
         eprintln!("[agent] revb.mjs not found; agents cannot call tools");
@@ -574,6 +577,10 @@ struct TabState {
 fn paints(tab: &TabState) -> bool {
     tab.shown || tab.agent
 }
+
+/// A screenshot waiting for its tab's next frame: the tab, where the PNG goes, and when
+/// it was asked for.
+type WaitingShot = (TabId, oneshot::Sender<Result<Vec<u8>, String>>, Instant);
 
 /// How long a screenshot of a tab that was not painting waits for its first frame.
 const SHOT_WAIT: Duration = Duration::from_secs(2);
@@ -941,7 +948,7 @@ pub(crate) struct Browser {
     /// The once-a-second repaint for the agent's marks is running.
     agent_marks_watched: bool,
     /// Screenshots of tabs that were not painting, waiting for a fresh frame.
-    waiting_shots: Vec<(TabId, oneshot::Sender<Result<Vec<u8>, String>>, Instant)>,
+    waiting_shots: Vec<WaitingShot>,
     /// Height of the open bottom chip panel; the user drags its top edge.
     pub panel_height: f32,
     /// While the panel's top edge is dragged: (pointer y at start, height at start).

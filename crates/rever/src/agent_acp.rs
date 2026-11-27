@@ -24,8 +24,6 @@ use crate::agent::{AgentEvent, ChatAgent, Outbox, PermissionAsk};
 
 /// The version of the protocol this client speaks.
 const PROTOCOL_VERSION: u64 = 1;
-/// Name the agent sees the app's MCP server under, as in the Electron app.
-
 /// Ids of the requests whose answers move the session forward.
 const INITIALIZE: u64 = 1;
 const NEW_SESSION: u64 = 2;
@@ -40,7 +38,6 @@ pub struct AcpSession {
 /// Everything but the process: what [`AcpState::handle`] turns a message into.
 struct AcpState {
     cwd: String,
-    mcp: Option<(String, String)>,
     session_id: Option<String>,
     /// A prompt sent before `session/new` was answered.
     waiting_prompt: Option<String>,
@@ -60,11 +57,10 @@ fn request(id: u64, method: &str, params: Value) -> Value {
 }
 
 impl AcpState {
-    fn new(cwd: &Path, mcp: Option<(&str, &str)>, model: Option<&str>, outbox: Outbox) -> Self {
+    fn new(cwd: &Path, model: Option<&str>, outbox: Outbox) -> Self {
         Self {
             outbox,
             cwd: cwd.to_string_lossy().into_owned(),
-            mcp: mcp.map(|(url, auth)| (url.to_owned(), auth.to_owned())),
             session_id: None,
             waiting_prompt: None,
             prompt_id: None,
@@ -261,7 +257,6 @@ impl AcpSession {
     pub fn spawn(
         command: &str,
         cwd: &Path,
-        mcp: Option<(&str, &str)>,
         model: Option<&str>,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> Result<Self, String> {
@@ -309,7 +304,7 @@ impl AcpSession {
                 wake();
             });
         }
-        let state = AcpState::new(cwd, mcp, model, outbox);
+        let state = AcpState::new(cwd, model, outbox);
         let mut session = Self {
             child,
             stdin,
@@ -388,8 +383,7 @@ mod tests {
     use super::*;
 
     fn state() -> AcpState {
-        let mcp = Some(("http://127.0.0.1:9/mcp", "Bearer t"));
-        AcpState::new(Path::new("/tmp/w"), mcp, None, Outbox::new(Arc::new(|| {})))
+        AcpState::new(Path::new("/tmp/w"), None, Outbox::new(Arc::new(|| {})))
     }
 
     fn methods(messages: &[Value]) -> Vec<&str> {

@@ -566,10 +566,14 @@ mod tests {
         let exe = dir.join("target/release/rever");
         std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
         std::fs::write(&exe, "").unwrap();
-        assert_eq!(revb_script_from(&exe).unwrap().to_string_lossy(), script.to_string_lossy());
+        assert_eq!(
+            revb_script_from(&exe).unwrap().to_string_lossy(),
+            script.to_string_lossy()
+        );
         // 스크립트가 없으면 아무것도 아니다. 같은 뿌리에 스크립트가 있으면
         // 안 되므로 별도 폴더에서 확인한다.
-        let bare_root = std::env::temp_dir().join(format!("rever-script-bare-{}", std::process::id()));
+        let bare_root =
+            std::env::temp_dir().join(format!("rever-script-bare-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&bare_root);
         let bare = bare_root.join("other/deep/nest/rever");
         std::fs::create_dir_all(bare.parent().unwrap()).unwrap();
@@ -588,7 +592,10 @@ mod tests {
         std::fs::write(&script, "// shim target\n").unwrap();
         let mut cmd = Command::new("true");
         let shim_dir = prepend_to_path(&mut cmd, &script, &dir.join("data")).unwrap();
-        let envs: Vec<_> = cmd.get_envs().filter_map(|(k, v)| v.map(|v| (k, v))).collect();
+        let envs: Vec<_> = cmd
+            .get_envs()
+            .filter_map(|(k, v)| v.map(|v| (k, v)))
+            .collect();
         let path = envs
             .iter()
             .find(|(k, _)| *k == "PATH")

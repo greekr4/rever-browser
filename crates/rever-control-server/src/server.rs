@@ -529,6 +529,7 @@ fn write_endpoint_file(file: &Path, url: &str, socket: Option<&Path>, token: &st
 /// `randomBytes(24).toString('hex')`.
 fn random_token() -> Result<String, String> {
     let mut bytes = [0_u8; 24];
-    getrandom::fill(&mut bytes).map_err(|e| format!("no random bytes for the control token: {e}"))?;
+    getrandom::fill(&mut bytes)
+        .map_err(|e| format!("no random bytes for the control token: {e}"))?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }

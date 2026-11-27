@@ -77,9 +77,7 @@ pub fn spawn_agent(
         }
         AcpAgentId::Codex => {
             let command = codex_acp_path().unwrap_or_else(|| CODEX_ACP.to_owned());
-            return Ok(Box::new(AcpSession::spawn(
-                &command, cwd, mcp, model, wake,
-            )?));
+            return Ok(Box::new(AcpSession::spawn(&command, cwd, model, wake)?));
         }
         AcpAgentId::Anthropic => (ApiConfig::ANTHROPIC, || api_key(ApiProvider::Anthropic)),
         AcpAgentId::Openai => (ApiConfig::OPENAI, || api_key(ApiProvider::Openai)),
