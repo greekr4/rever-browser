@@ -23,12 +23,12 @@ use rever_agent::claude_cli::ClaudeCliFinder;
 use rever_agent::model_catalog::ModelCatalog;
 use rever_chat_core::acp_permission::{ACP_PERMISSION_TIMEOUT_MS, ApproveOptions, PermissionStore};
 use rever_chat_core::red_team_mode::RedTeamMode;
+use rever_control_server::ToolServer;
 use rever_core::address::normalize_address;
 use rever_core::paths::user_data_dir;
 use rever_core::traffic::{
     self, ConsoleEntry, Headers, ListFilter, RequestPatch, TrafficStore, WsDirection, WsFrame,
 };
-use rever_mcp::McpServer;
 use rever_tools_api::tool::{
     DialogAnswer, DialogRecord, PageInfo, TabInfo, ToolContext, ToolRegistry,
 };
@@ -51,6 +51,12 @@ use rever_ui_kit::theme::ThemeMode;
 use rever_ui_menus::app_menu::{AppMenu, AppMenuItem, AppMenuProps};
 use rever_ui_menus::ip_badge::IpBadge;
 use rever_ui_menus::ui::{Look, LookFn, fill};
+use rever_ui_setup::browser_import_modal::BrowserImportModal;
+use rever_ui_setup::host::SetupHost;
+use rever_ui_setup::onboarding_modal::OnboardingModal;
+use rever_ui_setup::profile_menu::ProfileMenu;
+use rever_ui_setup::profiles::ProfilesStore;
+use rever_ui_setup::proxy_button::ProxyButton;
 use rever_ui_state::app_theme::{self, AppThemeStore};
 use rever_ui_state::chat_collapsed::ChatCollapsedStore;
 use rever_ui_state::chat_history::{ChatHistory, new_conversation_id};
@@ -126,6 +132,7 @@ fn tool_registry() -> ToolRegistry {
     rever_tools_debug::register(&mut registry);
     rever_tools_redteam::register(&mut registry);
     rever_tools_automation::register(&mut registry);
+    rever_tools_automation::register_extras(&mut registry);
     rever_tools_http::register(&mut registry);
     rever_tools_probe::register(&mut registry);
     registry
@@ -137,7 +144,7 @@ fn start_mcp(
     browser: Arc<bridge::AppBrowser>,
     debug_endpoint: crate::debug::Endpoint,
 ) -> (
-    Option<McpServer>,
+    Option<ToolServer>,
     Arc<InterceptState>,
     Arc<DownloadState>,
     Arc<rever_tools_api::tool::ToolContext>,
@@ -197,9 +204,25 @@ fn start_mcp(
     context
         .state::<rever_tools_automation::bridge::ToolRegistryHandle>()
         .set(registry.clone());
-    let server = rever_mcp::start(registry, context)
-        .inspect_err(|error| eprintln!("[mcp] {error}"))
+    let data_dir = context.data_dir.clone();
+    let server = rever_control_server::start(registry, context)
+        .inspect_err(|error| eprintln!("[control] {error}"))
         .ok();
+    // The agent reaches its tools as `revb` in a shell. Write the shim at
+    // startup, not on the first spawn, so a missing script shows up here and
+    // the first chat turn pays no setup cost.
+    if let Some(script) = crate::agent::revb_script() {
+        if let Some(dir) = crate::agent::write_revb_shim(&script, &data_dir) {
+            eprintln!("[agent] revb shim ready in {}", dir.display());
+        } else {
+            eprintln!(
+                "[agent] could not write the revb shim into {}",
+                data_dir.display()
+            );
+        }
+    } else {
+        eprintln!("[agent] revb.mjs not found; agents cannot call tools");
+    }
     // A workflow's AI step runs one of the chat's agents, with the app's tools.
     let endpoint = server
         .as_ref()
@@ -503,11 +526,97 @@ fn record_ws(store: &Mutex<TrafficStore>, event: NetworkTapEvent) {
 /// Saver does: its page is closed and opens again from its address when the tab is used.
 const TAB_SLEEP_AFTER: Duration = Duration::from_secs(10 * 60);
 
+/// In the sidebar the proxy and profile buttons sit at the window's left edge: their
+/// popups open to the right there, and to the left under the toolbar.
+fn place_popups(
+    layout: Layout,
+    proxy: &Entity<ProxyButton>,
+    profiles: Option<&Entity<ProfileMenu>>,
+    cx: &mut App,
+) {
+    let right = layout == Layout::Sidebar;
+    proxy.update(cx, |button, cx| button.set_opens_right(right, cx));
+    if let Some(menu) = profiles {
+        menu.update(cx, |menu, cx| menu.set_opens_right(right, cx));
+    }
+}
+
 /// Whether a tab left alone for `idle` goes to sleep.
 /// Whether a tab left alone for `idle` goes to sleep. The shown tab never does, and
 /// none does while the agent or a scan works: they drive tabs behind the shown one.
 fn sleeps(shown: bool, asleep: bool, idle: Duration, working: bool, after: Duration) -> bool {
     !shown && !asleep && !working && idle >= after
+}
+
+/// How long after a tool drove a tab it still counts as the agent's.
+const AGENT_RECENT: Duration = Duration::from_secs(5);
+
+/// Whether an agent is at work in a tab: a scan worker owns it, the chat turn that
+/// began at `turn` has driven it, or some tool drove it a moment ago.
+fn agent_on_tab(acted: Option<Instant>, turn: Option<Instant>, worker: bool, now: Instant) -> bool {
+    worker
+        || acted.is_some_and(|at| {
+            turn.is_some_and(|turn| at >= turn) || now.saturating_duration_since(at) < AGENT_RECENT
+        })
+}
+
+/// What the paint and sleep decisions look at in one tab.
+#[derive(Clone, Copy, Debug)]
+struct TabState {
+    /// The tab on screen (the shown tab of the shown space).
+    shown: bool,
+    asleep: bool,
+    /// An agent is at work in it ([`agent_on_tab`]).
+    agent: bool,
+    /// Since it was last shown or driven.
+    idle: Duration,
+}
+
+/// Painted: the tab on screen, and a tab an agent is driving (a scan worker reads and
+/// clicks behind the shown tab, and throttled timers would slow it down).
+fn paints(tab: &TabState) -> bool {
+    tab.shown || tab.agent
+}
+
+/// A screenshot waiting for its tab's next frame: the tab, where the PNG goes, and when
+/// it was asked for.
+type WaitingShot = (TabId, oneshot::Sender<Result<Vec<u8>, String>>, Instant);
+
+/// How long a screenshot of a tab that was not painting waits for its first frame.
+const SHOT_WAIT: Duration = Duration::from_secs(2);
+
+/// A screenshot of a tab that just started painting is answered with the frame it
+/// paints next: its last one predates the agent, or is blank when it never painted.
+fn shot_ready(new_frame: bool, waited: Duration) -> bool {
+    new_frame || waited >= SHOT_WAIT
+}
+
+/// The app's memory past which tabs left alone are put to sleep at once, oldest first,
+/// instead of after [`TAB_SLEEP_AFTER`].
+/// shortcut: one figure for every machine; read the system's memory pressure instead
+/// when a small Mac still swaps under it.
+const DEFAULT_MEMORY_BUDGET: u64 = 1_536 * 1024 * 1024;
+
+/// `REVER_MEMORY_BUDGET_MB` overrides the budget.
+fn memory_budget(asked: Option<&str>) -> u64 {
+    asked
+        .and_then(|megabytes| megabytes.parse::<u64>().ok())
+        .filter(|megabytes| *megabytes > 0)
+        .map_or(DEFAULT_MEMORY_BUDGET, |megabytes| megabytes * 1024 * 1024)
+}
+
+/// Over the budget: the tab to put to sleep now, the one left alone longest that
+/// nobody is looking at or driving. One a pass, so the memory it frees shows before
+/// the next is chosen.
+fn over_budget_victim(tabs: &[TabState], footprint: u64, budget: u64) -> Option<usize> {
+    if footprint <= budget {
+        return None;
+    }
+    tabs.iter()
+        .enumerate()
+        .filter(|(_, tab)| !tab.shown && !tab.asleep && !tab.agent)
+        .max_by_key(|(_, tab)| tab.idle)
+        .map(|(index, _)| index)
 }
 
 /// `REVER_TAB_SLEEP_SECS` overrides the wait, to watch tabs fall asleep in a test.
@@ -547,6 +656,8 @@ pub(crate) struct Tab {
     pub used: Instant,
     /// Asleep: the tab has no page in the engine until it is used again.
     pub asleep: bool,
+    /// When a tool last drove this tab.
+    pub agent_acted: Option<Instant>,
 }
 
 impl Tab {
@@ -561,6 +672,7 @@ impl Tab {
             favicon: None,
             used: Instant::now(),
             asleep: false,
+            agent_acted: None,
         }
     }
 }
@@ -810,9 +922,9 @@ pub(crate) struct Browser {
     tool_tx: UnboundedSender<bridge::Command>,
     /// The scan asked for its tabs to be closed; the wake loop does it.
     close_scan_tabs: bool,
-    /// Serves the tools to the agent CLI and to outside clients (mcp-endpoint.json);
+    /// Serves the tools to the agent CLI and to outside clients (control-endpoint.json);
     /// `None` when it could not start. Dropping it stops the server.
-    mcp: Option<McpServer>,
+    mcp: Option<ToolServer>,
     /// The tools' shared context — the scan clears this site's findings through it.
     tool_context: Arc<ToolContext>,
     pub page_focus: FocusHandle,
@@ -833,6 +945,10 @@ pub(crate) struct Browser {
     upload_paths: Vec<PathBuf>,
     /// When a tool last drove the page: a dialog opened right after is the agent's.
     tool_acted: Option<Instant>,
+    /// The once-a-second repaint for the agent's marks is running.
+    agent_marks_watched: bool,
+    /// Screenshots of tabs that were not painting, waiting for a fresh frame.
+    waiting_shots: Vec<WaitingShot>,
     /// Height of the open bottom chip panel; the user drags its top edge.
     pub panel_height: f32,
     /// While the panel's top edge is dragged: (pointer y at start, height at start).
@@ -920,6 +1036,16 @@ pub(crate) struct Browser {
     /// The agent's tool calls that wait for the user's yes or no.
     pub permissions: Rc<RefCell<PermissionStore<ChatRules>>>,
     pub permission_prompt: Entity<PermissionPrompt>,
+    /// The first-run guide: which agent the chat talks to.
+    pub onboarding: Entity<OnboardingModal>,
+    /// The offer to bring Chrome's logins over, once after the guide and from the menu.
+    pub browser_import: Entity<BrowserImportModal>,
+    /// The profiles, each a window of its own. Only the app's first window lists them.
+    pub profile_menu: Option<Entity<ProfileMenu>>,
+    /// Opens a window that goes through a proxy; in such a window, changes its proxy.
+    pub proxy_button: Entity<ProxyButton>,
+    /// What a profile or proxy window is called; `None` in the app's first window.
+    pub window_label: Option<SharedString>,
     /// Keeps the conversation at its newest line while a reply streams.
     pub chat_scroll: gpui::ScrollHandle,
     /// The model chip of the composer: every agent's models in one list.
@@ -1024,7 +1150,9 @@ impl Browser {
         // oversleeps it by much.
         cx.spawn_in(window, async move |this, cx| {
             loop {
-                let pause = (tab_sleep_after() / 2).min(Duration::from_secs(30));
+                // Often enough that a burst of tabs past the memory budget is undone
+                // within a minute or so.
+                let pause = (tab_sleep_after() / 2).min(Duration::from_secs(10));
                 cx.background_executor().timer(pause).await;
                 let looked =
                     this.update_in(cx, |this, window, cx| this.sleep_idle_tabs(window, cx));
@@ -1184,6 +1312,73 @@ impl Browser {
             let this = this.clone();
             AppMenu::new(move |cx| menu_props(&this, cx), look.clone())
         });
+        let setup: Rc<dyn SetupHost> = Rc::new(crate::setup_host::SetupBridge::new(
+            stores.storage.clone(),
+            self_check.is_some(),
+            tool_browser.clone(),
+            this.clone(),
+        ));
+        let onboarding = cx.new(|cx| OnboardingModal::new(setup.clone(), look.clone(), cx));
+        let own_window = crate::profile_windows::this_window();
+        let window_proxy = own_window.as_ref().and_then(|own| own.proxy.clone());
+        let window_label = own_window.map(|own| SharedString::from(own.label));
+        // A profile window is one profile: the list of them stays in the first window.
+        let profile_menu = (window_label.is_none() && self_check.is_none()).then(|| {
+            let store = cx.new(|_| ProfilesStore::new(setup.clone()));
+            cx.new(|cx| ProfileMenu::new(store, setup.clone(), look.clone(), cx))
+        });
+        let proxy_button = {
+            let this = this.clone();
+            let tab = move |cx: &App| {
+                this.read_with(cx, |this, _| {
+                    let tab = &this.tabs[this.active];
+                    rever_ui_state::tabs::Tab {
+                        id: tab.id.0.to_string(),
+                        url: tab.url.clone(),
+                        title: tab.title.to_string(),
+                        web_contents_id: None,
+                        initial_url: String::new(),
+                        // The window's proxy is every tab's; "isolated" is what lets
+                        // the button change it in place.
+                        partition: window_proxy.as_ref().map(|_| "window".to_owned()),
+                        proxy: window_proxy.clone(),
+                        profile_id: None,
+                    }
+                })
+                .ok()
+            };
+            let button =
+                cx.new(|cx| ProxyButton::new(setup.clone(), tab, |_| {}, look.clone(), cx));
+            button.update(cx, |button, _| button.set_http_only(true));
+            button
+        };
+        place_popups(layout, &proxy_button, profile_menu.as_ref(), cx);
+        if window_label.is_none() && self_check.is_none() {
+            // What a crashed incognito or proxy window left on the disk.
+            crate::profile_windows::sweep_ephemeral(&data_dir().join("profiles"));
+        } else {
+            // Logins brought from another browser for this profile, left by the
+            // window that made it.
+            let cookies = crate::profile_windows::take_cookies(&data_dir());
+            let page = tool_browser.clone();
+            cx.background_spawn(async move {
+                crate::storage_host::store_cookies(page.as_ref(), &cookies).await;
+            })
+            .detach();
+        }
+        let browser_import = {
+            // A self-check run offers nothing: its storage starts empty every time.
+            let storage: Rc<dyn rever_ui_state::Storage> = if self_check.is_some()
+                || crate::profile_windows::this_window().is_some()
+            {
+                let offered = rever_ui_state::storage::MemoryStorage::new();
+                let _ = rever_ui_state::Storage::set(&offered, "rev:browser-import-offered", "1");
+                Rc::new(offered)
+            } else {
+                stores.storage.clone()
+            };
+            cx.new(|_| BrowserImportModal::new(setup, storage, look.clone()))
+        };
         let ip_badge = {
             let host = Rc::new(IpHost::new(stores.storage.clone()));
             cx.new(|cx| IpBadge::new(host, look.clone(), cx))
@@ -1333,6 +1528,11 @@ impl Browser {
             page_memory_asked: None,
             permissions,
             permission_prompt,
+            onboarding,
+            browser_import,
+            profile_menu,
+            proxy_button,
+            window_label,
             chat,
             open_panel,
             page_bounds: Rc::new(Cell::new(Bounds::default())),
@@ -1364,6 +1564,8 @@ impl Browser {
             dialog_auto_dismiss: true,
             upload_paths: Vec::new(),
             tool_acted: None,
+            agent_marks_watched: false,
+            waiting_shots: Vec::new(),
             panel_height: 320.0,
             panel_drag: None,
             redteam_open: false,
@@ -1440,6 +1642,63 @@ impl Browser {
         self.tabs[index].id
     }
 
+    /// Whether an agent is at work in `tab`: the badge on its tab and its space.
+    pub(crate) fn agent_on(&self, tab: &Tab) -> bool {
+        let turn = self.turn_started.filter(|_| self.agent_busy);
+        let worker = self
+            .scan
+            .as_ref()
+            .is_some_and(|scan| scan.worker_on(&tab.url));
+        agent_on_tab(tab.agent_acted, turn, worker, Instant::now())
+    }
+
+    /// Stop the agent at work in a space's tabs: its scan workers, or the chat turn.
+    /// A client outside the app (the CLI) cannot be stopped from here; its mark goes.
+    pub fn stop_agent_in(&mut self, space: SpaceId, cx: &mut Context<Self>) {
+        let mut chat = false;
+        for index in 0..self.tabs.len() {
+            if self.tabs[index].space != space || !self.agent_on(&self.tabs[index]) {
+                continue;
+            }
+            let url = self.tabs[index].url.clone();
+            let worker = self
+                .scan
+                .as_mut()
+                .is_some_and(|scan| scan.stop_worker(&url));
+            chat |= !worker;
+            self.tabs[index].agent_acted = None;
+        }
+        if chat {
+            self.stop_chat(cx);
+        }
+        cx.notify();
+    }
+
+    /// Repaint once a second while a tab carries the agent's mark, so the mark
+    /// goes when the agent has left.
+    fn watch_agent_marks(&mut self, cx: &mut Context<Self>) {
+        if self.agent_marks_watched {
+            return;
+        }
+        self.agent_marks_watched = true;
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+                let marked = this.update(cx, |this, cx| {
+                    cx.notify();
+                    this.agent_marks_watched = this.tabs.iter().any(|tab| this.agent_on(tab));
+                    this.agent_marks_watched
+                });
+                if !matches!(marked, Ok(true)) {
+                    // The agent left: the tabs it drove behind the shown one stop painting.
+                    let _ = this.update(cx, |this, _| this.update_painting());
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
     /// Open a sleeping tab's page again, and count the tab as used now.
     fn wake_tab(&mut self, index: usize) {
         let size = self
@@ -1481,6 +1740,56 @@ impl Browser {
                 let _ = window.drop_image(frame);
             }
             cx.notify();
+        }
+        let budget = memory_budget(std::env::var("REVER_MEMORY_BUDGET_MB").ok().as_deref());
+        let footprint = crate::memory::footprint().unwrap_or(0);
+        if let Some(index) = over_budget_victim(&self.tab_states(), footprint, budget) {
+            let tab = &mut self.tabs[index];
+            self.engine.close(tab.id);
+            tab.asleep = true;
+            if let Some(frame) = tab.frame.take() {
+                let _ = window.drop_image(frame);
+            }
+            cx.notify();
+        }
+    }
+
+    /// The tab's last frame as PNG bytes.
+    fn png_of(&self, tab: TabId) -> Result<Vec<u8>, String> {
+        let image = self
+            .engine
+            .frame(tab)
+            .ok_or_else(|| "the page has not been painted yet".to_owned())?;
+        let mut bytes = Vec::new();
+        image
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(bytes)
+    }
+
+    /// What the paint and sleep decisions need of every tab.
+    fn tab_states(&self) -> Vec<TabState> {
+        let shown = self.active_id();
+        self.tabs
+            .iter()
+            .map(|tab| TabState {
+                shown: tab.id == shown,
+                asleep: tab.asleep,
+                agent: self.agent_on(tab),
+                idle: tab.used.elapsed(),
+            })
+            .collect()
+    }
+
+    /// Paint only the tabs someone is looking at or driving.
+    fn update_painting(&self) {
+        for (tab, state) in self.tabs.iter().zip(self.tab_states()) {
+            if !state.asleep {
+                self.engine.set_painting(tab.id, paints(&state));
+            }
         }
     }
 
@@ -1595,6 +1904,15 @@ impl Browser {
         if frame_ready {
             self.capture(window);
         }
+        // Screenshots that waited for a tab to paint again.
+        for (tab, answer, asked) in std::mem::take(&mut self.waiting_shots) {
+            let new_frame = behind.contains(&tab) || (tab == active && frame_ready);
+            if shot_ready(new_frame, asked.elapsed()) {
+                let _ = answer.send(self.png_of(tab));
+            } else {
+                self.waiting_shots.push((tab, answer, asked));
+            }
+        }
         let painted = frame_ready || !behind.is_empty();
         for tab in behind {
             self.engine.settle(tab);
@@ -1682,6 +2000,7 @@ impl Browser {
             }
         }
         self.run_tool_commands(window, cx);
+        self.update_painting();
         cx.notify();
     }
 
@@ -2047,6 +2366,53 @@ impl Browser {
         cx.notify();
     }
 
+    /// The first-run pick: the agent the chat talks to from now on.
+    pub(crate) fn choose_agent(&mut self, agent: AcpAgentId, cx: &mut Context<Self>) {
+        if self.chat_agent != agent {
+            self.chat_agent = agent;
+            // The other agent's model means nothing to this one.
+            self.chat_model = None;
+            for key in [MODEL_STORAGE_KEY, MODEL_NAME_STORAGE_KEY] {
+                let _ = self.stores.storage.remove(key);
+            }
+            self.forget_agent();
+        }
+        if let Err(error) = self.stores.storage.set(AGENT_STORAGE_KEY, agent.as_str()) {
+            eprintln!("rever: {AGENT_STORAGE_KEY} was not saved: {error}");
+        }
+        cx.notify();
+    }
+
+    /// A new tab from a menu, which has no window at hand: opened through the tools'
+    /// command, then shown.
+    pub(crate) fn open_tab_from_menu(&mut self, url: &str, cx: &mut Context<Self>) {
+        let (answer, opened) = oneshot::channel();
+        let _ = self
+            .tool_tx
+            .unbounded_send(bridge::Command::OpenTab(url.to_owned(), answer));
+        let _ = self.wake.unbounded_send(());
+        let (commands, wake) = (self.tool_tx.clone(), self.wake.clone());
+        cx.spawn(async move |_, _| {
+            if let Ok(Ok(index)) = opened.await {
+                let (answer, _) = oneshot::channel();
+                let _ = commands.unbounded_send(bridge::Command::SelectTab(index, answer));
+                let _ = wake.unbounded_send(());
+            }
+        })
+        .detach();
+    }
+
+    /// The first-run guide closed: the import offer, which waited for it, looks again.
+    pub(crate) fn setup_changed(&mut self, cx: &mut Context<Self>) {
+        self.browser_import.update(cx, |_, cx| cx.notify());
+        cx.notify();
+    }
+
+    /// The menu's "Import from your browser".
+    pub fn open_browser_import(&mut self, cx: &mut Context<Self>) {
+        self.browser_import.update(cx, |modal, cx| modal.open(cx));
+    }
+
     /// Cmd+Shift+T: open the most recently closed tab again.
     pub fn reopen_closed_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(url) = self.closed_tabs.pop().and_then(|url| Url::parse(&url).ok()) {
@@ -2107,6 +2473,12 @@ impl Browser {
         if let Err(error) = self.stores.storage.set(LAYOUT_KEY, self.layout.name()) {
             eprintln!("rever: the layout choice was not saved: {error}");
         }
+        place_popups(
+            self.layout,
+            &self.proxy_button,
+            self.profile_menu.as_ref(),
+            cx,
+        );
         cx.notify();
     }
 
@@ -2898,7 +3270,32 @@ impl Browser {
         use bridge::Command;
         let scale = f64::from(window.scale_factor());
         while let Ok(command) = self.tool_commands.try_recv() {
-            self.tool_acted = Some(Instant::now());
+            // The app's own panels send commands too; only an agent's leave a mark.
+            let command = match command {
+                Command::ByAgent(command) => {
+                    self.tool_acted = Some(Instant::now());
+                    let driven = match &*command {
+                        Command::Navigate(target, ..)
+                        | Command::Evaluate(target, ..)
+                        | Command::EvaluateIn(target, ..)
+                        | Command::Screenshot(target, ..) => Some(*target),
+                        Command::Back(_)
+                        | Command::Forward(_)
+                        | Command::Reload(_)
+                        | Command::Input(..) => Some(None),
+                        _ => None,
+                    };
+                    if let Some(target) = driven {
+                        let index = target
+                            .filter(|index| *index < self.tabs.len())
+                            .unwrap_or(self.active);
+                        self.tabs[index].agent_acted = Some(Instant::now());
+                        self.watch_agent_marks(cx);
+                    }
+                    *command
+                }
+                command => command,
+            };
             let tab = self.active_id();
             match command {
                 Command::Page(target, answer) => {
@@ -2936,21 +3333,18 @@ impl Browser {
                 }
                 Command::Screenshot(target, answer) => {
                     let tab = self.resolve_tab(target);
-                    let png = self
-                        .engine
-                        .frame(tab)
-                        .ok_or_else(|| "the page has not been painted yet".to_owned())
-                        .and_then(|image| {
-                            let mut bytes = Vec::new();
-                            image
-                                .write_to(
-                                    &mut std::io::Cursor::new(&mut bytes),
-                                    image::ImageFormat::Png,
-                                )
-                                .map(|_| bytes)
-                                .map_err(|error| error.to_string())
-                        });
-                    let _ = answer.send(png);
+                    if self.engine.painting(tab) {
+                        let _ = answer.send(self.png_of(tab));
+                    } else {
+                        self.engine.set_painting(tab, true);
+                        self.waiting_shots.push((tab, answer, Instant::now()));
+                        // A page that paints nothing new still gets its answer.
+                        cx.spawn(async move |this, cx| {
+                            cx.background_executor().timer(SHOT_WAIT).await;
+                            let _ = this.update(cx, |_, cx| cx.notify());
+                        })
+                        .detach();
+                    }
                 }
                 Command::Input(input, answer) => {
                     for event in bridge::input_events(&input, scale) {
@@ -3088,6 +3482,20 @@ impl Browser {
                     cx.write_to_clipboard(ClipboardItem::new_string(text));
                     let _ = answer.send(Ok(()));
                 }
+                Command::EvaluateIn(target, frame, script, answer) => {
+                    let tab = self.resolve_tab(target);
+                    self.engine.evaluate_in(tab, frame, script, move |result| {
+                        let _ = answer.send(result);
+                    })
+                }
+                Command::FrameOf(target, parent, element, answer) => {
+                    let tab = self.resolve_tab(target);
+                    self.engine.frame_of(tab, parent, element, move |result| {
+                        let _ = answer.send(result);
+                    })
+                }
+                // Unwrapped above; a mark is never nested.
+                Command::ByAgent(_) => {}
             }
         }
     }
@@ -3241,7 +3649,7 @@ impl Browser {
 /// (page theme, notifications, viewport, view source) are listed disabled.
 /// The agents whose own CLIs report a model list, by the catalog's ids.
 const LIVE_MODEL_AGENTS: [&str; 2] = ["claude-code", "codex"];
-const AGENT_STORAGE_KEY: &str = "rever.chat.agent";
+pub(crate) const AGENT_STORAGE_KEY: &str = "rever.chat.agent";
 const MODEL_STORAGE_KEY: &str = "rever.chat.model";
 const MODEL_NAME_STORAGE_KEY: &str = "rever.chat.modelName";
 
@@ -3271,16 +3679,29 @@ fn history_props(browser: &WeakEntity<Browser>, cx: &App) -> ChatHistoryMenuProp
         .unwrap_or_default()
 }
 
+/// The chosen entry of an agent's model list, and what the chip reads for it.
+fn model_names(
+    this: &Browser,
+    agent: AcpAgentId,
+    chosen: Option<&(String, String)>,
+) -> (Option<String>, Option<String>) {
+    let chosen = chosen.map(|(_, name)| name.clone());
+    let models = this.model_store.borrow().agent_models(agent);
+    let chip = rever_ui_chat::model_picker::chip_model_name(chosen.as_deref(), &models);
+    (chosen, chip)
+}
+
 fn picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
-    let (agent_id, model_name, busy) = browser
+    let (agent_id, (model_name, chip_name), busy) = browser
         .read_with(cx, |this, _| {
-            let name = this.chat_model.as_ref().map(|(_, name)| name.clone());
-            (this.chat_agent, name, this.agent_busy)
+            let names = model_names(this, this.chat_agent, this.chat_model.as_ref());
+            (this.chat_agent, names, this.agent_busy)
         })
-        .unwrap_or((AcpAgentId::ClaudeCode, None, false));
+        .unwrap_or((AcpAgentId::ClaudeCode, (None, None), false));
     ModelPickerProps {
         agent_id,
         model_name,
+        chip_name,
         // One turn at a time: the model changes between turns.
         disabled: busy,
         new_tab: false,
@@ -3290,17 +3711,16 @@ fn picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
 
 /// The scan dialog's model chip: the scan's own choice over the CLI's models.
 fn scan_picker_props(browser: &WeakEntity<Browser>, cx: &App) -> ModelPickerProps {
-    let (model_name, running) = browser
+    let ((model_name, chip_name), running) = browser
         .read_with(cx, |this, _| {
-            (
-                this.redteam_model.as_ref().map(|(_, name)| name.clone()),
-                this.redteam_running,
-            )
+            let names = model_names(this, AcpAgentId::ClaudeCode, this.redteam_model.as_ref());
+            (names, this.redteam_running)
         })
-        .unwrap_or((None, false));
+        .unwrap_or(((None, None), false));
     ModelPickerProps {
         agent_id: AcpAgentId::ClaudeCode,
         model_name,
+        chip_name,
         // A running scan already spawned its sessions on a model.
         disabled: running,
         new_tab: false,
@@ -3349,6 +3769,7 @@ fn menu_props(browser: &WeakEntity<Browser>, cx: &App) -> AppMenuProps {
             not_yet("menu.viewSource")
                 .title(t("toolbar.viewSource"))
                 .sep(),
+            AppMenuItem::new(t("import.title"), act(Browser::open_browser_import)),
         ],
     }
 }
@@ -3419,6 +3840,106 @@ mod tests {
     #[test]
     fn 에이전트나_스캔이_일하는_동안에는_아무_탭도_잠들지_않는다() {
         assert!(!sleeps(false, false, LONG, true, TAB_SLEEP_AFTER));
+    }
+
+    #[test]
+    fn 방금_도구가_건드린_탭은_에이전트_작업_중이다() {
+        let now = Instant::now();
+        assert!(agent_on_tab(Some(now), None, false, now));
+    }
+
+    #[test]
+    fn 건드린_지_오래됐거나_건드린_적_없는_탭은_작업_중이_아니다() {
+        let now = Instant::now();
+        assert!(!agent_on_tab(None, None, false, now));
+        assert!(!agent_on_tab(Some(now), None, false, now + AGENT_RECENT));
+    }
+
+    #[test]
+    fn 대화_턴이_도는_동안은_이번_턴에_건드린_탭이_계속_작업_중이다() {
+        let turn = Instant::now();
+        let touched = turn + Duration::from_secs(1);
+        let later = touched + Duration::from_secs(600);
+        assert!(agent_on_tab(Some(touched), Some(turn), false, later));
+        // 지난 턴에 건드린 탭은 이번 턴의 것이 아니다.
+        assert!(!agent_on_tab(Some(turn), Some(touched), false, later));
+    }
+
+    #[test]
+    fn 스캔_워커가_맡은_탭은_건드리지_않아도_작업_중이다() {
+        assert!(agent_on_tab(None, None, true, Instant::now()));
+    }
+
+    fn idle(seconds: u64) -> TabState {
+        TabState {
+            shown: false,
+            asleep: false,
+            agent: false,
+            idle: Duration::from_secs(seconds),
+        }
+    }
+
+    const MB: u64 = 1024 * 1024;
+
+    #[test]
+    fn 예산_안이면_아무_탭도_재우지_않는다() {
+        let tabs = [idle(600), idle(30)];
+        assert_eq!(over_budget_victim(&tabs, 1_000 * MB, 1_536 * MB), None);
+    }
+
+    #[test]
+    fn 예산을_넘으면_가장_오래_안_쓴_뒤쪽_탭을_재운다() {
+        let tabs = [idle(30), idle(600), idle(120)];
+        assert_eq!(over_budget_victim(&tabs, 2_000 * MB, 1_536 * MB), Some(1));
+    }
+
+    #[test]
+    fn 보이는_탭과_에이전트가_쓰는_탭과_잠든_탭은_예산을_넘어도_재우지_않는다() {
+        let tabs = [
+            TabState {
+                shown: true,
+                ..idle(900)
+            },
+            TabState {
+                agent: true,
+                ..idle(800)
+            },
+            TabState {
+                asleep: true,
+                ..idle(700)
+            },
+            idle(10),
+        ];
+        assert_eq!(over_budget_victim(&tabs, 3_000 * MB, 1_536 * MB), Some(3));
+        assert_eq!(over_budget_victim(&tabs[..3], 3_000 * MB, 1_536 * MB), None);
+    }
+
+    #[test]
+    fn 보이는_탭과_에이전트가_쓰는_탭만_그린다() {
+        assert!(paints(&TabState {
+            shown: true,
+            ..idle(0)
+        }));
+        assert!(paints(&TabState {
+            agent: true,
+            ..idle(0)
+        }));
+        assert!(!paints(&idle(0)));
+    }
+
+    #[test]
+    fn 예산은_환경_변수로_바꿀_수_있고_잘못된_값은_기본값이다() {
+        assert_eq!(memory_budget(None), DEFAULT_MEMORY_BUDGET);
+        assert_eq!(memory_budget(Some("2048")), 2_048 * MB);
+        assert_eq!(memory_budget(Some("lots")), DEFAULT_MEMORY_BUDGET);
+        assert_eq!(memory_budget(Some("0")), DEFAULT_MEMORY_BUDGET);
+    }
+
+    #[test]
+    fn 그리지_않던_탭의_스크린샷은_새_프레임이_나오거나_시간이_다_되면_답한다() {
+        assert!(!shot_ready(false, Duration::from_millis(100)));
+        assert!(shot_ready(true, Duration::from_millis(100)));
+        assert!(shot_ready(false, SHOT_WAIT));
     }
 
     #[test]

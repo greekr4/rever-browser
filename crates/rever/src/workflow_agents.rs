@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rever_chat_core::acp_permission::{RequestPermissionOutcome, RequestPermissionResponse};
-use rever_mcp::ToolProfileState;
+use rever_control_server::ToolProfileState;
 use rever_tools_api::tool::BoxFuture;
 use rever_tools_automation::workflow_executor::{AgentDef, AiAgents};
 use serde_json::{Value, json};

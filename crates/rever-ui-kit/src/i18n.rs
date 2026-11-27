@@ -29,8 +29,11 @@ const PORT_STRINGS: &[(&str, &str, &str)] = &[
         "This panel is not available in the Rust app yet.",
         "이 패널은 아직 Rust 앱으로 옮겨지지 않았습니다.",
     ),
+    ("spaces.agent", "Agent working", "에이전트 작업 중"),
     ("spaces.count", "{n} Spaces", "스페이스 {n}개"),
+    ("spaces.stop", "Stop", "중지"),
     ("spaces.tabs", "{n} tabs", "탭 {n}개"),
+    ("spaces.takeOver", "Take over", "넘겨받기"),
 ];
 
 impl Lang {

@@ -1,20 +1,25 @@
-//! The MCP server: serves registered tools over streamable HTTP and publishes its endpoint
+//! The tool catalog and control plane.
+//!
+//! Argument validation, result paging and the per-session tool profile — the
+//! parts of serving a tool call that do not depend on how the call arrives.
+//! A transport (the MCP adapter today, the CLI socket next) owns the wire.
 
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
 
-pub mod server;
+pub mod paging;
+#[cfg(unix)]
+pub mod socket;
+pub mod tool_profile;
 pub mod tool_profile_state;
-pub mod tools;
-mod validation;
+pub mod validation;
 
-pub use server::{McpServer, PageEvents, ServerOptions, start, start_with};
 pub use tool_profile_state::ToolProfileState;
 
 /// Node's `writeFileSync(file, text, { mode: 0o600 })` followed by `chmodSync`:
 /// both files this crate writes carry a secret or a setting only the user may read.
-pub(crate) fn write_private_file(file: &Path, text: &str) -> std::io::Result<()> {
+pub fn write_private_file(file: &Path, text: &str) -> std::io::Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]

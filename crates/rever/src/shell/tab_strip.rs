@@ -128,6 +128,9 @@ impl Browser {
                         .items_center()
                         .child(self.nav_buttons(theme, cx))
                         .child(div().flex_1())
+                        .children(self.window_badge(theme))
+                        .child(self.proxy_button.clone())
+                        .children(self.profile_menu.clone())
                         .child(self.menu.clone()),
                 )
                 .child(
@@ -162,7 +165,7 @@ impl Browser {
                     .items_center()
                     .border_t_1()
                     .border_color(theme.border)
-                    .child(self.toolbar_tail(theme)),
+                    .child(self.ip_badge.clone()),
             );
         }
         bar
@@ -237,6 +240,16 @@ impl Browser {
                 None => icon("globe", 16.0, dim).into_any_element(),
             })
             .child(div().flex_1().min_w_0().truncate().child(label))
+            // The agent's mark: a tool is driving this tab.
+            .when(self.agent_on(tab), |tab| {
+                tab.child(
+                    div()
+                        .size(px(6.0))
+                        .flex_none()
+                        .rounded_full()
+                        .bg(theme.accent),
+                )
+            })
             .when(closable, |tab| {
                 tab.child(
                     div()

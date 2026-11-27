@@ -13,6 +13,7 @@ use servo::{
     MouseButtonAction, MouseButtonEvent, MouseMoveEvent, WebViewPoint, WheelDelta, WheelEvent,
     WheelMode,
 };
+use servo_base::id::BrowsingContextId;
 
 type Answer<T> = oneshot::Sender<Result<T, String>>;
 
@@ -51,6 +52,22 @@ pub enum Command {
     /// A cookie to store for a URL; an expired one deletes.
     SetCookie(String, Cookie, Answer<()>),
     ArmFiles(Vec<String>, Answer<()>),
+    /// Evaluate in a frame's document (`None`: the tab's own), whatever its origin.
+    EvaluateIn(
+        Option<usize>,
+        Option<BrowsingContextId>,
+        String,
+        Answer<JSValue>,
+    ),
+    /// The frame an `<iframe>` element holds: the element as `EvaluateIn` answered it.
+    FrameOf(
+        Option<usize>,
+        Option<BrowsingContextId>,
+        String,
+        Answer<BrowsingContextId>,
+    ),
+    /// A command an MCP client's tool call sent: the agent's, not the app's own.
+    ByAgent(Box<Command>),
 }
 
 pub struct AppBrowser {
@@ -80,7 +97,13 @@ impl AppBrowser {
         make: impl FnOnce(Answer<T>) -> Command,
     ) -> BoxFuture<'static, Result<T, String>> {
         let (answer, answered) = oneshot::channel();
-        let sent = self.commands.unbounded_send(make(answer)).is_ok();
+        let command = make(answer);
+        let command = if rever_control_server::in_tool_call() {
+            Command::ByAgent(Box::new(command))
+        } else {
+            command
+        };
+        let sent = self.commands.unbounded_send(command).is_ok();
         let _ = self.wake.unbounded_send(());
         Box::pin(async move {
             if !sent {
@@ -122,6 +145,36 @@ impl Browser for AppBrowser {
 
     fn reload(&self) -> BoxFuture<'_, Result<(), String>> {
         self.ask(Command::Reload)
+    }
+
+    fn evaluate_in_frame<'a>(
+        &'a self,
+        frames: &'a [String],
+        expression: &'a str,
+    ) -> BoxFuture<'a, Result<Value, String>> {
+        let target = self.target;
+        Box::pin(async move {
+            let mut frame = None;
+            for element in frames {
+                let found = self
+                    .ask(|answer| Command::EvaluateIn(target, frame, element.clone(), answer))
+                    .await?;
+                let JSValue::Element(element) = found else {
+                    return Err(
+                        "the frame is no longer on the page — call browser_snapshot again"
+                            .to_owned(),
+                    );
+                };
+                frame = Some(
+                    self.ask(|answer| Command::FrameOf(target, frame, element, answer))
+                        .await?,
+                );
+            }
+            let value = self
+                .ask(|answer| Command::EvaluateIn(target, frame, expression.to_owned(), answer))
+                .await?;
+            Ok(js_to_json(&value))
+        })
     }
 
     fn evaluate<'a>(&'a self, expression: &'a str) -> BoxFuture<'a, Result<Value, String>> {
@@ -496,6 +549,33 @@ mod tests {
             wake,
             target: None,
         }
+    }
+
+    /// A browser handle, and the queue the main thread reads its commands from.
+    fn handle() -> (
+        AppBrowser,
+        futures::channel::mpsc::UnboundedReceiver<Command>,
+    ) {
+        let (commands, queue) = futures::channel::mpsc::unbounded::<Command>();
+        let (wake, _) = futures::channel::mpsc::unbounded::<()>();
+        (AppBrowser::new(commands, wake), queue)
+    }
+
+    #[test]
+    fn 앱_자신의_호출은_에이전트_표시_없이_들어온다() {
+        let (browser, mut queue) = handle();
+        drop(browser.reload());
+        assert!(matches!(queue.try_recv(), Ok(Command::Reload(_))));
+    }
+
+    #[tokio::test]
+    async fn 도구_호출_안에서_보낸_명령은_에이전트_표시를_단다() {
+        let (browser, mut queue) = handle();
+        rever_control_server::as_tool_call(async { drop(browser.reload()) }).await;
+        let Ok(Command::ByAgent(inner)) = queue.try_recv() else {
+            panic!("the command carries no agent mark");
+        };
+        assert!(matches!(*inner, Command::Reload(_)));
     }
 
     #[tokio::test]

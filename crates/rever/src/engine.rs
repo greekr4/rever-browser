@@ -10,10 +10,23 @@ use image::RgbaImage;
 use servo::{
     ConsoleLogLevel, CookieSource, CreateNewWebViewRequest, DeviceIntRect, DeviceIntSize,
     EmbedderControl, EventLoopWaker, InputEvent, JSValue, PrefValue, RenderingContext, Servo,
-    ServoBuilder, ServoDelegate, SoftwareRenderingContext, UserContentManager, UserScript,
-    WebResourceLoad, WebView, WebViewBuilder, WebViewDelegate,
+    ServoBuilder, ServoDelegate, SoftwareRenderingContext, Theme, UserContentManager, UserScript,
+    WebDriverCommandMsg, WebDriverFrameId, WebDriverScriptCommand, WebResourceLoad, WebView,
+    WebViewBuilder, WebViewDelegate,
 };
+use servo_base::generic_channel;
+use servo_base::id::BrowsingContextId;
 use url::Url;
+
+/// `REVER_DEBUGGING_SERVER=1` starts Servo's debugging server, for the breakpoint tools.
+const DEBUGGING_SERVER_ENV: &str = "REVER_DEBUGGING_SERVER";
+
+/// How many addresses the in-memory HTTP cache answers for.
+const HTTP_CACHE_ADDRESSES: u64 = 1000;
+
+fn debugging_server_wanted(asked: Option<&str>) -> bool {
+    asked == Some("1")
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TabId(pub u32);
@@ -166,6 +179,7 @@ impl WebViewDelegate for Delegate {
             webview,
             context,
             scripts,
+            hidden: Cell::new(false),
         });
         self.push(EngineEvent::Opened(id));
     }
@@ -244,6 +258,8 @@ struct Page {
     webview: WebView,
     context: Rc<SoftwareRenderingContext>,
     scripts: Rc<UserContentManager>,
+    /// Hidden from painting: Servo stops its animations and throttles its timers.
+    hidden: Cell<bool>,
 }
 
 pub struct Engine {
@@ -263,6 +279,8 @@ pub struct Engine {
     /// by the handle it was added with.
     init_scripts: Vec<(String, TabId, Rc<UserScript>)>,
     next_script: u32,
+    /// Whether pages are told the color scheme is dark (`prefers-color-scheme`).
+    dark: bool,
     wake: Arc<dyn Fn() + Send + Sync>,
     /// Servo's memory report, left here by its reply until the next pump.
     memory: Arc<Mutex<Option<MemoryReport>>>,
@@ -282,6 +300,7 @@ impl Engine {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let _ = std::fs::create_dir_all(&profile_dir);
         let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(wake);
+        let proxy = crate::profile_windows::engine_proxy().unwrap_or_default();
         let servo = ServoBuilder::default()
             // Where Servo reads and writes cookie_jar.json, so logins survive a restart.
             .opts(servo::Opts {
@@ -301,11 +320,24 @@ impl Engine {
                 // "back", and as many ahead: a tab that had walked through news sites
                 // held 16GB. None is kept: going back loads the page again.
                 session_history_max_length: 0,
-                // The debugger tools drive pages through Servo's debugging server.
-                devtools_server_enabled: true,
+                // The breakpoint tools drive pages through Servo's debugging server.
+                // It keeps the source of every script and every console message of
+                // every page visited, for a client that may attach later: 60MB after
+                // six news sites, and growing. Those tools are hidden for now, so the
+                // server starts only when asked for.
+                devtools_server_enabled: debugging_server_wanted(
+                    std::env::var(DEBUGGING_SERVER_ENV).ok().as_deref(),
+                ),
+                // Responses kept in memory to answer a request again without the
+                // network: counted in addresses, whatever their size. Servo's 5,000
+                // came to several hundred MB in a long session.
+                network_http_cache_size: HTTP_CACHE_ADDRESSES,
                 // On this machine only. Servo reports the port it was told, not the
                 // one it got, so a free one is picked here first.
                 devtools_server_listen_address: format!("127.0.0.1:{}", free_port()),
+                // A proxy window's proxy: every request and WebSocket of this process.
+                network_http_proxy_uri: proxy.clone(),
+                network_https_proxy_uri: proxy,
                 ..Default::default()
             })
             .event_loop_waker(Box::new(Waker(wake.clone())))
@@ -325,6 +357,7 @@ impl Engine {
             desktop_user_agent: servo::prefs::get().user_agent.clone(),
             init_scripts: Vec::new(),
             next_script: 1,
+            dark: false,
             wake,
             memory: Arc::default(),
         }
@@ -371,13 +404,37 @@ impl Engine {
                 loads: self.loads.clone(),
             }))
             .build();
+        webview.notify_theme_change(page_theme(self.dark));
         self.pages.push(Page {
             id,
             webview,
             context,
             scripts,
+            hidden: Cell::new(false),
         });
         Ok(())
+    }
+
+    /// Whether the tab is being painted ([`Engine::set_painting`]).
+    pub fn painting(&self, id: TabId) -> bool {
+        self.page(id).is_some_and(|page| !page.hidden.get())
+    }
+
+    /// Paint the tab, or stop: a page nobody looks at keeps no animations running and
+    /// lets WebRender drop what it drew. Its last frame stays readable.
+    pub fn set_painting(&self, id: TabId, paint: bool) {
+        let Some(page) = self.page(id) else {
+            return;
+        };
+        if page.hidden.get() == !paint {
+            return;
+        }
+        page.hidden.set(!paint);
+        if paint {
+            page.webview.show();
+        } else {
+            page.webview.hide();
+        }
     }
 
     pub fn close(&mut self, id: TabId) {
@@ -402,6 +459,10 @@ impl Engine {
     /// Let Servo process its queue; returns what changed.
     pub fn pump(&mut self) -> Vec<EngineEvent> {
         self.servo.spin_event_loop();
+        // A window a page opened has not been told the color scheme yet.
+        for page in self.opened.borrow().iter() {
+            page.webview.notify_theme_change(page_theme(self.dark));
+        }
         self.pages.append(&mut self.opened.borrow_mut());
         let mut events = std::mem::take(&mut *self.events.borrow_mut());
         if let Some(report) = self.memory.lock().ok().and_then(|mut slot| slot.take()) {
@@ -585,6 +646,18 @@ impl Engine {
         }
     }
 
+    /// Tell every page, and the ones opened later, whether the color scheme is dark, so
+    /// `prefers-color-scheme` follows the app's theme as it follows the OS in Chrome.
+    pub fn set_dark(&mut self, dark: bool) {
+        if self.dark == dark {
+            return;
+        }
+        self.dark = dark;
+        for page in &self.pages {
+            page.webview.notify_theme_change(page_theme(dark));
+        }
+    }
+
     /// The address of the link under the pointer, which the page reports for a status bar.
     pub fn hovered_link(&self, id: TabId) -> Option<String> {
         self.page(id)?.webview.status_text()
@@ -603,6 +676,77 @@ impl Engine {
             }),
             None => done(Err("the tab is closed".to_owned())),
         }
+    }
+
+    /// Send a command to the script thread of one of the tab's documents: the tab's own,
+    /// or the one in `frame`.
+    fn frame_command(
+        &self,
+        id: TabId,
+        frame: Option<BrowsingContextId>,
+        command: WebDriverScriptCommand,
+    ) -> Result<(), String> {
+        let page = self.page(id).ok_or("the tab is closed")?;
+        let context = frame.unwrap_or_else(|| page.webview.id().into());
+        self.servo
+            .execute_webdriver_command(WebDriverCommandMsg::ScriptCommand(context, command));
+        Ok(())
+    }
+
+    /// Evaluate JavaScript in a frame's document, whatever its origin (`None`: the
+    /// tab's own). A promise is awaited. `done` runs on a thread of its own: the
+    /// answer does not come through `pump`, so something has to wait for it.
+    pub fn evaluate_in(
+        &self,
+        id: TabId,
+        frame: Option<BrowsingContextId>,
+        script: String,
+        done: impl FnOnce(Result<JSValue, String>) + Send + 'static,
+    ) {
+        let Some((sender, answered)) = generic_channel::channel() else {
+            return done(Err("no channel to the page".to_owned()));
+        };
+        let command = WebDriverScriptCommand::ExecuteScriptWithCallback(script, sender);
+        if let Err(error) = self.frame_command(id, frame, command) {
+            return done(Err(error));
+        }
+        std::thread::spawn(move || {
+            done(match answered.recv() {
+                Ok(Ok(value)) => Ok(value),
+                Ok(Err(error)) => Err(format!("{error:?}")),
+                Err(_) => Err("the frame is gone".to_owned()),
+            })
+        });
+    }
+
+    /// The frame an `<iframe>` element holds. `element` is what `evaluate_in` answered
+    /// for the element, in the document `parent` names.
+    pub fn frame_of(
+        &self,
+        id: TabId,
+        parent: Option<BrowsingContextId>,
+        element: String,
+        done: impl FnOnce(Result<BrowsingContextId, String>) + Send + 'static,
+    ) {
+        let Some((sender, answered)) = generic_channel::channel() else {
+            return done(Err("no channel to the page".to_owned()));
+        };
+        let command = WebDriverScriptCommand::GetBrowsingContextId(
+            WebDriverFrameId::Element(element),
+            sender,
+        );
+        if let Err(error) = self.frame_command(id, parent, command) {
+            return done(Err(error));
+        }
+        // The script thread panics when nobody is left to hear this answer, so the
+        // wait has no time limit.
+        std::thread::spawn(move || {
+            done(match answered.recv() {
+                Ok(Ok(frame)) => Ok(frame),
+                Ok(Err(error)) => Err(format!("the element holds no frame: {error:?}")),
+                Err(_) => Err("the frame is gone".to_owned()),
+            })
+        });
     }
 
     /// Run `source` in every new document of the tab, before the page's own scripts.
@@ -645,6 +789,10 @@ const ZOOM_STEPS: [f32; 15] = [
 ];
 
 /// Servo hands the icon in one of several layouts; the tab strip wants RGBA.
+fn page_theme(dark: bool) -> Theme {
+    if dark { Theme::Dark } else { Theme::Light }
+}
+
 fn favicon_rgba(image: &servo::Image) -> Option<RgbaImage> {
     use servo::PixelFormat;
     let data = image.data();
@@ -676,6 +824,14 @@ fn favicon_rgba(image: &servo::Image) -> Option<RgbaImage> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn 디버깅_서버는_요청할_때만_켠다() {
+        assert!(!debugging_server_wanted(None));
+        assert!(!debugging_server_wanted(Some("")));
+        assert!(!debugging_server_wanted(Some("0")));
+        assert!(debugging_server_wanted(Some("1")));
+    }
 
     #[test]
     fn 프로필의_ua와_플랫폼_토큰은_서로_맞는다() {

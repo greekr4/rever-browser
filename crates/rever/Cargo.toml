@@ -14,7 +14,7 @@ rever-agent = { path = "../rever-agent" }
 rever-inject = { path = "../rever-inject" }
 rever-tools-api = { path = "../rever-tools-api" }
 # The MCP server and the tool crates it serves; the risky-tool rules decide what the agent may call unasked.
-rever-mcp = { path = "../rever-mcp" }
+rever-control-server = { path = "../rever-control-server" }
 rever-tool-profile = { path = "../rever-tool-profile" }
 rever-chat-core = { path = "../rever-chat-core" }
 rever-tools-traffic = { path = "../rever-tools-traffic" }
@@ -45,6 +45,7 @@ rever-ui-websocket = { path = "../rever-ui-websocket" }
 rever-ui-history = { path = "../rever-ui-history" }
 rever-ui-markdown = { path = "../rever-ui-markdown" }
 rever-ui-menus = { path = "../rever-ui-menus" }
+rever-ui-setup = { path = "../rever-ui-setup" }
 # The composer's model chip and its menu.
 rever-ui-chat = { path = "../rever-ui-chat" }
 # EvalReply: the shape the console panel takes a script result in.
@@ -69,6 +70,8 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 dpi = "0.1"
 euclid = "0.22"
 url = "2.5"
+# Reads the user name and password back out of a proxy address.
+percent-encoding = "2"
 futures = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde = "1"

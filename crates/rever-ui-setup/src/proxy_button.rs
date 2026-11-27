@@ -233,6 +233,11 @@ pub struct ProxyButton {
     /// The draft was loaded since the last render, which is where the window is at hand.
     focus_scheme: bool,
     escape: Option<Subscription>,
+    /// The popover opens to the right of the chip, for a chip near the window's left edge.
+    opens_right: bool,
+    /// The host's engine reaches a proxy over plain HTTP only: another scheme is
+    /// refused here, with its own message.
+    http_only: bool,
     _fields_changed: Vec<Subscription>,
 }
 
@@ -277,8 +282,21 @@ impl ProxyButton {
             scheme_focus: cx.focus_handle(),
             focus_scheme: false,
             escape: None,
+            opens_right: false,
+            http_only: false,
             _fields_changed: fields_changed,
         }
+    }
+
+    /// Open the popover to the right of the chip instead of to its left.
+    pub fn set_opens_right(&mut self, right: bool, cx: &mut Context<Self>) {
+        self.opens_right = right;
+        cx.notify();
+    }
+
+    /// Refuse every proxy scheme but HTTP.
+    pub fn set_http_only(&mut self, http_only: bool) {
+        self.http_only = http_only;
     }
 
     pub fn is_open(&self) -> bool {
@@ -347,6 +365,9 @@ impl ProxyButton {
             Ok(config) => config,
             Err(key) => return self.fail(key, cx),
         };
+        if self.http_only && config.scheme != ProxyScheme::Http {
+            return self.fail("proxy.errScheme", cx);
+        }
         let host = self.host.clone();
 
         // Already an isolated proxy tab → edit its proxy in place.
@@ -598,7 +619,8 @@ impl Render for ProxyButton {
         let popover = clickable("proxy-popover")
             .absolute()
             .top(px(34.0))
-            .right_0()
+            .when(self.opens_right, |popover| popover.left_0())
+            .when(!self.opens_right, |popover| popover.right_0())
             // 286 of content, the 12px padding and the border: the CSS box is content-box.
             .w(px(312.0))
             .p(px(12.0))
@@ -1238,6 +1260,23 @@ mod view_tests {
         );
         assert!(!is_open(&button, cx));
         assert_eq!(fixture.applied.get(), 1);
+    }
+
+    #[gpui::test]
+    fn http만_되는_호스트에서는_다른_스킴을_호스트에_넘기지_않고_거절한다(
+        cx: &mut TestAppContext,
+    ) {
+        // The fixture's tab has a SOCKS5 proxy, which the draft is loaded from.
+        let fixture = fixture(Some(proxied()));
+        let (button, _, cx) = button(&fixture, cx);
+        button.update(cx, |button, _| button.set_http_only(true));
+        click("proxy-button", cx);
+        click("proxy-apply", cx);
+        assert_eq!(
+            button.read_with(cx, |b, _| b.error()),
+            Some("proxy.errScheme")
+        );
+        assert!(fixture.host.calls().is_empty());
     }
 
     #[gpui::test]

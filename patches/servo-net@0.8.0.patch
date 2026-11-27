@@ -1,6 +1,35 @@
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/connector.rs b/connector.rs
+--- a/connector.rs	2026-11-26 15:07:41
++++ b/connector.rs	2026-11-26 15:07:42
+@@ -656,6 +656,25 @@
+     }
+ }
+ 
++/// rever patch: a TCP stream to `host:port` for a connection the HTTP client does not
++/// make (a WebSocket), through the proxy when one is set. Without it a WebSocket left
++/// the machine directly while the page's own requests went to the proxy.
++pub(crate) async fn connect_stream(
++    secure: bool,
++    host: &str,
++    port: u16,
++) -> std::io::Result<TcpStream> {
++    let scheme = if secure { "https" } else { "http" };
++    let destination: Destination = format!("{scheme}://{host}:{port}")
++        .parse()
++        .map_err(std::io::Error::other)?;
++    ProxyConnector::new()
++        .call(destination)
++        .await
++        .map(TokioIo::into_inner)
++        .map_err(|error| std::io::Error::other(format!("{error:?}")))
++}
++
+ pub type ServoClient = Client<InstrumentedConnector<ProxyConnector>, BoxedBody>;
+ 
+ pub fn create_http_client(tls_config: TlsConfig) -> ServoClient {
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/http_loader.rs b/http_loader.rs
---- a/http_loader.rs	2026-11-24 14:49:31
-+++ b/http_loader.rs	2026-11-24 14:31:37
+--- a/http_loader.rs	2026-11-26 15:07:41
++++ b/http_loader.rs	2026-11-26 15:07:42
 @@ -648,6 +648,8 @@
          Ok(request) => request,
          Err(error) => return Err(NetworkError::HttpError(error.to_string())),
@@ -115,8 +144,8 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
                  #[cfg(feature = "devtools")]
                  send_response_values_to_devtools(
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/image_cache.rs b/image_cache.rs
---- a/image_cache.rs	2026-11-24 14:49:31
-+++ b/image_cache.rs	2026-11-24 14:31:37
+--- a/image_cache.rs	2026-11-26 15:07:41
++++ b/image_cache.rs	2026-11-26 15:07:42
 @@ -93,6 +93,35 @@
          .map_err(|_| "Not a valid SVG document")
  }
@@ -228,8 +257,8 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
                  tinyskia_requested_size.width(),
                  tinyskia_requested_size.height(),
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/lib.rs b/lib.rs
---- a/lib.rs	2026-11-24 14:49:31
-+++ b/lib.rs	2026-11-24 14:31:37
+--- a/lib.rs	2026-11-26 15:07:41
++++ b/lib.rs	2026-11-26 15:07:41
 @@ -23,6 +23,7 @@
  pub mod request_interceptor;
  pub mod resource_thread;
@@ -240,7 +269,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
  mod websocket_loader;
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/tap.rs b/tap.rs
 --- a/tap.rs	1970-01-01 09:00:00
-+++ b/tap.rs	2026-11-24 14:31:37
++++ b/tap.rs	2026-11-26 15:07:42
 @@ -0,0 +1,95 @@
 +/* rever patch (not upstream): hand request and response bodies to the embedder
 + * in-process. The network threads live in the embedder's process, so a
@@ -338,9 +367,17 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
 +    }
 +}
 diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/websocket_loader.rs b/websocket_loader.rs
---- a/websocket_loader.rs	2026-11-24 14:49:31
-+++ b/websocket_loader.rs	2026-11-24 14:31:37
-@@ -172,6 +172,7 @@
+--- a/websocket_loader.rs	2026-11-26 15:07:41
++++ b/websocket_loader.rs	2026-11-26 15:07:42
+@@ -28,7 +28,6 @@
+ use profile_traits::generic_callback::GenericCallback as ProfileGenericCallback;
+ use servo_base::generic_channel::CallbackSetter;
+ use servo_url::ServoUrl;
+-use tokio::net::TcpStream;
+ use tokio::select;
+ use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+ use tokio_rustls::TlsConnector;
+@@ -172,6 +171,7 @@
  fn setup_dom_listener(
      dom_action_receiver: CallbackSetter<WebSocketDomAction>,
      initiated_close: Arc<AtomicBool>,
@@ -348,7 +385,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
  ) -> UnboundedReceiver<DomMsg> {
      let (sender, receiver) = unbounded_channel();
  
-@@ -180,11 +181,26 @@
+@@ -180,11 +180,26 @@
          trace!("handling WS DOM action: {:?}", dom_action);
          match dom_action {
              WebSocketDomAction::SendMessage(MessageData::Text(data)) => {
@@ -375,7 +412,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
                  if let Err(e) = sender.send(DomMsg::Send(Message::Binary(data.into()))) {
                      warn!("Error sending websocket message: {:?}", e);
                  }
-@@ -212,6 +228,7 @@
+@@ -212,6 +227,7 @@
      mut dom_receiver: UnboundedReceiver<DomMsg>,
      resource_event_sender: ProfileGenericCallback<WebSocketNetworkEvent>,
      mut stream: WebSocketStream<ConnectStream>,
@@ -383,7 +420,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
  ) {
      loop {
          select! {
-@@ -256,6 +273,13 @@
+@@ -256,6 +272,13 @@
                  };
                  match msg {
                      Message::Text(s) => {
@@ -397,7 +434,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
                          let message = MessageData::Text(s.as_str().to_owned());
                          if let Err(e) = resource_event_sender
                              .send(WebSocketNetworkEvent::MessageReceived(message))
-@@ -266,6 +290,13 @@
+@@ -266,6 +289,13 @@
                      }
  
                      Message::Binary(v) => {
@@ -411,7 +448,7 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
                          let message = MessageData::Binary(v.to_vec());
                          if let Err(e) = resource_event_sender
                              .send(WebSocketNetworkEvent::MessageReceived(message))
-@@ -313,7 +344,26 @@
+@@ -313,7 +343,26 @@
      trace!("starting WS connection to {}", client.url());
  
      let initiated_close = Arc::new(AtomicBool::new(false));
@@ -439,7 +476,18 @@ diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.js
  
      let url = client.url();
      let host = replace_host(url.host_str().expect("URL has no host"));
-@@ -363,7 +413,19 @@
+@@ -329,7 +378,9 @@
+         .port_or_known_default()
+         .ok_or_else(|| Error::Url(UrlError::UnableToConnect("Unknown port".into())))?;
+ 
+-    let try_socket = TcpStream::connect((&*domain.to_string(), port)).await;
++    // rever patch: through the proxy when one is set, as the page's requests go.
++    let try_socket =
++        crate::connector::connect_stream(url.scheme() == "https", &domain.to_string(), port).await;
+     let socket = try_socket.map_err(Error::Io)?;
+     let connector = TlsConnector::from(Arc::new(tls_config));
+ 
+@@ -363,7 +414,19 @@
          }
  
          trace!("about to start ws loop for {}", url);

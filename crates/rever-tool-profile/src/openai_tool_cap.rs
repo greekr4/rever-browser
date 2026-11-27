@@ -182,7 +182,8 @@ mod tests {
             .into_iter()
             .chain(browse_only)
             .collect();
-        assert_eq!(allowed.len(), 146);
+        // One more than the 146 below: run_steps, which the frozen TypeScript order lacks.
+        assert_eq!(allowed.len(), 147);
         let filtered: Vec<String> = order
             .into_iter()
             .filter(|name| allowed.contains(name.as_str()))

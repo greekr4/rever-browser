@@ -188,7 +188,7 @@ pub(crate) mod tests {
         pub(crate) fn new(label: &str) -> Self {
             static NEXT: AtomicU32 = AtomicU32::new(0);
             let dir = std::env::temp_dir().join(format!(
-                "rever-mcp-{label}-{}-{}",
+                "rever-control-{label}-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::SeqCst)
             ));

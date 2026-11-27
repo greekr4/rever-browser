@@ -2,7 +2,7 @@
 // revb — script runner for a running Rever Browser. Zero dependencies (Node 18+).
 // Spec: docs/rever-cli-design.md. Named `revb` because `rever` is taken on npm.
 //
-//   revb run <script.mjs | ->          run a script with every MCP tool as a global async fn
+//   revb run <script.mjs | ->          run a script with every tool as a global async fn
 //   revb call <tool> ['<json>' | --k v] one call: a JSON object, or flags typed by the tool's schema
 //   revb describe <tool>               one tool's description and input schema, as JSON
 //   revb md <url>                      open the url and print its page text as Markdown
@@ -12,7 +12,7 @@
 
 import { execSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import http from 'node:http'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -37,37 +37,6 @@ export function userDataDir(env = process.env, platform = process.platform, home
         ? env.APPDATA || join(home, 'AppData', 'Roaming')
         : env.XDG_CONFIG_HOME || join(home, '.config')
   return join(appData, 'rever-browser')
-}
-
-/**
- * Pick the JSON-RPC message with `id` out of a response body. The body is either
- * plain JSON or an SSE stream that may carry notifications before the reply, so
- * the first `data:` line is not necessarily ours.
- */
-export function pickRpcResponse(raw, id) {
-  const text = raw.trim()
-  if (!text) return null
-  if (text.startsWith('{') || text.startsWith('[')) {
-    const msg = JSON.parse(text)
-    const all = Array.isArray(msg) ? msg : [msg]
-    return all.find((m) => m.id === id) ?? null
-  }
-  for (const event of text.split(/\r?\n\r?\n/)) {
-    const data = event
-      .split(/\r?\n/)
-      .filter((l) => l.startsWith('data:'))
-      .map((l) => l.slice(5).replace(/^ /, ''))
-      .join('\n')
-    if (!data) continue
-    let msg
-    try {
-      msg = JSON.parse(data)
-    } catch {
-      continue
-    }
-    if (msg.id === id) return msg
-  }
-  return null
 }
 
 /** Text → parsed JSON when it is JSON, otherwise the string itself. */
@@ -147,14 +116,14 @@ const TRUNC_RE =
 const MORE_RE = /\n\n\[more: call tool_result_more resultId="[^"]+", offset=(\d+) \(\d+ chars left\)\]$/
 const END_RE = /\n\n\[end of result: \d+ chars total\]$/
 
-/** Split okBudgeted's truncation footer (src/main/mcp/utils.ts) off a result. */
+/** Split the truncation footer this app appends to a result. */
 export function parseTruncated(text) {
   const m = TRUNC_RE.exec(text)
   if (!m) return null
   return { head: text.slice(0, m.index), total: Number(m[2]), resultId: m[3], offset: Number(m[4]) }
 }
 
-/** Split tool_result_more's footer (src/main/mcp/tools/paging.ts) off a page. */
+/** Split tool_result_more's footer off a page. */
 export function parsePage(text) {
   const more = MORE_RE.exec(text)
   if (more) return { slice: text.slice(0, more.index), nextOffset: Number(more[1]) }
@@ -189,7 +158,7 @@ export async function fetchRest(first, more, maxPages = MAX_PAGES) {
 // ---------------------------------------------------------------- endpoint
 
 export function readEndpoint() {
-  const file = path.join(userDataDir(), 'mcp-endpoint.json')
+  const file = path.join(userDataDir(), 'control-endpoint.json')
   if (!existsSync(file)) {
     fail(`Rever Browser is not running (no ${file}). Start the app, then retry.`)
   }
@@ -202,140 +171,16 @@ export function readEndpoint() {
       if (e.code === 'ESRCH') fail(`Rever Browser is not running (pid ${ep.pid} from ${file} is gone). Start the app, then retry.`)
     }
   }
-  const host = new URL(ep.url).hostname
-  if (host !== '127.0.0.1' && host !== 'localhost') {
-    fail(`refusing non-loopback endpoint ${ep.url} in ${file}`)
+  // `url` is the same path, kept for diagnostics; `socket` is the contract.
+  if (!ep.socket) {
+    fail(`the app publishes no control socket (${file}). Rebuild the app.`)
   }
   return { ...ep, file }
 }
 
-// ---------------------------------------------------------------- client
+// ---------------------------------------------------------------- socket client
 
-class RpcError extends Error {}
-
-export class Client {
-  constructor(url, token) {
-    this.url = new URL(url)
-    this.token = token
-    this.sid = null
-    this.nextId = 1
-  }
-
-  request(method, payload) {
-    return new Promise((resolve, reject) => {
-      const body = payload == null ? null : JSON.stringify(payload)
-      const req = http.request(
-        this.url,
-        {
-          method,
-          agent: false, // a keep-alive socket would hold the process open after the script ends
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json, text/event-stream',
-            ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
-            // Every tool, not just the app's current Tools→Access profile.
-            'X-Rever-Catalog': 'full',
-            ...(this.sid ? { 'mcp-session-id': this.sid } : {})
-          },
-          timeout: CALL_TIMEOUT_MS
-        },
-        (res) => {
-          const chunks = []
-          res.on('data', (c) => chunks.push(c))
-          res.on('end', () => {
-            const text = Buffer.concat(chunks).toString('utf8')
-            if (res.statusCode >= 400) {
-              reject(new Error(`HTTP ${res.statusCode} from ${this.url}: ${text.slice(0, 300)}`))
-            } else {
-              if (!this.sid && res.headers['mcp-session-id']) this.sid = res.headers['mcp-session-id']
-              resolve(text) // 202 / empty body for notifications → ''
-            }
-          })
-          res.on('error', reject)
-        }
-      )
-      req.on('timeout', () => req.destroy(new Error(`no reply within ${CALL_TIMEOUT_MS / 1000}s`)))
-      req.on('error', reject)
-      req.end(body ?? undefined)
-    })
-  }
-
-  async rpc(method, params) {
-    const id = this.nextId++
-    const raw = await this.request('POST', { jsonrpc: '2.0', id, method, params })
-    const msg = pickRpcResponse(raw, id)
-    if (!msg) throw new Error(`no JSON-RPC reply for ${method} (id ${id})`)
-    if (msg.error) throw new RpcError(`${method}: ${msg.error.message} (code ${msg.error.code})`)
-    return msg.result
-  }
-
-  async connect() {
-    const res = await this.rpc('initialize', {
-      protocolVersion: '2025-03-26',
-      capabilities: {},
-      clientInfo: { name: 'revb', version: cliVersion() }
-    })
-    await this.request('POST', { jsonrpc: '2.0', method: 'notifications/initialized' })
-    this.serverVersion = res?.serverInfo?.version
-    return this
-  }
-
-  async tools() {
-    // shortcut: ignores nextCursor — McpServer returns every tool in one page; loop if that changes.
-    return (await this.rpc('tools/list', {})).tools
-  }
-
-  /** Raw tools/call; throws on JSON-RPC error and isError. */
-  async callRaw(name, args = {}) {
-    const res = await this.rpc('tools/call', { name, arguments: args })
-    const texts = (res.content ?? []).filter((c) => c.type === 'text').map((c) => c.text)
-    if (res.isError) throw new Error(withHint(`${name}: ${texts.join('\n') || 'tool error'}`))
-    return { res, texts }
-  }
-
-  /** The script-facing call: pages, parses, saves images. */
-  async call(name, args = {}) {
-    const { res, texts } = await this.callRaw(name, args)
-    const images = (res.content ?? []).filter((c) => c.type === 'image').map(saveImage)
-    // Extra text parts are page notes (scope warnings, answered dialogs, downloads)
-    // appended by server.ts — stderr keeps stdout parseable.
-    for (const note of texts.slice(1)) process.stderr.write(`[revb] ${name}: ${note}\n`)
-    if (texts.length === 0) return images.length === 1 ? images[0] : images
-    for (const p of images) process.stderr.write(`[revb] ${name}: image saved ${p}\n`)
-    const full = await fetchRest(texts[0], async (resultId, offset) =>
-      (await this.callRaw('tool_result_more', { resultId, offset, limit: PAGE_CHARS })).texts[0]
-    )
-    return toValue(full)
-  }
-
-  async close() {
-    // Sessions have no TTL on the server; leaving one open leaks it until the app quits.
-    if (this.sid) await this.request('DELETE', null).catch(() => {})
-    this.sid = null
-  }
-}
-
-function withHint(msg) {
-  if (/no active browser target/.test(msg)) {
-    msg += '\n  hint: the app is up but no tab is attached yet — wait until the first page has loaded, then retry.'
-  }
-  if (/waits for the user/.test(msg)) {
-    msg += '\n  hint: a page dialog blocks every tool; answer it in the app window first.'
-  }
-  return msg
-}
-
-function saveImage(part) {
-  const ext = { 'image/png': 'png', 'image/jpeg': 'jpg' }[part.mimeType] ?? 'bin'
-  const dir = process.env.REVER_SHOT_DIR || os.tmpdir()
-  mkdirSync(dir, { recursive: true })
-  const file = path.join(dir, `rever-shot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${ext}`)
-  writeFileSync(file, Buffer.from(part.data ?? '', 'base64'))
-  return file
-}
-
-// ---------------------------------------------------------------- commands
-
+/** This checkout's version, from the repo's package.json. */
 function cliVersion() {
   try {
     return JSON.parse(readFileSync(path.join(HERE, '..', 'package.json'), 'utf8')).version
@@ -344,6 +189,7 @@ function cliVersion() {
   }
 }
 
+/** Warn when the app and this CLI are far enough apart that the guide may lie. */
 function warnVersion(server) {
   const mm = (v) => String(v ?? '').split('.').slice(0, 2).join('.')
   if (server && mm(server) !== mm(cliVersion())) {
@@ -353,15 +199,114 @@ function warnVersion(server) {
   }
 }
 
+/** A tool refusal the app reported, as opposed to a transport failure. */
+class RpcError extends Error {}
+
+/** The app's control socket: one JSON line in, one JSON line out. */
+export class SocketClient {
+  constructor(socketPath, token) {
+    this.socketPath = socketPath
+    // Scripts read `rev.endpoint`; a socket has no href, so stand one in.
+    this.url = { href: socketPath }
+    this.token = token
+    this.serverVersion = null
+    this.pending = []
+    this.buffer = ''
+    this.sock = null
+  }
+
+  connect() {
+    return new Promise((resolve, reject) => {
+      this.sock = net.connect(this.socketPath)
+      this.sock.setEncoding('utf8')
+      this.sock.once('error', reject)
+      this.sock.once('connect', () => {
+        this.sock.off('error', reject)
+        this.sock.on('error', () => {}) // a dying app is reported by the pending call
+        this.sock.on('data', (chunk) => this.onData(chunk))
+        // A closed socket must fail the calls in flight, or each waits out the
+        // ten-minute tool timeout.
+        this.sock.on('close', () => this.failPending('the app closed the control socket'))
+        resolve()
+      })
+    })
+  }
+
+  failPending(message) {
+    const waiters = this.pending
+    this.pending = []
+    for (const waiter of waiters) waiter.reject(new Error(message))
+  }
+
+  onData(chunk) {
+    this.buffer += chunk
+    for (;;) {
+      const at = this.buffer.indexOf('\n')
+      if (at < 0) return
+      const line = this.buffer.slice(0, at)
+      this.buffer = this.buffer.slice(at + 1)
+      const waiter = this.pending.shift()
+      if (!waiter) continue
+      try {
+        waiter.resolve(JSON.parse(line))
+      } catch (e) {
+        waiter.reject(e)
+      }
+    }
+  }
+
+  request(tool, args) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending = this.pending.filter((w) => w !== waiter)
+        reject(new Error(`control socket timed out after ${CALL_TIMEOUT_MS} ms`))
+      }, CALL_TIMEOUT_MS)
+      const waiter = {
+        resolve: (v) => {
+          clearTimeout(timer)
+          resolve(v)
+        },
+        reject: (e) => {
+          clearTimeout(timer)
+          reject(e)
+        }
+      }
+      this.pending.push(waiter)
+      this.sock.write(JSON.stringify({ token: this.token, tool, args }) + '\n')
+    })
+  }
+
+  async call(name, args) {
+    const reply = await this.request(name, args ?? {})
+    if (!reply.ok) throw new RpcError(reply.error)
+    return reply.result
+  }
+
+  async tools() {
+    const reply = await this.request('__catalog', null)
+    if (!reply.ok) throw new RpcError(reply.error)
+    this.serverVersion = reply.result.version
+    return reply.result.tools
+  }
+
+  async close() {
+    if (!this.sock) return
+    this.sock.end()
+    this.sock = null
+  }
+}
+
 async function withClient(fn) {
   const ep = readEndpoint()
-  const client = new Client(ep.url, ep.token)
+  const client = new SocketClient(ep.socket, ep.token)
   const onSignal = () => client.close().finally(() => process.exit(130))
   process.once('SIGINT', onSignal)
   process.once('SIGTERM', onSignal)
   try {
     await client.connect()
-    warnVersion(client.serverVersion)
+    // The endpoint file carries the app version; the catalog would cost a
+    // round trip the plain `call` path never makes.
+    warnVersion(ep.version)
     return await fn(client)
   } finally {
     await client.close()
@@ -430,7 +375,7 @@ export function extractMarkdown(text) {
 
 const USAGE = `revb — drive a running Rever Browser from scripts
 
-  revb run <script.mjs | ->        run a script; every MCP tool is a global async fn
+  revb run <script.mjs | ->        run a script; every tool is a global async fn
   revb call <tool> ['<json>']      call one tool and print its result
   revb call <tool> --key value     or pass its arguments as flags typed by the tool's schema
   revb describe <tool>             one tool's description and input schema as JSON

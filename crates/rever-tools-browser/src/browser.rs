@@ -150,7 +150,7 @@ fn filter_note(stats: &SnapshotStats) -> String {
         let mut bits = vec![format!("frames: {} entered", stats.frames)];
         if stats.frames_unreachable > 0 {
             bits.push(format!(
-                "{} iframe(s) could not be entered (cross-site, runs in its own renderer — not yet supported)",
+                "{} iframe(s) could not be entered (not loaded yet, hidden from the a11y tree, or inside a same-origin frame)",
                 stats.frames_unreachable
             ));
         }
@@ -1098,7 +1098,7 @@ mod tests {
         };
         assert_eq!(
             filter_note(&stats),
-            "\n\n[frames: 2 entered; 1 iframe(s) could not be entered (cross-site, runs in its own renderer — not yet supported); 1 entered but still empty (frame had not finished loading); click scan does not reach inside frames, so framed elements need an ARIA role]"
+            "\n\n[frames: 2 entered; 1 iframe(s) could not be entered (not loaded yet, hidden from the a11y tree, or inside a same-origin frame); 1 entered but still empty (frame had not finished loading); click scan does not reach inside frames, so framed elements need an ARIA role]"
         );
         let stats = SnapshotStats {
             frames_unreachable: 3,
@@ -1106,7 +1106,7 @@ mod tests {
         };
         assert_eq!(
             filter_note(&stats),
-            "\n\n[frames: 0 entered; 3 iframe(s) could not be entered (cross-site, runs in its own renderer — not yet supported)]"
+            "\n\n[frames: 0 entered; 3 iframe(s) could not be entered (not loaded yet, hidden from the a11y tree, or inside a same-origin frame)]"
         );
     }
 

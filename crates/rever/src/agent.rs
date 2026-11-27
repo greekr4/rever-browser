@@ -4,23 +4,26 @@
 //! Follows `src/main/providers/claude-cli-provider.ts`, using the protocol code
 //! already ported in rever-agent. Not ported yet: the initialize handshake and
 //! model list, set_model, interrupt, and the permission prompt.
-//! Until the permission prompt exists nothing can ask the user, so the only tool
-//! requests allowed are this app's own MCP tools that the risky-tool rules do not
-//! gate: the agent can read the capture and drive the page, but cannot run a shell,
-//! touch files, or send attack traffic.
+//! The app's tools are the `revb` CLI, so the only Bash requests auto-approved are
+//! a single `revb` command the risky-tool rules do not gate: the agent can read the
+//! capture and drive the page, but anything else — a second command, a pipe, attack
+//! traffic — is asked about or refused.
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use rever_agent::claude_cli_protocol::{
-    MCP_SERVER_NAME, TranslateState, TurnOutcome, claude_cli_args, error_response,
-    permission_response, to_permission_request, translate, turn_outcome, user_message,
+    TranslateState, TurnOutcome, claude_cli_args, error_response, permission_response,
+    to_permission_request, translate, turn_outcome, user_message,
 };
 use rever_chat_core::acp_permission::RequestPermissionResponse;
+use rever_tool_profile::risky_tools::is_own_cli;
 use rever_tool_profile::risky_tools::is_risky_tool_request;
 use serde_json::{Value, json};
+
+use rever_core::paths::user_data_dir;
 
 pub(crate) const SESSION_ID: &str = "rever";
 
@@ -170,36 +173,117 @@ pub struct AgentSession {
     outbox: Outbox,
 }
 
-/// The CLI's arguments. `mcp` is the app's MCP server as (url, Authorization header);
-/// when it could not start the config is left out. `--strict-mcp-config` stays either
-/// way, so the user's own MCP servers are not loaded.
-fn cli_args(mcp: Option<(&str, &str)>, model: Option<&str>) -> Vec<String> {
-    if let Some((url, auth_header)) = mcp {
-        return claude_cli_args(url, auth_header, model);
-    }
-    let mut args = claude_cli_args("", "", model);
-    if let Some(at) = args.iter().position(|arg| arg == "--mcp-config") {
-        args.drain(at..(at + 2).min(args.len()));
-    }
-    args
+/// The CLI's arguments. The app's tools are a CLI (`revb`), so no MCP server is
+/// configured; `--strict-mcp-config` still keeps the user's own out.
+fn cli_args(model: Option<&str>) -> Vec<String> {
+    claude_cli_args(model)
 }
 
 /// Whether a `can_use_tool` request is answered "allow" without asking — see the
 /// module comment. ToolSearch only loads tool schemas.
 fn auto_allowed(request: &Value) -> bool {
     let name = request["tool_name"].as_str().unwrap_or_default();
-    let own = name
-        .strip_prefix("mcp__")
-        .and_then(|rest| rest.strip_prefix(MCP_SERVER_NAME))
-        .is_some_and(|rest| rest.starts_with("__"));
+    if name == "ToolSearch" {
+        return true;
+    }
+    // The app's tools run through `revb` in a shell; every other command is the
+    // user's to approve.
+    if name != "Bash" {
+        return false;
+    }
+    let command = request
+        .pointer("/input/command")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !is_own_cli(command) {
+        return false;
+    }
     let risky = is_risky_tool_request(&to_permission_request(SESSION_ID, request));
     let redteam = REDTEAM_SCAN.load(std::sync::atomic::Ordering::Relaxed);
-    name == "ToolSearch" || (own && (!risky || redteam))
+    !risky || redteam
+}
+
+/// The `revb` script next to `exe`: a dev checkout is `target/debug/rever` or
+/// `target/release/rever` (three levels up), a packaged layout may be flatter.
+/// Walk up at most six levels looking for `<root>/bin/revb.mjs`.
+fn revb_script_from(exe: &Path) -> Option<PathBuf> {
+    let mut dir = exe.parent();
+    for _ in 0..6 {
+        let root = dir?;
+        let script = root.join("bin").join("revb.mjs");
+        if script.is_file() {
+            return Some(script);
+        }
+        dir = root.parent();
+    }
+    None
+}
+
+/// The `revb` script the child CLI will call: `REVER_REVB_DIR` wins, otherwise
+/// the checkout next to the running binary.
+pub(crate) fn revb_script() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("REVER_REVB_DIR") {
+        let script = PathBuf::from(dir).join("revb.mjs");
+        return script.is_file().then_some(script);
+    }
+    revb_script_from(&std::env::current_exe().ok()?)
+}
+
+/// Write a `revb` shim that runs `script` into `<data_dir>/bin`, returning the
+/// directory to put first on a child's PATH. The shim is what lets the agent's
+/// CLI reach the tools with no install step — the app's own PATH is minimal.
+pub(crate) fn write_revb_shim(script: &Path, data_dir: &Path) -> Option<PathBuf> {
+    let dir = data_dir.join("bin");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return None;
+    }
+    let shim = dir.join("revb");
+    // A single quote inside the path would end the sh's string early.
+    let escaped = script.display().to_string().replace('\'', "'\\''");
+    let body = format!("#!/bin/sh\nexec node '{escaped}' \"$@\"\n");
+    let stale = std::fs::read_to_string(&shim).map_or(true, |old| old != body);
+    if stale {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if std::fs::write(&shim, &body).is_ok() {
+                let _ = std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+    }
+    Some(dir)
+}
+
+/// The shim directory first on the child's PATH, so the agent's shell finds it.
+fn prepend_to_path(cmd: &mut Command, script: &Path, data_dir: &Path) -> Option<PathBuf> {
+    let dir = write_revb_shim(script, data_dir)?;
+    let mut paths = vec![dir.clone()];
+    if let Some(path) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&path));
+    }
+    cmd.env("PATH", std::env::join_paths(paths).unwrap_or_default());
+    Some(dir)
+}
+
+/// Resolve the script and the data dir from the environment, then prepend.
+fn prepend_revb_path(cmd: &mut Command) {
+    let Some(script) = revb_script() else {
+        eprintln!(
+            "[agent] revb.mjs was not found; the agent cannot call tools. Set REVER_REVB_DIR to its folder."
+        );
+        return;
+    };
+    let data = user_data_dir(
+        |name| std::env::var(name).ok(),
+        std::env::consts::OS,
+        &std::env::var("HOME").unwrap_or_default(),
+    );
+    prepend_to_path(cmd, &script, &data);
 }
 
 /// `REVER_CLAUDE_CLI` wins; otherwise `claude` on PATH, then the usual install
 /// folders (an app started from the Finder has a minimal PATH).
-fn spawn_cli(cwd: &Path, mcp: Option<(&str, &str)>, model: Option<&str>) -> Result<Child, String> {
+fn spawn_cli(cwd: &Path, _mcp: Option<(&str, &str)>, model: Option<&str>) -> Result<Child, String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let candidates = match std::env::var("REVER_CLAUDE_CLI") {
         Ok(path) if !path.is_empty() => vec![path],
@@ -212,14 +296,14 @@ fn spawn_cli(cwd: &Path, mcp: Option<(&str, &str)>, model: Option<&str>) -> Resu
     };
     let mut last_error = String::new();
     for candidate in candidates {
-        let spawned = Command::new(&candidate)
-            .args(cli_args(mcp, model))
+        let mut cmd = Command::new(&candidate);
+        cmd.args(cli_args(model))
             .current_dir(cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn();
-        match spawned {
+            .stderr(Stdio::piped());
+        prepend_revb_path(&mut cmd);
+        match cmd.spawn() {
             Ok(child) => return Ok(child),
             Err(error) => last_error = format!("{candidate}: {error}"),
         }
@@ -387,13 +471,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mcp_설정만_빼고_나머지_인자는_그대로_둔다() {
-        let args = cli_args(None, None);
-        assert!(
-            !args
-                .iter()
-                .any(|arg| arg == "--mcp-config" || arg.contains("mcpServers"))
-        );
+    fn mcp_서버는_하나도_붙이지_않는다() {
+        let args = cli_args(None);
+        let at = args.iter().position(|arg| arg == "--mcp-config").unwrap();
+        let config: Value = serde_json::from_str(&args[at + 1]).unwrap();
+        assert_eq!(config["mcpServers"], json!({}));
         assert!(args.iter().any(|arg| arg == "--strict-mcp-config"));
         // 빈 값 인자가 제자리에 남아야 한다(뒤 인자를 값으로 먹지 않게).
         let at = args
@@ -406,10 +488,10 @@ mod tests {
 
     #[test]
     fn 고른_모델은_시작_인자와_전환_요청에_들어간다() {
-        let args = cli_args(None, Some("claude-opus-5-5"));
+        let args = cli_args(Some("claude-opus-5-5"));
         let at = args.iter().position(|arg| arg == "--model").unwrap();
         assert_eq!(args[at + 1], "claude-opus-5-5");
-        assert!(!cli_args(None, None).iter().any(|arg| arg == "--model"));
+        assert!(!cli_args(None).iter().any(|arg| arg == "--model"));
 
         let line = set_model_request("claude-opus-5-5");
         assert!(line.ends_with('\n'), "한 줄에 한 요청이다");
@@ -417,16 +499,6 @@ mod tests {
         assert_eq!(request["type"], "control_request");
         assert_eq!(request["request"]["subtype"], "set_model");
         assert_eq!(request["request"]["model"], "claude-opus-5-5");
-    }
-
-    #[test]
-    fn mcp_서버가_있으면_주소와_인증_헤더를_설정에_넣는다() {
-        let args = cli_args(Some(("http://127.0.0.1:9/mcp", "Bearer t")), None);
-        let at = args.iter().position(|arg| arg == "--mcp-config").unwrap();
-        let config: Value = serde_json::from_str(&args[at + 1]).unwrap();
-        let server = &config["mcpServers"][MCP_SERVER_NAME];
-        assert_eq!(server["url"], "http://127.0.0.1:9/mcp");
-        assert_eq!(server["headers"]["Authorization"], "Bearer t");
     }
 
     fn request(tool: &str, input: Value) -> Value {
@@ -480,10 +552,68 @@ mod tests {
     }
 
     #[test]
-    fn 이_앱의_mcp_도구는_묻지_않고_허용한다() {
+    fn 저장소_뿌리의_revb_mjs를_실행파일_위에서_찾는다() {
+        let dir = std::env::temp_dir().join(format!("rever-script-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let script = dir.join("bin/revb.mjs");
+        std::fs::create_dir_all(script.parent().unwrap()).unwrap();
+        std::fs::write(&script, "// script\n").unwrap();
+        let exe = dir.join("target/debug/rever");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, "").unwrap();
+        assert_eq!(revb_script_from(&exe), Some(script.clone()));
+        // release 레이아웃도 같은 뿌리를 가리킨다.
+        let exe = dir.join("target/release/rever");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, "").unwrap();
+        assert_eq!(
+            revb_script_from(&exe).unwrap().to_string_lossy(),
+            script.to_string_lossy()
+        );
+        // 스크립트가 없으면 아무것도 아니다. 같은 뿌리에 스크립트가 있으면
+        // 안 되므로 별도 폴더에서 확인한다.
+        let bare_root =
+            std::env::temp_dir().join(format!("rever-script-bare-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&bare_root);
+        let bare = bare_root.join("other/deep/nest/rever");
+        std::fs::create_dir_all(bare.parent().unwrap()).unwrap();
+        std::fs::write(&bare, "").unwrap();
+        assert!(revb_script_from(&bare).is_none());
+        let _ = std::fs::remove_dir_all(&bare_root);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn 에이전트_경로에_revb_심이_먼저_들어간다() {
+        let dir = std::env::temp_dir().join(format!("rever-revb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("scripts")).unwrap();
+        let script = dir.join("scripts/revb.mjs");
+        std::fs::write(&script, "// shim target\n").unwrap();
+        let mut cmd = Command::new("true");
+        let shim_dir = prepend_to_path(&mut cmd, &script, &dir.join("data")).unwrap();
+        let envs: Vec<_> = cmd
+            .get_envs()
+            .filter_map(|(k, v)| v.map(|v| (k, v)))
+            .collect();
+        let path = envs
+            .iter()
+            .find(|(k, _)| *k == "PATH")
+            .and_then(|(_, v)| v.to_str())
+            .unwrap();
+        assert!(path.starts_with(shim_dir.to_str().unwrap()));
+        let shim = dir.join("data/bin/revb");
+        assert!(shim.is_file());
+        let body = std::fs::read_to_string(&shim).unwrap();
+        assert!(body.contains("revb.mjs"), "{body}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn revb_한_번짜리_명령은_묻지_않고_허용한다() {
         assert!(auto_allowed(&request(
-            "mcp__rever-traffic__list_requests",
-            json!({})
+            "Bash",
+            json!({ "command": "revb call list_requests '{}'" })
         )));
         assert!(auto_allowed(&request(
             "ToolSearch",
@@ -492,29 +622,25 @@ mod tests {
     }
 
     #[test]
-    fn 위험_도구와_앱_밖의_도구는_거절한다() {
+    fn 위험_도구와_앱_밖의_명령은_거절한다() {
         // 공격 트래픽을 보내는 도구, 안전하지 않은 메서드의 재전송.
         assert!(!auto_allowed(&request(
-            "mcp__rever-traffic__intruder_run",
-            json!({ "n": 1 })
+            "Bash",
+            json!({ "command": "revb call intruder_run '{}'" })
         )));
         assert!(!auto_allowed(&request(
-            "mcp__rever-traffic__replay_request",
-            json!({ "method": "POST" })
+            "Bash",
+            json!({ "command": "revb call replay_request '{\"method\":\"POST\"}'" })
         )));
-        // 셸, 파일, 다른 MCP 서버, 이름만 비슷한 서버.
+        // 셸, 파일, 두 번째 명령.
         assert!(!auto_allowed(&request("Bash", json!({ "command": "ls" }))));
+        assert!(!auto_allowed(&request(
+            "Bash",
+            json!({ "command": "revb list; rm -rf ~" })
+        )));
         assert!(!auto_allowed(&request(
             "Read",
             json!({ "file_path": "/etc/passwd" })
-        )));
-        assert!(!auto_allowed(&request(
-            "mcp__other__list_requests",
-            json!({})
-        )));
-        assert!(!auto_allowed(&request(
-            "mcp__rever-traffic-evil__list_requests",
-            json!({})
         )));
     }
 }

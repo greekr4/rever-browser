@@ -272,13 +272,39 @@ pub trait ModelPickerHost {
 #[derive(Clone, Debug)]
 pub struct ModelPickerProps {
     pub agent_id: AcpAgentId,
-    /// Display name of the active model, or `None` to fall back to the agent name.
+    /// The chosen entry of the model list, by its name: the row drawn as active.
     pub model_name: Option<String>,
+    /// What the chip reads ([`chip_model_name`]); the agent's name when `None`.
+    pub chip_name: Option<String>,
     pub disabled: bool,
     /// Render as the chat tabs' "+" button: lists agents only; the model is picked inside the session.
     pub new_tab: bool,
     /// The chat column the popover has to stay inside; the whole window when `None`.
     pub column: Option<Span>,
+}
+
+/// The id of the entry an agent's CLI lists for "whatever I would pick".
+const DEFAULT_MODEL_ID: &str = "default";
+
+/// The model name the chip shows: which model answers, not the name of a menu entry.
+/// The CLI's "Default (recommended)" names its model at the start of its description
+/// ("Opus 5.5 · Best for…"). `None` when nothing tells: the chip then names the agent.
+pub fn chip_model_name(chosen: Option<&str>, models: &[LiveModel]) -> Option<String> {
+    let entry = match chosen {
+        Some(name) => models.iter().find(|model| model.name == name),
+        None => models
+            .iter()
+            .find(|model| model.model_id == DEFAULT_MODEL_ID),
+    };
+    let Some(entry) = entry else {
+        return chosen.map(str::to_owned);
+    };
+    let behind_default = (entry.model_id == DEFAULT_MODEL_ID)
+        .then(|| entry.description.as_deref()?.split_once(" · "))
+        .flatten()
+        .map(|(model, _)| model.trim().to_owned())
+        .filter(|model| !model.is_empty());
+    Some(behind_default.unwrap_or_else(|| entry.name.clone()))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -505,7 +531,7 @@ impl Render for ModelPicker {
                 .find(|agent| agent.id == props.agent_id)
                 .or(ACP_AGENTS.first());
             let label = props
-                .model_name
+                .chip_name
                 .clone()
                 .or_else(|| selected.map(|agent| agent.name.to_owned()))
                 .unwrap_or_default();
@@ -526,7 +552,8 @@ impl Render for ModelPicker {
                 .px(px(8.0))
                 .py(px(4.0))
                 .rounded(px(6.0))
-                .bg(theme.bg_bar)
+                // No fill of its own: on the dark composer the bar's color read as a
+                // black box. The border alone marks it as a button.
                 .border_1()
                 .border_color(theme.border_2)
                 .text_size(px(12.0))
@@ -916,6 +943,72 @@ mod tests {
 
     fn def(id: AcpAgentId) -> &'static AcpAgentDef {
         ACP_AGENTS.iter().find(|agent| agent.id == id).unwrap()
+    }
+
+    fn live(id: &str, name: &str, description: Option<&str>) -> LiveModel {
+        LiveModel {
+            agent_id: AcpAgentId::ClaudeCode,
+            model_id: id.to_owned(),
+            name: name.to_owned(),
+            description: description.map(str::to_owned),
+            effort_levels: None,
+            supports_fast_mode: None,
+        }
+    }
+
+    fn claude_models() -> Vec<LiveModel> {
+        vec![
+            live(
+                "default",
+                "Default (recommended)",
+                Some("Opus 5.5 · Best for everyday, complex tasks"),
+            ),
+            live(
+                "sonnet",
+                "Sonnet 5.5",
+                Some("Most efficient for simpler tasks"),
+            ),
+        ]
+    }
+
+    #[test]
+    fn 고른_모델이_없으면_기본_항목이_가리키는_모델_이름을_보여준다() {
+        assert_eq!(
+            chip_model_name(None, &claude_models()).as_deref(),
+            Some("Opus 5.5")
+        );
+    }
+
+    #[test]
+    fn 기본_항목을_골라도_그_항목이_가리키는_모델_이름을_보여준다() {
+        assert_eq!(
+            chip_model_name(Some("Default (recommended)"), &claude_models()).as_deref(),
+            Some("Opus 5.5")
+        );
+    }
+
+    #[test]
+    fn 이름이_있는_모델을_고르면_그_이름을_그대로_보여준다() {
+        assert_eq!(
+            chip_model_name(Some("Sonnet 5.5"), &claude_models()).as_deref(),
+            Some("Sonnet 5.5")
+        );
+        // 목록에 없는 이름도 고른 그대로다.
+        assert_eq!(
+            chip_model_name(Some("Custom"), &claude_models()).as_deref(),
+            Some("Custom")
+        );
+    }
+
+    #[test]
+    fn 목록을_아직_모르거나_기본_항목이_없으면_모델_이름이_없다() {
+        assert_eq!(chip_model_name(None, &[]), None);
+        assert_eq!(chip_model_name(None, &[live("gpt-x", "GPT X", None)]), None);
+        // 설명에 모델 이름이 없는 기본 항목은 제 이름을 쓴다.
+        assert_eq!(
+            chip_model_name(None, &[live("default", "Default", None)]).as_deref(),
+            Some("Default")
+        );
     }
 
     fn health(id: &str, status: AgentHealthStatus) -> AgentHealth {
@@ -1368,6 +1461,7 @@ mod view_tests {
                 move |_| ModelPickerProps {
                     agent_id: AcpAgentId::ClaudeCode,
                     model_name: Some("Opus".into()),
+                    chip_name: Some("Opus".into()),
                     disabled: false,
                     new_tab,
                     column: None,

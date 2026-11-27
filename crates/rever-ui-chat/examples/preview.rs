@@ -355,6 +355,7 @@ impl Preview {
                     let (agent_id, name) = chosen.borrow().clone();
                     ModelPickerProps {
                         agent_id,
+                        chip_name: Some(name.clone()),
                         model_name: Some(name),
                         disabled: false,
                         new_tab: false,
