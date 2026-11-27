@@ -284,13 +284,27 @@ export class SocketClient {
     // returning silently — otherwise a `revb run` script (and a `revb call`
     // user) never sees the refusal, as happened with a bad finding_add.
     if (result && typeof result === 'object' && result.isError === true) {
-      const text = (result.content ?? [])
-        .filter((b) => b.type === 'text')
-        .map((b) => b.text)
-        .join('\n')
-      throw new RpcError(text || 'tool error')
+      throw new RpcError(textOf(result))
     }
-    return result
+    const texts = []
+    for (const block of result?.content ?? []) {
+      if (block.type !== 'text' || typeof block.text !== 'string') continue
+      // Screenshots travel as text blocks holding one image data URL.
+      const image = parseImageDataUrl(block.text)
+      if (image) {
+        process.stderr.write(`[revb] ${name}: image saved ${saveImage(image)}\n`)
+        continue
+      }
+      texts.push(block.text)
+    }
+    // Extra text parts are page notes (scope warnings, answered dialogs,
+    // downloads) — stderr keeps stdout parseable.
+    for (const note of texts.slice(1)) process.stderr.write(`[revb] ${name}: ${note}\n`)
+    if (texts.length === 0) return ''
+    const full = await fetchRest(texts[0], async (resultId, offset) =>
+      textOf(await this.request('tool_result_more', { resultId, offset, limit: PAGE_CHARS }))
+    )
+    return toValue(full)
   }
 
   async tools() {
@@ -305,6 +319,30 @@ export class SocketClient {
     this.sock.end()
     this.sock = null
   }
+}
+
+/** The text of a tool result: its text blocks joined. */
+function textOf(result) {
+  return (result?.content ?? [])
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n')
+}
+
+/** A text block that is exactly one image data URL → { mime, data }, else null. */
+function parseImageDataUrl(text) {
+  const m = /^data:image\/([a-z0-9+-]+);base64,([A-Za-z0-9+/=]+)$/.exec(text.trim())
+  return m ? { mime: `image/${m[1]}`, data: m[2] } : null
+}
+
+/** Save one decoded image to REVER_SHOT_DIR or the OS temp dir. */
+function saveImage({ mime, data }) {
+  const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[mime] ?? 'bin'
+  const dir = process.env.REVER_SHOT_DIR ?? os.tmpdir()
+  mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, `rever-shot-${Date.now()}.${ext}`)
+  writeFileSync(file, Buffer.from(data, 'base64'))
+  return file
 }
 
 async function withClient(fn) {
