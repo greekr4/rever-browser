@@ -279,7 +279,18 @@ export class SocketClient {
   async call(name, args) {
     const reply = await this.request(name, args ?? {})
     if (!reply.ok) throw new RpcError(reply.error)
-    return reply.result
+    const result = reply.result
+    // A tool that refused its arguments or reported an error raises instead of
+    // returning silently — otherwise a `revb run` script (and a `revb call`
+    // user) never sees the refusal, as happened with a bad finding_add.
+    if (result && typeof result === 'object' && result.isError === true) {
+      const text = (result.content ?? [])
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join('\n')
+      throw new RpcError(text || 'tool error')
+    }
+    return result
   }
 
   async tools() {

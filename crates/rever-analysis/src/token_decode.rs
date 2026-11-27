@@ -122,6 +122,42 @@ pub fn decode_token(value: &str, now_ms: u64) -> Value {
         }
     }
 
+    // 2-segment token (`payload.signature`): no header segment, so the usual
+    // JWT pattern does not match — but the payload is plain base64url JSON and
+    // the signature is usually a raw HMAC. The admin-tool pattern.
+    if let [payload, signature] = jwt_parts.as_slice()
+        && let Some(payload) = try_parse_json(&decode_base64_url(payload)).filter(is_truthy)
+    {
+        // A raw HMAC-SHA256/512 is 32/64 bytes: 43/44 and 86/88 base64url/base64
+        // characters. Anything else is probably not a signature at all, so the
+        // value falls through to the other decoders instead of being mislabeled.
+        let sig_hint = match signature.len() {
+            43 | 44 => "43-char signature — consistent with base64url(SHA-256 HMAC)",
+            86 | 88 => "86-char signature — consistent with base64url(SHA-512 HMAC)",
+            _ => "not a signature length",
+        };
+        if sig_hint != "not a signature length" {
+            let expiry = payload
+                .get("expiresAt")
+                .and_then(Value::as_u64)
+                .map(|at_ms| {
+                    if at_ms < now_ms {
+                        " — EXPIRED".to_owned()
+                    } else {
+                        String::new()
+                    }
+                })
+                .unwrap_or_default();
+            return json!({
+                "type": "signed-token",
+                "format": "payload.signature (2 segments, no header)",
+                "payload": payload,
+                "note": format!("signature not verified ({sig_hint}){expiry}"),
+                "raw": v,
+            });
+        }
+    }
+
     // URL-encoded JSON.
     if v.contains('%')
         && let Some(decoded) = decode_uri_component(v)
@@ -319,7 +355,23 @@ mod tests {
     }
 
     #[test]
-    fn 점_세_조각이어도_json이_아니면_jwt가_아니다() {
+    fn two_segment_payload_signature_decodes_as_signed_token() {
+        // The wargame admin token shape: base64url(JSON) + "." + 43-char HMAC-SHA256.
+        let token = "eyJyb2xlIjoiYWRtaW4iLCJleHBpcmVzQXQiOjE3OTU3OTU5MDc4Nzd9.iOpgycmTOwEX0FNRiBfArC5prvLYAgBwwIvxCe7pFW4";
+        let out = decode_token(token, 1_785_000_000_000);
+        assert_eq!(out["type"], "signed-token");
+        assert_eq!(out["payload"]["role"], "admin");
+        assert_eq!(out["payload"]["expiresAt"], 1_795_795_907_877_u64);
+        let note = out["note"].as_str().unwrap();
+        assert!(note.contains("SHA-256"), "{note}");
+        assert!(!note.contains("EXPIRED"), "{note}");
+        // Not-a-signature second segments are left to the other decoders.
+        assert_eq!(decode_token(&format!("{HEADER}.{EXP_PAYLOAD}"), 0)["type"], "unknown");
+    }
+
+    #[test]
+    fn three_dot_parts_without_json_are_not_jwt() {
+
         assert_eq!(decode_token("a.b.c", 0)["type"], "unknown");
         // Header decodes to the falsy JSON value 0 ("MA").
         assert_eq!(

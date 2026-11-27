@@ -22,7 +22,7 @@ impl Tool for DecodeToken {
     fn def(&self) -> ToolDef {
         ToolDef::new(
             "decode_token",
-            "Detect and decode a token value: JWT (3-segment base64url), base64, URL-encoded JSON, or hex. Returns type, decoded content, and expiry for JWTs.",
+            "Detect and decode a token value: JWT (3-segment base64url), 2-segment signed tokens (payload.signature, HMAC length hinted), base64, URL-encoded JSON, or hex. Returns type, decoded content, and expiry when one is readable.",
             json!({
                 "type": "object",
                 "properties": {

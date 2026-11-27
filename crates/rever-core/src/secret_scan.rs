@@ -65,6 +65,62 @@ pub static SECRET_PATTERNS: LazyLock<Vec<Pattern>> = LazyLock::new(|| {
     ])
 });
 
+/// JSON keys that name sensitive data. Reported even when the value is null or
+/// empty — a field like `pinCode: null` in a create-response proves the server
+/// stores it, which is the finding a red-team report wants.
+pub fn is_sensitive_field(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    [
+        "pin", "pincode", "otp", "otpcode", "password", "passwd", "secret",
+        "apikey", "api_key", "token", "refreshtoken", "accesstoken",
+    ]
+    .iter()
+    .any(|name| key.contains(name))
+}
+
+fn walk_fields(value: &Value, visit: &mut impl FnMut(&str, &Value)) {
+    match value {
+        Value::Object(map) => {
+            for (key, value) in map {
+                visit(key, value);
+                walk_fields(value, visit);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                walk_fields(item, visit);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The sensitive JSON fields of a body, with values masked the same way the
+/// value scanners mask.
+fn scan_sensitive_fields(body: &str, location: &str) -> Vec<Hit> {
+    let Ok(value) = serde_json::from_str::<Value>(body) else {
+        return Vec::new();
+    };
+    let mut hits = Vec::new();
+    walk_fields(&value, &mut |key, value| {
+        if !is_sensitive_field(key) {
+            return;
+        }
+        let masked = match value {
+            Value::Null => "<null>".to_owned(),
+            Value::String(text) if text.is_empty() => "<empty>".to_owned(),
+            Value::String(text) => mask(text),
+            other => mask(&other.to_string()),
+        };
+        hits.push(Hit {
+            kind: format!("field:{key}"),
+            location: location.to_owned(),
+            masked,
+        });
+    });
+    hits
+}
+
 /// Request headers that routinely carry credentials.
 pub fn is_sensitive_header(name: &str) -> bool {
     [
@@ -191,9 +247,11 @@ pub fn scan_request(entry: &StoredRequest) -> Vec<Hit> {
         && entry.response_body_base64 != Some(true)
     {
         hits.extend(scan_text(body, "response-body"));
+        hits.extend(scan_sensitive_fields(body, "response-body"));
     }
     if let Some(post_data) = &entry.request_post_data {
         hits.extend(scan_text(post_data, "request-body"));
+        hits.extend(scan_sensitive_fields(post_data, "request-body"));
     }
     // Sensitive request headers, reported by name regardless of value shape.
     for (name, value) in entry.request_headers.iter().flatten() {
@@ -383,6 +441,9 @@ mod tests {
                     "request-body",
                     "\"pas…er2\" (27 chars)"
                 ),
+                hit(
+                    "field:password", "request-body", "hunt…ter2 (14 chars)"
+                ),
                 hit("header:cookie", "request-header", "sid=…mnop (20 chars)"),
             ]
         );
@@ -391,6 +452,6 @@ mod tests {
             response_body_base64: Some(true),
             ..entry
         };
-        assert_eq!(scan_request(&base64).len(), 2);
+        assert_eq!(scan_request(&base64).len(), 3);
     }
 }
