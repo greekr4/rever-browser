@@ -93,7 +93,7 @@ mod tests {
             .map(str::to_owned)
             .collect();
         let allowed = begin_direct_turn(ToolProfile::Browse, &dispatched);
-        assert_eq!(allowed.len(), 85);
+        assert_eq!(allowed.len(), 83);
         assert_eq!(
             take_direct_tool("grep_scripts", &allowed, &mut dispatched),
             Ok(())

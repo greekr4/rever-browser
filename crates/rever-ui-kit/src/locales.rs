@@ -534,12 +534,12 @@ pub static STRINGS: &[(&str, &str, &str)] = &[
     ("profile.incognito", "+ Incognito", "+ 시크릿"),
     (
         "profile.incognitoHint",
-        "Create an incognito profile (in-memory, cleared on quit)",
-        "시크릿 프로필 생성 (메모리 전용, 종료 시 삭제)",
+        "Create an incognito profile (its window keeps nothing once closed)",
+        "시크릿 프로필 생성 (창을 닫으면 아무것도 남지 않음)",
     ),
     ("profile.incognitoTag", "incognito", "시크릿"),
     ("profile.newName", "New profile name", "새 프로필 이름"),
-    ("profile.openIn", "Open in profile", "프로필로 열기"),
+    ("profile.openIn", "Open a profile window", "프로필 창 열기"),
     ("profile.persistent", "+ Persistent", "+ 영구"),
     (
         "profile.persistentHint",
@@ -564,6 +564,11 @@ pub static STRINGS: &[(&str, &str, &str)] = &[
         "Port must be 1–65535",
         "포트는 1–65535 범위여야 합니다",
     ),
+    (
+        "proxy.errScheme",
+        "Only HTTP proxies work in this browser",
+        "이 브라우저에서는 HTTP 프록시만 쓸 수 있습니다",
+    ),
     ("proxy.host", "Host", "호스트"),
     ("proxy.label", "Proxy", "프록시"),
     (
@@ -573,15 +578,15 @@ pub static STRINGS: &[(&str, &str, &str)] = &[
     ),
     (
         "proxy.noteEdit",
-        "This tab runs in its own session (separate cookies, incognito-style). Changes apply to this tab only and reload the page.",
-        "이 탭은 자체 세션(별도 쿠키, 시크릿 모드 방식)에서 실행됩니다. 변경은 이 탭에만 적용되고 페이지를 새로고침합니다.",
+        "This window runs in its own session with separate cookies. A change restarts this window and reopens its tabs.",
+        "이 창은 별도 쿠키를 쓰는 자체 세션에서 실행됩니다. 변경하면 이 창이 다시 시작되고 탭이 다시 열립니다.",
     ),
     (
         "proxy.noteNew",
-        "Opens the current page in a new tab with its own cookies and storage (like incognito), routed through this proxy. Other tabs are unaffected.",
-        "현재 페이지를 자체 쿠키·스토리지를 가진 새 탭(시크릿 모드처럼)에서 이 프록시로 라우팅해 엽니다. 다른 탭은 영향받지 않습니다.",
+        "Opens the current page in a new window with its own cookies and storage and sends it through this proxy. Nothing is kept once it is closed. Other windows are unaffected.",
+        "현재 페이지를 자체 쿠키와 스토리지를 가진 새 창에서 이 프록시로 엽니다. 창을 닫으면 아무것도 남지 않습니다. 다른 창은 영향받지 않습니다.",
     ),
-    ("proxy.openTab", "Open proxy tab", "프록시 탭 열기"),
+    ("proxy.openTab", "Open proxy window", "프록시 창 열기"),
     ("proxy.optional", "(optional)", "(선택)"),
     ("proxy.password", "Password", "비밀번호"),
     ("proxy.port", "Port", "포트"),
@@ -591,7 +596,7 @@ pub static STRINGS: &[(&str, &str, &str)] = &[
         "Set a proxy for the browser",
         "브라우저에 프록시 설정",
     ),
-    ("proxy.tabProxy", "Tab proxy", "탭 프록시"),
+    ("proxy.tabProxy", "Window proxy", "창 프록시"),
     ("proxy.user", "User", "사용자"),
     ("repeater.addHeader", "+ Add", "+ 추가"),
     (
@@ -777,11 +782,7 @@ pub static STRINGS: &[(&str, &str, &str)] = &[
     ("tab.close", "Close tab", "탭 닫기"),
     ("tab.memory", "Memory usage", "메모리 사용량"),
     ("tab.new", "New tab", "새 탭"),
-    (
-        "tab.newInProfile",
-        "New tab in profile",
-        "프로필로 새 탭 열기",
-    ),
+    ("tab.newInProfile", "Profiles", "프로필"),
     ("tab.overflow", "Hidden tabs", "숨겨진 탭"),
     (
         "template.bodyPlaceholder",

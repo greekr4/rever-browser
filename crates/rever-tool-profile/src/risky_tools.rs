@@ -213,6 +213,30 @@ pub fn matched_risky_tool(req: &Value) -> Option<&'static str> {
     })
 }
 
+/// The app reaches its own tools through `revb` in a shell, so a command that is
+/// exactly one `revb` invocation counts as the app's own work. Anything else —
+/// a pipe, a second command, a redirection — is a shell the user has to approve.
+pub fn is_own_cli(command: &str) -> bool {
+    let command = command.trim();
+    if command.is_empty() {
+        return false;
+    }
+    // Reject the metacharacters a second command hides behind.
+    if command.chars().any(|c| {
+        matches!(
+            c,
+            ';' | '|' | '&' | '`' | '<' | '>' | '(' | ')' | '$' | '\n'
+        )
+    }) {
+        return false;
+    }
+    let Some(first) = command.split_whitespace().next() else {
+        return false;
+    };
+    // `/opt/homebrew/bin/revb` and `./revb` are the same program.
+    first.rsplit('/').next() == Some("revb")
+}
+
 pub fn is_risky_tool_request(req: &Value) -> bool {
     matched_risky_tool(req).is_some()
 }
@@ -889,5 +913,23 @@ mod tests {
         assert_eq!(choose_allow_option(&r), "always");
         assert_eq!(sanitize_selection(&r, "always"), "always");
         assert_eq!(sanitize_selection(&r, "unknown"), "unknown");
+    }
+
+    #[test]
+    fn revb_한_번짜리_명령만_앱_자신의_일로_본다() {
+        assert!(is_own_cli("revb list"));
+        assert!(is_own_cli("  revb call list_requests '{\"limit\":5}'  "));
+        assert!(is_own_cli(
+            "/opt/homebrew/bin/revb scan http://127.0.0.1:8777"
+        ));
+        // A second command, a pipe or a redirection is the user's call.
+        assert!(!is_own_cli("revb list; rm -rf ~"));
+        assert!(!is_own_cli("revb list && curl http://x"));
+        assert!(!is_own_cli("revb list | sh"));
+        assert!(!is_own_cli("revb list > /tmp/x"));
+        assert!(!is_own_cli("revb list $(whoami)"));
+        assert!(!is_own_cli("echo revb"));
+        assert!(!is_own_cli(""));
+        assert!(!is_own_cli("revbx list"));
     }
 }

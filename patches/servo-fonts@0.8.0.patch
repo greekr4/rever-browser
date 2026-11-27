@@ -1,0 +1,40 @@
+diff --color --color=never -ruN -x Cargo.lock -x .cargo-ok -x .cargo_vcs_info.json -x __pycache__ -x *.pyc a/platform/macos/core_text_font_cache.rs b/platform/macos/core_text_font_cache.rs
+--- a/platform/macos/core_text_font_cache.rs	2026-11-26 16:23:15
++++ b/platform/macos/core_text_font_cache.rs	2026-11-26 16:23:15
+@@ -81,12 +81,30 @@
+             return Some(platform_font.clone());
+         }
+ 
+-        let platform_font = Self::create_font_without_variations(
+-            font_identifier,
+-            data,
+-            clamped_pt_size,
+-            synthetic_bold,
+-        )?;
++        // rever patch: another size of a font that came as data (a web font) is a copy
++        // of the one already cached. Building it from the data again copied the whole
++        // file into a new `CFData` for every size, and this cache never lets go: six
++        // news sites left 170MB of the same font files behind.
++        let cached = data.and_then(|_| {
++            identifier_cache
++                .iter()
++                .find(|(key, _)| key.variations.is_empty())
++                .map(|(_, platform_font)| platform_font.ctfont.clone())
++        });
++        let platform_font = match cached {
++            Some(ctfont) => {
++                let resized = unsafe {
++                    ctfont.copy_with_attributes(clamped_pt_size as CGFloat, std::ptr::null(), None)
++                };
++                PlatformFont::new_with_ctfont(resized, synthetic_bold)
++            },
++            None => Self::create_font_without_variations(
++                font_identifier,
++                data,
++                clamped_pt_size,
++                synthetic_bold,
++            )?,
++        };
+         identifier_cache.insert(key, platform_font.clone());
+         Some(platform_font)
+     }

@@ -197,6 +197,7 @@ impl ChatTabs {
                 move |cx| ModelPickerProps {
                     agent_id: agent.get(),
                     model_name: None,
+                    chip_name: None,
                     disabled: false,
                     new_tab: true,
                     column: column(cx),

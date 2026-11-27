@@ -309,7 +309,7 @@ fn app_checks(root: &Path) -> Vec<(String, bool, String)> {
             .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
             .unwrap_or_default()
     };
-    let endpoint = user_data.join("mcp-endpoint.json");
+    let endpoint = user_data.join("control-endpoint.json");
     for _ in 0..40 {
         if endpoint.exists() {
             break;

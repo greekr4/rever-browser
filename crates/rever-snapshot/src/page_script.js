@@ -17,7 +17,9 @@ function (command, arg) {
     // ids: one stable number per node for as long as the node lives, which is what a
     // backendNodeId was. Held weakly, so a snapshot does not keep removed elements alive.
     // refs: the elements the current snapshot gave a ref to.
-    state = { ids: new WeakMap(), next: 1, last: null, refs: new Map() }
+    // crossFrames: the <iframe> elements of another origin the last capture met, by
+    // id. The script cannot read their documents; the engine goes into them by element.
+    state = { ids: new WeakMap(), next: 1, last: null, refs: new Map(), crossFrames: new Map() }
     // Non-enumerable, so a page that lists its own globals does not see it.
     Object.defineProperty(window, KEY, { value: state, configurable: true })
   }
@@ -385,6 +387,7 @@ function (command, arg) {
     const paths = new Map()
     const ordinals = new Map()
     const unlisted = []
+    const cross = new Map()
     let mainCount = 0
     let textSeq = 0
 
@@ -395,6 +398,14 @@ function (command, arg) {
       name: { value: String(doc.title || '') },
       childIds: []
     })
+
+    const readable = (el) => {
+      try {
+        return !!el.contentDocument
+      } catch (e) {
+        return false
+      }
+    }
 
     const enterFrame = (el, id, child, cs) => {
       let doc = null
@@ -536,8 +547,11 @@ function (command, arg) {
       if (isFrame) {
         // A frame that could not be read and has no line of its own in the outline
         // (it sits under aria-hidden) would otherwise vanish without a word.
-        if (!enterFrame(el, id, child, cs) && childOut === null) {
-          unlisted.push({ frameId: 'f' + id, url: String(el.src || '') })
+        if (!enterFrame(el, id, child, cs)) {
+          // shortcut: only a frame that sits in this document itself; one inside a
+          // same-origin frame stays not entered until the chain to it is tracked.
+          if (tag === 'IFRAME' && el.ownerDocument === document && !readable(el)) cross.set(id, el)
+          if (childOut === null) unlisted.push({ frameId: 'f' + id, url: String(el.src || '') })
         }
         return
       }
@@ -599,6 +613,7 @@ function (command, arg) {
     }
 
     state.last = last
+    state.crossFrames = cross
     return {
       meta: {
         url: String(location.href), title: String(document.title || ''),
@@ -608,6 +623,7 @@ function (command, arg) {
       nodes: nodes,
       frames: frames,
       unlistedFrames: unlisted,
+      crossFrames: Array.from(cross.keys(), (id) => ({ ownerBackendNodeId: id })),
       layout: { documents: [{ nodes: dom, layout: lay }], strings: strings },
       click: click
     }
@@ -673,6 +689,24 @@ function (command, arg) {
   }
 
   function act(a) {
+    // Where the document of an other-origin frame starts in this document's viewport:
+    // what a point measured inside that frame has to be moved by.
+    if (a.action === 'frameOrigin') {
+      const frame = state.crossFrames && state.crossFrames.get(a.frame)
+      if (!frame || !frame.isConnected) {
+        return { error: 'the frame is no longer on the page — call browser_snapshot again' }
+      }
+      scrollIntoViewIfNeeded(frame)
+      const r = frame.getBoundingClientRect()
+      const s = styleOf(frame)
+      const off = frameOffset(frame)
+      return {
+        ok: {
+          x: r.left + num(s.borderLeftWidth) + num(s.paddingLeft) + off.x,
+          y: r.top + num(s.borderTopWidth) + num(s.paddingTop) + off.y
+        }
+      }
+    }
     let el
     if (a.selector != null) {
       try {

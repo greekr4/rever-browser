@@ -16,14 +16,16 @@ mod api_keys;
 mod app;
 mod bridge;
 mod chat_agents;
+mod control_client;
 mod debug;
 mod engine;
 mod intercept;
-mod mcp_client;
 mod memory;
 mod panels;
 mod permissions;
+mod profile_windows;
 mod scan;
+mod setup_host;
 mod shell;
 mod storage_host;
 mod workflow_agents;
@@ -37,7 +39,31 @@ use rever_core::address::normalize_address;
 use rever_ui_kit::text_input;
 use url::Url;
 
+/// macOS's allocator keeps what a thread freed in that thread's own pool, and a browser
+/// frees most of a page on other threads than it was made on: after six news sites
+/// 200MB sat free but not given back. Its space-efficient mode shares one pool, and that
+/// was 45MB with page loads no slower. The mode is read when a process starts, so the
+/// app starts itself again with it set. Set `MallocSpaceEfficient=0` to keep it off.
+#[cfg(target_os = "macos")]
+fn start_with_compact_allocator() {
+    use std::os::unix::process::CommandExt as _;
+    const MODE: &str = "MallocSpaceEfficient";
+    if std::env::var_os(MODE).is_some() {
+        return;
+    }
+    let Ok(app) = std::env::current_exe() else {
+        return;
+    };
+    // Comes back only when the start failed: the app then runs as it is.
+    let _ = std::process::Command::new(app)
+        .args(std::env::args_os().skip(1))
+        .env(MODE, "1")
+        .exec();
+}
+
 fn main() {
+    #[cfg(target_os = "macos")]
+    start_with_compact_allocator();
     // No URL: the app opens what the last run left open.
     let mut url = None;
     let (mut self_check, mut open_panel, mut say) = (None, None, None);

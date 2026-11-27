@@ -27,6 +27,8 @@ servo-layout = { path = "vendor/servo-layout" }
 stylo = { path = "vendor/stylo" }
 # The debugging server must not panic on a stack frame of evaluated code.
 servo-devtools = { path = "vendor/servo-devtools" }
+# macOS: every size of a web font copied the whole font file, and kept it.
+servo-fonts = { path = "vendor/servo-fonts" }
 # One freetype-sys version for both GPUI and Servo.
 zed-font-kit = { path = "vendor/zed-font-kit" }
 # Without log's serde key-value feature, which breaks Servo's CSS engine at compile time.

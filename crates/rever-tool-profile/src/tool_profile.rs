@@ -68,7 +68,9 @@ const HIDDEN: BucketSpec = BucketSpec::Of(&[ToolBucket::Hidden]);
 /// Registry in declaration order: `advertised_names` lists tools in this order.
 pub const TOOL_BUCKETS: &[(&str, BucketSpec)] = &[
     // core (27) — existing 22 + tool_profile_set + dialog answer/history + downloads
+    // + run_steps
     ("tool_profile_set", CORE),
+    ("run_steps", CORE),
     ("browser_navigate", CORE),
     ("browser_snapshot", CORE),
     ("browser_click", CORE),
@@ -84,7 +86,6 @@ pub const TOOL_BUCKETS: &[(&str, BucketSpec)] = &[
     ("get_request", CORE),
     ("tool_result_more", CORE),
     ("console_logs", CORE),
-    ("console_exceptions", CORE),
     ("scope_status", CORE),
     ("scope_set", CORE),
     ("scope_add", CORE),
@@ -104,7 +105,7 @@ pub const TOOL_BUCKETS: &[(&str, BucketSpec)] = &[
     ("dialog_history", CORE),
     ("list_downloads", CORE),
     ("wait_for_download", CORE),
-    // browse only (34)
+    // browse only (33)
     ("browser_hover", BROWSE),
     ("browser_scroll_element", BROWSE),
     ("browser_draw", BROWSE),
@@ -138,11 +139,9 @@ pub const TOOL_BUCKETS: &[(&str, BucketSpec)] = &[
     ("sw_list", BROWSE),
     ("sw_unregister", BROWSE),
     ("sw_caches", BROWSE),
-    ("inspect_listeners", BROWSE),
     // browse ∩ reverse (19)
     ("list_endpoints", BROWSE_REVERSE),
     ("console_eval", BROWSE_REVERSE),
-    ("console_get_props", BROWSE_REVERSE),
     ("cookie_list", BROWSE_REVERSE),
     ("cookie_set", BROWSE_REVERSE),
     ("cookie_delete", BROWSE_REVERSE),
@@ -190,7 +189,6 @@ pub const TOOL_BUCKETS: &[(&str, BucketSpec)] = &[
     ("crypto_trace_start", REVERSE),
     ("crypto_trace_list", REVERSE),
     ("crypto_trace_stop", REVERSE),
-    ("exec_trace", REVERSE),
     ("inject_add", REVERSE),
     ("inject_list", REVERSE),
     ("inject_remove", REVERSE),
@@ -208,8 +206,6 @@ pub const TOOL_BUCKETS: &[(&str, BucketSpec)] = &[
     ("override_remove", REVERSE),
     ("header_preset_list", REVERSE),
     ("header_preset_save", REVERSE),
-    ("header_preset_apply", REVERSE),
-    ("header_preset_disable", REVERSE),
     ("list_websockets", REVERSE),
     ("get_ws_frames", REVERSE),
     ("ws_capture_enable", REVERSE),
@@ -249,7 +245,16 @@ pub const TOOL_BUCKETS: &[(&str, BucketSpec)] = &[
     ("raw_http", PROBE),
     ("path_probe", PROBE),
     ("lfi_probe", PROBE),
-    // hidden (9) — external catalog only
+    // hidden (15) — external catalog only. No profile offers these: each one
+    // answers an error or is a no-op in this build.
+    ("console_exceptions", HIDDEN),
+    ("console_get_props", HIDDEN),
+    ("exec_trace", HIDDEN),
+    ("header_preset_apply", HIDDEN),
+    ("header_preset_disable", HIDDEN),
+    ("inspect_listeners", HIDDEN),
+    // A breakpoint stops the page but the pause never reaches the tools, so the
+    // tab is lost; see the descriptions in rever-tools-debug.
     ("bp_add", HIDDEN),
     ("bp_list", HIDDEN),
     ("bp_remove", HIDDEN),
@@ -494,10 +499,9 @@ mod tests {
     use super::*;
     use crate::risky_tools::ALWAYS_RISKY_TOOLS;
 
-    const BROWSE_REVERSE_NAMES: [&str; 20] = [
+    const BROWSE_REVERSE_NAMES: [&str; 19] = [
         "list_endpoints",
         "console_eval",
-        "console_get_props",
         "cookie_list",
         "cookie_set",
         "cookie_delete",
@@ -517,7 +521,28 @@ mod tests {
         "cli_export",
     ];
 
-    const HIDDEN_NAMES: [&str; 9] = [
+    /// Tools the TypeScript build advertised that this build hides: each answers
+    /// an error or does nothing here, so offering it only burns the agent's
+    /// turns. They stay registered for external clients.
+    /// Tools this build adds: the TypeScript app never had them.
+    const ADDED_IN_RUST: [&str; 1] = ["run_steps"];
+
+    const HIDDEN_BECAUSE_UNSUPPORTED: [&str; 6] = [
+        "console_exceptions",
+        "console_get_props",
+        "exec_trace",
+        "header_preset_apply",
+        "header_preset_disable",
+        "inspect_listeners",
+    ];
+
+    const HIDDEN_NAMES: [&str; 15] = [
+        "console_exceptions",
+        "console_get_props",
+        "exec_trace",
+        "header_preset_apply",
+        "header_preset_disable",
+        "inspect_listeners",
         "bp_add",
         "bp_list",
         "bp_remove",
@@ -561,7 +586,11 @@ mod tests {
     fn 소스_register_tool_이름과_레지스트리_키가_같다() {
         let source = source_tool_names();
         assert_eq!(
-            sorted(registry_keys()),
+            sorted(
+                registry_keys()
+                    .into_iter()
+                    .filter(|name| !ADDED_IN_RUST.contains(name))
+            ),
             sorted(source.iter().map(String::as_str))
         );
         assert_eq!(source.len(), 177);
@@ -576,11 +605,11 @@ mod tests {
         let start = source.find("export const TOOL_BUCKETS").unwrap();
         let end = start + source[start..].find("\n}\n").unwrap();
         let entry = Regex::new(r"(?m)^  (\w+): ('core'|\[[^\]]*\]),?$").unwrap();
-        let ts: Vec<(&str, &str)> = entry
+        let ts: Vec<(&str, String)> = entry
             .captures_iter(&source[start..end])
             .map(|m| {
                 let (_, [name, bucket]) = m.extract();
-                (name, bucket)
+                (name, bucket.to_owned())
             })
             .collect();
         let rust: Vec<(&str, String)> = TOOL_BUCKETS
@@ -597,19 +626,33 @@ mod tests {
             })
             .collect();
         assert_eq!(ts.len(), 177);
-        assert_eq!(
-            rust.iter()
-                .map(|(n, b)| (*n, b.as_str()))
-                .collect::<Vec<_>>(),
-            ts
-        );
+        // HIDDEN_BECAUSE_UNSUPPORTED and ADDED_IN_RUST are the only deviations.
+        // Take those names out of both sides: everything else the app offers
+        // must match the TypeScript in name, bucket and order.
+        let kept = |pairs: &[(&str, String)]| -> Vec<(String, String)> {
+            pairs
+                .iter()
+                .filter(|(name, _)| !HIDDEN_BECAUSE_UNSUPPORTED.contains(name))
+                .filter(|(name, _)| !ADDED_IN_RUST.contains(name))
+                .map(|(name, bucket)| ((*name).to_owned(), bucket.clone()))
+                .collect()
+        };
+        assert_eq!(kept(&rust), kept(&ts));
+        for name in HIDDEN_BECAUSE_UNSUPPORTED {
+            let (_, ts_bucket) = ts.iter().find(|(n, _)| *n == name).expect(name);
+            assert_ne!(ts_bucket, "['hidden']", "{name} was already hidden");
+            assert!(
+                tool_bucket(name).is_some_and(BucketSpec::is_hidden),
+                "{name}"
+            );
+        }
     }
 
     #[test]
-    fn browse_84_reverse_118_probe_50이고_예산_120을_넘지_않는다() {
+    fn browse_82_reverse_114_probe_50이고_예산_120을_넘지_않는다() {
         assert_eq!(PROFILE_TOOL_BUDGET, 120);
-        assert_eq!(advertised_names(ToolProfile::Browse, []).len(), 84);
-        assert_eq!(advertised_names(ToolProfile::Reverse, []).len(), 118);
+        assert_eq!(advertised_names(ToolProfile::Browse, []).len(), 82);
+        assert_eq!(advertised_names(ToolProfile::Reverse, []).len(), 114);
         assert_eq!(advertised_names(ToolProfile::Probe, []).len(), 50);
         for profile in TOOL_PROFILES {
             assert_eq!(assert_profile_budget(profile), Ok(()));
@@ -650,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn bp_9개는_hidden이고_어떤_프로파일에도_광고되지_않는다() {
+    fn 숨긴_15개는_hidden이고_어떤_프로파일에도_광고되지_않는다() {
         let hidden = TOOL_BUCKETS
             .iter()
             .filter(|(_, spec)| spec.is_hidden())
@@ -659,6 +702,18 @@ mod tests {
         for name in HIDDEN_NAMES {
             for profile in TOOL_PROFILES {
                 assert!(!is_advertised(name, profile), "{name} {profile}");
+            }
+        }
+    }
+
+    #[test]
+    fn 항상_오류인_도구는_어느_프로파일에도_없다() {
+        for name in HIDDEN_BECAUSE_UNSUPPORTED {
+            for profile in TOOL_PROFILES {
+                assert!(
+                    !advertised_names(profile, []).contains(&name),
+                    "{name} {profile}"
+                );
             }
         }
     }
@@ -700,7 +755,7 @@ mod tests {
             1
         );
         assert_eq!(names.iter().filter(|n| **n == "grep_scripts").count(), 1);
-        assert_eq!(names.len(), 85);
+        assert_eq!(names.len(), 83);
     }
 
     #[test]

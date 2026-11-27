@@ -65,6 +65,12 @@ pub fn register(registry: &mut ToolRegistry) {
     cli::register(registry);
 }
 
+/// Tools the TypeScript app did not have. Kept apart so `register` still matches
+/// the fixture of what `macros.ts` and `cli.ts` registered.
+pub fn register_extras(registry: &mut ToolRegistry) {
+    macros::register_extras(registry);
+}
+
 pub(crate) fn done(result: Result<String, String>) -> ToolResult {
     match result {
         Ok(text) => ok(text),

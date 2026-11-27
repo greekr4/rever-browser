@@ -150,6 +150,20 @@ impl Browser {
                 .or(tabs.first())
                 .map(|tab| tab.title.clone())
                 .unwrap_or_default();
+            let working = tabs.iter().any(|tab| self.agent_on(tab));
+            // A small rounded button on the picture, beside the agent's badge.
+            let pill = |name: &'static str, key: &'static str| {
+                div()
+                    .id((name, id.0 as usize))
+                    .px(px(8.0))
+                    .h(px(22.0))
+                    .flex()
+                    .items_center()
+                    .rounded_full()
+                    .bg(theme.chrome_toolbar)
+                    .hover(move |button| button.bg(hover))
+                    .child(lang.t(key))
+            };
             let picture = div()
                 .id(("space", id.0 as usize))
                 .group("space-tile")
@@ -183,6 +197,44 @@ impl Browser {
                         .text_color(dim)
                         .child(div().truncate().child(title))
                         .into_any_element(),
+                })
+                .when(working, |tile| {
+                    tile.child(
+                        div()
+                            .absolute()
+                            .top(px(8.0))
+                            .left(px(8.0))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .text_size(px(11.0))
+                            .child(
+                                div()
+                                    .px(px(8.0))
+                                    .h(px(22.0))
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.0))
+                                    .rounded_full()
+                                    .bg(theme.accent)
+                                    .text_color(theme.bg)
+                                    .child(div().size(px(6.0)).rounded_full().bg(theme.bg))
+                                    .child(lang.t("spaces.agent")),
+                            )
+                            .child(pill("space-take-over", "spaces.takeOver").on_click(
+                                cx.listener(move |this, _: &ClickEvent, window, cx| {
+                                    cx.stop_propagation();
+                                    this.stop_agent_in(id, cx);
+                                    this.leave_spaces(id, window, cx);
+                                }),
+                            ))
+                            .child(pill("space-stop", "spaces.stop").on_click(cx.listener(
+                                move |this, _: &ClickEvent, _, cx| {
+                                    cx.stop_propagation();
+                                    this.stop_agent_in(id, cx);
+                                },
+                            ))),
+                    )
                 })
                 .when(closable, |tile| {
                     tile.child(

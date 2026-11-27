@@ -8,6 +8,7 @@
 //! bootstrap, the escalation phase, and the pre-scan findings/cookie wipe.
 
 use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 use rever_chat_core::acp_permission::{RequestPermissionOutcome, RequestPermissionResponse};
 use rever_scope::fence::is_loopback_host;
@@ -19,6 +20,13 @@ use crate::agent::{AgentEvent, AgentSession};
 /// The TypeScript pool cap (`MAX_PARALLEL = 8`).
 const MAX_PARALLEL: usize = 8;
 const LOG_CAP: usize = 500;
+/// How long a tab worker may run before the scan stops it. The Electron app
+/// capped these at 6 minutes; the 2026-11-11 measurement (see
+/// docs/redteam-scan-perf-design.md) cut the tail without losing findings at 6
+/// minutes and halved them at 5, so do not lower it.
+const WORKER_DEADLINE: Duration = Duration::from_secs(6 * 60);
+/// The same cap for one endpoint probe, which the Electron app put at 4 minutes.
+const PROBE_DEADLINE: Duration = Duration::from_secs(4 * 60);
 
 // ── Parsers (pure) ───────────────────────────────────────────────────────────
 
@@ -630,13 +638,17 @@ struct TurnOutcome {
 }
 
 struct Turn {
-    session: AgentSession,
+    /// `None` once the scan stopped the turn; dropping a session kills its CLI.
+    session: Option<AgentSession>,
     label: Option<String>,
     /// The page URL this worker owns a tab for (page workers only).
     url: Option<String>,
     outcome: TurnOutcome,
     failed: Option<String>,
     done: bool,
+    started: Instant,
+    /// Only the pooled workers are capped; the sequential phases are not.
+    limit: Option<Duration>,
 }
 
 impl Turn {
@@ -647,11 +659,12 @@ impl Turn {
         prompt: &str,
         label: Option<String>,
         url: Option<String>,
+        limit: Option<Duration>,
     ) -> Result<(), String> {
         let mut session = spawn(prompt)?;
         let _ = session.send(prompt);
         pool.push(Turn {
-            session,
+            session: Some(session),
             label,
             url,
             outcome: TurnOutcome {
@@ -661,8 +674,31 @@ impl Turn {
             },
             failed: None,
             done: false,
+            started: Instant::now(),
+            limit,
         });
         Ok(())
+    }
+
+    fn over_deadline(&self) -> bool {
+        !self.done
+            && self
+                .limit
+                .is_some_and(|limit| self.started.elapsed() >= limit)
+    }
+
+    /// Stop the turn at its cap. Dropping the session kills the CLI child; what
+    /// the worker already said stays in `outcome`, so the phase still moves on
+    /// and the report keeps the findings it had.
+    fn enforce_deadline(&mut self) -> Option<u64> {
+        if !self.over_deadline() {
+            return None;
+        }
+        let secs = self.limit.map_or(0, |limit| limit.as_secs());
+        self.session = None;
+        self.failed = Some(format!("{secs}초 시간 상한 — 워커를 중단했다"));
+        self.done = true;
+        Some(secs)
     }
 }
 
@@ -774,6 +810,29 @@ impl ScanRun {
         self.stop = true;
     }
 
+    /// Whether a page worker that has not finished owns the tab at `url`.
+    pub fn worker_on(&self, url: &str) -> bool {
+        self.pool
+            .iter()
+            .any(|turn| !turn.done && turn.url.as_deref() == Some(url))
+    }
+
+    /// Stop the page worker at `url`, as its deadline would: the scan moves on
+    /// with what the worker already found.
+    pub fn stop_worker(&mut self, url: &str) -> bool {
+        let Some(turn) = self
+            .pool
+            .iter_mut()
+            .find(|turn| !turn.done && turn.url.as_deref() == Some(url))
+        else {
+            return false;
+        };
+        turn.session = None;
+        turn.failed = Some("사용자가 워커를 중단했다".to_owned());
+        turn.done = true;
+        true
+    }
+
     fn log(&mut self, kind: LineKind, text: impl Into<String>, tab: Option<String>) {
         self.log.push(ScanLine {
             kind,
@@ -788,7 +847,11 @@ impl ScanRun {
     }
 
     fn drain_turn(&mut self, turn: &mut Turn) {
-        for event in turn.session.drain() {
+        // A turn the scan stopped has no session left to drain.
+        let Some(session) = turn.session.as_mut() else {
+            return;
+        };
+        for event in session.drain() {
             match event {
                 AgentEvent::Text(text) => turn.outcome.final_text.push_str(&text),
                 AgentEvent::ToolCall(name, input) => {
@@ -836,10 +899,18 @@ impl ScanRun {
         for turn in std::mem::take(&mut self.pool) {
             let mut turn = turn;
             self.drain_turn(&mut turn);
+            if let Some(secs) = turn.enforce_deadline() {
+                // Also on stderr: a stopped worker is what makes a slow scan
+                // finish, and a headless run has no dialog log to read.
+                eprintln!("[scan] worker stopped at its {secs}s cap");
+            }
             self.pool.push(turn);
         }
         if let Some(mut turn) = self.turn.take() {
             self.drain_turn(&mut turn);
+            if let Some(secs) = turn.enforce_deadline() {
+                eprintln!("[scan] turn stopped at its {secs}s cap");
+            }
             self.turn = Some(turn);
         }
 
@@ -968,9 +1039,14 @@ impl ScanRun {
                         .map(|parsed| parsed.origin().ascii_serialization())
                         .unwrap_or_else(|_| self.target.clone());
                     let prompt = path_probe_prompt(&origin, &site);
-                    if let Err(error) =
-                        Turn::spawn_into(&mut self.pool, spawn, &prompt, Some("scan".into()), None)
-                    {
+                    if let Err(error) = Turn::spawn_into(
+                        &mut self.pool,
+                        spawn,
+                        &prompt,
+                        Some("scan".into()),
+                        None,
+                        Some(PROBE_DEADLINE),
+                    ) {
                         self.log(LineKind::Error, error, None);
                     }
                 }
@@ -1041,6 +1117,11 @@ impl ScanRun {
             let Some(url) = self.queue.pop_front() else {
                 break;
             };
+            let limit = Some(if self.phase == Phase::ProbeWorkers {
+                PROBE_DEADLINE
+            } else {
+                WORKER_DEADLINE
+            });
             let (prompt, label) = if self.phase == Phase::ProbeWorkers {
                 let (method, rest) = url.split_once(' ').unwrap_or(("GET", url.as_str()));
                 let checklist = if self.intensity == "full" {
@@ -1077,6 +1158,7 @@ impl ScanRun {
                 &prompt,
                 label.clone(),
                 owned_tab.clone(),
+                limit,
             ) {
                 Ok(()) => {
                     if let Some(url) = &owned_tab {
@@ -1156,7 +1238,7 @@ impl ScanRun {
         match spawn(prompt) {
             Ok(session) => {
                 let mut turn = Turn {
-                    session,
+                    session: Some(session),
                     label: None,
                     url: None,
                     outcome: TurnOutcome {
@@ -1166,8 +1248,12 @@ impl ScanRun {
                     },
                     failed: None,
                     done: false,
+                    started: Instant::now(),
+                    limit: None,
                 };
-                let _ = turn.session.send(prompt);
+                if let Some(session) = turn.session.as_mut() {
+                    let _ = session.send(prompt);
+                }
                 self.turn = Some(turn);
             }
             Err(error) => {
@@ -1333,5 +1419,102 @@ mod tests {
         assert_eq!(short_loc("https://a.test/"), "a.test");
         assert_eq!(short_loc("https://a.test/items?page=1"), "a.test/items");
         assert_eq!(short_loc("not a url"), "not a url");
+    }
+
+    fn turn_with(limit: Option<Duration>, started: Instant) -> Turn {
+        Turn {
+            session: None,
+            label: None,
+            url: None,
+            outcome: TurnOutcome {
+                final_text: String::new(),
+                finding_adds: 0,
+                export: None,
+            },
+            failed: None,
+            done: false,
+            started,
+            limit,
+        }
+    }
+
+    fn run_with_workers(urls: &[&str]) -> ScanRun {
+        let mut run = ScanRun::new("http://a.test/", 4, "readonly");
+        for url in urls {
+            let mut turn = turn_with(None, Instant::now());
+            turn.url = Some((*url).to_owned());
+            run.pool.push(turn);
+        }
+        run
+    }
+
+    #[test]
+    fn worker_on은_끝나지_않은_워커의_주소에만_참이다() {
+        let mut run = run_with_workers(&["http://a.test/one", "http://a.test/two"]);
+        run.pool[1].done = true;
+        assert!(run.worker_on("http://a.test/one"));
+        assert!(!run.worker_on("http://a.test/two"));
+        assert!(!run.worker_on("http://a.test/other"));
+    }
+
+    #[test]
+    fn stop_worker는_그_주소의_워커만_끝내고_이유를_남긴다() {
+        let mut run = run_with_workers(&["http://a.test/one", "http://a.test/two"]);
+        assert!(run.stop_worker("http://a.test/one"));
+        assert!(run.pool[0].done);
+        assert_eq!(
+            run.pool[0].failed.as_deref(),
+            Some("사용자가 워커를 중단했다")
+        );
+        assert!(!run.pool[1].done);
+        // 이미 끝난 워커와 없는 주소는 건드리지 않는다.
+        assert!(!run.stop_worker("http://a.test/one"));
+        assert!(!run.stop_worker("http://a.test/other"));
+    }
+
+    #[test]
+    fn 워커_상한은_6분이고_프로브는_4분이다() {
+        assert_eq!(WORKER_DEADLINE, Duration::from_secs(360));
+        assert_eq!(PROBE_DEADLINE, Duration::from_secs(240));
+    }
+
+    #[test]
+    fn 상한을_넘긴_턴은_세션을_버리고_이유를_남긴다() {
+        let started = Instant::now() - Duration::from_secs(61);
+        let mut turn = turn_with(Some(Duration::from_secs(60)), started);
+        assert!(turn.over_deadline());
+        turn.enforce_deadline();
+        assert!(turn.done);
+        assert!(turn.session.is_none());
+        assert_eq!(
+            turn.failed.as_deref(),
+            Some("60초 시간 상한 — 워커를 중단했다")
+        );
+    }
+
+    #[test]
+    fn 상한_안의_턴과_상한이_없는_턴은_그대로_둔다() {
+        let mut inside = turn_with(Some(Duration::from_secs(60)), Instant::now());
+        assert!(!inside.over_deadline());
+        inside.enforce_deadline();
+        assert!(!inside.done);
+        assert!(inside.failed.is_none());
+
+        // The sequential phases (auth, discovery, report) are not capped.
+        let mut sequential = turn_with(None, Instant::now() - Duration::from_secs(3600));
+        assert!(!sequential.over_deadline());
+        sequential.enforce_deadline();
+        assert!(!sequential.done);
+    }
+
+    #[test]
+    fn 이미_끝난_턴은_상한이_지나도_건드리지_않는다() {
+        let mut turn = turn_with(Some(Duration::from_secs(60)), Instant::now());
+        turn.done = true;
+        let started = Instant::now() - Duration::from_secs(120);
+        turn.started = started;
+        assert!(!turn.over_deadline());
+        turn.enforce_deadline();
+        assert!(turn.failed.is_none());
     }
 }

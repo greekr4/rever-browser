@@ -1,6 +1,6 @@
 # revb — scripting a running Rever Browser
 
-`revb` runs a Node script against the Rever Browser app. Every MCP tool the app
+`revb` runs a Node script against the Rever Browser app. Every tool the app
 exposes becomes a global `async` function, so a multi-step job (navigate → grep →
 extract, or a payload loop) runs in **one** Bash call instead of one LLM turn per
 tool. Intermediate data (response bodies, bundles) stays in script variables —
@@ -12,8 +12,8 @@ print only the summary you need.
   launch, browser tools fail with `no active browser target` until the first
   page is attached — wait a few seconds and retry.
 - Node 18+. No install step: `node bin/revb.mjs …` from the repo (or link it as `revb`).
-- Run one app instance at a time — a second instance overwrites the published
-  endpoint and `revb` talks to whichever started last.
+- Run one app instance at a time — the second one refuses to take over the
+  socket, so `revb` always talks to the instance that published it.
 
 ## Commands
 
@@ -28,7 +28,7 @@ revb call browser_snapshot --markdown           # or the arguments as flags type
 revb md <url>                    # open the url and print its page text as Markdown
 revb list                        # every tool: name<TAB>first sentence of its description (--list works too)
 revb skill --full                # this guide + the live tool catalog of the running app
-revb endpoint                    # url / pid / endpoint file (diagnostics)
+revb endpoint                    # socket / pid / endpoint file (diagnostics)
 ```
 
 `run` and `call` exit 1 on any thrown error, so `&&` chains and CI checks work.
@@ -36,8 +36,8 @@ revb endpoint                    # url / pid / endpoint file (diagnostics)
 Flags follow the tool's schema. A boolean is true on its own (`--full`) and
 `--full=false` turns it off. An array repeats (`--hosts a --hosts b`) or takes
 JSON. A value that starts with `{` or `[` is read as JSON. A flag the tool does
-not take is refused with the ones it does. An agent that has no MCP tool schemas
-in its context finds them with `revb describe <tool>`.
+not take is refused with the ones it does. An agent that keeps no tool schemas in
+its context finds them with `revb describe <tool>`.
 
 ## Script API
 
@@ -45,7 +45,7 @@ in its context finds them with `revb describe <tool>`.
   Names and arguments are exactly those in `revb list` / `revb skill --full` — nothing is renamed.
 - `rev.tools()` → `[{ name, description, inputSchema }]` of the live catalog.
 - `rev.call(name, args)` → call a tool by string name.
-- `rev.endpoint` → the MCP URL in use.
+- `rev.endpoint` → the control socket path in use.
 - `sh(cmd, input?)` → run a shell command, returns its stdout (`sh('jq .id', JSON.stringify(x))`).
 - Plain ESM: top-level `await`, `import fs from 'node:fs'`, etc. No sandbox — same trust as `node script.mjs`.
 
@@ -114,8 +114,8 @@ console.table(api.map(r => ({ m: r.method, path: new URL(r.url).pathname, s: r.s
 
 - **Printing whole bodies or bundles.** `console.log(await get_request(...))` on a
   600 KB script puts it all back into your context. Filter, slice or count first.
-- **One `revb call` per step in a loop from the agent.** That is the MCP round-trip
-  cost again — put the loop in a script.
+- **One `revb call` per step in a loop from the agent.** That is a process and a
+  round trip per step — put the loop in a script.
 - **Reusing `rN` refs after an action.** Every click/type/navigate returns a fresh
   snapshot; old refs point at different elements. Re-read them from the result.
 - **Red-team tools without `scope_set`.** Probes and replays are only fenced to
@@ -130,4 +130,4 @@ console.table(api.map(r => ({ m: r.method, path: new URL(r.url).pathname, s: r.s
   sees what the script is doing.
 - If the app reports a different minor version than this checkout, `revb` warns
   on stderr: tool names in this guide may have drifted — trust `revb list`.
-- Each run opens one MCP session and closes it on exit (including Ctrl-C).
+- Each run opens the control socket once and closes it on exit (including Ctrl-C).

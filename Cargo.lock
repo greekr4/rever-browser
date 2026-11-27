@@ -683,7 +683,7 @@ dependencies = [
  "log",
  "num-rational",
  "num-traits",
- "pastey 0.1.1",
+ "pastey",
  "rayon",
  "thiserror 2.0.21",
  "v_frame",
@@ -734,52 +734,6 @@ dependencies = [
  "dunce",
  "fs_extra",
  "pkg-config",
-]
-
-[[package]]
-name = "axum"
-version = "0.8.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
-dependencies = [
- "axum-core",
- "bytes",
- "futures-util",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-util",
- "itoa",
- "matchit",
- "memchr",
- "mime",
- "percent-encoding",
- "pin-project-lite",
- "serde_core",
- "sync_wrapper",
- "tokio",
- "tower",
- "tower-layer",
- "tower-service",
-]
-
-[[package]]
-name = "axum-core"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08c78f31d7b1291f7ee735c1c6780ccde7785daae9a9206026862dab7d8792d1"
-dependencies = [
- "bytes",
- "futures-core",
- "http",
- "http-body",
- "http-body-util",
- "mime",
- "pin-project-lite",
- "sync_wrapper",
- "tower-layer",
- "tower-service",
 ]
 
 [[package]]
@@ -5309,12 +5263,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "matchit"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
-
-[[package]]
 name = "maybe-rayon"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6472,12 +6420,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
 
 [[package]]
-name = "pastey"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
-
-[[package]]
 name = "pathfinder_geometry"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7555,16 +7497,17 @@ dependencies = [
  "image",
  "libc",
  "objc",
+ "percent-encoding",
  "regex",
  "reqwest",
  "rever-agent",
  "rever-chat-core",
  "rever-cli-spec",
+ "rever-control-server",
  "rever-cookie-import",
  "rever-core",
  "rever-formats",
  "rever-inject",
- "rever-mcp",
  "rever-scope",
  "rever-tool-profile",
  "rever-tools-api",
@@ -7586,6 +7529,7 @@ dependencies = [
  "rever-ui-markdown",
  "rever-ui-menus",
  "rever-ui-repeater",
+ "rever-ui-setup",
  "rever-ui-state",
  "rever-ui-storage",
  "rever-ui-traffic",
@@ -7645,6 +7589,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "rever-control"
+version = "0.0.0"
+dependencies = [
+ "rever-tool-profile",
+ "rever-tools-api",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "rever-control-server"
+version = "0.0.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "rever-control",
+ "rever-scope",
+ "rever-tools-api",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rever-cookie-import"
 version = "0.0.0"
 dependencies = [
@@ -7652,6 +7620,7 @@ dependencies = [
  "cbc 0.1.2",
  "pbkdf2 0.12.2",
  "sha1 0.10.7",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -7693,24 +7662,6 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "rever-mcp"
-version = "0.0.0"
-dependencies = [
- "axum",
- "getrandom 0.3.4",
- "reqwest",
- "rever-core",
- "rever-scope",
- "rever-tool-profile",
- "rever-tools-api",
- "rmcp",
- "serde",
- "serde_json",
- "tokio",
- "url",
 ]
 
 [[package]]
@@ -8169,39 +8120,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rmcp"
-version = "3.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d24a7e92f4bcaa36b97fa93c4fa7ca8f3e669eced949345b3462dba333c7f909"
-dependencies = [
- "async-trait",
- "base64 0.23.1",
- "bytes",
- "chrono",
- "futures",
- "http",
- "http-body",
- "http-body-util",
- "indexmap 2.14.2",
- "libc",
- "pastey 0.2.3",
- "pin-project-lite",
- "rand 0.10.3",
- "schemars 1.2.3",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "sse-stream",
- "thiserror 2.0.21",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tower-service",
- "tracing",
- "uuid 1.29.2",
-]
-
-[[package]]
 name = "roxmltree"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8561,7 +8479,6 @@ version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab508826f74a77ca9d5aba6ff19b522583ee3eaf28a19384ff3d0e5835fadf6e"
 dependencies = [
- "chrono",
  "dyn-clone",
  "indexmap 2.14.2",
  "ref-cast",
@@ -9292,8 +9209,6 @@ dependencies = [
 [[package]]
 name = "servo-fonts"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "908148cafdbb232f4ac59b6e0fb0ac8b31f97c80f1ad98beeddb4ed689cddae0"
 dependencies = [
  "app_units",
  "atomic_refcell",
@@ -10660,19 +10575,6 @@ dependencies = [
  "js-sys",
  "rsqlite-vfs",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "sse-stream"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c25ac7aff0abd1dbc474536e40416e1102c7dd9bfba0b9861c6d357f835dcfb4"
-dependencies = [
- "bytes",
- "futures-util",
- "http-body",
- "http-body-util",
- "pin-project-lite",
 ]
 
 [[package]]

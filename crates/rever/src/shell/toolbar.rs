@@ -18,7 +18,10 @@ impl Browser {
             .gap(px(2.0))
             .child(self.nav_buttons(theme, cx))
             .child(self.omnibox(theme, cx).flex_1().mx(px(4.0)))
-            .child(self.toolbar_tail(theme))
+            .children(self.window_badge(theme))
+            .child(self.proxy_button.clone())
+            .children(self.profile_menu.clone())
+            .child(self.ip_badge.clone())
             .child(self.menu.clone());
         div()
             .flex_none()
@@ -27,6 +30,31 @@ impl Browser {
             .border_color(theme.border)
             .child(row)
             .child(self.views.bookmark_bar.clone())
+    }
+
+    /// Which profile or proxy window this is; nothing in the app's first window.
+    pub(super) fn window_badge(&self, theme: &Theme) -> Option<impl IntoElement + use<>> {
+        let label = self.window_label.clone()?;
+        // A window the proxy button opened belongs to no profile.
+        let label = if label.is_empty() {
+            self.lang.t("profile.incognitoTag").into()
+        } else {
+            label
+        };
+        Some(
+            div()
+                .mx(px(4.0))
+                .px(px(8.0))
+                .h(px(22.0))
+                .flex()
+                .flex_none()
+                .items_center()
+                .rounded_full()
+                .bg(theme.accent)
+                .text_color(theme.bg)
+                .text_size(px(11.0))
+                .child(label),
+        )
     }
 
     /// Back, forward and reload.
@@ -70,29 +98,6 @@ impl Browser {
                     .child(self.views.address.clone()),
             )
             .child(self.bookmark_star(theme, cx))
-    }
-
-    /// The proxy label, the IP badge and the profile button.
-    pub(super) fn toolbar_tail(&self, theme: &Theme) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .gap(px(2.0))
-            .child(
-                div()
-                    .h(px(28.0))
-                    .px(px(10.0))
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .rounded(px(14.0))
-                    .text_size(px(12.0))
-                    .text_color(theme.text_dim)
-                    .child(self.lang.t("proxy.label")),
-            )
-            .child(self.ip_badge.clone())
-            .child(icon_button("profile", "profile", 32.0, theme))
     }
 
     /// The star toggles a bookmark for the active page; only http(s) pages can have one.

@@ -235,6 +235,18 @@ pub(crate) mod test_support {
 mod tests {
     use super::*;
 
+    /// Tools whose description this build rewrites. The fixture keeps what
+    /// `debugger.ts` registered; these six described Electron's debugger and are
+    /// wrong here (a breakpoint freezes the tab).
+    const REWRITTEN_DESCRIPTIONS: [&str; 6] = [
+        "bp_add",
+        "bp_eval_in_frame",
+        "bp_resume",
+        "bp_step_into",
+        "bp_step_out",
+        "bp_step_over",
+    ];
+
     #[test]
     fn 도구_정의는_타입스크립트가_등록하는_정의와_같다() {
         // The fixture is what debugger.ts and intercept.ts register, dumped with bun
@@ -251,7 +263,13 @@ mod tests {
             .collect();
         assert_eq!(names, expected_names);
         for (def, want) in defs.iter().zip(&expected) {
-            assert_eq!(Value::from(def.description.as_str()), want["description"]);
+            if REWRITTEN_DESCRIPTIONS.contains(&def.name.as_str()) {
+                // The TypeScript text explains Electron's debugger, which is not
+                // what this build does; it must not be shipped again.
+                assert!(!def.description.contains("Electron"), "{}", def.name);
+            } else {
+                assert_eq!(Value::from(def.description.as_str()), want["description"]);
+            }
             assert_eq!(def.input_schema, want["inputSchema"], "{}", def.name);
             // Key order too: a client shows the properties in this order.
             assert_eq!(

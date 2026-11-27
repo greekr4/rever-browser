@@ -1,32 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractMarkdown, fetchRest, flagsToArgs, format, parsePage, parseTruncated, pickRpcResponse, toValue, userDataDir } from './revb.mjs'
-
-describe('pickRpcResponse', () => {
-  it('SSE 스트림에서 앞선 알림을 건너뛰고 id가 맞는 응답을 고른다', () => {
-    const raw =
-      'event: message\ndata: {"jsonrpc":"2.0","method":"notifications/progress","params":{}}\n\n' +
-      'event: message\ndata: {"jsonrpc":"2.0","id":7,"result":{"ok":1}}\n\n'
-    expect(pickRpcResponse(raw, 7)).toEqual({ jsonrpc: '2.0', id: 7, result: { ok: 1 } })
-  })
-
-  it('id가 다른 응답만 있으면 null을 돌려준다', () => {
-    expect(pickRpcResponse('data: {"jsonrpc":"2.0","id":1,"result":{}}\n\n', 2)).toBeNull()
-  })
-
-  it('여러 줄 data를 이어 붙여 하나의 JSON으로 파싱한다', () => {
-    const raw = 'data: {"jsonrpc":"2.0",\ndata: "id":3,"result":{}}\n\n'
-    expect(pickRpcResponse(raw, 3)?.id).toBe(3)
-  })
-
-  it('SSE가 아닌 일반 JSON 본문도 처리한다', () => {
-    expect(pickRpcResponse('{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"x"}}', 1)?.error.code).toBe(-32601)
-  })
-
-  it('202 빈 본문이면 null을 돌려준다', () => {
-    expect(pickRpcResponse('', 1)).toBeNull()
-  })
-})
+import { extractMarkdown, fetchRest, flagsToArgs, format, parsePage, parseTruncated, toValue, userDataDir } from './revb.mjs'
 
 describe('extractMarkdown', () => {
   it('마커 뒤의 마크다운만 잘라 돌려준다', () => {

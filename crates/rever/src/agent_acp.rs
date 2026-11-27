@@ -18,13 +18,12 @@ use rever_chat_core::acp_permission::RequestPermissionResponse;
 use rever_tool_profile::risky_tools::{choose_allow_option, is_risky_tool_request};
 use serde_json::{Value, json};
 
+use rever_agent::claude_cli_protocol::REVER_CLI_GUIDE;
+
 use crate::agent::{AgentEvent, ChatAgent, Outbox, PermissionAsk};
 
 /// The version of the protocol this client speaks.
 const PROTOCOL_VERSION: u64 = 1;
-/// Name the agent sees the app's MCP server under, as in the Electron app.
-const MCP_SERVER_NAME: &str = "rever-traffic";
-
 /// Ids of the requests whose answers move the session forward.
 const INITIALIZE: u64 = 1;
 const NEW_SESSION: u64 = 2;
@@ -39,7 +38,6 @@ pub struct AcpSession {
 /// Everything but the process: what [`AcpState::handle`] turns a message into.
 struct AcpState {
     cwd: String,
-    mcp: Option<(String, String)>,
     session_id: Option<String>,
     /// A prompt sent before `session/new` was answered.
     waiting_prompt: Option<String>,
@@ -59,11 +57,10 @@ fn request(id: u64, method: &str, params: Value) -> Value {
 }
 
 impl AcpState {
-    fn new(cwd: &Path, mcp: Option<(&str, &str)>, model: Option<&str>, outbox: Outbox) -> Self {
+    fn new(cwd: &Path, model: Option<&str>, outbox: Outbox) -> Self {
         Self {
             outbox,
             cwd: cwd.to_string_lossy().into_owned(),
-            mcp: mcp.map(|(url, auth)| (url.to_owned(), auth.to_owned())),
             session_id: None,
             waiting_prompt: None,
             prompt_id: None,
@@ -80,25 +77,12 @@ impl AcpState {
     }
 
     fn new_session(&self) -> Value {
-        let servers: Vec<Value> = self
-            .mcp
-            .iter()
-            .map(|(url, auth)| {
-                json!({
-                    "type": "http",
-                    "name": MCP_SERVER_NAME,
-                    "url": url,
-                    "headers": [
-                        { "name": "Authorization", "value": auth },
-                        { "name": "X-Rever-Catalog", "value": "follow" },
-                    ],
-                })
-            })
-            .collect();
+        // The app's tools are a CLI now, so the session gets none over MCP; the
+        // guide that replaces their schemas rides along with every prompt.
         request(
             NEW_SESSION,
             "session/new",
-            json!({ "cwd": self.cwd, "mcpServers": servers }),
+            json!({ "cwd": self.cwd, "mcpServers": [] }),
         )
     }
 
@@ -106,6 +90,7 @@ impl AcpState {
         let id = self.next_id;
         self.next_id += 1;
         self.prompt_id = Some(id);
+        let text = format!("{REVER_CLI_GUIDE}\n\n{text}");
         let params =
             json!({ "sessionId": session_id, "prompt": [{ "type": "text", "text": text }] });
         request(id, "session/prompt", params)
@@ -272,7 +257,6 @@ impl AcpSession {
     pub fn spawn(
         command: &str,
         cwd: &Path,
-        mcp: Option<(&str, &str)>,
         model: Option<&str>,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> Result<Self, String> {
@@ -320,7 +304,7 @@ impl AcpSession {
                 wake();
             });
         }
-        let state = AcpState::new(cwd, mcp, model, outbox);
+        let state = AcpState::new(cwd, model, outbox);
         let mut session = Self {
             child,
             stdin,
@@ -399,8 +383,7 @@ mod tests {
     use super::*;
 
     fn state() -> AcpState {
-        let mcp = Some(("http://127.0.0.1:9/mcp", "Bearer t"));
-        AcpState::new(Path::new("/tmp/w"), mcp, None, Outbox::new(Arc::new(|| {})))
+        AcpState::new(Path::new("/tmp/w"), None, Outbox::new(Arc::new(|| {})))
     }
 
     fn methods(messages: &[Value]) -> Vec<&str> {
@@ -411,14 +394,12 @@ mod tests {
     }
 
     #[test]
-    fn 초기화_응답_뒤에_mcp_서버를_붙인_세션을_연다() {
+    fn 초기화_응답_뒤에_mcp_서버_없는_세션을_연다() {
         let mut state = state();
         let (out, events) = state.handle(&json!({ "jsonrpc": "2.0", "id": 1, "result": {} }));
         assert!(events.is_empty());
         assert_eq!(methods(&out), ["session/new"]);
-        let server = &out[0]["params"]["mcpServers"][0];
-        assert_eq!(server["url"], "http://127.0.0.1:9/mcp");
-        assert_eq!(server["headers"][0]["value"], "Bearer t");
+        assert_eq!(out[0]["params"]["mcpServers"], json!([]));
         assert_eq!(out[0]["params"]["cwd"], "/tmp/w");
     }
 
@@ -439,7 +420,10 @@ mod tests {
             methods(&out),
             ["session/set_mode", "session/set_model", "session/prompt"]
         );
-        assert_eq!(out[2]["params"]["prompt"][0]["text"], "안녕");
+        // 도구 안내가 앞에 붙고, 사용자가 한 말이 뒤에 온다.
+        let text = out[2]["params"]["prompt"][0]["text"].as_str().unwrap();
+        assert!(text.ends_with("안녕"), "{text}");
+        assert!(text.contains("revb call"), "{text}");
         assert_eq!(state.session_id.as_deref(), Some("s1"));
 
         // 그 프롬프트의 응답이 턴의 끝이다.

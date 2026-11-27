@@ -62,6 +62,9 @@ pub struct ProfileMenu {
     browsers: Vec<BrowserInfo>,
     expanded_browser: Option<BrowserId>,
     import_msg: Option<String>,
+    /// The popup opens to the right of the button, for a button near the window's
+    /// left edge.
+    opens_right: bool,
     _changed: [Subscription; 2],
 }
 
@@ -97,6 +100,7 @@ impl ProfileMenu {
             browsers: Vec::new(),
             expanded_browser: None,
             import_msg: None,
+            opens_right: false,
         }
     }
 
@@ -106,6 +110,12 @@ impl ProfileMenu {
 
     pub fn set_open(&mut self, open: bool, cx: &mut Context<Self>) {
         self.open = open;
+        cx.notify();
+    }
+
+    /// Open the popup to the right of the button instead of to its left.
+    pub fn set_opens_right(&mut self, right: bool, cx: &mut Context<Self>) {
+        self.opens_right = right;
         cx.notify();
     }
 
@@ -444,7 +454,8 @@ impl Render for ProfileMenu {
         let menu = clickable("profile-menu")
             .absolute()
             .top(px(36.0))
-            .right_0()
+            .when(self.opens_right, |menu| menu.left_0())
+            .when(!self.opens_right, |menu| menu.right_0())
             // 200 of content, the 4px padding and the border: the CSS box is content-box.
             .min_w(px(210.0))
             .p(px(4.0))

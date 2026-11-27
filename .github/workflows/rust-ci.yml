@@ -2,10 +2,26 @@ name: Rust CI
 
 # Tests on pushes to main and on PRs. A branch push without a PR runs nothing,
 # so one PR is one cold Servo build, not two. Release packaging is not set up yet.
+# A change that touches only the files below runs nothing. Other Markdown is not
+# listed: the html2md and findings tests read `.md` fixtures.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - README.md
+      - README.ko.md
+      - CONTRIBUTING.md
+      - docs/**
+      - .github/ISSUE_TEMPLATE/**
+      - .github/PULL_REQUEST_TEMPLATE.md
   pull_request:
+    paths-ignore:
+      - README.md
+      - README.ko.md
+      - CONTRIBUTING.md
+      - docs/**
+      - .github/ISSUE_TEMPLATE/**
+      - .github/PULL_REQUEST_TEMPLATE.md
 
 permissions:
   contents: read
