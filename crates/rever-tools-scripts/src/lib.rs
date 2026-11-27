@@ -69,6 +69,7 @@ mod tests {
             names,
             [
                 "list_scripts",
+                "bundle_assets",
                 "grep_script",
                 "grep_scripts",
                 "extract_context",

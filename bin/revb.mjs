@@ -428,6 +428,7 @@ const USAGE = `revb — drive a running Rever Browser from scripts
   revb call <tool> ['<json>']      call one tool and print its result
   revb call <tool> --key value     or pass its arguments as flags typed by the tool's schema
   revb describe <tool>             one tool's description and input schema as JSON
+  revb eval <file.mjs | ->         evaluate the file's JS in the current page (browser_evaluate)
   revb md <url>                    open the url and print its page text as Markdown
   revb list                        list tools (--list works too)
   revb skill [--full]              print the scripting guide (--full: + live tool catalog)
@@ -471,6 +472,12 @@ async function main(argv) {
         const tool = await findTool(c, name)
         print({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema })
       })
+    }
+    case 'eval': {
+      const file = rest[0]
+      if (!file) fail('usage: revb eval <file.mjs> (or - for stdin)')
+      const code = file === '-' ? readFileSync(0, 'utf8') : readFileSync(file, 'utf8')
+      return withClient(async (c) => print(await c.call('browser_evaluate', { expression: code })))
     }
     case 'md': {
       if (!rest[0]) fail('usage: revb md <url>')

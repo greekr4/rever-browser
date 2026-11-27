@@ -7,6 +7,8 @@
 //! it is translated for the `regex` crate, and what that engine cannot express
 //! (lookaround, backreferences) is reported as an invalid regex.
 
+use std::sync::LazyLock;
+
 use regex::Regex;
 use rever_analysis::script_analysis::{
     Category, GrepMatch, GrepOptions, ScriptFilter, detect_bundler, grep_body_safe, list_scripts,
@@ -388,8 +390,106 @@ async fn deobfuscate(ctx: &ToolContext, args: &Value) -> Result<ToolResult, Stri
     Ok(ok(out))
 }
 
+/// `/assets/…` paths a bundle spells out, deduped in source order.
+static ASSET_REF_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"/assets/[A-Za-z0-9_@][A-Za-z0-9_@./~-]{1,120}"#).expect("static asset pattern")
+});
+
+/// `import("…")` specifiers, static or dynamic — the lazy-chunk references.
+static IMPORT_REF_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"import\(\s*["']([^"']{1,200})["']"#).expect("dynamic import pattern")
+});
+
+/// What a bundle references but the traffic store has never seen: the
+/// lazy-loaded surface of a code-split app (hashed chunks behind routes, auth
+/// or scroll that the current session did not trigger).
+pub struct BundleAssets;
+
+impl Tool for BundleAssets {
+    fn def(&self) -> ToolDef {
+        ToolDef::new(
+            "bundle_assets",
+            "List asset URLs that captured bundles reference but were never fetched — the lazy-loaded surface of a code-split app (hashed chunks behind routes, auth or scroll). Scans captured script bodies for static /assets/… paths and import() specifiers, deduped, with the referencing script. Fetch the returned URLs with browser_navigate to capture them, then re-run to see the next layer.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "host": { "type": "string", "description": "Substring host filter (e.g. \"vercel.app\")" },
+                    "limit": { "type": "integer", "exclusiveMinimum": 0, "maximum": 200, "description": "Max refs returned (default 50)" }
+                }
+            }),
+        )
+    }
+
+    fn call<'a>(&'a self, ctx: &'a ToolContext, args: Value) -> BoxFuture<'a, ToolResult> {
+        Box::pin(async move { bundle_assets(ctx, &args).unwrap_or_else(err) })
+    }
+}
+
+fn bundle_assets(ctx: &ToolContext, args: &Value) -> Result<ToolResult, String> {
+    let args = Args::new("bundle_assets", args)?;
+    let host = args.opt_str("host")?.map(str::to_owned);
+    let limit = args.opt_int("limit", 1, Some(200))?.unwrap_or(50) as usize;
+    let store = traffic(ctx);
+    let scripts = list_scripts(
+        &store,
+        &ScriptFilter {
+            host,
+            limit: Some(200),
+            min_size: None,
+        },
+    );
+    // A ref that matches any URL the store already holds (by suffix) is not
+    // uncaptured: the chunk may have been fetched another way.
+    let captured: Vec<&str> = store
+        .list(&rever_core::traffic::ListFilter::default())
+        .iter()
+        .map(|row| row.url.as_str())
+        .collect();
+    let scanned = scripts.len();
+    let mut refs: Vec<Value> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    'outer: for entry in scripts {
+        let Some(body) = entry.response_body.as_deref() else {
+            continue;
+        };
+        let mut found: Vec<(&str, &'static str)> = Vec::new();
+        for m in ASSET_REF_RE.find_iter(body) {
+            found.push((m.as_str(), "asset"));
+        }
+        for caps in IMPORT_REF_RE.captures_iter(body) {
+            let Some(spec) = caps.get(1) else { continue };
+            let spec = spec.as_str();
+            if spec.starts_with('/') || spec.starts_with("./") || spec.starts_with("../") {
+                found.push((spec, "import"));
+            }
+        }
+        for (reference, kind) in found {
+            if captured.iter().any(|url| url.ends_with(reference)) {
+                continue;
+            }
+            if !seen.insert((reference.to_owned(), kind)) {
+                continue;
+            }
+            refs.push(json!({
+                "ref": reference,
+                "kind": kind,
+                "referencedBy": entry.url,
+            }));
+            if refs.len() >= limit {
+                break 'outer;
+            }
+        }
+    }
+    Ok(ok_pretty(&json!({
+        "scriptsScanned": scanned,
+        "uncapturedRefs": refs.len(),
+        "refs": refs
+    })))
+}
+
 pub fn register(registry: &mut ToolRegistry) {
     registry.register(ListScripts);
+    registry.register(BundleAssets);
     registry.register(GrepScript);
     registry.register(GrepScripts);
     registry.register(ExtractContext);
@@ -401,6 +501,64 @@ pub fn register(registry: &mut ToolRegistry) {
 mod tests {
     use rever_core::traffic::RequestPatch;
     use rever_tools_api::utils::Content;
+
+
+    #[tokio::test]
+    async fn lists_referenced_but_uncaptured_chunks() {
+        let ctx = context(vec![
+            script(
+                "main",
+                "http://a.test/assets/main.js",
+                r#"import x from "/assets/known.js"; import("/assets/lazy-B.js"); "/assets/chunk-C.js""#,
+            ),
+            script("known", "http://a.test/assets/known.js", "// already here"),
+        ]);
+        let out = json_of(BundleAssets, &ctx, json!({})).await;
+        assert_eq!(out["scriptsScanned"], 2);
+        let refs: Vec<&str> = out["refs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["ref"].as_str().unwrap())
+            .collect();
+        assert!(refs.contains(&"/assets/lazy-B.js"), "{refs:?}");
+        assert!(refs.contains(&"/assets/chunk-C.js"), "{refs:?}");
+        assert!(!refs.contains(&"/assets/known.js"), "captured ref leaked");
+    }
+
+    #[tokio::test]
+    async fn resolves_relative_import_specifiers() {
+        let ctx = context(vec![script(
+            "main",
+            "http://a.test/assets/main.js",
+            r#"import("./chunk-L.js")"#,
+        )]);
+        let out = json_of(BundleAssets, &ctx, json!({})).await;
+        let refs: Vec<&str> = out["refs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["ref"].as_str().unwrap())
+            .collect();
+        assert!(refs.contains(&"./chunk-L.js"), "{refs:?}");
+    }
+
+    #[tokio::test]
+    async fn filters_by_host() {
+        let ctx = context(vec![
+            script("a", "http://a.test/assets/a.js", r#""/assets/a-lazy.js""#),
+            script("b", "http://b.test/assets/b.js", r#""/assets/b-lazy.js""#),
+        ]);
+        let out = json_of(BundleAssets, &ctx, json!({ "host": "a.test" })).await;
+        assert_eq!(out["scriptsScanned"], 1);
+        let refs: Vec<&str> = out["refs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["ref"].as_str().unwrap())
+            .collect();
+        assert_eq!(refs, ["/assets/a-lazy.js"]);
+    }
 
     use super::*;
 
